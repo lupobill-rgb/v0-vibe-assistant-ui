@@ -1,3 +1,8 @@
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
 // Validates that LLM output is a proper unified diff
 export interface DiffValidationResult {
   valid: boolean;
@@ -6,6 +11,16 @@ export interface DiffValidationResult {
 }
 
 const MAX_DIFF_SIZE = parseInt(process.env.MAX_DIFF_SIZE || '5000', 10);
+
+/**
+ * DiffValidator: Enforces unified diff format and rejects non-diff output
+ * 
+ * Responsibilities:
+ * 1. Validates unified diff format (reject code blocks, explanations, etc.)
+ * 2. Enforces size limits (hard cap at MAX_DIFF_SIZE lines)
+ * 3. Performs git apply --check before allowing apply
+ * 4. Fails fast with explicit error messages
+ */
 
 export function validateUnifiedDiff(content: string): DiffValidationResult {
   const lines = content.split('\n');
@@ -101,6 +116,49 @@ export function validateUnifiedDiff(content: string): DiffValidationResult {
     valid: true,
     lineCount
   };
+}
+
+/**
+ * Validates that a diff can be applied to a repository using git apply --check
+ * This is a critical safety check before actually applying changes
+ * 
+ * @param diffContent - The unified diff content to validate
+ * @param repoPath - Path to the git repository
+ * @returns DiffValidationResult with validation status
+ */
+export function validateDiffApplicability(diffContent: string, repoPath: string): DiffValidationResult {
+  let tempFile: string | null = null;
+  
+  try {
+    // Create temporary file for diff
+    tempFile = path.join(os.tmpdir(), `vibe-check-${Date.now()}.patch`);
+    fs.writeFileSync(tempFile, diffContent);
+
+    // Run git apply --check (doesn't modify files, just validates)
+    execSync(`git apply --check "${tempFile}"`, {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      stdio: 'pipe'
+    });
+
+    return {
+      valid: true
+    };
+
+  } catch (error: any) {
+    // git apply --check failed
+    const errorOutput = error.stderr || error.stdout || error.message;
+    return {
+      valid: false,
+      error: `Diff cannot be applied: ${errorOutput.trim()}`
+    };
+
+  } finally {
+    // Clean up temp file
+    if (tempFile && fs.existsSync(tempFile)) {
+      fs.unlinkSync(tempFile);
+    }
+  }
 }
 
 // Extract clean diff from LLM response (remove markdown, explanations, etc.)

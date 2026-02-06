@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import OpenAI from 'openai';
@@ -259,6 +259,17 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
   private async applyDiff(workDir: string, diff: string, taskId: string): Promise<boolean> {
     try {
+      // First, validate that diff can be applied using git apply --check
+      storage.logEvent(taskId, 'Validating diff applicability with git apply --check...', 'info');
+      
+      const checkResult = validateDiffApplicability(diff, workDir);
+      if (!checkResult.valid) {
+        storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
+        return false;
+      }
+      
+      storage.logEvent(taskId, '✓ git apply --check passed', 'success');
+
       // Write diff to temporary file
       const diffPath = path.join(workDir, '.vibe-diff.patch');
       fs.writeFileSync(diffPath, diff);
