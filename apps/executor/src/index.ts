@@ -23,7 +23,7 @@ const openai = new OpenAI({
 class VibeExecutor {
   private processing = false;
 
-  async start(): void {
+  async start(): Promise<void> {
     console.log('VIBE Executor started');
     console.log(`Max iterations: ${MAX_ITERATIONS}`);
     console.log(`Poll interval: ${POLL_INTERVAL}ms`);

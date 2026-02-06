@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "dotenv": "^16.3.1",
-    "better-sqlite3": "^9.2.2",
+    "better-sqlite3": "^11.0.0",
     "openai": "^4.24.1",
     "simple-git": "^3.22.0",
     "@octokit/rest": "^20.0.2"
