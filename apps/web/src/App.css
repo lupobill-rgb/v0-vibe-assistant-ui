@@ -1,0 +1,288 @@
+.app {
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.header h1 {
+  font-size: 4rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 0.95rem;
+  color: #888;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Input Section */
+.input-section {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 2rem;
+  border: 1px solid #333;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #b0b0b0;
+}
+
+.prompt-input,
+.text-input {
+  width: 100%;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.75rem;
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.prompt-input {
+  resize: vertical;
+  font-family: 'Monaco', 'Courier New', monospace;
+  line-height: 1.5;
+}
+
+.prompt-input:focus,
+.text-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.prompt-input:disabled,
+.text-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.run-button {
+  width: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.run-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.run-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.run-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Output Section */
+.output-section {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 2rem;
+  border: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 250px);
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.log-header h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-queued {
+  background: #3a3a3a;
+  color: #aaa;
+}
+
+.status-cloning,
+.status-building_context,
+.status-calling_llm,
+.status-applying_diff,
+.status-running_preflight,
+.status-creating_pr {
+  background: #2d4a7c;
+  color: #7da3e0;
+}
+
+.status-completed {
+  background: #1e4d2b;
+  color: #6ee7b7;
+}
+
+.status-failed {
+  background: #5a1f1f;
+  color: #f87171;
+}
+
+.log-console {
+  flex: 1;
+  overflow-y: auto;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.log-console::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-console::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.log-console::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+.log-console::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+.log-empty {
+  color: #666;
+  text-align: center;
+  padding: 2rem;
+}
+
+.log-entry {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+
+.log-entry:hover {
+  background: #1a1a1a;
+}
+
+.log-time {
+  color: #666;
+  margin-right: 1rem;
+  font-size: 0.8rem;
+}
+
+.log-message {
+  color: #e0e0e0;
+}
+
+.log-info .log-message {
+  color: #7da3e0;
+}
+
+.log-success .log-message {
+  color: #6ee7b7;
+  font-weight: 600;
+}
+
+.log-error .log-message {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.log-warning .log-message {
+  color: #fbbf24;
+}
+
+.pr-link-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #333;
+}
+
+.pr-link-section h3 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+  color: #6ee7b7;
+}
+
+.pr-link {
+  display: block;
+  color: #667eea;
+  text-decoration: none;
+  word-break: break-all;
+  padding: 0.75rem;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.pr-link:hover {
+  border-color: #667eea;
+}
