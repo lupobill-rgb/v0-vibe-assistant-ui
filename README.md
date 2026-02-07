@@ -226,11 +226,11 @@ vibe pr create \
 
 **Expected Output:**
 ```
-Creating pull request for lupobill-rgb/your-repo...
+Creating pull request for your-username/your-repo...
 ✓ Branch created: vibe/add-jwt-auth
 ✓ Commits pushed
 ✓ Pull request opened: #123
-🔗 https://github.com/lupobill-rgb/your-repo/pull/123
+🔗 https://github.com/your-username/your-repo/pull/123
 ```
 
 ### Step 6: Monitor CI Progress
