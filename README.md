@@ -461,4 +461,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - 📖 [Documentation](https://github.com/lupobill-rgb/VIBE/wiki)
 - 💬 [Discussions](https://github.com/lupobill-rgb/VIBE/discussions)
 - 🐛 [Report Issues](https://github.com/lupobill-rgb/VIBE/issues)
-- 📧 Contact: vibe-support@example.com
