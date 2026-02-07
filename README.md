@@ -246,6 +246,156 @@ npm test --workspace=apps/executor
 npm test --workspace=apps/web
 ```
 
+## E2E Validation (Sandbox Repo)
+
+This section provides a complete end-to-end validation workflow using a private sandbox repository.
+
+### Required Environment Variables
+
+Before running, ensure these variables are set in your `.env` file:
+
+```bash
+# Required for LLM diff generation
+OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Required for GitHub PR creation (needs 'repo' scope)
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Optional: Customize preflight commands for your target repo
+LINT_COMMAND=npm run lint
+TYPECHECK_COMMAND=npx tsc --noEmit
+TEST_COMMAND=npm test
+SMOKE_COMMAND=echo "Smoke test passed"
+
+# Optional: Adjust limits if needed
+MAX_ITERATIONS=6
+MAX_CONTEXT_SIZE=50000
+MAX_DIFF_SIZE=5000
+```
+
+### Docker Compose Command
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Services will be available at:
+# - Web UI: http://localhost:3000
+# - API: http://localhost:3001
+# - Executor: runs in background, polls for tasks
+```
+
+### Success Test Case
+
+**Prompt (will generate valid unified diff):**
+```
+Add input validation to the user registration function. 
+Check that email contains @ symbol and password is at least 8 characters long.
+Return early with false if validation fails.
+```
+
+**Expected Repository:**
+- A simple Node.js/TypeScript project with a user registration function
+- Contains files like `src/auth.js` or `src/users.ts`
+
+**Expected Outputs:**
+1. **Log Console (SSE stream):**
+   ```
+   [info] Task created and queued for execution
+   [info] Starting execution for task abc123...
+   [info] Cloning repository: https://github.com/yourorg/sandbox-repo
+   [info] Checked out base branch: main
+   [info] Created target branch: vibe/abc123
+   [info] Building context from repository...
+   [info] Context built: 3 files, 450 chars
+   [info] Calling LLM (iteration 1)...
+   [success] Valid diff generated (45 lines)
+   [info] Validating diff applicability with git apply --check...
+   [success] ✓ git apply --check passed
+   [success] Diff applied successfully
+   [success] Changes committed (iteration 1)
+   [info] Running preflight checks...
+   [info] [lint] Starting lint check...
+   [success] ✓ lint passed
+   [info] [typecheck] Starting typecheck check...
+   [success] ✓ typecheck passed
+   [info] [test] Starting test check...
+   [success] ✓ test passed
+   [info] [smoke] Starting smoke check...
+   [success] ✓ smoke passed
+   [success] ✓ All preflight checks passed!
+   [info] Pushing branch to remote...
+   [success] Branch pushed: vibe/abc123
+   [success] ✓ Pull request created: https://github.com/yourorg/sandbox-repo/pull/42
+   ```
+
+2. **PR URL in UI:**
+   ```
+   https://github.com/yourorg/sandbox-repo/pull/42
+   ```
+
+3. **GitHub PR Contents:**
+   - **Title:** `VIBE: Add input validation to the user registration funct...`
+   - **Branch:** `vibe/abc123 ← main`
+   - **Body includes:** Task ID, iteration count, preflight results
+   - **Files changed:** Shows unified diff (e.g., `src/auth.js`)
+
+### Failure Test Case
+
+**Prompt (will generate non-diff output):**
+```
+Here is the code you need:
+
+function validateUser(email, password) {
+  if (!email.includes('@')) return false;
+  if (password.length < 8) return false;
+  return true;
+}
+
+Add this function to the auth file.
+```
+
+**Expected Outputs:**
+1. **Log Console (SSE stream):**
+   ```
+   [info] Task created and queued for execution
+   [info] Starting execution for task def456...
+   [info] Cloning repository: https://github.com/yourorg/sandbox-repo
+   [info] Checked out base branch: main
+   [info] Created target branch: vibe/def456
+   [info] Building context from repository...
+   [info] Context built: 3 files, 450 chars
+   [info] Calling LLM (iteration 1)...
+   [info] LLM generated 285 characters
+   [error] Invalid diff: Missing unified diff header (diff --git)
+   [error] LLM failed to generate valid diff
+   [info] Starting iteration 2/6...
+   [info] Calling LLM (iteration 2)...
+   [error] Invalid diff: Missing unified diff header (diff --git)
+   [error] LLM failed to generate valid diff
+   [info] Starting iteration 3/6...
+   [info] Calling LLM (iteration 3)...
+   [error] Invalid diff: Missing unified diff header (diff --git)
+   [error] LLM failed to generate valid diff
+   [error] Failed: 3 consecutive invalid diffs from LLM
+   ```
+
+2. **No PR created** - Task state transitions to `failed`
+
+3. **Final Status:** Task shows as `failed` with clear error message about invalid diff format
+
+### Validation Checklist
+
+- [ ] Success case: PR link appears in UI
+- [ ] Success case: GitHub PR exists with correct branch name (`vibe/{task_id}`)
+- [ ] Success case: PR contains unified diff (not plain code)
+- [ ] Success case: All preflight stages passed (lint, typecheck, test, smoke)
+- [ ] Failure case: Task fails after 3 invalid diff attempts
+- [ ] Failure case: Error logs show "Missing unified diff header" rejection
+- [ ] Failure case: No PR is created
+- [ ] Both cases: Logs stream in real-time via SSE
+- [ ] Both cases: SQLite database persists task and event records
+
 ## Troubleshooting
 
 ### Executor not picking up tasks
