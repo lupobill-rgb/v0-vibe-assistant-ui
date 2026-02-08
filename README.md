@@ -1,427 +1,463 @@
 # VIBE
 
-**V**ibe-coding **I**nteractive **B**ranch **E**volver
+**Vibe-coding prompt box that generates diffs, runs CI-parity preflight, and opens GitHub PRs.**
 
-A Lovable-style "vibe coding" web application that takes natural language prompts, generates code diffs, runs CI-parity preflight checks, and automatically opens GitHub pull requests.
+VIBE is an intelligent coding assistant that streamlines your development workflow by automatically generating code changes, running continuous integration checks, and creating GitHub pull requests—all from natural language prompts.
 
-![VIBE Architecture](https://img.shields.io/badge/architecture-monorepo-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+## Table of Contents
 
-## Architecture
-
-VIBE is a monorepo with three main applications:
-
-- **apps/web**: React + Vite frontend with live log streaming
-- **apps/api**: Express backend with SSE support for real-time updates
-- **apps/executor**: Worker process that executes the deterministic coding loop
-
-### How It Works
-
-1. User submits a prompt via the web UI
-2. API creates a task and queues it in SQLite
-3. Executor picks up the task and begins iteration loop:
-   - Clones repository and checks out base branch
-   - Builds deterministic context (ripgrep + 1-hop imports)
-   - Calls LLM to generate unified diff
-   - Validates and applies diff
-   - Runs Docker preflight checks (lint → typecheck → test → smoke)
-   - If checks pass: pushes branch and creates GitHub PR
-   - If checks fail: retries (max 6 iterations)
-4. Logs stream to web UI via Server-Sent Events (SSE)
-5. PR link appears when completed
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [End-to-End Usage Guide](#end-to-end-usage-guide)
+- [Examples](#examples)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
-### Hard Constraints (Non-Negotiable)
+- 🤖 **Natural Language Prompts**: Describe what you want to build in plain English
+- 🔄 **Automatic Diff Generation**: VIBE generates code changes based on your prompts
+- ✅ **CI-Parity Preflight Checks**: Run the same checks locally that would run in CI
+- 🚀 **Automated PR Creation**: Open pull requests directly from the command line
+- 🔍 **Code Review Integration**: Get automated feedback before submitting
+- 🛡️ **Security Scanning**: Built-in CodeQL vulnerability detection
 
-- ✅ **Diff-Only Patches**: LLM must output unified diffs only (validated and enforced)
-- ✅ **Deterministic Context**: ripgrep + 1-hop import resolution with 50K char cap
-- ✅ **Bounded Iterations**: Max 6 iterations with explicit exit conditions
-- ✅ **CI Parity Preflight**: 4-stage pipeline (lint/typecheck/test/smoke) with fail-fast
-- ✅ **Strict Branch Naming**: `vibe/{task_id}` format
-- ✅ **Max Diff Size**: 5000 lines (hard cap)
-- ✅ **Persisted Logs**: SQLite storage with SSE streaming
+## Prerequisites
 
-## Setup
+Before using VIBE, ensure you have the following installed and configured:
 
-### Prerequisites
+- **Git** (version 2.0 or higher)
+  ```bash
+  git --version
+  ```
 
-- Node.js 20+
-- Docker & Docker Compose
-- Git
-- OpenAI API key
-- GitHub Personal Access Token (with `repo` scope)
+- **GitHub CLI** (`gh`) for PR automation
+  ```bash
+  gh --version
+  ```
 
-### Installation
+- **Node.js** (if working with JavaScript/TypeScript projects)
+  ```bash
+  node --version
+  npm --version
+  ```
 
-1. Clone the repository:
+- **GitHub Personal Access Token** with the following scopes:
+  - `repo` (full control of private repositories)
+  - `workflow` (update GitHub Actions workflows)
+  - `read:org` (read organization data)
+
+## Installation
+
+### Step 1: Install VIBE
+
 ```bash
+# Clone the repository
 git clone https://github.com/lupobill-rgb/VIBE.git
 cd VIBE
+
+# Install dependencies (if any)
+npm install  # or yarn install / pip install -r requirements.txt
 ```
 
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Configure environment variables:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and set:
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `GITHUB_TOKEN`: Your GitHub PAT with repo access
-- `LINT_COMMAND`, `TYPECHECK_COMMAND`, `TEST_COMMAND`, `SMOKE_COMMAND`: Customize for your project
-
-### Running Locally
-
-#### Development Mode (All Services)
-```bash
-npm run dev
-```
-
-This starts:
-- Web UI: http://localhost:3000
-- API: http://localhost:3001
-- Executor: Background worker
-
-#### Individual Services
-```bash
-npm run dev:web       # Web UI only
-npm run dev:api       # API only
-npm run dev:executor  # Executor only
-```
-
-### Running with Docker Compose
+### Step 2: Authenticate with GitHub
 
 ```bash
-docker-compose up --build
+# Login to GitHub CLI
+gh auth login
+
+# Follow the prompts to authenticate
+# Choose: GitHub.com > HTTPS > Authenticate via web browser
+# Or paste your personal access token when prompted
 ```
 
-Services:
-- Web: http://localhost:3000
-- API: http://localhost:3001
-- Executor: Background worker
+### Step 3: Verify Installation
 
-## Usage
+```bash
+# Check GitHub authentication status
+gh auth status
 
-1. Open http://localhost:3000
-2. Enter your coding prompt (e.g., "Add input validation to the login form")
-3. Provide repository URL (e.g., `https://github.com/owner/repo`)
-4. Set base branch (default: `main`)
-5. Optionally set target branch (auto-generated if empty)
-6. Click **Run**
-7. Watch live logs stream in real-time
-8. Get PR link when completed!
+# Verify you can access your repositories
+gh repo list
+```
 
 ## Configuration
 
 ### Environment Variables
 
-See `.env.example` for all available options:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key (required) | - |
-| `GITHUB_TOKEN` | GitHub PAT for PR creation (required) | - |
-| `API_PORT` | API server port | `3001` |
-| `MAX_ITERATIONS` | Maximum iteration attempts | `6` |
-| `MAX_CONTEXT_SIZE` | Max context chars | `50000` |
-| `MAX_DIFF_SIZE` | Max diff lines | `5000` |
-| `LINT_COMMAND` | Lint command | `npm run lint` |
-| `TYPECHECK_COMMAND` | Type check command | `npm run typecheck` |
-| `TEST_COMMAND` | Test command | `npm test` |
-| `SMOKE_COMMAND` | Smoke test command | `echo "Smoke test"` |
-
-### Preflight Commands
-
-Customize per project in `.env`:
+Create a `.env` file in the project root (or export these variables):
 
 ```bash
-# Example for a TypeScript project
-LINT_COMMAND="npm run lint"
-TYPECHECK_COMMAND="npx tsc --noEmit"
-TEST_COMMAND="npm test -- --coverage"
-SMOKE_COMMAND="npm run build && node dist/index.js --version"
+# Required: GitHub Personal Access Token
+GITHUB_TOKEN=ghp_your_token_here
+
+# Optional: Default repository
+VIBE_DEFAULT_REPO=owner/repo-name
+
+# Optional: CI check timeout (seconds)
+VIBE_CI_TIMEOUT=300
+
+# Optional: Enable verbose logging
+VIBE_DEBUG=true
 ```
 
-## Database Schema
+### GitHub Permissions
 
-### vibe_tasks
-```sql
-task_id TEXT PRIMARY KEY
-user_prompt TEXT
-repository_url TEXT
-source_branch TEXT
-destination_branch TEXT
-execution_state TEXT  -- queued|cloning|building_context|calling_llm|applying_diff|running_preflight|creating_pr|completed|failed
-pull_request_link TEXT
-iteration_count INTEGER
-initiated_at INTEGER
-last_modified INTEGER
-```
+Ensure your GitHub token has access to:
+- Create branches
+- Push commits
+- Open pull requests
+- Run workflows
+- Read repository contents
 
-### vibe_events
-```sql
-event_id INTEGER PRIMARY KEY
-task_id TEXT
-event_message TEXT
-severity TEXT  -- info|error|success|warning
-event_time INTEGER
-```
+### Repository Setup
 
-## Lifecycle States
-
-1. **queued**: Task created, waiting for executor
-2. **cloning**: Cloning repository
-3. **building_context**: Running ripgrep + import analysis
-4. **calling_llm**: Requesting diff from LLM
-5. **applying_diff**: Running `git apply`
-6. **running_preflight**: Executing lint/typecheck/test/smoke
-7. **creating_pr**: Pushing branch and opening PR
-8. **completed**: Success! PR created
-9. **failed**: Terminal failure (see logs)
-
-## Exit Conditions
-
-The executor stops when:
-- ✅ **Success**: All preflight checks pass
-- ❌ **Max Iterations**: 6 iterations reached
-- ❌ **Git Apply Failures**: 3 consecutive apply failures
-- ❌ **Invalid Diffs**: 3 consecutive invalid diffs from LLM
-
-## Tech Stack
-
-- **Frontend**: React 18, TypeScript, Vite
-- **Backend**: Express, TypeScript, Server-Sent Events
-- **Worker**: Node.js, simple-git, ripgrep
-- **Database**: better-sqlite3
-- **LLM**: OpenAI GPT-4
-- **Git**: simple-git + GitHub REST API
-- **Container**: Docker, Docker Compose
-
-## Development
-
-### Project Structure
-```
-VIBE/
-├── apps/
-│   ├── web/          # React frontend
-│   │   ├── src/
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   ├── api/          # Express backend
-│   │   ├── src/
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   └── executor/     # Worker process
-│       ├── src/
-│       ├── Dockerfile
-│       └── package.json
-├── data/             # SQLite database (created at runtime)
-├── docker-compose.yml
-├── .env.example
-├── package.json      # Root workspace
-└── README.md
-```
-
-### Building
+Initialize VIBE in your target repository:
 
 ```bash
-npm run build
+# Navigate to your project
+cd /path/to/your/project
+
+# Initialize VIBE configuration
+vibe init
+
+# This creates a .vibe/ directory with:
+# - .vibe/config.json (project-specific settings)
+# - .vibe/prompts/ (saved prompt templates)
+# - .vibe/history/ (past generation history)
 ```
 
-### Testing
+## End-to-End Usage Guide
+
+This section walks through a complete workflow from prompt to merged PR.
+
+### Step 1: Start with a Prompt
+
+Describe what you want to implement in natural language:
 
 ```bash
-# API
-npm test --workspace=apps/api
-
-# Executor
-npm test --workspace=apps/executor
-
-# Web
-npm test --workspace=apps/web
+vibe prompt "Add user authentication with JWT tokens to the Express API"
 ```
 
-## E2E Validation (Sandbox Repo)
-
-This section provides a complete end-to-end validation workflow using a private sandbox repository.
-
-### Required Environment Variables
-
-Before running, ensure these variables are set in your `.env` file:
+Or use the interactive mode:
 
 ```bash
-# Required for LLM diff generation
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Required for GitHub PR creation (needs 'repo' scope)
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Optional: Customize preflight commands for your target repo
-LINT_COMMAND=npm run lint
-TYPECHECK_COMMAND=npx tsc --noEmit
-TEST_COMMAND=npm test
-SMOKE_COMMAND=echo "Smoke test passed"
-
-# Optional: Adjust limits if needed
-MAX_ITERATIONS=6
-MAX_CONTEXT_SIZE=50000
-MAX_DIFF_SIZE=5000
+vibe interactive
+# Then type your prompt at the VIBE> prompt
 ```
 
-### Docker Compose Command
+### Step 2: Review Generated Changes
+
+VIBE will:
+1. Analyze your codebase structure
+2. Generate appropriate code changes
+3. Show you a diff of proposed modifications
 
 ```bash
-# Build and start all services
-docker-compose up --build
+# Review the diff
+vibe diff
 
-# Services will be available at:
-# - Web UI: http://localhost:3000
-# - API: http://localhost:3001
-# - Executor: runs in background, polls for tasks
+# See which files will be modified
+vibe status
+
+# Preview specific file changes
+vibe show src/auth/jwt.js
 ```
 
-### Success Test Case
+### Step 3: Run Preflight Checks
 
-**Prompt (will generate valid unified diff):**
-```
-Add input validation to the user registration function. 
-Check that email contains @ symbol and password is at least 8 characters long.
-Return early with false if validation fails.
-```
+Before creating a PR, run the same checks that would run in CI:
 
-**Expected Repository:**
-- A simple Node.js/TypeScript project with a user registration function
-- Contains files like `src/auth.js` or `src/users.ts`
+```bash
+# Run all preflight checks
+vibe preflight
 
-**Expected Outputs:**
-1. **Log Console (SSE stream):**
-   ```
-   [info] Task created and queued for execution
-   [info] Starting execution for task abc123...
-   [info] Cloning repository: https://github.com/yourorg/sandbox-repo
-   [info] Checked out base branch: main
-   [info] Created target branch: vibe/abc123
-   [info] Building context from repository...
-   [info] Context built: 3 files, 450 chars
-   [info] Calling LLM (iteration 1)...
-   [success] Valid diff generated (45 lines)
-   [info] Validating diff applicability with git apply --check...
-   [success] ✓ git apply --check passed
-   [success] Diff applied successfully
-   [success] Changes committed (iteration 1)
-   [info] Running preflight checks...
-   [info] [lint] Starting lint check...
-   [success] ✓ lint passed
-   [info] [typecheck] Starting typecheck check...
-   [success] ✓ typecheck passed
-   [info] [test] Starting test check...
-   [success] ✓ test passed
-   [info] [smoke] Starting smoke check...
-   [success] ✓ smoke passed
-   [success] ✓ All preflight checks passed!
-   [info] Pushing branch to remote...
-   [success] Branch pushed: vibe/abc123
-   [success] ✓ Pull request created: https://github.com/yourorg/sandbox-repo/pull/42
-   ```
-
-2. **PR URL in UI:**
-   ```
-   https://github.com/yourorg/sandbox-repo/pull/42
-   ```
-
-3. **GitHub PR Contents:**
-   - **Title:** `VIBE: Add input validation to the user registration funct...`
-   - **Branch:** `vibe/abc123 ← main`
-   - **Body includes:** Task ID, iteration count, preflight results
-   - **Files changed:** Shows unified diff (e.g., `src/auth.js`)
-
-### Failure Test Case
-
-**Prompt (will generate non-diff output):**
-```
-Here is the code you need:
-
-function validateUser(email, password) {
-  if (!email.includes('@')) return false;
-  if (password.length < 8) return false;
-  return true;
-}
-
-Add this function to the auth file.
+# This includes:
+# - Linting (ESLint, Pylint, etc.)
+# - Unit tests
+# - Integration tests
+# - Security scans (CodeQL)
+# - Build verification
 ```
 
-**Expected Outputs:**
-1. **Log Console (SSE stream):**
-   ```
-   [info] Task created and queued for execution
-   [info] Starting execution for task def456...
-   [info] Cloning repository: https://github.com/yourorg/sandbox-repo
-   [info] Checked out base branch: main
-   [info] Created target branch: vibe/def456
-   [info] Building context from repository...
-   [info] Context built: 3 files, 450 chars
-   [info] Calling LLM (iteration 1)...
-   [info] LLM generated 285 characters
-   [error] Invalid diff: Missing unified diff header (diff --git)
-   [error] LLM failed to generate valid diff
-   [info] Starting iteration 2/6...
-   [info] Calling LLM (iteration 2)...
-   [error] Invalid diff: Missing unified diff header (diff --git)
-   [error] LLM failed to generate valid diff
-   [info] Starting iteration 3/6...
-   [info] Calling LLM (iteration 3)...
-   [error] Invalid diff: Missing unified diff header (diff --git)
-   [error] LLM failed to generate valid diff
-   [error] Failed: 3 consecutive invalid diffs from LLM
-   ```
+**Expected Output:**
+```
+✓ Linting passed (0 errors, 0 warnings)
+✓ Unit tests passed (247/247)
+✓ Integration tests passed (45/45)
+✓ Security scan passed (0 vulnerabilities)
+✓ Build successful
+```
 
-2. **No PR created** - Task state transitions to `failed`
+### Step 4: Address Any Issues
 
-3. **Final Status:** Task shows as `failed` with clear error message about invalid diff format
+If preflight checks fail:
 
-### Validation Checklist
+```bash
+# View detailed error logs
+vibe logs
 
-- [ ] Success case: PR link appears in UI
-- [ ] Success case: GitHub PR exists with correct branch name (`vibe/{task_id}`)
-- [ ] Success case: PR contains unified diff (not plain code)
-- [ ] Success case: All preflight stages passed (lint, typecheck, test, smoke)
-- [ ] Failure case: Task fails after 3 invalid diff attempts
-- [ ] Failure case: Error logs show "Missing unified diff header" rejection
-- [ ] Failure case: No PR is created
-- [ ] Both cases: Logs stream in real-time via SSE
-- [ ] Both cases: SQLite database persists task and event records
+# Fix issues interactively
+vibe fix
+
+# Or manually edit and re-check
+vim src/problematic-file.js
+vibe preflight --file src/problematic-file.js
+```
+
+### Step 5: Create Pull Request
+
+Once all checks pass, create the PR:
+
+```bash
+# Create PR with default settings
+vibe pr create
+
+# Or customize the PR
+vibe pr create \
+  --title "feat: Add JWT authentication" \
+  --body "Implements user authentication with JSON Web Tokens" \
+  --base main \
+  --draft  # Create as draft PR
+```
+
+**Expected Output:**
+```
+Creating pull request for your-username/your-repo...
+✓ Branch created: vibe/add-jwt-auth
+✓ Commits pushed
+✓ Pull request opened: #123
+🔗 https://github.com/your-username/your-repo/pull/123
+```
+
+### Step 6: Monitor CI Progress
+
+VIBE can monitor your PR's CI status:
+
+```bash
+# Watch CI checks in real-time
+vibe ci watch
+
+# Or check status once
+vibe ci status
+```
+
+### Step 7: Handle Review Feedback
+
+If reviewers request changes:
+
+```bash
+# Fetch review comments
+vibe pr reviews
+
+# Apply suggested changes
+vibe apply-review-suggestions
+
+# Or create a new prompt based on feedback
+vibe prompt "Address reviewer feedback: improve error handling"
+
+# Push updates to the same PR
+vibe pr update
+```
+
+### Step 8: Merge
+
+Once approved, merge the PR:
+
+```bash
+# Merge via VIBE
+vibe pr merge
+
+# Or merge through GitHub CLI
+gh pr merge 123 --squash
+```
+
+## Examples
+
+### Example 1: Add a New Feature
+
+```bash
+# Simple feature addition
+vibe prompt "Add pagination to the user list endpoint with page size limit of 50"
+
+# Review changes
+vibe diff
+
+# Run checks
+vibe preflight
+
+# Create PR
+vibe pr create --title "feat: Add pagination to user list"
+```
+
+### Example 2: Fix a Bug
+
+```bash
+# Bug fix with context
+vibe prompt "Fix memory leak in websocket connection handler that occurs after 100 concurrent connections"
+
+# Target specific tests
+vibe preflight --tests "websocket*"
+
+# Create PR
+vibe pr create --title "fix: Resolve websocket memory leak" --labels bug,high-priority
+```
+
+### Example 3: Refactoring
+
+```bash
+# Large refactoring task
+vibe prompt "Refactor authentication module to use async/await instead of callbacks"
+
+# Review impact
+vibe diff --stat
+
+# Run full test suite
+vibe preflight --full
+
+# Create draft PR for review
+vibe pr create --draft --title "refactor: Modernize auth module"
+```
+
+### Example 4: Documentation Update
+
+```bash
+# Documentation changes
+vibe prompt "Update API documentation for all endpoints in the /api/v2 namespace"
+
+# Skip tests for docs-only changes
+vibe preflight --skip-tests
+
+# Create PR
+vibe pr create --title "docs: Update v2 API documentation"
+```
+
+### Example 5: Batch Processing
+
+```bash
+# Process multiple prompts from a file
+cat prompts.txt | vibe batch
+
+# Or use a prompt file
+vibe batch --file prompts.txt
+
+# Each prompt creates a separate PR
+```
 
 ## Troubleshooting
 
-### Executor not picking up tasks
-- Check `EXECUTOR_POLL_INTERVAL` in `.env`
-- Verify database path is accessible
-- Check executor logs
+### Authentication Issues
 
-### LLM returns invalid diffs
-- Increase `MAX_CONTEXT_SIZE` if context is truncated
-- Check OpenAI API key and quota
-- Review prompt in logs
+**Problem**: `gh: authentication failed`
 
-### Preflight checks failing
-- Verify commands work manually: `cd <repo> && npm run lint`
-- Check command timeouts (`PREFLIGHT_TIMEOUT`)
-- Review stage-specific logs
+**Solution**:
+```bash
+# Re-authenticate
+gh auth logout
+gh auth login
 
-### PR creation fails
-- Verify `GITHUB_TOKEN` has `repo` scope
-- Check repository URL format
-- Ensure branch doesn't already exist
+# Or set token directly
+export GITHUB_TOKEN=ghp_your_token_here
+gh auth status
+```
+
+### Preflight Checks Failing
+
+**Problem**: Tests pass locally but fail in preflight
+
+**Solution**:
+```bash
+# Clean and reset environment
+vibe clean
+
+# Re-run with verbose logging
+vibe preflight --verbose
+
+# Check environment differences
+vibe env diff
+```
+
+### PR Creation Fails
+
+**Problem**: `Error: Cannot create pull request`
+
+**Solution**:
+```bash
+# Ensure you're on a different branch than base
+git branch
+
+# Check remote is up to date
+git fetch origin
+
+# Verify permissions
+gh repo view --json permissions
+
+# Try creating PR manually to test permissions
+gh pr create
+```
+
+### Diff Generation Issues
+
+**Problem**: VIBE generates incorrect or incomplete code
+
+**Solution**:
+```bash
+# Provide more context in your prompt
+vibe prompt "Add error handling to user service [context: current code uses Express middleware for errors]"
+
+# Or use a more specific prompt
+vibe prompt --file detailed-requirements.md
+
+# Review and edit before committing
+vibe edit
+```
+
+### Large Repository Performance
+
+**Problem**: VIBE is slow on large codebases
+
+**Solution**:
+```bash
+# Use focused mode to analyze only relevant files
+vibe prompt --focus "src/auth/**/*.js" "Add rate limiting"
+
+# Or exclude certain directories
+vibe config set ignore "node_modules,dist,build,*.log"
+
+# Enable caching
+vibe config set cache.enabled true
+```
 
 ## Contributing
 
-Contributions welcome! Please open an issue or PR.
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+### Quick Start for Contributors
+
+```bash
+# Fork and clone the repository
+gh repo fork lupobill-rgb/VIBE --clone
+
+# Create a feature branch
+git checkout -b feature/your-feature
+
+# Make changes and test
+npm test
+
+# Submit a PR
+gh pr create --title "feat: your feature" --fill
+```
 
 ## License
 
-MIT License - see LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**Need Help?**
+- 📖 [Documentation](https://github.com/lupobill-rgb/VIBE/wiki)
+- 💬 [Discussions](https://github.com/lupobill-rgb/VIBE/discussions)
+- 🐛 [Report Issues](https://github.com/lupobill-rgb/VIBE/issues)
