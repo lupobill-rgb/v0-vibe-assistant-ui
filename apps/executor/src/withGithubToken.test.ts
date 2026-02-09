@@ -1,12 +1,58 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { withGithubToken } from './withGithubToken';
+import { withGithubToken, sanitizeRepoUrl } from './withGithubToken';
 
 /**
  * withGithubToken Test Suite
  * 
  * Tests the GitHub token injection helper function.
  */
+
+describe('sanitizeRepoUrl - Safe Logging', () => {
+  it('should remove credentials from HTTPS URL', () => {
+    const repoUrl = 'https://x-access-token:ghp_secret123@github.com/owner/repo.git';
+    const result = sanitizeRepoUrl(repoUrl);
+    assert.strictEqual(result, 'github.com/owner/repo.git');
+  });
+
+  it('should sanitize plain HTTPS URL', () => {
+    const repoUrl = 'https://github.com/owner/repo';
+    const result = sanitizeRepoUrl(repoUrl);
+    assert.strictEqual(result, 'github.com/owner/repo.git');
+  });
+
+  it('should sanitize HTTPS URL with .git', () => {
+    const repoUrl = 'https://github.com/owner/repo.git';
+    const result = sanitizeRepoUrl(repoUrl);
+    assert.strictEqual(result, 'github.com/owner/repo.git');
+  });
+
+  it('should sanitize SSH URL', () => {
+    const repoUrl = 'git@github.com:owner/repo.git';
+    const result = sanitizeRepoUrl(repoUrl);
+    assert.strictEqual(result, 'github.com/owner/repo.git');
+  });
+
+  it('should handle SSH URL without .git', () => {
+    const repoUrl = 'git@github.com:owner/repo';
+    const result = sanitizeRepoUrl(repoUrl);
+    assert.strictEqual(result, 'github.com/owner/repo.git');
+  });
+
+  it('should handle already sanitized URL', () => {
+    const repoUrl = 'github.com/owner/repo.git';
+    const result = sanitizeRepoUrl(repoUrl);
+    assert.strictEqual(result, 'github.com/owner/repo.git');
+  });
+
+  it('should handle real-world example with token', () => {
+    const repoUrl = 'https://x-access-token:ghp_1234567890@github.com/UbiGrowth/VIBE.git';
+    const result = sanitizeRepoUrl(repoUrl);
+    assert.strictEqual(result, 'github.com/UbiGrowth/VIBE.git');
+    assert.ok(!result.includes('ghp_'));
+    assert.ok(!result.includes('x-access-token'));
+  });
+});
 
 describe('withGithubToken - Token Handling', () => {
   it('should return unchanged URL when token is undefined', () => {

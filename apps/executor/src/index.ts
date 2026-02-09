@@ -5,7 +5,7 @@ import { buildContext, formatContext } from './context-builder';
 import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
-import { withGithubToken } from './withGithubToken';
+import { withGithubToken, sanitizeRepoUrl } from './withGithubToken';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
@@ -66,10 +66,12 @@ class VibeExecutor {
     try {
       // State: cloning
       storage.updateTaskState(task.task_id, 'cloning');
-      storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
-
+      
       // Clone repository
       // CLONE SITE: apps/executor/src/index.ts in executeTask() method
+      const sanitizedUrl = sanitizeRepoUrl(task.repository_url);
+      storage.logEvent(task.task_id, `Cloning repository: ${sanitizedUrl}`, 'info');
+      
       const cloneUrl = withGithubToken(task.repository_url, process.env.GITHUB_TOKEN);
       // Prevent git from prompting for credentials
       const gitEnv = {
