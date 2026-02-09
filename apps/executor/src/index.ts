@@ -93,7 +93,12 @@ class VibeExecutor {
       
       try {
         const files = fs.readdirSync(workDir);
-        storage.logEvent(task.task_id, `Directory listing (${files.length} items): ${files.join(', ')}`, 'info');
+        const fileCount = files.length;
+        const preview = files.slice(0, 10).join(', ');
+        const logMsg = fileCount <= 10 
+          ? `Directory listing (${fileCount} items): ${preview}`
+          : `Directory listing (${fileCount} items, showing first 10): ${preview}...`;
+        storage.logEvent(task.task_id, logMsg, 'info');
         
         const readmePath = path.join(workDir, 'README.md');
         const readmeExists = fs.existsSync(readmePath);
