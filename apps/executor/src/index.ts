@@ -15,6 +15,7 @@ dotenv.config();
 
 const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS || '6', 10);
 const POLL_INTERVAL = parseInt(process.env.EXECUTOR_POLL_INTERVAL || '5000', 10);
+const GIT_TERMINAL_PROMPT_DISABLED = "0";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -73,7 +74,7 @@ class VibeExecutor {
       
       // Set environment variable to prevent git from prompting for credentials
       const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
-      process.env.GIT_TERMINAL_PROMPT = "0";
+      process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
       
       try {
         await simpleGit().clone(cloneUrl, workDir);

@@ -31,8 +31,8 @@ export function buildCredentialedUrl(url: string): string {
   const baseUrl = url.replace(/\.git$/, '');
   
   // Extract the path after github.com/
-  const path = baseUrl.replace('https://github.com/', '');
+  const repoPath = baseUrl.replace('https://github.com/', '');
   
   // Build credentialed URL with token and .git suffix
-  return `https://x-access-token:${token}@github.com/${path}.git`;
+  return `https://x-access-token:${token}@github.com/${repoPath}.git`;
 }
