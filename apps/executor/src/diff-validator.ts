@@ -132,7 +132,8 @@ export function validateDiffApplicability(diffContent: string, repoPath: string)
   try {
     // Create temporary file for diff
     tempFile = path.join(os.tmpdir(), `vibe-check-${Date.now()}.patch`);
-    fs.writeFileSync(tempFile, diffContent);
+    // Explicitly use UTF-8 encoding to ensure consistent behavior across platforms
+    fs.writeFileSync(tempFile, diffContent, { encoding: 'utf-8' });
 
     // Run git apply --check (doesn't modify files, just validates)
     execSync(`git apply --check "${tempFile}"`, {
@@ -169,9 +170,18 @@ export function extractDiff(llmResponse: string): string {
   
   if (matches.length > 0) {
     // Return first code block content
-    return matches[0][1].trim();
+    // Use trimStart() to remove leading whitespace but preserve trailing newline
+    // Git patches must end with a newline character
+    let content = matches[0][1].trimStart();
+    // Ensure the content ends with exactly one newline
+    content = content.replace(/\n*$/, '\n');
+    return content;
   }
 
   // Otherwise return as-is (will be validated)
-  return llmResponse.trim();
+  // Use trimStart() to remove leading whitespace but preserve trailing newline
+  let content = llmResponse.trimStart();
+  // Ensure the content ends with exactly one newline
+  content = content.replace(/\n*$/, '\n');
+  return content;
 }
