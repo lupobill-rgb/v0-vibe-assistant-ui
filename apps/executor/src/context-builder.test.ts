@@ -4,7 +4,6 @@ import { buildContext, formatContext } from './context-builder';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
 
 /**
  * Context Builder Test Suite

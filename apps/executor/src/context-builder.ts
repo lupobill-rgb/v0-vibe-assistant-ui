@@ -146,8 +146,9 @@ async function addFileWithImports(
   let content: string;
   try {
     content = fs.readFileSync(fullPath, 'utf-8');
-  } catch (error: any) {
-    console.log(`[Context Builder] Skipping ${filePath}: cannot read file (${error.message})`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.log(`[Context Builder] Skipping ${filePath}: cannot read file (${message})`);
     return; // Skip files we can't read
   }
 
