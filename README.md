@@ -10,6 +10,7 @@ VIBE is an intelligent coding assistant that streamlines your development workfl
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Local Dev (Windows)](#local-dev-windows)
 - [End-to-End Usage Guide](#end-to-end-usage-guide)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
@@ -129,6 +130,15 @@ vibe init
 # - .vibe/prompts/ (saved prompt templates)
 # - .vibe/history/ (past generation history)
 ```
+
+## Local Dev (Windows)
+
+Set environment variables in `.env` file:
+- `OPENAI_API_KEY` - Your OpenAI API key
+- `GITHUB_TOKEN` - Personal access token with:
+  - `repo` scope (full repository access)
+  - Contents: Read and Write
+  - Pull requests: Read and Write
 
 ## End-to-End Usage Guide
 
