@@ -5,7 +5,6 @@ import { buildContext, formatContext } from './context-builder';
 import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
-import { withGithubToken, sanitizeRepoUrl } from './withGithubToken';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
@@ -19,6 +18,27 @@ const POLL_INTERVAL = parseInt(process.env.EXECUTOR_POLL_INTERVAL || '5000', 10)
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+/**
+ * Builds a credentialed GitHub HTTPS URL for cloning.
+ * If GITHUB_TOKEN is missing, returns the original URL unchanged.
+ */
+function buildCredentialedUrl(repoUrl: string): string {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    return repoUrl;
+  }
+
+  // Handle HTTPS URLs: https://github.com/owner/repo or https://github.com/owner/repo.git
+  const httpsMatch = repoUrl.match(/^https:\/\/github\.com\/(.+?)(\.git)?$/);
+  if (httpsMatch) {
+    const path = httpsMatch[1];
+    return `https://x-access-token:${token}@github.com/${path}.git`;
+  }
+
+  // If not a recognized format, return as-is
+  return repoUrl;
+}
 
 // Main executor class
 class VibeExecutor {
@@ -66,25 +86,21 @@ class VibeExecutor {
     try {
       // State: cloning
       storage.updateTaskState(task.task_id, 'cloning');
-      
+      storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
+
       // Clone repository
-      // CLONE SITE: apps/executor/src/index.ts in executeTask() method
-      const sanitizedUrl = sanitizeRepoUrl(task.repository_url);
-      storage.logEvent(task.task_id, `Cloning repository: ${sanitizedUrl}`, 'info');
-      
-      const cloneUrl = withGithubToken(task.repository_url, process.env.GITHUB_TOKEN);
-      // Prevent git from prompting for credentials
-      const gitEnv = {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_ASKPASS: 'true'
-      };
-      const originalEnv = { ...process.env };
+      const cloneUrl = buildCredentialedUrl(task.repository_url);
+      // Set GIT_TERMINAL_PROMPT to prevent interactive prompts
+      const origGitTerminalPrompt = process.env.GIT_TERMINAL_PROMPT;
       try {
-        Object.assign(process.env, gitEnv);
+        process.env.GIT_TERMINAL_PROMPT = '0';
         await simpleGit().clone(cloneUrl, workDir);
       } finally {
-        Object.assign(process.env, originalEnv);
+        if (origGitTerminalPrompt !== undefined) {
+          process.env.GIT_TERMINAL_PROMPT = origGitTerminalPrompt;
+        } else {
+          delete process.env.GIT_TERMINAL_PROMPT;
+        }
       }
       git = simpleGit(workDir);
 
