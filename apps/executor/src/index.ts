@@ -68,6 +68,7 @@ class VibeExecutor {
       storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
 
       // Clone repository
+      // CLONE SITE: apps/executor/src/index.ts in executeTask() method
       await simpleGit().clone(task.repository_url, workDir);
       git = simpleGit(workDir);
 
