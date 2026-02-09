@@ -5,6 +5,7 @@ import { buildContext, formatContext } from './context-builder';
 import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
+import { withGithubToken } from './withGithubToken';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
@@ -69,7 +70,20 @@ class VibeExecutor {
 
       // Clone repository
       // CLONE SITE: apps/executor/src/index.ts in executeTask() method
-      await simpleGit().clone(task.repository_url, workDir);
+      const cloneUrl = withGithubToken(task.repository_url, process.env.GITHUB_TOKEN);
+      // Prevent git from prompting for credentials
+      const gitEnv = {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ASKPASS: 'true'
+      };
+      const originalEnv = { ...process.env };
+      try {
+        Object.assign(process.env, gitEnv);
+        await simpleGit().clone(cloneUrl, workDir);
+      } finally {
+        Object.assign(process.env, originalEnv);
+      }
       git = simpleGit(workDir);
 
       // Configure git
