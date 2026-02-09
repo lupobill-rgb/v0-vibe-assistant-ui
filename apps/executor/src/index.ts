@@ -67,6 +67,7 @@ class VibeExecutor {
     try {
       // State: cloning
       storage.updateTaskState(task.task_id, 'cloning');
+      storage.logEvent(task.task_id, `Working directory: ${workDir}`, 'info');
       storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
 
       // Clone repository with credentialed URL
@@ -85,6 +86,25 @@ class VibeExecutor {
         } else {
           delete process.env.GIT_TERMINAL_PROMPT;
         }
+      }
+      
+      // Directory diagnostics after clone
+      storage.logEvent(task.task_id, 'Clone completed. Running diagnostics...', 'info');
+      
+      try {
+        const files = fs.readdirSync(workDir);
+        const fileCount = files.length;
+        const preview = files.slice(0, 10).join(', ');
+        const logMsg = fileCount <= 10 
+          ? `Directory listing (${fileCount} items): ${preview}`
+          : `Directory listing (${fileCount} items, showing first 10): ${preview}...`;
+        storage.logEvent(task.task_id, logMsg, 'info');
+        
+        const readmePath = path.join(workDir, 'README.md');
+        const readmeExists = fs.existsSync(readmePath);
+        storage.logEvent(task.task_id, `README.md exists: ${readmeExists}`, 'info');
+      } catch (error: any) {
+        storage.logEvent(task.task_id, `Directory listing failed: ${error.message}`, 'warning');
       }
       
       git = simpleGit(workDir);
