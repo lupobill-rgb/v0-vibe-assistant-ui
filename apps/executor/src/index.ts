@@ -5,6 +5,7 @@ import { buildContext, formatContext } from './context-builder';
 import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
+import { buildCredentialedUrl } from './git-url';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
@@ -67,8 +68,24 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'cloning');
       storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
 
-      // Clone repository
-      await simpleGit().clone(task.repository_url, workDir);
+      // Clone repository with credentialed URL
+      const cloneUrl = buildCredentialedUrl(task.repository_url);
+      
+      // Set environment variable to prevent git from prompting for credentials
+      const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
+      process.env.GIT_TERMINAL_PROMPT = "0";
+      
+      try {
+        await simpleGit().clone(cloneUrl, workDir);
+      } finally {
+        // Restore original environment variable
+        if (originalGitPrompt !== undefined) {
+          process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
+        } else {
+          delete process.env.GIT_TERMINAL_PROMPT;
+        }
+      }
+      
       git = simpleGit(workDir);
 
       // Configure git
