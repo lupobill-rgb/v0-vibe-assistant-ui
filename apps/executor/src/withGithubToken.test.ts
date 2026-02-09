@@ -132,6 +132,18 @@ describe('withGithubToken - Invalid URLs', () => {
     const result = withGithubToken(repoUrl, token);
     assert.strictEqual(result, repoUrl);
   });
+
+  it('should return unchanged URL for repo name with only .git', () => {
+    const repoUrl = 'https://github.com/owner/.git';
+    const result = withGithubToken(repoUrl, token);
+    assert.strictEqual(result, repoUrl);
+  });
+
+  it('should return unchanged URL for SSH with multiple path segments', () => {
+    const repoUrl = 'git@github.com:owner/repo/extra/path.git';
+    const result = withGithubToken(repoUrl, token);
+    assert.strictEqual(result, repoUrl);
+  });
 });
 
 describe('withGithubToken - Token Security', () => {

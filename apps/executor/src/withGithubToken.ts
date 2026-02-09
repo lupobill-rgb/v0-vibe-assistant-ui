@@ -22,7 +22,7 @@ export function withGithubToken(repoUrl: string, token?: string): string {
     repo = httpsMatch[2];
   } else {
     // Handle SSH format: git@github.com:OWNER/REPO.git
-    const sshMatch = repoUrl.match(/^git@github\.com:([^\/]+)\/(.+?)(\.git)?$/);
+    const sshMatch = repoUrl.match(/^git@github\.com:([^\/]+)\/([^\/]+?)(\.git)?$/);
     if (sshMatch) {
       owner = sshMatch[1];
       repo = sshMatch[2];
@@ -34,6 +34,11 @@ export function withGithubToken(repoUrl: string, token?: string): string {
 
   // Remove .git suffix if present in repo name
   repo = repo.replace(/\.git$/, '');
+
+  // Validate that owner and repo are non-empty after processing
+  if (!owner || !repo) {
+    return repoUrl;
+  }
 
   // Return HTTPS URL with x-access-token format
   return `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
