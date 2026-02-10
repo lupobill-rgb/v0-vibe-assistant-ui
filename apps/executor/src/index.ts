@@ -205,7 +205,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const result = await this.generateDiff(task.user_prompt, context, task.task_id, workDir, globalFallback, fallbackFiles, failureFeedback);
+      const result = await this.generateDiff(task.user_prompt, context, task.task_id, repoDir, globalFallback, fallbackFiles, failureFeedback);
       
       if (!result.diff) {
         consecutiveDiffFailures++;
@@ -369,7 +369,7 @@ class VibeExecutor {
     prompt: string, 
     context: string, 
     taskId: string, 
-    workDir: string,
+    repoDir: string,
     globalFallback: boolean = false,
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
@@ -483,7 +483,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
         }
 
         // Perform pre-apply sanity checks
-        const sanityCheckResult = performPreApplySanityChecks(diff, workDir, prompt);
+        const sanityCheckResult = performPreApplySanityChecks(diff, repoDir, prompt);
         if (!sanityCheckResult.ok) {
           lastValidationError = sanityCheckResult.errors.join('; ');
           storage.logEvent(taskId, `Pre-apply sanity check failed: ${lastValidationError}`, 'error');
