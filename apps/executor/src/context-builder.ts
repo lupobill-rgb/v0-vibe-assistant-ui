@@ -49,7 +49,13 @@ export async function buildContext(repoPath: string, prompt: string): Promise<Co
     console.log('[Context Builder] No files found by ripgrep, trying common entry points...');
     const commonEntries = [
       'index.js', 'index.ts', 'main.js', 'main.ts', 'app.js', 'app.ts',
-      'src/index.js', 'src/index.ts', 'src/main.js', 'src/main.ts'
+      'src/index.js', 'src/index.ts', 'src/main.js', 'src/main.ts',
+      // apps/web entry points (monorepo support)
+      'apps/web/src/App.tsx', 'apps/web/src/App.jsx',
+      'apps/web/src/main.tsx', 'apps/web/src/main.jsx',
+      'apps/web/index.html',
+      'apps/web/package.json',
+      'apps/web/vite.config.ts', 'apps/web/vite.config.js'
     ];
     
     for (const entry of commonEntries) {

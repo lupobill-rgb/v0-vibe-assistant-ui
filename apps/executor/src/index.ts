@@ -16,6 +16,9 @@ dotenv.config();
 const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS || '6', 10);
 const POLL_INTERVAL = parseInt(process.env.EXECUTOR_POLL_INTERVAL || '5000', 10);
 const GIT_TERMINAL_PROMPT_DISABLED = "0";
+// Directory for persisting failed patches for debugging
+// Defaults to /data/patches which is mounted as a volume in docker-compose.yml
+const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -188,7 +191,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'applying_diff');
       storage.logEvent(task.task_id, 'Applying diff to repository...', 'info');
 
-      const applyResult = await this.applyDiff(workDir, diff, task.task_id);
+      const applyResult = await this.applyDiff(workDir, diff, task.task_id, iteration);
       
       if (!applyResult.success) {
         consecutiveApplyFailures++;
@@ -388,7 +391,12 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
     return files;
   }
 
-  private async applyDiff(workDir: string, diff: string, taskId: string): Promise<{ success: boolean; error?: string }> {
+  private async applyDiff(workDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
+    // Normalize line endings before any processing
+    const normalizedDiff = diff.replace(/\r\n/g, '\n');
+    // Ensure exactly one trailing newline
+    const finalDiff = normalizedDiff.replace(/\n*$/, '\n');
+    
     try {
       // Create temporary worktree for preflight validation
       tempWorktreePath = path.join(os.tmpdir(), `vibe-worktree-${taskId}-${Date.now()}`);
@@ -398,9 +406,12 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const mainGit = simpleGit(workDir);
       const currentBranch = await mainGit.revparse(['--abbrev-ref', 'HEAD']);
       
-      const checkResult = validateDiffApplicability(diff, workDir);
+      // Check applicability first with validateDiffApplicability
+      const checkResult = validateDiffApplicability(finalDiff, workDir);
       if (!checkResult.valid) {
         storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
+        // Persist failed patch for debugging
+        await this.persistFailedPatch(finalDiff, taskId, iteration);
         return { success: false, error: checkResult.error };
       }
       
@@ -410,9 +421,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
       // Write diff to patch file in temp worktree
       patchFilePath = path.join(tempWorktreePath, 'patch.diff');
-      // Normalize line endings to LF (git patches require Unix-style line endings)
-      const normalizedDiff = diff.replace(/\r\n/g, '\n');
-      fs.writeFileSync(patchFilePath, normalizedDiff, { encoding: 'utf-8' });
+      fs.writeFileSync(patchFilePath, finalDiff, { encoding: 'utf-8' });
       
       // Run git apply --check in temp worktree
       storage.logEvent(taskId, 'Running git apply --check in temporary worktree...', 'info');
@@ -430,13 +439,15 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
         if (checkError.stdout) {
           storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
         }
+        // Persist failed patch for debugging
+        await this.persistFailedPatch(finalDiff, taskId, iteration);
         return { success: false, error: errorOutput };
       }
 
       // Preflight passed, now apply to real working directory
       storage.logEvent(taskId, 'Applying diff to real working directory...', 'info');
       const realPatchPath = path.join(workDir, '.vibe-diff.patch');
-      fs.writeFileSync(realPatchPath, normalizedDiff, { encoding: 'utf-8' });
+      fs.writeFileSync(realPatchPath, finalDiff, { encoding: 'utf-8' });
       
       await mainGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
       
@@ -449,7 +460,64 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
     } catch (error: any) {
       const errorMessage = error.message || String(error);
       storage.logEvent(taskId, `Git apply failed: ${errorMessage}`, 'error');
+      // Persist failed patch for debugging
+      await this.persistFailedPatch(finalDiff, taskId, iteration);
       return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Persists a failed patch to disk for debugging purposes
+   * Saves to PATCHES_DIR/<task_id>-iter<k>.diff
+   * Logs patch statistics (line count, character count, first 60 lines)
+   */
+  private async persistFailedPatch(diff: string, taskId: string, iteration: number): Promise<void> {
+    try {
+      // Ensure patches directory exists
+      if (!fs.existsSync(PATCHES_DIR)) {
+        fs.mkdirSync(PATCHES_DIR, { recursive: true });
+      }
+
+      // Create patch file path
+      const patchFileName = `${taskId}-iter${iteration}.diff`;
+      const patchFilePath = path.join(PATCHES_DIR, patchFileName);
+
+      // Write patch to file
+      fs.writeFileSync(patchFilePath, diff, { encoding: 'utf-8' });
+
+      // Calculate statistics
+      const lines = diff.split('\n');
+      const lineCount = lines.length;
+      const charCount = diff.length;
+
+      // Log statistics
+      storage.logEvent(taskId, `[Patch Persistence] Saved failed patch to: ${patchFilePath}`, 'info');
+      storage.logEvent(taskId, `[Patch Persistence] Line count: ${lineCount}, Character count: ${charCount}`, 'info');
+
+      // Log first 60 lines with line numbers
+      const previewLines = lines.slice(0, 60);
+      const numberedPreview = previewLines
+        .map((line, idx) => `${String(idx + 1).padStart(4, ' ')}. ${line}`)
+        .join('\n');
+      
+      storage.logEvent(taskId, `[Patch Persistence] First 60 lines:\n${numberedPreview}`, 'info');
+      
+      if (lineCount > 60) {
+        storage.logEvent(taskId, `[Patch Persistence] ... (${lineCount - 60} more lines)`, 'info');
+      }
+
+    } catch (error: any) {
+      // User-facing error message
+      storage.logEvent(
+        taskId, 
+        `[Patch Persistence] WARNING: Could not save failed patch for debugging. Error: ${error.message}`, 
+        'warning'
+      );
+      storage.logEvent(
+        taskId,
+        `[Patch Persistence] This means debugging artifacts will not be available for this iteration.`,
+        'warning'
+      );
     }
   }
 
