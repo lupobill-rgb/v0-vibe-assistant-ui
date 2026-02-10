@@ -72,7 +72,7 @@ class VibeExecutor {
   }
 
   private async executeTask(task: VibeTask): Promise<void> {
-    let repoDir: string;
+    let repoDir: string = '';
     let worktreeDir: string | null = null;
     let git: SimpleGit | null = null;
     let isLegacyMode = false;
@@ -632,6 +632,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       // Persist failed patch for debugging
       await this.persistFailedPatch(patch, taskId, iteration);
       return { success: false, error: errorMessage };
+    }
   }
 
   /**

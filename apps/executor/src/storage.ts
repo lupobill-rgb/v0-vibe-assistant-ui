@@ -228,6 +228,11 @@ class VibeStorage {
     return this.tasksQueued.all() as VibeTask[];
   }
 
+  getNextQueuedTask(): VibeTask | undefined {
+    const tasks = this.tasksQueued.all() as VibeTask[];
+    return tasks.length > 0 ? tasks[0] : undefined;
+  }
+
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
     this.eventInsert.run(taskId, message, severity, Date.now());
   }
