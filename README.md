@@ -21,6 +21,7 @@ VIBE is an intelligent coding assistant that streamlines your development workfl
 
 - 🤖 **Natural Language Prompts**: Describe what you want to build in plain English
 - 🔄 **Automatic Diff Generation**: VIBE generates code changes based on your prompts
+- 🚫 **No-Op Detection**: Intelligently detects when no changes are needed and skips unnecessary operations
 - ✅ **CI-Parity Preflight Checks**: Run the same checks locally that would run in CI
 - 🚀 **Automated PR Creation**: Open pull requests directly from the command line
 - 🔍 **Code Review Integration**: Get automated feedback before submitting
@@ -356,6 +357,30 @@ vibe batch --file prompts.txt
 
 # Each prompt creates a separate PR
 ```
+
+### Example 6: No-Op Detection
+
+VIBE intelligently detects when the requested changes are already implemented:
+
+```bash
+# Request a change that's already in place
+vibe prompt "Add error handling to the login endpoint"
+
+# VIBE analyzes the code and responds
+# Output:
+# ℹ No changes needed - skipping git apply
+# ℹ Running preflight checks...
+# ✓ All preflight checks passed!
+# ✓ No changes; no PR created.
+
+# The task completes successfully without creating an unnecessary PR
+```
+
+**Benefits:**
+- Saves time by avoiding redundant operations
+- Prevents cluttering your repository with empty PRs
+- Still runs preflight checks to verify code quality
+- Provides clear feedback about why no PR was created
 
 ## Troubleshooting
 
