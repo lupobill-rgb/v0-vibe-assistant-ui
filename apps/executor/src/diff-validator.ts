@@ -10,7 +10,127 @@ export interface DiffValidationResult {
   lineCount?: number;
 }
 
+// New validation result format
+export interface ValidationResult {
+  ok: boolean;
+  errors: string[];
+}
+
 const MAX_DIFF_SIZE = parseInt(process.env.MAX_DIFF_SIZE || '5000', 10);
+
+/**
+ * Sanitizes raw LLM output to extract the unified diff.
+ * Finds the first occurrence of "diff --git " and returns content from there.
+ * Removes markdown code fences if present.
+ * Rejects output with commentary or explanatory text.
+ * 
+ * @param raw - Raw LLM output that may contain explanations, markdown, etc.
+ * @returns Sanitized diff string or null if no valid diff header found or commentary detected
+ */
+export function sanitizeUnifiedDiff(raw: string): string | null {
+  // Check for commentary patterns in the raw output before processing
+  const lines = raw.split('\n');
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    // Skip empty lines
+    if (trimmedLine.length === 0) continue;
+    
+    // If we've reached the diff, stop checking
+    if (trimmedLine.startsWith('diff --git ')) break;
+    
+    // Check for common commentary patterns before the diff
+    const commentaryPatterns = [
+      /^Here's/i,
+      /^Sure/i,
+      /^I'll/i,
+      /^Let me/i,
+      /^I've/i,
+      /^I have/i,
+      /^This (diff|patch|change)/i,
+      /^The (diff|patch|change)/i,
+      /^Below is/i,
+      /^Above is/i,
+    ];
+    
+    for (const pattern of commentaryPatterns) {
+      if (pattern.test(trimmedLine)) {
+        return null;
+      }
+    }
+  }
+
+  // Find the first occurrence of "diff --git "
+  const index = raw.indexOf('diff --git ');
+  if (index === -1) {
+    return null;
+  }
+
+  // Extract from that point to the end
+  let result = raw.substring(index);
+
+  // Trim leading/trailing whitespace
+  result = result.trim();
+
+  // Check if there are any ``` markers in the result (these shouldn't be in valid diffs)
+  if (result.includes('```')) {
+    // Only remove trailing ``` if it's at the very end (common LLM pattern)
+    const lines = result.split('\n');
+    const lastLine = lines[lines.length - 1].trim();
+    if (lastLine === '```') {
+      // Remove the last line
+      lines.pop();
+      result = lines.join('\n').trim();
+    } else {
+      // ``` appears somewhere else - this is invalid
+      return null;
+    }
+  }
+
+  // Final guard: Check for commentary still present in the diff
+  const resultLines = result.split('\n');
+  for (const line of resultLines) {
+    const trimmedLine = line.trim();
+    
+    // Check for markdown code fences (these should not be in a valid diff)
+    if (trimmedLine.startsWith('```')) {
+      return null;
+    }
+    
+    // Check for commentary patterns in the diff body
+    // Skip lines that are valid diff elements
+    if (trimmedLine.startsWith('diff --git ') || 
+        trimmedLine.startsWith('---') || 
+        trimmedLine.startsWith('+++') || 
+        trimmedLine.startsWith('@@') ||
+        trimmedLine.startsWith('+') ||
+        trimmedLine.startsWith('-') ||
+        trimmedLine.startsWith(' ') ||
+        trimmedLine.length === 0) {
+      continue;
+    }
+    
+    // Any other non-empty line that doesn't match diff format is suspicious
+    const commentaryPatterns = [
+      /^Here's/i,
+      /^Sure/i,
+      /^I'll/i,
+      /^Let me/i,
+      /^I've/i,
+      /^I have/i,
+      /^This (diff|patch|change)/i,
+      /^The (diff|patch|change)/i,
+    ];
+    
+    for (const pattern of commentaryPatterns) {
+      if (pattern.test(trimmedLine)) {
+        return null;
+      }
+    }
+  }
+
+  return result;
+}
 
 /**
  * DiffValidator: Enforces unified diff format and rejects non-diff output
@@ -22,65 +142,115 @@ const MAX_DIFF_SIZE = parseInt(process.env.MAX_DIFF_SIZE || '5000', 10);
  * 4. Fails fast with explicit error messages
  */
 
-export function validateUnifiedDiff(content: string): DiffValidationResult {
+/**
+ * Enhanced validation function that returns detailed error information.
+ * For each diff block, ensures proper --- and +++ headers are present.
+ * 
+ * @param content - The diff content to validate
+ * @returns ValidationResult with ok status and any errors found
+ */
+export function validateUnifiedDiffEnhanced(content: string): ValidationResult {
   const lines = content.split('\n');
-  const lineCount = lines.length;
+  const errors: string[] = [];
 
   // Check hard cap on diff size
-  if (lineCount > MAX_DIFF_SIZE) {
+  if (lines.length > MAX_DIFF_SIZE) {
     return {
-      valid: false,
-      error: `Diff exceeds maximum size: ${lineCount} lines > ${MAX_DIFF_SIZE} lines`,
-      lineCount
+      ok: false,
+      errors: [`Diff exceeds maximum size: ${lines.length} lines > ${MAX_DIFF_SIZE} lines`]
     };
   }
 
   // Must have at least some content
-  if (lineCount < 3) {
+  if (lines.length < 3) {
     return {
-      valid: false,
-      error: 'Diff is too short to be valid',
-      lineCount
+      ok: false,
+      errors: ['Diff is too short to be valid']
     };
   }
 
-  // Check for unified diff markers
-  const hasDiffMarker = lines.some(line => line.startsWith('diff --git '));
-  const hasFileMarkers = lines.some(line => line.startsWith('+++') || line.startsWith('---'));
-  const hasHunkMarkers = lines.some(line => line.startsWith('@@'));
-
-  if (!hasDiffMarker) {
+  // Check for any content before first "diff --git"
+  const firstDiffIndex = lines.findIndex(line => line.startsWith('diff --git '));
+  if (firstDiffIndex === -1) {
     return {
-      valid: false,
-      error: 'Missing unified diff header (diff --git)',
-      lineCount
+      ok: false,
+      errors: ['Missing unified diff header (diff --git)']
     };
   }
 
-  if (!hasFileMarkers) {
+  // Check if there's any non-empty content before the first diff
+  for (let i = 0; i < firstDiffIndex; i++) {
+    if (lines[i].trim().length > 0) {
+      return {
+        ok: false,
+        errors: ['Diff contains content before the first diff --git header']
+      };
+    }
+  }
+
+  // Parse diff blocks and validate each one has proper headers
+  const diffBlocks: { file: string; hasMinusHeader: boolean; hasPlusHeader: boolean; lineNumber: number }[] = [];
+  let currentBlock: { file: string; hasMinusHeader: boolean; hasPlusHeader: boolean; lineNumber: number } | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.startsWith('diff --git ')) {
+      // Save previous block if exists
+      if (currentBlock) {
+        diffBlocks.push(currentBlock);
+      }
+
+      // Start new block
+      const match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+      const fileName = match ? match[1] : 'unknown';
+      currentBlock = {
+        file: fileName,
+        hasMinusHeader: false,
+        hasPlusHeader: false,
+        lineNumber: i + 1
+      };
+    } else if (currentBlock) {
+      if (line.startsWith('---')) {
+        currentBlock.hasMinusHeader = true;
+      } else if (line.startsWith('+++')) {
+        currentBlock.hasPlusHeader = true;
+      }
+    }
+  }
+
+  // Save last block
+  if (currentBlock) {
+    diffBlocks.push(currentBlock);
+  }
+
+  // Check if we have any file blocks
+  if (diffBlocks.length === 0) {
     return {
-      valid: false,
-      error: 'Missing file markers (+++ or ---)',
-      lineCount
+      ok: false,
+      errors: ['Diff contains no file blocks']
     };
   }
 
-  if (!hasHunkMarkers) {
-    return {
-      valid: false,
-      error: 'Missing hunk markers (@@)',
-      lineCount
-    };
+  // Validate each block has required headers
+  for (const block of diffBlocks) {
+    if (!block.hasMinusHeader) {
+      errors.push(`File block '${block.file}' (line ${block.lineNumber}) is missing --- header`);
+    }
+    if (!block.hasPlusHeader) {
+      errors.push(`File block '${block.file}' (line ${block.lineNumber}) is missing +++ header`);
+    }
   }
 
   // Check for code blocks or other non-diff content
-  const hasCodeBlock = content.includes('```');
-  if (hasCodeBlock) {
-    return {
-      valid: false,
-      error: 'Diff contains code blocks or markdown formatting',
-      lineCount
-    };
+  if (content.includes('```')) {
+    errors.push('Diff contains code blocks or markdown formatting');
+  }
+
+  // Check for hunk markers
+  const hasHunkMarkers = lines.some(line => line.startsWith('@@'));
+  if (!hasHunkMarkers) {
+    errors.push('Missing hunk markers (@@)');
   }
 
   // Basic structure validation: check that +/- lines follow proper format
@@ -103,17 +273,27 @@ export function validateUnifiedDiff(content: string): DiffValidationResult {
       const firstChar = line[0];
       if (firstChar !== '+' && firstChar !== '-' && firstChar !== ' ' && firstChar !== '\\') {
         // Allow \ for "\ No newline at end of file"
-        return {
-          valid: false,
-          error: `Invalid diff line at ${i + 1}: lines in hunks must start with +, -, or space`,
-          lineCount
-        };
+        errors.push(`Invalid diff line at ${i + 1}: lines in hunks must start with +, -, or space`);
+        break; // Only report first error of this type
       }
     }
   }
 
   return {
-    valid: true,
+    ok: errors.length === 0,
+    errors
+  };
+}
+
+export function validateUnifiedDiff(content: string): DiffValidationResult {
+  const lineCount = content.split('\n').length;
+  
+  // Use the enhanced validation
+  const enhanced = validateUnifiedDiffEnhanced(content);
+  
+  return {
+    valid: enhanced.ok,
+    error: enhanced.errors.length > 0 ? enhanced.errors[0] : undefined,
     lineCount
   };
 }

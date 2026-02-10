@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
@@ -193,6 +193,9 @@ class VibeExecutor {
       if (!applyResult.success) {
         consecutiveApplyFailures++;
         storage.logEvent(task.task_id, 'Failed to apply diff', 'error');
+        
+        // Capture failure feedback for next iteration
+        lastFailureFeedback = this.buildFailureFeedback('git apply failed', applyResult.error || '');
 
         // Activate fallback mode after 2 consecutive failures
         if (consecutiveApplyFailures >= 2) {
@@ -281,8 +284,8 @@ class VibeExecutor {
     try {
       const baseSystemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
 
-IMPORTANT RULES:
-1. Output MUST be a valid unified diff format with diff --git, +++, ---, and @@ markers
+CRITICAL RULES:
+1. Output must be a valid unified diff starting with diff --git. Output must contain no other text.
 2. Do NOT include any explanations, markdown, or code blocks
 3. Do NOT output anything except the diff itself
 4. The diff must be applicable with 'git apply'
@@ -315,6 +318,11 @@ USER REQUEST: ${prompt}
 
 Generate a unified diff to implement this request. Output ONLY the diff, nothing else.`;
 
+      // Add failure feedback if available
+      if (failureFeedback) {
+        userPrompt += `\n\n---\n\nPATCH FAILURE FEEDBACK:\n${failureFeedback}`;
+      }
+
       const response = await openai.chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [
@@ -328,16 +336,25 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const rawOutput = response.choices[0]?.message?.content || '';
       storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
-      // Extract and validate diff
-      const diff = extractDiff(rawOutput);
-      const validation = validateUnifiedDiff(diff);
-
-      if (!validation.valid) {
-        storage.logEvent(taskId, `Invalid diff: ${validation.error}`, 'error');
+      // Sanitize the raw output first
+      const sanitized = sanitizeUnifiedDiff(rawOutput);
+      if (sanitized === null) {
+        storage.logEvent(taskId, 'LLM output missing diff --git header or contains commentary; will retry', 'error');
         return null;
       }
 
-      storage.logEvent(taskId, `Valid diff generated (${validation.lineCount} lines)`, 'success');
+      // Extract and validate diff
+      const diff = extractDiff(sanitized);
+      const enhancedValidation = validateUnifiedDiffEnhanced(diff);
+
+      if (!enhancedValidation.ok) {
+        const errorMsg = enhancedValidation.errors.join('; ');
+        storage.logEvent(taskId, `Invalid diff: ${errorMsg}`, 'error');
+        return null;
+      }
+
+      const lineCount = diff.split('\n').length;
+      storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
       return diff;
 
     } catch (error: any) {
@@ -373,8 +390,13 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
   private async applyDiff(workDir: string, diff: string, taskId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // First, validate that diff can be applied using git apply --check
-      storage.logEvent(taskId, 'Validating diff applicability with git apply --check...', 'info');
+      // Create temporary worktree for preflight validation
+      tempWorktreePath = path.join(os.tmpdir(), `vibe-worktree-${taskId}-${Date.now()}`);
+      storage.logEvent(taskId, `Creating temporary worktree at ${tempWorktreePath}...`, 'info');
+
+      // Get current branch name from the working directory
+      const mainGit = simpleGit(workDir);
+      const currentBranch = await mainGit.revparse(['--abbrev-ref', 'HEAD']);
       
       const checkResult = validateDiffApplicability(diff, workDir);
       if (!checkResult.valid) {
@@ -382,22 +404,44 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
         return { success: false, error: checkResult.error };
       }
       
-      storage.logEvent(taskId, '✓ git apply --check passed', 'success');
+      // Add worktree pointing to current branch
+      await mainGit.raw(['worktree', 'add', '--detach', tempWorktreePath, 'HEAD']);
+      storage.logEvent(taskId, `Temporary worktree created at ${tempWorktreePath}`, 'success');
 
-      // Write diff to temporary file
-      const diffPath = path.join(workDir, '.vibe-diff.patch');
+      // Write diff to patch file in temp worktree
+      patchFilePath = path.join(tempWorktreePath, 'patch.diff');
       // Normalize line endings to LF (git patches require Unix-style line endings)
-      // This prevents "corrupt patch" errors on Windows where CRLF might be used
       const normalizedDiff = diff.replace(/\r\n/g, '\n');
-      // Explicitly use UTF-8 encoding to ensure consistent behavior across platforms
-      fs.writeFileSync(diffPath, normalizedDiff, { encoding: 'utf-8' });
+      fs.writeFileSync(patchFilePath, normalizedDiff, { encoding: 'utf-8' });
+      
+      // Run git apply --check in temp worktree
+      storage.logEvent(taskId, 'Running git apply --check in temporary worktree...', 'info');
+      const worktreeGit = simpleGit(tempWorktreePath);
+      
+      try {
+        await worktreeGit.raw(['apply', '--check', 'patch.diff']);
+        storage.logEvent(taskId, '✓ Preflight check passed in temporary worktree', 'success');
+      } catch (checkError: any) {
+        storage.logEvent(taskId, `✗ Preflight check failed: ${checkError.message}`, 'error');
+        const errorOutput = [checkError.message, checkError.stderr, checkError.stdout].filter(Boolean).join('\n');
+        if (checkError.stderr) {
+          storage.logEvent(taskId, `git apply stderr: ${checkError.stderr}`, 'error');
+        }
+        if (checkError.stdout) {
+          storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
+        }
+        return { success: false, error: errorOutput };
+      }
 
-      // Apply with git
-      const git = simpleGit(workDir);
-      await git.raw(['apply', '--verbose', diffPath]);
-
-      // Clean up
-      fs.unlinkSync(diffPath);
+      // Preflight passed, now apply to real working directory
+      storage.logEvent(taskId, 'Applying diff to real working directory...', 'info');
+      const realPatchPath = path.join(workDir, '.vibe-diff.patch');
+      fs.writeFileSync(realPatchPath, normalizedDiff, { encoding: 'utf-8' });
+      
+      await mainGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
+      
+      // Clean up patch file from real working directory
+      fs.unlinkSync(realPatchPath);
 
       storage.logEvent(taskId, 'Diff applied successfully', 'success');
       return { success: true };

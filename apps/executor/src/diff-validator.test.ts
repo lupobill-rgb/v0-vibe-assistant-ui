@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, validateDiffApplicability, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced } from './diff-validator';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -72,7 +72,7 @@ diff --git a/src/login.js b/src/login.js
     
     const result = validateUnifiedDiff(incompleteDiff);
     assert.strictEqual(result.valid, false);
-    assert.ok(result.error?.includes('file markers'));
+    assert.ok(result.error?.includes('missing --- header') || result.error?.includes('missing +++ header'));
   });
 
   it('should reject incomplete diff (missing hunk markers)', () => {
@@ -417,5 +417,541 @@ describe('DiffValidator - Invalid Diff Line Format', () => {
     
     const result = validateUnifiedDiff(diffWithNoNewline);
     assert.strictEqual(result.valid, true);
+  });
+});
+
+describe('sanitizeUnifiedDiff', () => {
+  it('should extract diff when it starts with diff --git', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(result.startsWith('diff --git'));
+  });
+
+  it('should return null when diff --git is missing', () => {
+    const input = `This is just some text
+without any diff markers
+at all`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should extract diff from middle of text', () => {
+    const input = `Here is some explanation text
+that comes before the diff.
+
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(result.startsWith('diff --git'));
+    assert.ok(!result.includes('Here is some explanation'));
+  });
+
+  it('should remove trailing markdown code fences', () => {
+    const input = `Some text before
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+\`\`\``;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(!result.includes('```'));
+    assert.ok(result.endsWith('line3'));
+  });
+
+  it('should trim whitespace', () => {
+    const input = `  
+    diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+    `;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(result.startsWith('diff --git'));
+    assert.ok(!result.startsWith(' '));
+  });
+
+  it('should handle markdown code fence with diff label', () => {
+    const input = `\`\`\`diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+\`\`\``;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(!result.includes('```'));
+    assert.ok(result.startsWith('diff --git'));
+  });
+
+  it('should reject diff with commentary starting with "Here\'s"', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+Here's the explanation for the change.`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should reject diff with commentary starting with "Sure"', () => {
+    const input = `Sure, I can help with that.
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should reject diff with commentary starting with "I\'ll"', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+I'll add some more context here.`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should reject diff with markdown fence still present', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+\`\`\`
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+});
+
+describe('validateUnifiedDiffEnhanced', () => {
+  it('should return ok: true for valid diff', () => {
+    const validDiff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(validDiff);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.errors.length, 0);
+  });
+
+  it('should detect missing --- header', () => {
+    const invalidDiff = `diff --git a/test.js b/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('missing --- header')));
+  });
+
+  it('should detect missing +++ header', () => {
+    const invalidDiff = `diff --git a/test.js b/test.js
+--- a/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('missing +++ header')));
+  });
+
+  it('should detect missing both headers', () => {
+    const invalidDiff = `diff --git a/test.js b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('missing --- header')));
+    assert.ok(result.errors.some(e => e.includes('missing +++ header')));
+  });
+
+  it('should validate multiple file blocks', () => {
+    const multiFileDiff = `diff --git a/file1.js b/file1.js
+--- a/file1.js
++++ b/file1.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+diff --git a/file2.js b/file2.js
+--- a/file2.js
++++ b/file2.js
+@@ -1,2 +1,3 @@
+ lineA
++lineB
+ lineC`;
+    
+    const result = validateUnifiedDiffEnhanced(multiFileDiff);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.errors.length, 0);
+  });
+
+  it('should detect missing headers in second file block', () => {
+    const multiFileDiff = `diff --git a/file1.js b/file1.js
+--- a/file1.js
++++ b/file1.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+diff --git a/file2.js b/file2.js
+@@ -1,2 +1,3 @@
+ lineA
++lineB
+ lineC`;
+    
+    const result = validateUnifiedDiffEnhanced(multiFileDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('file2.js') && e.includes('missing --- header')));
+    assert.ok(result.errors.some(e => e.includes('file2.js') && e.includes('missing +++ header')));
+  });
+
+  it('should reject content before first diff --git', () => {
+    const invalidDiff = `Some text before the diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('content before the first diff --git')));
+  });
+
+  it('should reject diff with no file blocks', () => {
+    const invalidDiff = `Just some random text
+without any proper diff structure
+but enough lines to not be
+rejected as too short`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.length > 0);
+    assert.ok(result.errors.some(e => e.includes('Missing unified diff header') || e.includes('no file blocks')));
+  });
+
+  it('should allow /dev/null headers for new/deleted files', () => {
+    const newFileDiff = `diff --git a/newfile.js b/newfile.js
+--- /dev/null
++++ b/newfile.js
+@@ -0,0 +1,3 @@
++line1
++line2
++line3`;
+    
+    const result = validateUnifiedDiffEnhanced(newFileDiff);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.errors.length, 0);
+  });
+});
+
+describe('Integration: sanitizeUnifiedDiff -> extractDiff -> validateUnifiedDiffEnhanced', () => {
+  it('should handle LLM output with code fences (no commentary)', () => {
+    const llmOutput = `\`\`\`diff
+diff --git a/src/utils.js b/src/utils.js
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -1,5 +1,7 @@
+ export function process(data) {
++  if (!data) {
++    return null;
++  }
+   return data.trim();
+ }
+\`\`\``;
+
+    // Step 1: Sanitize
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.ok(sanitized !== null, 'Should successfully sanitize LLM output');
+    assert.ok(!sanitized.includes('```'), 'Should remove code fences');
+
+    // Step 2: Extract
+    const diff = extractDiff(sanitized);
+    assert.ok(diff.includes('diff --git'), 'Should contain diff header');
+
+    // Step 3: Validate
+    const validation = validateUnifiedDiffEnhanced(diff);
+    assert.strictEqual(validation.ok, true, 'Should pass validation');
+    assert.strictEqual(validation.errors.length, 0, 'Should have no errors');
+  });
+
+  it('should reject LLM output with commentary before diff', () => {
+    const llmOutput = `I'll help you with that change. Here's the diff:
+
+\`\`\`diff
+diff --git a/src/utils.js b/src/utils.js
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -1,5 +1,7 @@
+ export function process(data) {
++  if (!data) {
++    return null;
++  }
+   return data.trim();
+ }
+\`\`\`
+
+This adds a null check to the process function.`;
+
+    // Step 1: Sanitize - should reject due to commentary
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.strictEqual(sanitized, null, 'Should reject output with commentary');
+  });
+
+  it('should reject LLM output with missing diff header', () => {
+    const llmOutput = `Here's the code you need:
+
+function hello() {
+  console.log("world");
+}
+
+Just add this to your file.`;
+
+    // Step 1: Sanitize
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.strictEqual(sanitized, null, 'Should return null for missing diff header');
+  });
+
+  it('should reject LLM output with invalid diff structure', () => {
+    const llmOutput = `diff --git a/test.js b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+
+    // Step 1: Sanitize
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.ok(sanitized !== null, 'Should sanitize successfully');
+
+    // Step 2: Extract
+    const diff = extractDiff(sanitized);
+
+    // Step 3: Validate
+    const validation = validateUnifiedDiffEnhanced(diff);
+    assert.strictEqual(validation.ok, false, 'Should fail validation');
+    assert.ok(validation.errors.some(e => e.includes('missing --- header')));
+    assert.ok(validation.errors.some(e => e.includes('missing +++ header')));
+  });
+
+  it('should handle multiple file blocks correctly', () => {
+    const llmOutput = `Here are the changes:
+
+diff --git a/file1.js b/file1.js
+--- a/file1.js
++++ b/file1.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+diff --git a/file2.js b/file2.js
+--- a/file2.js
++++ b/file2.js
+@@ -1,2 +1,3 @@
+ lineA
++lineB
+ lineC`;
+
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.ok(sanitized !== null);
+    
+    const diff = extractDiff(sanitized);
+    const validation = validateUnifiedDiffEnhanced(diff);
+    
+    assert.strictEqual(validation.ok, true);
+    assert.strictEqual(validation.errors.length, 0);
+  });
+});
+
+describe('Git Worktree Integration', () => {
+  it('should successfully apply patch using worktree preflight', () => {
+    // Create a temporary git repo for testing
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-test-'));
+    
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tempDir });
+      execSync('git config user.email "test@test.com"', { cwd: tempDir });
+      execSync('git config user.name "Test"', { cwd: tempDir });
+      
+      // Create a test file
+      const testFile = path.join(tempDir, 'test.js');
+      fs.writeFileSync(testFile, 'function hello() {\n  console.log("hi");\n}\n');
+      execSync('git add test.js', { cwd: tempDir });
+      execSync('git commit -m "Initial commit"', { cwd: tempDir });
+      
+      // Create a valid diff for this file
+      const validDiff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,3 +1,4 @@
+ function hello() {
++  console.log("world");
+   console.log("hi");
+ }
+`;
+      
+      // Create a temporary worktree
+      const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-'));
+      
+      try {
+        // Add worktree
+        execSync(`git worktree add --detach "${worktreeDir}" HEAD`, { cwd: tempDir });
+        
+        // Write patch to worktree
+        const patchPath = path.join(worktreeDir, 'patch.diff');
+        fs.writeFileSync(patchPath, validDiff);
+        
+        // Test git apply --check in worktree
+        execSync('git apply --check patch.diff', { cwd: worktreeDir });
+        
+        // If we got here, preflight passed - now apply to main repo
+        const mainPatchPath = path.join(tempDir, 'patch.diff');
+        fs.writeFileSync(mainPatchPath, validDiff);
+        execSync('git apply patch.diff', { cwd: tempDir });
+        
+        // Verify the patch was applied
+        const content = fs.readFileSync(testFile, 'utf-8');
+        assert.ok(content.includes('console.log("world")'));
+        
+        // Clean up worktree
+        execSync(`git worktree remove --force "${worktreeDir}"`, { cwd: tempDir });
+        
+      } finally {
+        // Clean up worktree directory if it still exists
+        if (fs.existsSync(worktreeDir)) {
+          fs.rmSync(worktreeDir, { recursive: true, force: true });
+        }
+      }
+      
+    } finally {
+      // Clean up test repo
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should detect invalid patch in worktree before applying to main repo', () => {
+    // Create a temporary git repo for testing
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-test-'));
+    
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tempDir });
+      execSync('git config user.email "test@test.com"', { cwd: tempDir });
+      execSync('git config user.name "Test"', { cwd: tempDir });
+      
+      // Create a test file
+      const testFile = path.join(tempDir, 'test.js');
+      fs.writeFileSync(testFile, 'function hello() {\n  return true;\n}\n');
+      execSync('git add test.js', { cwd: tempDir });
+      execSync('git commit -m "Initial commit"', { cwd: tempDir });
+      
+      // Create an invalid diff (doesn't match the file content)
+      const invalidDiff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,3 +1,4 @@
+ function goodbye() {
++  console.log("bye");
+   return false;
+ }
+`;
+      
+      // Create a temporary worktree
+      const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-'));
+      
+      try {
+        // Add worktree
+        execSync(`git worktree add --detach "${worktreeDir}" HEAD`, { cwd: tempDir });
+        
+        // Write patch to worktree
+        const patchPath = path.join(worktreeDir, 'patch.diff');
+        fs.writeFileSync(patchPath, invalidDiff);
+        
+        // Test git apply --check in worktree - should fail
+        let checkFailed = false;
+        try {
+          execSync('git apply --check patch.diff', { cwd: worktreeDir, stdio: 'pipe' });
+        } catch (error) {
+          checkFailed = true;
+        }
+        
+        assert.strictEqual(checkFailed, true, 'git apply --check should fail for invalid diff');
+        
+        // Clean up worktree
+        execSync(`git worktree remove --force "${worktreeDir}"`, { cwd: tempDir });
+        
+      } finally {
+        // Clean up worktree directory if it still exists
+        if (fs.existsSync(worktreeDir)) {
+          fs.rmSync(worktreeDir, { recursive: true, force: true });
+        }
+      }
+      
+    } finally {
+      // Clean up test repo
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
