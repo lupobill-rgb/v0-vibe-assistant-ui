@@ -226,6 +226,50 @@ This adds validation.
     const extracted = extractDiff(pureResponse);
     assert.strictEqual(extracted.trim(), pureResponse.trim());
   });
+
+  it('should ensure extracted diff ends with exactly one newline', () => {
+    // Test case 1: diff without trailing newline in code block
+    const responseNoNewline = `\`\`\`diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3\`\`\``;
+    
+    const extracted1 = extractDiff(responseNoNewline);
+    assert.ok(extracted1.endsWith('\n'), 'Diff should end with newline');
+    assert.ok(!extracted1.endsWith('\n\n'), 'Diff should not end with multiple newlines');
+    
+    // Test case 2: diff with trailing newline
+    const responseWithNewline = `\`\`\`diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+\`\`\``;
+    
+    const extracted2 = extractDiff(responseWithNewline);
+    assert.ok(extracted2.endsWith('\n'), 'Diff should end with newline');
+    assert.ok(!extracted2.endsWith('\n\n'), 'Diff should not end with multiple newlines');
+    
+    // Test case 3: plain response without trailing newline
+    const plainNoNewline = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const extracted3 = extractDiff(plainNoNewline);
+    assert.ok(extracted3.endsWith('\n'), 'Plain diff should end with newline');
+    assert.ok(!extracted3.endsWith('\n\n'), 'Plain diff should not end with multiple newlines');
+  });
 });
 
 describe('DiffValidator - Git Apply Check', () => {

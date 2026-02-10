@@ -310,7 +310,8 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
       // Write diff to temporary file
       const diffPath = path.join(workDir, '.vibe-diff.patch');
-      fs.writeFileSync(diffPath, diff);
+      // Explicitly use UTF-8 encoding to ensure consistent behavior across platforms
+      fs.writeFileSync(diffPath, diff, { encoding: 'utf-8' });
 
       // Apply with git
       const git = simpleGit(workDir);
