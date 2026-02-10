@@ -181,7 +181,7 @@ class VibeExecutor {
       // This ensures each attempt starts from a known good state
       try {
         await git.reset(['--hard', 'HEAD']);
-        await git.clean('f', ['-d']);
+        await git.clean('fd');
         storage.logEvent(task.task_id, 'Repository reset to clean state', 'info');
       } catch (error: any) {
         storage.logEvent(task.task_id, `Warning: Failed to reset repo: ${error.message}`, 'warning');
