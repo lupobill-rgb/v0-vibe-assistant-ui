@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { validateUnifiedDiff, extractDiff, validateDiffApplicability, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, validateDiffApplicability, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, parseDiffFileBlocks, performPreApplySanityChecks } from './diff-validator';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -1006,6 +1006,307 @@ describe('Git Worktree Integration', () => {
       
     } finally {
       // Clean up test repo
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('parseDiffFileBlocks', () => {
+  it('should parse a simple diff with one file', () => {
+    const diff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+`;
+    
+    const blocks = parseDiffFileBlocks(diff);
+    assert.strictEqual(blocks.length, 1);
+    assert.strictEqual(blocks[0].filePath, 'test.js');
+    assert.strictEqual(blocks[0].isNewFile, false);
+    assert.strictEqual(blocks[0].isDeletedFile, false);
+    assert.strictEqual(blocks[0].lineNumber, 1);
+  });
+
+  it('should detect new file mode', () => {
+    const diff = `diff --git a/newfile.js b/newfile.js
+new file mode 100644
+--- /dev/null
++++ b/newfile.js
+@@ -0,0 +1,3 @@
++line1
++line2
++line3
+`;
+    
+    const blocks = parseDiffFileBlocks(diff);
+    assert.strictEqual(blocks.length, 1);
+    assert.strictEqual(blocks[0].filePath, 'newfile.js');
+    assert.strictEqual(blocks[0].isNewFile, true);
+    assert.strictEqual(blocks[0].isDeletedFile, false);
+  });
+
+  it('should detect deleted file mode', () => {
+    const diff = `diff --git a/oldfile.js b/oldfile.js
+deleted file mode 100644
+--- a/oldfile.js
++++ /dev/null
+@@ -1,3 +0,0 @@
+-line1
+-line2
+-line3
+`;
+    
+    const blocks = parseDiffFileBlocks(diff);
+    assert.strictEqual(blocks.length, 1);
+    assert.strictEqual(blocks[0].filePath, 'oldfile.js');
+    assert.strictEqual(blocks[0].isNewFile, false);
+    assert.strictEqual(blocks[0].isDeletedFile, true);
+  });
+
+  it('should parse multiple file blocks', () => {
+    const diff = `diff --git a/file1.js b/file1.js
+--- a/file1.js
++++ b/file1.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+diff --git a/file2.js b/file2.js
+new file mode 100644
+--- /dev/null
++++ b/file2.js
+@@ -0,0 +1,2 @@
++lineA
++lineB
+diff --git a/file3.js b/file3.js
+deleted file mode 100644
+--- a/file3.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-lineX
+-lineY
+`;
+    
+    const blocks = parseDiffFileBlocks(diff);
+    assert.strictEqual(blocks.length, 3);
+    
+    assert.strictEqual(blocks[0].filePath, 'file1.js');
+    assert.strictEqual(blocks[0].isNewFile, false);
+    assert.strictEqual(blocks[0].isDeletedFile, false);
+    
+    assert.strictEqual(blocks[1].filePath, 'file2.js');
+    assert.strictEqual(blocks[1].isNewFile, true);
+    assert.strictEqual(blocks[1].isDeletedFile, false);
+    
+    assert.strictEqual(blocks[2].filePath, 'file3.js');
+    assert.strictEqual(blocks[2].isNewFile, false);
+    assert.strictEqual(blocks[2].isDeletedFile, true);
+  });
+});
+
+describe('performPreApplySanityChecks', () => {
+  it('should reject diff that creates existing file', () => {
+    // Create a temporary directory with an existing file
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sanity-test-'));
+    
+    try {
+      // Create an existing file
+      const existingFile = path.join(tempDir, 'existing.js');
+      fs.writeFileSync(existingFile, 'content');
+      
+      // Diff that tries to create the existing file
+      const diff = `diff --git a/existing.js b/existing.js
+new file mode 100644
+--- /dev/null
++++ b/existing.js
+@@ -0,0 +1,2 @@
++line1
++line2
+`;
+      
+      const result = performPreApplySanityChecks(diff, tempDir, 'add a new file');
+      
+      assert.strictEqual(result.ok, false);
+      assert.strictEqual(result.errors.length, 1);
+      assert.ok(result.errors[0].includes('Rejecting diff'));
+      assert.ok(result.errors[0].includes('attempted to create existing file'));
+      assert.ok(result.errors[0].includes('existing.js'));
+      
+    } finally {
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should allow creating new file that does not exist', () => {
+    // Create a temporary directory
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sanity-test-'));
+    
+    try {
+      // Diff that creates a new file that doesn't exist
+      const diff = `diff --git a/newfile.js b/newfile.js
+new file mode 100644
+--- /dev/null
++++ b/newfile.js
+@@ -0,0 +1,2 @@
++line1
++line2
+`;
+      
+      const result = performPreApplySanityChecks(diff, tempDir, 'add a new file');
+      
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.errors.length, 0);
+      
+    } finally {
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should reject file deletion when not requested', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sanity-test-'));
+    
+    try {
+      // Diff that deletes a file
+      const diff = `diff --git a/oldfile.js b/oldfile.js
+deleted file mode 100644
+--- a/oldfile.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-line1
+-line2
+`;
+      
+      // User prompt doesn't request deletion
+      const result = performPreApplySanityChecks(diff, tempDir, 'update the login function');
+      
+      assert.strictEqual(result.ok, false);
+      assert.strictEqual(result.errors.length, 1);
+      assert.ok(result.errors[0].includes('Rejecting diff'));
+      assert.ok(result.errors[0].includes('attempted to delete file'));
+      assert.ok(result.errors[0].includes('oldfile.js'));
+      assert.ok(result.errors[0].includes('did not request file deletion'));
+      
+    } finally {
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should allow file deletion when requested with "delete"', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sanity-test-'));
+    
+    try {
+      // Diff that deletes a file
+      const diff = `diff --git a/oldfile.js b/oldfile.js
+deleted file mode 100644
+--- a/oldfile.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-line1
+-line2
+`;
+      
+      // User prompt requests deletion
+      const result = performPreApplySanityChecks(diff, tempDir, 'delete the oldfile.js');
+      
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.errors.length, 0);
+      
+    } finally {
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should allow file deletion when requested with "remove"', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sanity-test-'));
+    
+    try {
+      const diff = `diff --git a/oldfile.js b/oldfile.js
+deleted file mode 100644
+--- a/oldfile.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-line1
+-line2
+`;
+      
+      const result = performPreApplySanityChecks(diff, tempDir, 'remove oldfile.js from the project');
+      
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.errors.length, 0);
+      
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should handle multiple file blocks with mixed issues', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sanity-test-'));
+    
+    try {
+      // Create an existing file
+      const existingFile = path.join(tempDir, 'existing.js');
+      fs.writeFileSync(existingFile, 'content');
+      
+      // Diff with multiple issues
+      const diff = `diff --git a/existing.js b/existing.js
+new file mode 100644
+--- /dev/null
++++ b/existing.js
+@@ -0,0 +1,2 @@
++line1
++line2
+diff --git a/deleted.js b/deleted.js
+deleted file mode 100644
+--- a/deleted.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-lineX
+-lineY
+`;
+      
+      const result = performPreApplySanityChecks(diff, tempDir, 'update the code');
+      
+      assert.strictEqual(result.ok, false);
+      assert.strictEqual(result.errors.length, 2);
+      assert.ok(result.errors[0].includes('attempted to create existing file'));
+      assert.ok(result.errors[1].includes('attempted to delete file'));
+      
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should allow normal file modification', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-sanity-test-'));
+    
+    try {
+      // Create an existing file
+      const existingFile = path.join(tempDir, 'test.js');
+      fs.writeFileSync(existingFile, 'original content');
+      
+      // Diff that modifies the existing file (no new/deleted mode)
+      const diff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+`;
+      
+      const result = performPreApplySanityChecks(diff, tempDir, 'update test.js');
+      
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.errors.length, 0);
+      
+    } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });

@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput, performPreApplySanityChecks } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
@@ -177,7 +177,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const result = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles, failureFeedback);
+      const result = await this.generateDiff(task.user_prompt, context, task.task_id, workDir, globalFallback, fallbackFiles, failureFeedback);
       
       if (!result.diff) {
         consecutiveDiffFailures++;
@@ -341,10 +341,11 @@ class VibeExecutor {
     prompt: string, 
     context: string, 
     taskId: string, 
+    workDir: string,
     globalFallback: boolean = false,
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
-  ): Promise<string | null> {
+  ): Promise<GenerateDiffResult> {
     const maxRetries = 2;
     let lastValidationError: string | null = null;
 
@@ -432,7 +433,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
         const normalizedOutput = rawOutput.trim();
         if (normalizedOutput === 'NO_CHANGES') {
           storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
-          return 'NO_CHANGES';
+          return { diff: 'NO_CHANGES', error: null };
         }
 
         // Sanitize the raw output first
@@ -453,9 +454,17 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
           continue; // Retry
         }
 
+        // Perform pre-apply sanity checks
+        const sanityCheckResult = performPreApplySanityChecks(diff, workDir, prompt);
+        if (!sanityCheckResult.ok) {
+          lastValidationError = sanityCheckResult.errors.join('; ');
+          storage.logEvent(taskId, `Pre-apply sanity check failed: ${lastValidationError}`, 'error');
+          continue; // Retry
+        }
+
         const lineCount = diff.split('\n').length;
         storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
-        return diff;
+        return { diff, error: null };
 
       } catch (error: any) {
         storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
@@ -466,7 +475,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
     // All retries exhausted
     storage.logEvent(taskId, `Failed to generate valid diff after ${maxRetries + 1} attempts`, 'error');
-    return null;
+    return { diff: null, error: lastValidationError };
   }
 
   private extractFailedFiles(errorMessage: string): string[] {
