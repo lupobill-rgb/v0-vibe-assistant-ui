@@ -487,13 +487,13 @@ export function parseDiffFileBlocks(diffContent: string): DiffFileBlock[] {
       else if (line.startsWith('deleted file mode ')) {
         currentBlock.isDeletedFile = true;
       }
-      // Check for --- /dev/null (creating new file)
+      // Check for "--- /dev/null" which indicates new file (even without explicit "new file mode")
       else if (line.startsWith('--- /dev/null')) {
-        currentBlock.hasDevNullSource = true;
+        currentBlock.isNewFile = true;
       }
-      // Check for +++ /dev/null (deleting file)
+      // Check for "+++ /dev/null" which indicates deleted file
       else if (line.startsWith('+++ /dev/null')) {
-        currentBlock.hasDevNullTarget = true;
+        currentBlock.isDeletedFile = true;
       }
     }
   }

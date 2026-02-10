@@ -166,17 +166,31 @@ app.get('/projects/:id', (req: Request, res: Response) => {
 // POST /jobs - Create a new VIBE task
 app.post('/jobs', (req: Request, res: Response) => {
   try {
-    const { prompt, project_id, repo_url, base_branch, target_branch } = req.body;
+    const { prompt, project_id, repo_url, base_branch = 'main', target_branch } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: 'Missing required field: prompt' });
     }
 
-    // Support both project-centric (Option A) and legacy mode (Mode B)
+    // OPTION A (project-centric): Require project_id
+    // Legacy Mode B: Allow repo_url but mark as deprecated
     if (!project_id && !repo_url) {
       return res.status(400).json({ 
-        error: 'Either project_id (recommended) or repo_url (legacy) must be provided' 
+        error: 'Missing required field: project_id (or repo_url for legacy mode)' 
       });
+    }
+
+    // If project_id is provided, validate it exists
+    if (project_id) {
+      const project = storage.getProject(project_id);
+      if (!project) {
+        return res.status(404).json({ error: `Project not found: ${project_id}` });
+      }
+    }
+
+    // Warn if using legacy mode
+    if (repo_url && !project_id) {
+      console.warn('[DEPRECATED] Task created with repo_url (legacy Mode B). Use project_id instead.');
     }
 
     const taskId = uuidv4();
@@ -200,7 +214,7 @@ app.post('/jobs', (req: Request, res: Response) => {
       user_prompt: prompt,
       project_id: project_id || undefined,
       repository_url: repo_url || undefined,
-      source_branch: finalBaseBranch,
+      source_branch: base_branch,
       destination_branch: finalTargetBranch,
       execution_state: 'queued',
       initiated_at: now,
@@ -249,6 +263,95 @@ app.get('/jobs', (_req: Request, res: Response) => {
   } catch (error) {
     console.error('Error listing tasks:', error);
     res.status(500).json({ error: 'Failed to list tasks' });
+  }
+});
+
+// GET /projects - List all projects
+app.get('/projects', (_req: Request, res: Response) => {
+  try {
+    const projects = storage.listProjects();
+    res.json(projects);
+  } catch (error) {
+    console.error('Error listing projects:', error);
+    res.status(500).json({ error: 'Failed to list projects' });
+  }
+});
+
+// GET /projects/:id - Get project details
+app.get('/projects/:id', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const project = storage.getProject(projectId);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    res.json(project);
+  } catch (error) {
+    console.error('Error fetching project:', error);
+    res.status(500).json({ error: 'Failed to fetch project' });
+  }
+});
+
+// POST /projects - Create a new project
+app.post('/projects', (req: Request, res: Response) => {
+  try {
+    const { name, repository_url } = req.body;
+
+    if (!name || !repository_url) {
+      return res.status(400).json({ error: 'Missing required fields: name, repository_url' });
+    }
+
+    // Check if project with this name already exists
+    const existingProject = storage.getProjectByName(name);
+    if (existingProject) {
+      return res.status(409).json({ error: `Project with name '${name}' already exists` });
+    }
+
+    const projectId = uuidv4();
+    const now = Date.now();
+    
+    // Project local path will be /data/repos/<project_id>
+    const localPath = `/data/repos/${projectId}`;
+
+    storage.createProject({
+      project_id: projectId,
+      name,
+      repository_url,
+      local_path: localPath,
+      created_at: now
+    });
+
+    res.status(201).json({
+      project_id: projectId,
+      name,
+      repository_url,
+      local_path: localPath,
+      created_at: now,
+      message: 'Project created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating project:', error);
+    res.status(500).json({ error: 'Failed to create project' });
+  }
+});
+
+// DELETE /projects/:id - Delete a project
+app.delete('/projects/:id', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const project = storage.getProject(projectId);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    storage.deleteProject(projectId);
+    res.json({ message: 'Project deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    res.status(500).json({ error: 'Failed to delete project' });
   }
 });
 

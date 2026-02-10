@@ -63,14 +63,12 @@ export type ExecutionState =
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
-export type RepoSource = 'template' | 'github_import';
-
-export interface VibeProject {
-  id: string;
+export interface Project {
+  project_id: string;
   name: string;
-  repo_source: RepoSource;
-  repo_dir: string;
-  default_branch: string;
+  repository_url: string;
+  local_path: string;
+  last_synced?: number;
   created_at: number;
 }
 
@@ -96,29 +94,14 @@ export interface VibeEvent {
   event_time: number;
 }
 
-class VibeStorage {
-  // Project statements
-  private projectInsert = vibeDb.prepare(`
-    INSERT INTO vibe_projects (id, name, repo_source, repo_dir, default_branch, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+class ExecutorStorage {
+  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE project_id = ?`);
+  private projectUpdateSync = vibeDb.prepare(`
+    UPDATE projects 
+    SET last_synced = ? 
+    WHERE project_id = ?
   `);
 
-  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
-
-  private projectsAll = vibeDb.prepare(`
-    SELECT * FROM vibe_projects 
-    ORDER BY created_at DESC
-  `);
-
-  // Task statements
-  private taskInsert = vibeDb.prepare(`
-    INSERT INTO vibe_tasks (
-      task_id, user_prompt, project_id, repository_url, source_branch, 
-      destination_branch, execution_state, iteration_count, 
-      initiated_at, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
   private taskStateUpdate = vibeDb.prepare(`
@@ -231,6 +214,14 @@ class VibeStorage {
   getNextQueuedTask(): VibeTask | undefined {
     const tasks = this.tasksQueued.all() as VibeTask[];
     return tasks.length > 0 ? tasks[0] : undefined;
+  }
+
+  getProject(projectId: string): Project | undefined {
+    return this.projectSelect.get(projectId) as Project | undefined;
+  }
+
+  updateProjectSync(projectId: string): void {
+    this.projectUpdateSync.run(Date.now(), projectId);
   }
 
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
