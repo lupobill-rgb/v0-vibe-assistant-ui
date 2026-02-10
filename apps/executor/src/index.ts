@@ -328,37 +328,51 @@ class VibeExecutor {
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
   ): Promise<string | null> {
-    try {
-      const baseSystemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
+    const maxRetries = 2;
+    let lastValidationError: string | null = null;
 
-CRITICAL RULES:
-1. Output must be a valid unified diff starting with diff --git. Output must contain no other text.
-2. Do NOT include any explanations, markdown, or code blocks
-3. Do NOT output anything except the diff itself
-4. The diff must be applicable with 'git apply'
-5. Keep changes minimal and focused on the request
-6. If NO changes are needed (e.g., the request is already satisfied), output exactly "NO_CHANGES" (single line) and nothing else
+    // Retry loop: initial attempt + up to 2 retries
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        storage.logEvent(taskId, `Retrying LLM call (attempt ${attempt + 1}/${maxRetries + 1})...`, 'warning');
+      }
+
+      try {
+        const baseSystemPrompt = `You are a code modification assistant. You MUST output ONLY a unified diff or the token NO_CHANGES.
+
+STRICT OUTPUT REQUIREMENTS:
+- NO prose, explanations, markdown formatting, or code blocks are allowed
+- Output must start with "diff --git" (for diffs) OR be exactly "NO_CHANGES" (if no changes needed)
+- Every diff block MUST have "---" and "+++" headers
+- Every diff block MUST have "@@ ... @@" hunk markers
+- The diff must be directly applicable with 'git apply'
+
+ALLOWED OUTPUTS:
+1. A valid unified diff starting with "diff --git a/... b/..."
+2. The single token "NO_CHANGES" (only if the requested change is already satisfied)
+
+ANY OTHER OUTPUT WILL BE REJECTED.
 
 Context files are provided below.`;
 
-      const fallbackInstructions = `
+        const fallbackInstructions = `
 - Use the format: delete all lines of the old file and add all lines of the new file
 - This ensures the diff will apply regardless of the current file state`;
 
-      // Build system prompt with fallback mode instructions if needed
-      let systemPrompt = baseSystemPrompt;
-      if (globalFallback || fallbackFiles.size > 0) {
-        if (fallbackFiles.size > 0) {
-          const fileList = Array.from(fallbackFiles).join(', ');
-          systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply for files: ${fileList}
+        // Build system prompt with fallback mode instructions if needed
+        let systemPrompt = baseSystemPrompt;
+        if (globalFallback || fallbackFiles.size > 0) {
+          if (fallbackFiles.size > 0) {
+            const fileList = Array.from(fallbackFiles).join(', ');
+            systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply for files: ${fileList}
 For these specific files, generate a diff that REPLACES THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
-        } else {
-          systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply.
+          } else {
+            systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply.
 Generate diffs that REPLACE THE ENTIRE FILE CONTENT for all modified files:${fallbackInstructions}`;
+          }
         }
-      }
 
-      let userPrompt = `${context}
+        let userPrompt = `${context}
 
 ---
 
@@ -366,56 +380,76 @@ USER REQUEST: ${prompt}
 
 Generate a unified diff to implement this request. Output ONLY the diff, nothing else.`;
 
-      // Add failure feedback if available
-      if (failureFeedback) {
-        userPrompt += `\n\n---\n\nPATCH FAILURE FEEDBACK:\n${failureFeedback}`;
+        // Add failure feedback if available
+        if (failureFeedback) {
+          userPrompt += `\n\n---\n\nPATCH FAILURE FEEDBACK:\n${failureFeedback}`;
+        }
+
+        // Add validation error feedback for retries
+        if (attempt > 0 && lastValidationError) {
+          const validationFeedback = [
+            '\n\n---\n\n',
+            'VALIDATION ERROR: You returned an invalid diff. ',
+            `Here is the validator error: ${lastValidationError}\n\n`,
+            'Please output a valid unified diff that starts with "diff --git", ',
+            'includes --- and +++ headers, and has @@ hunk markers. ',
+            'Or output exactly "NO_CHANGES" if no changes are needed.'
+          ].join('');
+          userPrompt += validationFeedback;
+        }
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4-turbo-preview',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 4000
+        });
+
+        const rawOutput = response.choices[0]?.message?.content || '';
+        storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
+
+        // Check for NO_CHANGES response
+        const normalizedOutput = rawOutput.trim();
+        if (normalizedOutput === 'NO_CHANGES') {
+          storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
+          return 'NO_CHANGES';
+        }
+
+        // Sanitize the raw output first
+        const sanitized = sanitizeUnifiedDiff(rawOutput);
+        if (sanitized === null) {
+          lastValidationError = 'LLM output missing diff --git header or contains commentary/markdown';
+          storage.logEvent(taskId, lastValidationError, 'error');
+          continue; // Retry
+        }
+
+        // Extract and validate diff
+        const diff = extractDiff(sanitized);
+        const enhancedValidation = validateUnifiedDiffEnhanced(diff);
+
+        if (!enhancedValidation.ok) {
+          lastValidationError = enhancedValidation.errors.join('; ');
+          storage.logEvent(taskId, `Invalid diff: ${lastValidationError}`, 'error');
+          continue; // Retry
+        }
+
+        const lineCount = diff.split('\n').length;
+        storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
+        return diff;
+
+      } catch (error: any) {
+        storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
+        lastValidationError = `LLM API error: ${error.message}`;
+        continue; // Retry
       }
-
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 4000
-      });
-
-      const rawOutput = response.choices[0]?.message?.content || '';
-      storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
-
-      // Check for NO_CHANGES response
-      const normalizedOutput = rawOutput.trim();
-      if (normalizedOutput === 'NO_CHANGES') {
-        storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
-        return 'NO_CHANGES';
-      }
-
-      // Sanitize the raw output first
-      const sanitized = sanitizeUnifiedDiff(rawOutput);
-      if (sanitized === null) {
-        storage.logEvent(taskId, 'LLM output missing diff --git header or contains commentary; will retry', 'error');
-        return null;
-      }
-
-      // Extract and validate diff
-      const diff = extractDiff(sanitized);
-      const enhancedValidation = validateUnifiedDiffEnhanced(diff);
-
-      if (!enhancedValidation.ok) {
-        const errorMsg = enhancedValidation.errors.join('; ');
-        storage.logEvent(taskId, `Invalid diff: ${errorMsg}`, 'error');
-        return null;
-      }
-
-      const lineCount = diff.split('\n').length;
-      storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
-      return diff;
-
-    } catch (error: any) {
-      storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
-      return null;
     }
+
+    // All retries exhausted
+    storage.logEvent(taskId, `Failed to generate valid diff after ${maxRetries + 1} attempts`, 'error');
+    return null;
   }
 
   private extractFailedFiles(errorMessage: string): string[] {
