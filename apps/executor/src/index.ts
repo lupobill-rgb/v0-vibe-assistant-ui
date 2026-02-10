@@ -396,9 +396,10 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
   private async applyDiff(workDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
     // Normalize line endings before any processing (CRLF and CR to LF)
-    const normalizedDiff = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let patch = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     // Ensure exactly one trailing newline
-    const finalDiff = normalizedDiff.replace(/\n*$/, '\n');
+    patch = patch.trimEnd() + '\n';
+    const finalDiff = patch;
     
     try {
       // Create temporary worktree for preflight validation
