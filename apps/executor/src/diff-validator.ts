@@ -19,6 +19,55 @@ export interface ValidationResult {
 const MAX_DIFF_SIZE = parseInt(process.env.MAX_DIFF_SIZE || '5000', 10);
 
 /**
+ * Normalizes LLM output before validation.
+ * 
+ * Rules:
+ * 1. Trim whitespace
+ * 2. Remove surrounding markdown code fences if present
+ * 3. If output contains "NO_CHANGES" (case-sensitive) anywhere, normalize to exactly "NO_CHANGES"
+ * 4. Otherwise require first non-whitespace chars to be "diff --git" (fail if not)
+ * 
+ * @param rawOutput - Raw LLM output
+ * @returns Normalized output or null if invalid
+ */
+export function normalizeLLMOutput(rawOutput: string): string | null {
+  // Step 1: Trim whitespace
+  let normalized = rawOutput.trim();
+  
+  // Step 2: Check for NO_CHANGES token (case-sensitive)
+  if (normalized.includes('NO_CHANGES')) {
+    return 'NO_CHANGES';
+  }
+  
+  // Step 3: Remove surrounding markdown code fences if present
+  // Handle both ```diff and ``` at the start
+  if (normalized.startsWith('```')) {
+    const lines = normalized.split('\n');
+    // Remove first line if it's a code fence
+    if (lines[0].trim().startsWith('```')) {
+      lines.shift();
+    }
+    normalized = lines.join('\n').trim();
+  }
+  
+  // Remove trailing ``` if present
+  if (normalized.endsWith('```')) {
+    const lines = normalized.split('\n');
+    if (lines[lines.length - 1].trim() === '```') {
+      lines.pop();
+    }
+    normalized = lines.join('\n').trim();
+  }
+  
+  // Step 4: Require first non-whitespace chars to be "diff --git"
+  if (!normalized.startsWith('diff --git ')) {
+    return null;
+  }
+  
+  return normalized;
+}
+
+/**
  * Sanitizes raw LLM output to extract the unified diff.
  * Finds the first occurrence of "diff --git " and returns content from there.
  * Removes markdown code fences if present.

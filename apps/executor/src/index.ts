@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
@@ -23,6 +23,11 @@ const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+interface GenerateDiffResult {
+  diff: string | null;
+  error: string | null;
+}
 
 // Main executor class
 class VibeExecutor {
@@ -172,11 +177,16 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const diff = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles, failureFeedback);
+      const result = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles, failureFeedback);
       
-      if (!diff) {
+      if (!result.diff) {
         consecutiveDiffFailures++;
         storage.logEvent(task.task_id, 'LLM failed to generate valid diff', 'error');
+
+        // Update failure feedback for next retry to include validator error
+        if (result.error) {
+          failureFeedback = `You returned an invalid diff. Validator error: ${result.error}`;
+        }
 
         if (consecutiveDiffFailures >= 3) {
           storage.updateTaskState(task.task_id, 'failed');
@@ -186,7 +196,14 @@ class VibeExecutor {
         continue;
       }
 
+      // Reset diff failure counter and clear diff-related feedback on success
       consecutiveDiffFailures = 0;
+      // Clear failureFeedback from previous diff validation failures
+      // Note: Git apply failures will set this again if needed
+      if (failureFeedback && failureFeedback.includes('Validator error')) {
+        failureFeedback = null;
+      }
+      const diff = result.diff;
 
       // Check for NO_CHANGES response
       if (diff === 'NO_CHANGES') {
