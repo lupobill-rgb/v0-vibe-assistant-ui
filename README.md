@@ -150,6 +150,18 @@ curl -X POST http://localhost:3001/projects \
 
 #### Managing Projects
 
+Use the provided scripts for easier project management:
+
+```bash
+# Create a project
+./scripts/create-project.sh my-app https://github.com/myorg/my-app
+
+# List all projects
+./scripts/list-projects.sh
+```
+
+Or use the API directly:
+
 ```bash
 # List all projects
 curl http://localhost:3001/projects
@@ -160,6 +172,8 @@ curl http://localhost:3001/projects/{project_id}
 # Delete a project
 curl -X DELETE http://localhost:3001/projects/{project_id}
 ```
+
+See [scripts/README.md](scripts/README.md) for more details.
 
 **Note**: Project repositories are cached at `/data/repos/{project_id}` and are automatically synced before each task execution.
 
