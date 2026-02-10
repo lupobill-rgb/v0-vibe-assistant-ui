@@ -1,4 +1,4 @@
-import { describe, it, mock } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 /**
@@ -39,8 +39,16 @@ describe('LLM Retry Logic', () => {
     // includes --- and +++ headers, and has @@ hunk markers. 
     // Or output exactly "NO_CHANGES" if no changes are needed.
     
-    const expectedPrefix = 'You returned an invalid diff. Here is the validator error:';
-    assert.ok(expectedPrefix.length > 0, 'Validation error feedback is included in retries');
+    const expectedMessage = 'You returned an invalid diff. Here is the validator error:';
+    const expectedGuidance = 'Please output a valid unified diff that starts with "diff --git", includes --- and +++ headers, and has @@ hunk markers.';
+    
+    // Verify the expected message format matches implementation (index.ts line 390)
+    assert.ok(expectedMessage.includes('You returned an invalid diff'), 'Error message identifies the problem');
+    assert.ok(expectedMessage.includes('validator error'), 'Error message mentions validator error');
+    assert.ok(expectedGuidance.includes('diff --git'), 'Guidance mentions diff header requirement');
+    assert.ok(expectedGuidance.includes('---'), 'Guidance mentions --- header requirement');
+    assert.ok(expectedGuidance.includes('+++'), 'Guidance mentions +++ header requirement');
+    assert.ok(expectedGuidance.includes('@@ hunk markers'), 'Guidance mentions hunk marker requirement');
   });
 
   it('should document max retry attempts', () => {

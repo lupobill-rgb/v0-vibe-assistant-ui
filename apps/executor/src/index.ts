@@ -387,7 +387,15 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
         // Add validation error feedback for retries
         if (attempt > 0 && lastValidationError) {
-          userPrompt += `\n\n---\n\nVALIDATION ERROR: You returned an invalid diff. Here is the validator error: ${lastValidationError}\n\nPlease output a valid unified diff that starts with "diff --git", includes --- and +++ headers, and has @@ hunk markers. Or output exactly "NO_CHANGES" if no changes are needed.`;
+          const validationFeedback = [
+            '\n\n---\n\n',
+            'VALIDATION ERROR: You returned an invalid diff. ',
+            `Here is the validator error: ${lastValidationError}\n\n`,
+            'Please output a valid unified diff that starts with "diff --git", ',
+            'includes --- and +++ headers, and has @@ hunk markers. ',
+            'Or output exactly "NO_CHANGES" if no changes are needed.'
+          ].join('');
+          userPrompt += validationFeedback;
         }
 
         const response = await openai.chat.completions.create({
