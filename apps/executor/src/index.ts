@@ -21,27 +21,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-/**
- * Builds a credentialed GitHub HTTPS URL for cloning.
- * If GITHUB_TOKEN is missing, returns the original URL unchanged.
- */
-function buildCredentialedUrl(repoUrl: string): string {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    return repoUrl;
-  }
-
-  // Handle HTTPS URLs: https://github.com/owner/repo or https://github.com/owner/repo.git
-  const httpsMatch = repoUrl.match(/^https:\/\/github\.com\/(.+?)(\.git)?$/);
-  if (httpsMatch) {
-    const path = httpsMatch[1];
-    return `https://x-access-token:${token}@github.com/${path}.git`;
-  }
-
-  // If not a recognized format, return as-is
-  return repoUrl;
-}
-
 // Main executor class
 class VibeExecutor {
   private processing = false;
@@ -165,6 +144,8 @@ class VibeExecutor {
   private async iterationLoop(task: VibeTask, workDir: string, git: SimpleGit): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
+    let fallbackFiles: Set<string> = new Set();
+    let globalFallback = false;
 
     for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
       storage.incrementIteration(task.task_id);
@@ -187,7 +168,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const diff = await this.generateDiff(task.user_prompt, context, task.task_id);
+      const diff = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles);
       
       if (!diff) {
         consecutiveDiffFailures++;
@@ -207,11 +188,34 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'applying_diff');
       storage.logEvent(task.task_id, 'Applying diff to repository...', 'info');
 
-      const applied = await this.applyDiff(workDir, diff, task.task_id);
+      const applyResult = await this.applyDiff(workDir, diff, task.task_id);
       
-      if (!applied) {
+      if (!applyResult.success) {
         consecutiveApplyFailures++;
         storage.logEvent(task.task_id, 'Failed to apply diff', 'error');
+
+        // Activate fallback mode after 2 consecutive failures
+        if (consecutiveApplyFailures >= 2) {
+          const failedFiles = this.extractFailedFiles(applyResult.error || '');
+          
+          if (failedFiles.length > 0) {
+            // File-specific fallback
+            failedFiles.forEach(file => fallbackFiles.add(file));
+            storage.logEvent(
+              task.task_id, 
+              `Fallback mode activated: requesting full file replacement for ${failedFiles.join(', ')}`,
+              'warning'
+            );
+          } else {
+            // Global fallback if we can't identify specific files
+            globalFallback = true;
+            storage.logEvent(
+              task.task_id,
+              'Fallback mode activated: requesting global full file replacement',
+              'warning'
+            );
+          }
+        }
 
         if (consecutiveApplyFailures >= 3) {
           storage.updateTaskState(task.task_id, 'failed');
@@ -222,6 +226,9 @@ class VibeExecutor {
       }
 
       consecutiveApplyFailures = 0;
+      // Clear fallback state on successful apply
+      fallbackFiles.clear();
+      globalFallback = false;
 
       // Commit the changes
       await git.add('.');
@@ -264,9 +271,15 @@ class VibeExecutor {
     storage.logEvent(task.task_id, 'Failed: Max iterations reached', 'error');
   }
 
-  private async generateDiff(prompt: string, context: string, taskId: string): Promise<string | null> {
+  private async generateDiff(
+    prompt: string, 
+    context: string, 
+    taskId: string, 
+    globalFallback: boolean = false,
+    fallbackFiles: Set<string> = new Set()
+  ): Promise<string | null> {
     try {
-      const systemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
+      let systemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
 
 IMPORTANT RULES:
 1. Output MUST be a valid unified diff format with diff --git, +++, ---, and @@ markers
@@ -276,6 +289,22 @@ IMPORTANT RULES:
 5. Keep changes minimal and focused on the request
 
 Context files are provided below.`;
+
+      // Add fallback mode instructions
+      if (globalFallback || fallbackFiles.size > 0) {
+        if (fallbackFiles.size > 0) {
+          const fileList = Array.from(fallbackFiles).join(', ');
+          systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply for files: ${fileList}
+For these specific files, generate a diff that REPLACES THE ENTIRE FILE CONTENT:
+- Use the format: delete all lines of the old file and add all lines of the new file
+- This ensures the diff will apply regardless of the current file state`;
+        } else {
+          systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply.
+Generate diffs that REPLACE THE ENTIRE FILE CONTENT for all modified files:
+- Use the format: delete all lines of the old file and add all lines of the new file
+- This ensures the diff will apply regardless of the current file state`;
+        }
+      }
 
       const userPrompt = `${context}
 
@@ -316,7 +345,32 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
     }
   }
 
-  private async applyDiff(workDir: string, diff: string, taskId: string): Promise<boolean> {
+  private extractFailedFiles(errorMessage: string): string[] {
+    const files: string[] = [];
+    
+    // Parse git apply error messages to extract failing file names
+    // Formats: 
+    // - "error: patch failed: <filename>:line"
+    // - "error: <filename>: patch does not apply"
+    const patterns = [
+      /error: patch failed: ([^:]+):/g,
+      /error: ([^:]+): patch does not apply/g
+    ];
+
+    for (const pattern of patterns) {
+      const matches = errorMessage.matchAll(pattern);
+      for (const match of matches) {
+        const file = match[1].trim();
+        if (file && !files.includes(file)) {
+          files.push(file);
+        }
+      }
+    }
+
+    return files;
+  }
+
+  private async applyDiff(workDir: string, diff: string, taskId: string): Promise<{ success: boolean; error?: string }> {
     try {
       // First, validate that diff can be applied using git apply --check
       storage.logEvent(taskId, 'Validating diff applicability with git apply --check...', 'info');
@@ -324,7 +378,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const checkResult = validateDiffApplicability(diff, workDir);
       if (!checkResult.valid) {
         storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
-        return false;
+        return { success: false, error: checkResult.error };
       }
       
       storage.logEvent(taskId, '✓ git apply --check passed', 'success');
@@ -345,11 +399,12 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       fs.unlinkSync(diffPath);
 
       storage.logEvent(taskId, 'Diff applied successfully', 'success');
-      return true;
+      return { success: true };
 
     } catch (error: any) {
-      storage.logEvent(taskId, `Git apply failed: ${error.message}`, 'error');
-      return false;
+      const errorMessage = error.message || String(error);
+      storage.logEvent(taskId, `Git apply failed: ${errorMessage}`, 'error');
+      return { success: false, error: errorMessage };
     }
   }
 
