@@ -1311,3 +1311,102 @@ deleted file mode 100644
     }
   });
 });
+
+describe('Pre-apply sanity checks integration', () => {
+  it('should validate file creation safety with correct repo path', () => {
+    // This test ensures that performPreApplySanityChecks correctly uses the repo path
+    // to check if files exist before allowing "new file mode" patches
+    
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-integration-test-'));
+    
+    try {
+      // Create a file that already exists
+      const existingFilePath = path.join(tempDir, 'existing-file.js');
+      fs.writeFileSync(existingFilePath, '// existing content\n');
+      
+      // Create a diff that tries to create this existing file
+      const diffTryingToCreateExisting = `diff --git a/existing-file.js b/existing-file.js
+new file mode 100644
+--- /dev/null
++++ b/existing-file.js
+@@ -0,0 +1,2 @@
++// new content
++console.log('hello');
+`;
+      
+      // This should fail because the file already exists
+      const result1 = performPreApplySanityChecks(diffTryingToCreateExisting, tempDir, 'add a new file');
+      assert.strictEqual(result1.ok, false, 'Should reject creating existing file');
+      assert.ok(result1.errors[0].includes('attempted to create existing file'), 'Error message should mention creating existing file');
+      assert.ok(result1.errors[0].includes('existing-file.js'), 'Error message should include filename');
+      
+      // Now test with a file that doesn't exist
+      const diffCreatingNewFile = `diff --git a/new-file.js b/new-file.js
+new file mode 100644
+--- /dev/null
++++ b/new-file.js
+@@ -0,0 +1,2 @@
++// brand new file
++console.log('world');
+`;
+      
+      // This should succeed because the file doesn't exist
+      const result2 = performPreApplySanityChecks(diffCreatingNewFile, tempDir, 'add a new file');
+      assert.strictEqual(result2.ok, true, 'Should allow creating non-existing file');
+      assert.strictEqual(result2.errors.length, 0, 'Should have no errors');
+      
+      // Test modifying an existing file (normal case)
+      const diffModifyingExisting = `diff --git a/existing-file.js b/existing-file.js
+--- a/existing-file.js
++++ b/existing-file.js
+@@ -1,1 +1,2 @@
+ // existing content
++// added line
+`;
+      
+      // This should succeed - normal file modification
+      const result3 = performPreApplySanityChecks(diffModifyingExisting, tempDir, 'update existing file');
+      assert.strictEqual(result3.ok, true, 'Should allow modifying existing file');
+      assert.strictEqual(result3.errors.length, 0, 'Should have no errors');
+      
+    } finally {
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+  
+  it('should correctly identify files with "new file mode" marker', () => {
+    // Test that parseDiffFileBlocks correctly identifies new file markers
+    
+    const diffWithNewFile = `diff --git a/src/newfile.ts b/src/newfile.ts
+new file mode 100644
+--- /dev/null
++++ b/src/newfile.ts
+@@ -0,0 +1,3 @@
++export function hello() {
++  return 'world';
++}
+diff --git a/src/existing.ts b/src/existing.ts
+--- a/src/existing.ts
++++ b/src/existing.ts
+@@ -1,2 +1,3 @@
+ export function foo() {
++  console.log('bar');
+   return 'baz';
+}
+`;
+    
+    const blocks = parseDiffFileBlocks(diffWithNewFile);
+    assert.strictEqual(blocks.length, 2, 'Should find 2 file blocks');
+    
+    // First block should be marked as new file
+    assert.strictEqual(blocks[0].filePath, 'src/newfile.ts', 'First file should be newfile.ts');
+    assert.strictEqual(blocks[0].isNewFile, true, 'First file should be marked as new');
+    assert.strictEqual(blocks[0].isDeletedFile, false, 'First file should not be marked as deleted');
+    
+    // Second block should not be marked as new file
+    assert.strictEqual(blocks[1].filePath, 'src/existing.ts', 'Second file should be existing.ts');
+    assert.strictEqual(blocks[1].isNewFile, false, 'Second file should not be marked as new');
+    assert.strictEqual(blocks[1].isDeletedFile, false, 'Second file should not be marked as deleted');
+  });
+});
