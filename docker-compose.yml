@@ -37,7 +37,6 @@ services:
       - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-vibe@example.com}
     volumes:
       - ./data:/data
-      - ./data/repos:/data/repos
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     depends_on:

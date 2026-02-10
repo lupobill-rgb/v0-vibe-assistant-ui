@@ -223,20 +223,20 @@ class VibeExecutor {
         }
       } else {
         // Project mode: only cleanup temporary work directories, not the project cache
-        const attemptDirs = fs.readdirSync(baseWorkDir).filter(name => name.startsWith('attempt-'));
-        for (const dir of attemptDirs) {
-          const dirPath = path.join(baseWorkDir, dir);
-          if (fs.existsSync(dirPath)) {
-            fs.rmSync(dirPath, { recursive: true, force: true });
+        if (fs.existsSync(baseWorkDir)) {
+          const attemptDirs = fs.readdirSync(baseWorkDir).filter(name => name.startsWith('attempt-'));
+          for (const dir of attemptDirs) {
+            const dirPath = path.join(baseWorkDir, dir);
+            if (fs.existsSync(dirPath)) {
+              fs.rmSync(dirPath, { recursive: true, force: true });
+            }
           }
-        }
-        // Remove the base work directory if it's empty or only has attempt dirs
-        try {
-          if (fs.existsSync(baseWorkDir)) {
+          // Remove the base work directory if it's empty or only has attempt dirs
+          try {
             fs.rmSync(baseWorkDir, { recursive: true, force: true });
+          } catch (error) {
+            // Ignore cleanup errors
           }
-        } catch (error) {
-          // Ignore cleanup errors
         }
       }
     }
