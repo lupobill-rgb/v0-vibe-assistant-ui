@@ -310,8 +310,11 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
       // Write diff to temporary file
       const diffPath = path.join(workDir, '.vibe-diff.patch');
+      // Normalize line endings to LF (git patches require Unix-style line endings)
+      // This prevents "corrupt patch" errors on Windows where CRLF might be used
+      const normalizedDiff = diff.replace(/\r\n/g, '\n');
       // Explicitly use UTF-8 encoding to ensure consistent behavior across platforms
-      fs.writeFileSync(diffPath, diff, { encoding: 'utf-8' });
+      fs.writeFileSync(diffPath, normalizedDiff, { encoding: 'utf-8' });
 
       // Apply with git
       const git = simpleGit(workDir);
