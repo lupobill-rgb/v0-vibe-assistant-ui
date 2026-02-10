@@ -396,9 +396,9 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
   private async applyDiff(workDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
     // Normalize line endings before any processing (CRLF and CR to LF)
-    const normalizedDiff = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let patch = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     // Ensure exactly one trailing newline
-    const finalDiff = normalizedDiff.replace(/\n*$/, '\n');
+    patch = patch.trimEnd() + '\n';
     
     try {
       // Create temporary worktree for preflight validation
@@ -410,11 +410,11 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const currentBranch = await mainGit.revparse(['--abbrev-ref', 'HEAD']);
       
       // Check applicability first with validateDiffApplicability
-      const checkResult = validateDiffApplicability(finalDiff, workDir);
+      const checkResult = validateDiffApplicability(patch, workDir);
       if (!checkResult.valid) {
         storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
         // Persist failed patch for debugging
-        await this.persistFailedPatch(finalDiff, taskId, iteration);
+        await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: checkResult.error };
       }
       
@@ -424,7 +424,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
       // Write diff to patch file in temp worktree
       const patchFilePath = path.join(tempWorktreePath, 'patch.diff');
-      fs.writeFileSync(patchFilePath, finalDiff, { encoding: 'utf-8' });
+      fs.writeFileSync(patchFilePath, patch, { encoding: 'utf-8' });
       
       // Run git apply --check in temp worktree
       storage.logEvent(taskId, 'Running git apply --check in temporary worktree...', 'info');
@@ -443,14 +443,14 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
           storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
         }
         // Persist failed patch for debugging
-        await this.persistFailedPatch(finalDiff, taskId, iteration);
+        await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: errorOutput };
       }
 
       // Preflight passed, now apply to real working directory
       storage.logEvent(taskId, 'Applying diff to real working directory...', 'info');
       const realPatchPath = path.join(workDir, '.vibe-diff.patch');
-      fs.writeFileSync(realPatchPath, finalDiff, { encoding: 'utf-8' });
+      fs.writeFileSync(realPatchPath, patch, { encoding: 'utf-8' });
       
       await mainGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
       
@@ -464,7 +464,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const errorMessage = error.message || String(error);
       storage.logEvent(taskId, `Git apply failed: ${errorMessage}`, 'error');
       // Persist failed patch for debugging
-      await this.persistFailedPatch(finalDiff, taskId, iteration);
+      await this.persistFailedPatch(patch, taskId, iteration);
       return { success: false, error: errorMessage };
     }
   }
