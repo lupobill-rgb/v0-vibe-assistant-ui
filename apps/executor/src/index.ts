@@ -21,6 +21,27 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+/**
+ * Builds a credentialed GitHub HTTPS URL for cloning.
+ * If GITHUB_TOKEN is missing, returns the original URL unchanged.
+ */
+function buildCredentialedUrl(repoUrl: string): string {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    return repoUrl;
+  }
+
+  // Handle HTTPS URLs: https://github.com/owner/repo or https://github.com/owner/repo.git
+  const httpsMatch = repoUrl.match(/^https:\/\/github\.com\/(.+?)(\.git)?$/);
+  if (httpsMatch) {
+    const path = httpsMatch[1];
+    return `https://x-access-token:${token}@github.com/${path}.git`;
+  }
+
+  // If not a recognized format, return as-is
+  return repoUrl;
+}
+
 // Main executor class
 class VibeExecutor {
   private processing = false;
