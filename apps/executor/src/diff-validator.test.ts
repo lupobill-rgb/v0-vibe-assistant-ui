@@ -347,6 +347,44 @@ describe('DiffValidator - Git Apply Check', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('should handle diff with CRLF line endings (Windows)', () => {
+    // Create a temporary git repo with a file
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-test-'));
+    
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tempDir });
+      execSync('git config user.email "test@test.com"', { cwd: tempDir });
+      execSync('git config user.name "Test"', { cwd: tempDir });
+      
+      // Create a test file
+      const testFile = path.join(tempDir, 'test.js');
+      fs.writeFileSync(testFile, 'function hello() {\n  console.log("hi");\n}\n');
+      execSync('git add test.js', { cwd: tempDir });
+      execSync('git commit -m "Initial commit"', { cwd: tempDir });
+      
+      // Create a valid diff but with CRLF line endings (simulating Windows)
+      const validDiffWithCRLF = `diff --git a/test.js b/test.js\r
+--- a/test.js\r
++++ b/test.js\r
+@@ -1,3 +1,4 @@\r
+ function hello() {\r
++  console.log("world");\r
+   console.log("hi");\r
+ }\r
+`;
+      
+      // This should succeed because our fix normalizes CRLF to LF
+      const result = validateDiffApplicability(validDiffWithCRLF, tempDir);
+      assert.strictEqual(result.valid, true);
+      assert.ok(!result.error);
+      
+    } finally {
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('DiffValidator - Invalid Diff Line Format', () => {

@@ -132,8 +132,11 @@ export function validateDiffApplicability(diffContent: string, repoPath: string)
   try {
     // Create temporary file for diff
     tempFile = path.join(os.tmpdir(), `vibe-check-${Date.now()}.patch`);
+    // Normalize line endings to LF (git patches require Unix-style line endings)
+    // This prevents "corrupt patch" errors on Windows where CRLF might be used
+    const normalizedDiff = diffContent.replace(/\r\n/g, '\n');
     // Explicitly use UTF-8 encoding to ensure consistent behavior across platforms
-    fs.writeFileSync(tempFile, diffContent, { encoding: 'utf-8' });
+    fs.writeFileSync(tempFile, normalizedDiff, { encoding: 'utf-8' });
 
     // Run git apply --check (doesn't modify files, just validates)
     execSync(`git apply --check "${tempFile}"`, {
