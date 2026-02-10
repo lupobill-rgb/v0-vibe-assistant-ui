@@ -279,7 +279,7 @@ class VibeExecutor {
     fallbackFiles: Set<string> = new Set()
   ): Promise<string | null> {
     try {
-      let systemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
+      const baseSystemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
 
 IMPORTANT RULES:
 1. Output MUST be a valid unified diff format with diff --git, +++, ---, and @@ markers
@@ -290,19 +290,20 @@ IMPORTANT RULES:
 
 Context files are provided below.`;
 
-      // Add fallback mode instructions
+      const fallbackInstructions = `
+- Use the format: delete all lines of the old file and add all lines of the new file
+- This ensures the diff will apply regardless of the current file state`;
+
+      // Build system prompt with fallback mode instructions if needed
+      let systemPrompt = baseSystemPrompt;
       if (globalFallback || fallbackFiles.size > 0) {
         if (fallbackFiles.size > 0) {
           const fileList = Array.from(fallbackFiles).join(', ');
           systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply for files: ${fileList}
-For these specific files, generate a diff that REPLACES THE ENTIRE FILE CONTENT:
-- Use the format: delete all lines of the old file and add all lines of the new file
-- This ensures the diff will apply regardless of the current file state`;
+For these specific files, generate a diff that REPLACES THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
         } else {
           systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply.
-Generate diffs that REPLACE THE ENTIRE FILE CONTENT for all modified files:
-- Use the format: delete all lines of the old file and add all lines of the new file
-- This ensures the diff will apply regardless of the current file state`;
+Generate diffs that REPLACE THE ENTIRE FILE CONTENT for all modified files:${fallbackInstructions}`;
         }
       }
 
