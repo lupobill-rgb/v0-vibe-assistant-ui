@@ -40,9 +40,11 @@ export function sanitizeUnifiedDiff(raw: string): string | null {
   result = result.trim();
 
   // Remove markdown code fences if present
-  // Handle both ```diff and ``` variants
-  if (result.endsWith('```')) {
-    result = result.substring(0, result.lastIndexOf('```')).trim();
+  // Find the first ``` after the diff start (closing fence)
+  const closingFenceIndex = result.indexOf('```');
+  if (closingFenceIndex !== -1) {
+    // Remove everything from the closing fence onward
+    result = result.substring(0, closingFenceIndex).trim();
   }
 
   return result;

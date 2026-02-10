@@ -650,3 +650,102 @@ rejected as too short`;
     assert.strictEqual(result.errors.length, 0);
   });
 });
+
+describe('Integration: sanitizeUnifiedDiff -> extractDiff -> validateUnifiedDiffEnhanced', () => {
+  it('should handle LLM output with explanation text and code fences', () => {
+    const llmOutput = `I'll help you with that change. Here's the diff:
+
+\`\`\`diff
+diff --git a/src/utils.js b/src/utils.js
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -1,5 +1,7 @@
+ export function process(data) {
++  if (!data) {
++    return null;
++  }
+   return data.trim();
+ }
+\`\`\`
+
+This adds a null check to the process function.`;
+
+    // Step 1: Sanitize
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.ok(sanitized !== null, 'Should successfully sanitize LLM output');
+    assert.ok(!sanitized.includes('help you with'), 'Should remove explanation text');
+    assert.ok(!sanitized.includes('```'), 'Should remove code fences');
+
+    // Step 2: Extract
+    const diff = extractDiff(sanitized);
+    assert.ok(diff.includes('diff --git'), 'Should contain diff header');
+
+    // Step 3: Validate
+    const validation = validateUnifiedDiffEnhanced(diff);
+    assert.strictEqual(validation.ok, true, 'Should pass validation');
+    assert.strictEqual(validation.errors.length, 0, 'Should have no errors');
+  });
+
+  it('should reject LLM output with missing diff header', () => {
+    const llmOutput = `Here's the code you need:
+
+function hello() {
+  console.log("world");
+}
+
+Just add this to your file.`;
+
+    // Step 1: Sanitize
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.strictEqual(sanitized, null, 'Should return null for missing diff header');
+  });
+
+  it('should reject LLM output with invalid diff structure', () => {
+    const llmOutput = `diff --git a/test.js b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+
+    // Step 1: Sanitize
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.ok(sanitized !== null, 'Should sanitize successfully');
+
+    // Step 2: Extract
+    const diff = extractDiff(sanitized);
+
+    // Step 3: Validate
+    const validation = validateUnifiedDiffEnhanced(diff);
+    assert.strictEqual(validation.ok, false, 'Should fail validation');
+    assert.ok(validation.errors.some(e => e.includes('missing --- header')));
+    assert.ok(validation.errors.some(e => e.includes('missing +++ header')));
+  });
+
+  it('should handle multiple file blocks correctly', () => {
+    const llmOutput = `Here are the changes:
+
+diff --git a/file1.js b/file1.js
+--- a/file1.js
++++ b/file1.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+diff --git a/file2.js b/file2.js
+--- a/file2.js
++++ b/file2.js
+@@ -1,2 +1,3 @@
+ lineA
++lineB
+ lineC`;
+
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.ok(sanitized !== null);
+    
+    const diff = extractDiff(sanitized);
+    const validation = validateUnifiedDiffEnhanced(diff);
+    
+    assert.strictEqual(validation.ok, true);
+    assert.strictEqual(validation.errors.length, 0);
+  });
+});
