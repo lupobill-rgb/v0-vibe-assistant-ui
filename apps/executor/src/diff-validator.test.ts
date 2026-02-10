@@ -578,7 +578,8 @@ describe('validateUnifiedDiffEnhanced', () => {
 @@ -1,2 +1,3 @@
  line1
 +line2
- line3`;
+ line3
+`;
     
     const result = validateUnifiedDiffEnhanced(validDiff);
     assert.strictEqual(result.ok, true);
@@ -638,7 +639,8 @@ diff --git a/file2.js b/file2.js
 @@ -1,2 +1,3 @@
  lineA
 +lineB
- lineC`;
+ lineC
+`;
     
     const result = validateUnifiedDiffEnhanced(multiFileDiff);
     assert.strictEqual(result.ok, true);
@@ -699,7 +701,8 @@ rejected as too short`;
 @@ -0,0 +1,3 @@
 +line1
 +line2
-+line3`;
++line3
+`;
     
     const result = validateUnifiedDiffEnhanced(newFileDiff);
     assert.strictEqual(result.ok, true);

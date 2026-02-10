@@ -253,6 +253,11 @@ export function validateUnifiedDiffEnhanced(content: string): ValidationResult {
     errors.push('Missing hunk markers (@@)');
   }
 
+  // Check that diff ends with newline (after extractDiff normalization)
+  if (!content.endsWith('\n')) {
+    errors.push('Diff must end with newline');
+  }
+
   // Basic structure validation: check that +/- lines follow proper format
   let inHunk = false;
   for (let i = 0; i < lines.length; i++) {

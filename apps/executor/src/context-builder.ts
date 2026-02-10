@@ -63,7 +63,7 @@ export async function buildContext(repoPath: string, prompt: string): Promise<Co
       if (fs.existsSync(fullPath)) {
         console.log(`[Context Builder] Found common entry point: ${entry}`);
         discoveredFiles.add(entry);
-        break;
+        // Continue to add all existing entry points, don't break
       }
     }
   }

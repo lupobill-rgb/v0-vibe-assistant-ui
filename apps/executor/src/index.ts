@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
@@ -149,6 +149,7 @@ class VibeExecutor {
     let consecutiveDiffFailures = 0;
     let fallbackFiles: Set<string> = new Set();
     let globalFallback = false;
+    let failureFeedback: string | null = null;
 
     for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
       storage.incrementIteration(task.task_id);
@@ -171,7 +172,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const diff = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles);
+      const diff = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles, failureFeedback);
       
       if (!diff) {
         consecutiveDiffFailures++;
@@ -198,7 +199,7 @@ class VibeExecutor {
         storage.logEvent(task.task_id, 'Failed to apply diff', 'error');
         
         // Capture failure feedback for next iteration
-        lastFailureFeedback = this.buildFailureFeedback('git apply failed', applyResult.error || '');
+        failureFeedback = `Git apply failed: ${applyResult.error || 'Unknown error'}`;
 
         // Activate fallback mode after 2 consecutive failures
         if (consecutiveApplyFailures >= 2) {
@@ -235,6 +236,7 @@ class VibeExecutor {
       // Clear fallback state on successful apply
       fallbackFiles.clear();
       globalFallback = false;
+      failureFeedback = null;
 
       // Commit the changes
       await git.add('.');
@@ -282,7 +284,8 @@ class VibeExecutor {
     context: string, 
     taskId: string, 
     globalFallback: boolean = false,
-    fallbackFiles: Set<string> = new Set()
+    fallbackFiles: Set<string> = new Set(),
+    failureFeedback: string | null = null
   ): Promise<string | null> {
     try {
       const baseSystemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
@@ -313,7 +316,7 @@ Generate diffs that REPLACE THE ENTIRE FILE CONTENT for all modified files:${fal
         }
       }
 
-      const userPrompt = `${context}
+      let userPrompt = `${context}
 
 ---
 
@@ -392,14 +395,14 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
   }
 
   private async applyDiff(workDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
-    // Normalize line endings before any processing
-    const normalizedDiff = diff.replace(/\r\n/g, '\n');
+    // Normalize line endings before any processing (CRLF and CR to LF)
+    const normalizedDiff = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     // Ensure exactly one trailing newline
     const finalDiff = normalizedDiff.replace(/\n*$/, '\n');
     
     try {
       // Create temporary worktree for preflight validation
-      tempWorktreePath = path.join(os.tmpdir(), `vibe-worktree-${taskId}-${Date.now()}`);
+      const tempWorktreePath = path.join(os.tmpdir(), `vibe-worktree-${taskId}-${Date.now()}`);
       storage.logEvent(taskId, `Creating temporary worktree at ${tempWorktreePath}...`, 'info');
 
       // Get current branch name from the working directory
@@ -420,7 +423,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       storage.logEvent(taskId, `Temporary worktree created at ${tempWorktreePath}`, 'success');
 
       // Write diff to patch file in temp worktree
-      patchFilePath = path.join(tempWorktreePath, 'patch.diff');
+      const patchFilePath = path.join(tempWorktreePath, 'patch.diff');
       fs.writeFileSync(patchFilePath, finalDiff, { encoding: 'utf-8' });
       
       // Run git apply --check in temp worktree
@@ -494,16 +497,16 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       storage.logEvent(taskId, `[Patch Persistence] Saved failed patch to: ${patchFilePath}`, 'info');
       storage.logEvent(taskId, `[Patch Persistence] Line count: ${lineCount}, Character count: ${charCount}`, 'info');
 
-      // Log first 60 lines with line numbers
-      const previewLines = lines.slice(0, 60);
+      // Log first 80 lines with line numbers
+      const previewLines = lines.slice(0, 80);
       const numberedPreview = previewLines
         .map((line, idx) => `${String(idx + 1).padStart(4, ' ')}. ${line}`)
         .join('\n');
       
-      storage.logEvent(taskId, `[Patch Persistence] First 60 lines:\n${numberedPreview}`, 'info');
+      storage.logEvent(taskId, `[Patch Persistence] First 80 lines:\n${numberedPreview}`, 'info');
       
-      if (lineCount > 60) {
-        storage.logEvent(taskId, `[Patch Persistence] ... (${lineCount - 60} more lines)`, 'info');
+      if (lineCount > 80) {
+        storage.logEvent(taskId, `[Patch Persistence] ... (${lineCount - 80} more lines)`, 'info');
       }
 
     } catch (error: any) {
