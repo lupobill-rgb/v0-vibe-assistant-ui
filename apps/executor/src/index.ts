@@ -16,6 +16,8 @@ dotenv.config();
 const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS || '6', 10);
 const POLL_INTERVAL = parseInt(process.env.EXECUTOR_POLL_INTERVAL || '5000', 10);
 const GIT_TERMINAL_PROMPT_DISABLED = "0";
+// Directory for persisting failed patches for debugging
+// Defaults to /data/patches which is mounted as a volume in docker-compose.yml
 const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
 
 const openai = new OpenAI({
