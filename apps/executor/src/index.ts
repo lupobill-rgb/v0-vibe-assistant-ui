@@ -196,9 +196,13 @@ class VibeExecutor {
         continue;
       }
 
-      // Reset diff failure counter on success
-      // Note: Don't clear failureFeedback here as it might contain git apply error from previous iteration
+      // Reset diff failure counter and clear diff-related feedback on success
       consecutiveDiffFailures = 0;
+      // Clear failureFeedback from previous diff validation failures
+      // Note: Git apply failures will set this again if needed
+      if (failureFeedback && failureFeedback.includes('Validator error')) {
+        failureFeedback = null;
+      }
       const diff = result.diff;
 
       // Check for NO_CHANGES response

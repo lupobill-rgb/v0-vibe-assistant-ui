@@ -107,7 +107,6 @@ describe('normalizeLLMOutput', () => {
     it('should reject output with prose before diff', () => {
       const input = 'Here is the diff:\ndiff --git a/test.js b/test.js\n--- a/test.js\n+++ b/test.js';
       const result = normalizeLLMOutput(input);
-      // After trimming and removing fences, it should still start with "Here" which is not "diff --git"
       assert.strictEqual(result, null);
     });
 
