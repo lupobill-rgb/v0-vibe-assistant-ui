@@ -132,7 +132,11 @@ export function validateDiffApplicability(diffContent: string, repoPath: string)
   try {
     // Create temporary file for diff
     tempFile = path.join(os.tmpdir(), `vibe-check-${Date.now()}.patch`);
-    fs.writeFileSync(tempFile, diffContent);
+    // Normalize line endings to LF (git patches require Unix-style line endings)
+    // This prevents "corrupt patch" errors on Windows where CRLF might be used
+    const normalizedDiff = diffContent.replace(/\r\n/g, '\n');
+    // Explicitly use UTF-8 encoding to ensure consistent behavior across platforms
+    fs.writeFileSync(tempFile, normalizedDiff, { encoding: 'utf-8' });
 
     // Run git apply --check (doesn't modify files, just validates)
     execSync(`git apply --check "${tempFile}"`, {
@@ -161,6 +165,21 @@ export function validateDiffApplicability(diffContent: string, repoPath: string)
   }
 }
 
+/**
+ * Normalizes content by removing leading whitespace and ensuring exactly one trailing newline.
+ * Git patches require a trailing newline, so this function ensures consistent formatting.
+ * 
+ * @param content - The content to normalize
+ * @returns The normalized content with leading whitespace removed and exactly one trailing newline
+ */
+function normalizeContent(content: string): string {
+  // Remove leading whitespace but preserve trailing
+  let normalized = content.trimStart();
+  // Ensure exactly one trailing newline (git patches require this)
+  normalized = normalized.replace(/\n*$/, '\n');
+  return normalized;
+}
+
 // Extract clean diff from LLM response (remove markdown, explanations, etc.)
 export function extractDiff(llmResponse: string): string {
   // If response contains code blocks, try to extract diff from them
@@ -168,10 +187,10 @@ export function extractDiff(llmResponse: string): string {
   const matches = Array.from(llmResponse.matchAll(codeBlockRegex));
   
   if (matches.length > 0) {
-    // Return first code block content
-    return matches[0][1].trim();
+    // Return first code block content, normalized
+    return normalizeContent(matches[0][1]);
   }
 
-  // Otherwise return as-is (will be validated)
-  return llmResponse.trim();
+  // Otherwise return as-is (will be validated), normalized
+  return normalizeContent(llmResponse);
 }

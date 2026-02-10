@@ -226,6 +226,50 @@ This adds validation.
     const extracted = extractDiff(pureResponse);
     assert.strictEqual(extracted.trim(), pureResponse.trim());
   });
+
+  it('should ensure extracted diff ends with exactly one newline', () => {
+    // Test case 1: diff without trailing newline in code block
+    const responseNoNewline = `\`\`\`diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3\`\`\``;
+    
+    const extracted1 = extractDiff(responseNoNewline);
+    assert.ok(extracted1.endsWith('\n'), 'Diff should end with newline');
+    assert.ok(!extracted1.endsWith('\n\n'), 'Diff should not end with multiple newlines');
+    
+    // Test case 2: diff with trailing newline
+    const responseWithNewline = `\`\`\`diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+\`\`\``;
+    
+    const extracted2 = extractDiff(responseWithNewline);
+    assert.ok(extracted2.endsWith('\n'), 'Diff should end with newline');
+    assert.ok(!extracted2.endsWith('\n\n'), 'Diff should not end with multiple newlines');
+    
+    // Test case 3: plain response without trailing newline
+    const plainNoNewline = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const extracted3 = extractDiff(plainNoNewline);
+    assert.ok(extracted3.endsWith('\n'), 'Plain diff should end with newline');
+    assert.ok(!extracted3.endsWith('\n\n'), 'Plain diff should not end with multiple newlines');
+  });
 });
 
 describe('DiffValidator - Git Apply Check', () => {
@@ -297,6 +341,44 @@ describe('DiffValidator - Git Apply Check', () => {
       assert.strictEqual(result.valid, false);
       assert.ok(result.error);
       assert.ok(result.error.includes('cannot be applied'));
+      
+    } finally {
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should handle diff with CRLF line endings (Windows)', () => {
+    // Create a temporary git repo with a file
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-test-'));
+    
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tempDir });
+      execSync('git config user.email "test@test.com"', { cwd: tempDir });
+      execSync('git config user.name "Test"', { cwd: tempDir });
+      
+      // Create a test file
+      const testFile = path.join(tempDir, 'test.js');
+      fs.writeFileSync(testFile, 'function hello() {\n  console.log("hi");\n}\n');
+      execSync('git add test.js', { cwd: tempDir });
+      execSync('git commit -m "Initial commit"', { cwd: tempDir });
+      
+      // Create a valid diff but with CRLF line endings (simulating Windows)
+      const validDiffWithCRLF = `diff --git a/test.js b/test.js\r
+--- a/test.js\r
++++ b/test.js\r
+@@ -1,3 +1,4 @@\r
+ function hello() {\r
++  console.log("world");\r
+   console.log("hi");\r
+ }\r
+`;
+      
+      // This should succeed because our fix normalizes CRLF to LF
+      const result = validateDiffApplicability(validDiffWithCRLF, tempDir);
+      assert.strictEqual(result.valid, true);
+      assert.ok(!result.error);
       
     } finally {
       // Clean up
