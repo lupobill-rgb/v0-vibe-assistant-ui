@@ -1409,4 +1409,115 @@ diff --git a/src/existing.ts b/src/existing.ts
     assert.strictEqual(blocks[1].isNewFile, false, 'Second file should not be marked as new');
     assert.strictEqual(blocks[1].isDeletedFile, false, 'Second file should not be marked as deleted');
   });
+
+  it('should detect new file from "--- /dev/null" even without "new file mode"', () => {
+    // This tests the PRIMARY BUGFIX: LLM sometimes outputs --- /dev/null without "new file mode"
+    const diffWithDevNull = `diff --git a/README.md b/README.md
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,3 @@
++# README
++
++This is a test file.
+`;
+    
+    const blocks = parseDiffFileBlocks(diffWithDevNull);
+    assert.strictEqual(blocks.length, 1, 'Should find 1 file block');
+    assert.strictEqual(blocks[0].filePath, 'README.md', 'File should be README.md');
+    assert.strictEqual(blocks[0].isNewFile, true, 'File should be marked as new (detected from --- /dev/null)');
+    assert.strictEqual(blocks[0].isDeletedFile, false, 'File should not be marked as deleted');
+  });
+
+  it('should reject diff with "--- /dev/null" when target file exists', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-devnull-test-'));
+    
+    try {
+      // Create an existing README.md
+      const existingFile = path.join(tempDir, 'README.md');
+      fs.writeFileSync(existingFile, '# Existing README\n\nThis file already exists.');
+      
+      // LLM outputs a diff with --- /dev/null (trying to create the file)
+      const diffWithDevNull = `diff --git a/README.md b/README.md
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,3 @@
++# New README
++
++This would overwrite the existing file.
+`;
+      
+      const result = performPreApplySanityChecks(diffWithDevNull, tempDir, 'update the README');
+      
+      assert.strictEqual(result.ok, false, 'Should reject diff that tries to create existing file');
+      assert.ok(result.errors.length > 0, 'Should have error messages');
+      assert.ok(result.errors[0].includes('README.md'), 'Error should mention the filename');
+      assert.ok(result.errors[0].includes('already exists'), 'Error should mention file already exists');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should detect deleted file from "+++ /dev/null"', () => {
+    const diffWithDevNull = `diff --git a/old-file.js b/old-file.js
+--- a/old-file.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-console.log('old');
+-console.log('removed');
+`;
+    
+    const blocks = parseDiffFileBlocks(diffWithDevNull);
+    assert.strictEqual(blocks.length, 1, 'Should find 1 file block');
+    assert.strictEqual(blocks[0].filePath, 'old-file.js', 'File should be old-file.js');
+    assert.strictEqual(blocks[0].isNewFile, false, 'File should not be marked as new');
+    assert.strictEqual(blocks[0].isDeletedFile, true, 'File should be marked as deleted (detected from +++ /dev/null)');
+  });
+
+  it('should reject diff with "+++ /dev/null" when deletion not requested', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-devnull-delete-test-'));
+    
+    try {
+      // Diff that deletes a file
+      const diffDeletingFile = `diff --git a/important.js b/important.js
+--- a/important.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-function important() {
+-  return 'data';
+`;
+      
+      // User prompt doesn't mention deletion
+      const result = performPreApplySanityChecks(diffDeletingFile, tempDir, 'refactor the code');
+      
+      assert.strictEqual(result.ok, false, 'Should reject diff that tries to delete without permission');
+      assert.ok(result.errors.length > 0, 'Should have error messages');
+      assert.ok(result.errors[0].includes('important.js'), 'Error should mention the filename');
+      assert.ok(result.errors[0].includes('delete'), 'Error should mention deletion');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should allow diff with "+++ /dev/null" when deletion is requested', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-devnull-delete-ok-test-'));
+    
+    try {
+      // Diff that deletes a file
+      const diffDeletingFile = `diff --git a/unused.js b/unused.js
+--- a/unused.js
++++ /dev/null
+@@ -1,2 +0,0 @@
+-function unused() {
+-  return 'nothing';
+`;
+      
+      // User prompt explicitly asks for deletion
+      const result = performPreApplySanityChecks(diffDeletingFile, tempDir, 'delete unused.js file');
+      
+      assert.strictEqual(result.ok, true, 'Should allow diff when deletion is requested');
+      assert.strictEqual(result.errors.length, 0, 'Should have no errors');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
