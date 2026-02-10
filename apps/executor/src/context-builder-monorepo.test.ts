@@ -129,7 +129,7 @@ describe('Context Builder - Monorepo apps/web Support', () => {
     }
   });
 
-  it('should prioritize first matching entry point in apps/web', async () => {
+  it('should include all matching entry points in apps/web', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-context-test-'));
     
     try {
@@ -145,13 +145,15 @@ describe('Context Builder - Monorepo apps/web Support', () => {
       const prompt = 'Update something';
       const result = await buildContext(tempDir, prompt);
       
-      // Should find exactly one file (the first match in the list)
-      assert.strictEqual(result.files.size, 1, 'Should find exactly one entry point');
-      // The order in the commonEntries array determines which one is found first
-      // In this case, App.tsx comes before main.tsx in the list
+      // Should find all matching entry points
+      assert.ok(result.files.size >= 2, 'Should find all matching entry points');
       assert.ok(
         result.files.has('apps/web/src/App.tsx'), 
-        'Should include the first matching entry point'
+        'Should include App.tsx'
+      );
+      assert.ok(
+        result.files.has('apps/web/src/main.tsx'), 
+        'Should include main.tsx'
       );
       
     } finally {
