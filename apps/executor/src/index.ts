@@ -326,39 +326,85 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
   }
 
   private async applyDiff(workDir: string, diff: string, taskId: string): Promise<boolean> {
+    let tempWorktreePath: string | null = null;
+    let patchFilePath: string | null = null;
+
     try {
-      // First, validate that diff can be applied using git apply --check
-      storage.logEvent(taskId, 'Validating diff applicability with git apply --check...', 'info');
+      // Create temporary worktree for preflight validation
+      tempWorktreePath = path.join(os.tmpdir(), `vibe-worktree-${taskId}-${Date.now()}`);
+      storage.logEvent(taskId, `Creating temporary worktree at ${tempWorktreePath}...`, 'info');
+
+      // Get current branch name from the working directory
+      const mainGit = simpleGit(workDir);
+      const currentBranch = await mainGit.revparse(['--abbrev-ref', 'HEAD']);
       
-      const checkResult = validateDiffApplicability(diff, workDir);
-      if (!checkResult.valid) {
-        storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
+      // Create the worktree directory
+      fs.mkdirSync(tempWorktreePath, { recursive: true });
+      
+      // Add worktree pointing to current branch
+      await mainGit.raw(['worktree', 'add', '--detach', tempWorktreePath, 'HEAD']);
+      storage.logEvent(taskId, `Temporary worktree created at ${tempWorktreePath}`, 'success');
+
+      // Write diff to patch file in temp worktree
+      patchFilePath = path.join(tempWorktreePath, 'patch.diff');
+      // Normalize line endings to LF (git patches require Unix-style line endings)
+      const normalizedDiff = diff.replace(/\r\n/g, '\n');
+      fs.writeFileSync(patchFilePath, normalizedDiff, { encoding: 'utf-8' });
+      
+      // Run git apply --check in temp worktree
+      storage.logEvent(taskId, 'Running git apply --check in temporary worktree...', 'info');
+      const worktreeGit = simpleGit(tempWorktreePath);
+      
+      try {
+        await worktreeGit.raw(['apply', '--check', 'patch.diff']);
+        storage.logEvent(taskId, '✓ Preflight check passed in temporary worktree', 'success');
+      } catch (checkError: any) {
+        storage.logEvent(taskId, `✗ Preflight check failed: ${checkError.message}`, 'error');
+        if (checkError.stderr) {
+          storage.logEvent(taskId, `git apply stderr: ${checkError.stderr}`, 'error');
+        }
+        if (checkError.stdout) {
+          storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
+        }
         return false;
       }
+
+      // Preflight passed, now apply to real working directory
+      storage.logEvent(taskId, 'Applying diff to real working directory...', 'info');
+      const realPatchPath = path.join(workDir, '.vibe-diff.patch');
+      fs.writeFileSync(realPatchPath, normalizedDiff, { encoding: 'utf-8' });
       
-      storage.logEvent(taskId, '✓ git apply --check passed', 'success');
+      await mainGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
+      
+      // Clean up patch file from real working directory
+      fs.unlinkSync(realPatchPath);
 
-      // Write diff to temporary file
-      const diffPath = path.join(workDir, '.vibe-diff.patch');
-      // Normalize line endings to LF (git patches require Unix-style line endings)
-      // This prevents "corrupt patch" errors on Windows where CRLF might be used
-      const normalizedDiff = diff.replace(/\r\n/g, '\n');
-      // Explicitly use UTF-8 encoding to ensure consistent behavior across platforms
-      fs.writeFileSync(diffPath, normalizedDiff, { encoding: 'utf-8' });
-
-      // Apply with git
-      const git = simpleGit(workDir);
-      await git.raw(['apply', '--verbose', diffPath]);
-
-      // Clean up
-      fs.unlinkSync(diffPath);
-
-      storage.logEvent(taskId, 'Diff applied successfully', 'success');
+      storage.logEvent(taskId, 'Diff applied successfully to working directory', 'success');
       return true;
 
     } catch (error: any) {
       storage.logEvent(taskId, `Git apply failed: ${error.message}`, 'error');
       return false;
+    } finally {
+      // Always clean up temporary worktree
+      if (tempWorktreePath && fs.existsSync(tempWorktreePath)) {
+        try {
+          storage.logEvent(taskId, `Cleaning up temporary worktree at ${tempWorktreePath}...`, 'info');
+          
+          // Remove the worktree
+          const mainGit = simpleGit(workDir);
+          await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
+          
+          // If directory still exists, remove it
+          if (fs.existsSync(tempWorktreePath)) {
+            fs.rmSync(tempWorktreePath, { recursive: true, force: true });
+          }
+          
+          storage.logEvent(taskId, 'Temporary worktree cleaned up', 'success');
+        } catch (cleanupError: any) {
+          storage.logEvent(taskId, `Warning: Failed to clean up worktree: ${cleanupError.message}`, 'warning');
+        }
+      }
     }
   }
 
