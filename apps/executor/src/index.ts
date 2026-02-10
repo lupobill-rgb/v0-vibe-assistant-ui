@@ -188,6 +188,47 @@ class VibeExecutor {
 
       consecutiveDiffFailures = 0;
 
+      // Check for NO_CHANGES response
+      if (diff === 'NO_CHANGES') {
+        storage.logEvent(task.task_id, 'No changes needed - skipping git apply', 'info');
+        
+        // State: running_preflight
+        storage.updateTaskState(task.task_id, 'running_preflight');
+        storage.logEvent(task.task_id, 'Running preflight checks...', 'info');
+
+        const preflightResult = await runPreflightChecks(workDir, (stage, output) => {
+          storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
+        });
+
+        if (preflightResult.success) {
+          storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
+          
+          // Check if there are any commits on the branch
+          const status = await git.status();
+          const log = await git.log({ from: task.source_branch, to: task.destination_branch });
+          
+          if (log.total === 0 && status.isClean()) {
+            // No commits and working directory is clean - skip PR creation
+            storage.updateTaskState(task.task_id, 'completed');
+            storage.logEvent(task.task_id, 'No changes; no PR created.', 'success');
+            return;
+          }
+          
+          // There are commits, create PR
+          await this.createPullRequest(task, git);
+          return;
+        } else {
+          storage.logEvent(
+            task.task_id,
+            `Preflight failed at stage: ${preflightResult.stage}`,
+            'error'
+          );
+          storage.updateTaskState(task.task_id, 'failed');
+          storage.logEvent(task.task_id, 'Failed: Preflight checks failed with no changes', 'error');
+          return;
+        }
+      }
+
       // State: applying_diff
       storage.updateTaskState(task.task_id, 'applying_diff');
       storage.logEvent(task.task_id, 'Applying diff to repository...', 'info');
@@ -296,6 +337,7 @@ CRITICAL RULES:
 3. Do NOT output anything except the diff itself
 4. The diff must be applicable with 'git apply'
 5. Keep changes minimal and focused on the request
+6. If NO changes are needed (e.g., the request is already satisfied), output exactly "NO_CHANGES" (single line) and nothing else
 
 Context files are provided below.`;
 
@@ -341,6 +383,13 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
       const rawOutput = response.choices[0]?.message?.content || '';
       storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
+
+      // Check for NO_CHANGES response
+      const normalizedOutput = rawOutput.trim();
+      if (normalizedOutput === 'NO_CHANGES') {
+        storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
+        return 'NO_CHANGES';
+      }
 
       // Sanitize the raw output first
       const sanitized = sanitizeUnifiedDiff(rawOutput);
