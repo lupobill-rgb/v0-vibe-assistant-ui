@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
@@ -23,6 +23,11 @@ const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+interface GenerateDiffResult {
+  diff: string | null;
+  error: string | null;
+}
 
 // Main executor class
 class VibeExecutor {
@@ -172,11 +177,16 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const diff = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles, failureFeedback);
+      const result = await this.generateDiff(task.user_prompt, context, task.task_id, globalFallback, fallbackFiles, failureFeedback);
       
-      if (!diff) {
+      if (!result.diff) {
         consecutiveDiffFailures++;
         storage.logEvent(task.task_id, 'LLM failed to generate valid diff', 'error');
+
+        // Update failure feedback for next retry to include validator error
+        if (result.error) {
+          failureFeedback = `You returned an invalid diff. Validator error: ${result.error}`;
+        }
 
         if (consecutiveDiffFailures >= 3) {
           storage.updateTaskState(task.task_id, 'failed');
@@ -186,7 +196,10 @@ class VibeExecutor {
         continue;
       }
 
+      // Reset diff failure counter on success
+      // Note: Don't clear failureFeedback here as it might contain git apply error from previous iteration
       consecutiveDiffFailures = 0;
+      const diff = result.diff;
 
       // Check for NO_CHANGES response
       if (diff === 'NO_CHANGES') {
@@ -327,17 +340,19 @@ class VibeExecutor {
     globalFallback: boolean = false,
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
-  ): Promise<string | null> {
+  ): Promise<GenerateDiffResult> {
     try {
-      const baseSystemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
+      const baseSystemPrompt = `You are a code modification assistant. You MUST output ONLY one of the following:
 
-CRITICAL RULES:
-1. Output must be a valid unified diff starting with diff --git. Output must contain no other text.
-2. Do NOT include any explanations, markdown, or code blocks
-3. Do NOT output anything except the diff itself
-4. The diff must be applicable with 'git apply'
-5. Keep changes minimal and focused on the request
-6. If NO changes are needed (e.g., the request is already satisfied), output exactly "NO_CHANGES" (single line) and nothing else
+1. A valid unified diff starting with "diff --git" that includes --- and +++ headers and @@ hunk markers
+2. The exact token "NO_CHANGES" (if no changes are needed)
+
+CRITICAL OUTPUT RULES:
+- NO explanations, NO markdown, NO code fences (no \`\`\`), NO commentary
+- NO prose before or after the diff
+- First non-whitespace characters MUST be either "diff --git" or "NO_CHANGES"
+- The diff must be applicable with 'git apply'
+- Keep changes minimal and focused on the request
 
 Context files are provided below.`;
 
@@ -384,18 +399,27 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const rawOutput = response.choices[0]?.message?.content || '';
       storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
-      // Check for NO_CHANGES response
-      const normalizedOutput = rawOutput.trim();
-      if (normalizedOutput === 'NO_CHANGES') {
-        storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
-        return 'NO_CHANGES';
+      // Normalize the output before any validation
+      const normalized = normalizeLLMOutput(rawOutput);
+      
+      if (normalized === null) {
+        const error = 'Output does not start with "diff --git" or "NO_CHANGES"';
+        storage.logEvent(taskId, `Invalid LLM output: ${error}`, 'error');
+        return { diff: null, error };
       }
 
-      // Sanitize the raw output first
-      const sanitized = sanitizeUnifiedDiff(rawOutput);
+      // Check for NO_CHANGES response
+      if (normalized === 'NO_CHANGES') {
+        storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
+        return { diff: 'NO_CHANGES', error: null };
+      }
+
+      // Sanitize the normalized output
+      const sanitized = sanitizeUnifiedDiff(normalized);
       if (sanitized === null) {
-        storage.logEvent(taskId, 'LLM output missing diff --git header or contains commentary; will retry', 'error');
-        return null;
+        const error = 'Output contains commentary or invalid diff format';
+        storage.logEvent(taskId, `LLM output validation failed: ${error}`, 'error');
+        return { diff: null, error };
       }
 
       // Extract and validate diff
@@ -403,18 +427,19 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const enhancedValidation = validateUnifiedDiffEnhanced(diff);
 
       if (!enhancedValidation.ok) {
-        const errorMsg = enhancedValidation.errors.join('; ');
-        storage.logEvent(taskId, `Invalid diff: ${errorMsg}`, 'error');
-        return null;
+        const error = enhancedValidation.errors.join('; ');
+        storage.logEvent(taskId, `Invalid diff: ${error}`, 'error');
+        return { diff: null, error };
       }
 
       const lineCount = diff.split('\n').length;
       storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
-      return diff;
+      return { diff, error: null };
 
     } catch (error: any) {
-      storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
-      return null;
+      const errorMsg = `LLM error: ${error.message}`;
+      storage.logEvent(taskId, errorMsg, 'error');
+      return { diff: null, error: errorMsg };
     }
   }
 
