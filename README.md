@@ -28,6 +28,54 @@ VIBE is an intelligent coding assistant that streamlines your development workfl
 - 🔍 **Code Review Integration**: Get automated feedback before submitting
 - 🛡️ **Security Scanning**: Built-in CodeQL vulnerability detection
 
+## Architecture: Option A (Project-Centric)
+
+VIBE uses a **project-centric architecture** where projects are first-class entities:
+
+### Core Concepts
+
+1. **Project Repository Cache** (`/data/repos/<projectId>`)
+   - VIBE maintains a persistent cache of project repositories
+   - Each project has a unique ID and is stored at `/data/repos/<projectId>`
+   - Projects can be created from templates or imported from GitHub
+   - No repeated cloning - projects persist between jobs
+
+2. **Per-Job Worktrees** (`/data/worktrees/<jobId>`)
+   - Each job operates in an isolated worktree at `/data/worktrees/<jobId>`
+   - Worktrees provide clean, isolated environments for each job
+   - Changes are made in the worktree and synced back to the main repo
+   - Worktrees are automatically cleaned up after job completion
+
+3. **Deterministic LLM Configuration**
+   - Temperature set to 0 for consistent, deterministic outputs
+   - Strict diff validation with automatic retries (max 2)
+   - Pre-apply sanity checks prevent common errors
+
+### Job Execution Flow
+
+```
+1. User submits prompt + project_id
+2. Executor creates worktree from project repo
+3. Build context from worktree
+4. Call LLM with context (temperature 0)
+5. Validate diff (strict rules)
+6. Apply diff to worktree
+7. Commit changes
+8. Run preflight checks from worktree
+9. Push branch and create PR
+10. Clean up worktree (always, in finally block)
+```
+
+### Legacy Mode B (repo_url)
+
+For backward compatibility, VIBE supports a legacy mode where jobs can be run with `repo_url` instead of `project_id`. This mode:
+- Clones the repository to a temporary directory
+- Is NOT recommended for normal use
+- Should only be used for one-off tasks or migration scenarios
+- Will eventually be deprecated
+
+**Recommendation**: Use project-centric mode (Option A) for all new workflows.
+
 ## Prerequisites
 
 Before using VIBE, ensure you have the following installed and configured:
@@ -94,11 +142,18 @@ gh repo list
 Create a `.env` file in the project root (or export these variables):
 
 ```bash
+# Required: OpenAI API Key
+OPENAI_API_KEY=sk-your-key-here
+
 # Required: GitHub Personal Access Token
 GITHUB_TOKEN=ghp_your_token_here
 
-# Optional: Default repository
-VIBE_DEFAULT_REPO=owner/repo-name
+# Optional: Base directories for projects and worktrees
+REPOS_BASE_DIR=/data/repos
+WORKTREES_BASE_DIR=/data/worktrees
+
+# Optional: Database path
+DATABASE_PATH=./data/vibe.db
 
 # Optional: CI check timeout (seconds)
 VIBE_CI_TIMEOUT=300
@@ -106,6 +161,31 @@ VIBE_CI_TIMEOUT=300
 # Optional: Enable verbose logging
 VIBE_DEBUG=true
 ```
+
+### Directory Structure
+
+VIBE uses the following directory structure:
+
+```
+/data/
+├── repos/              # Project repository cache
+│   ├── <projectId1>/   # Persistent project repo
+│   ├── <projectId2>/
+│   └── ...
+├── worktrees/          # Per-job worktrees
+│   ├── <jobId1>/       # Isolated worktree for job 1
+│   ├── <jobId2>/       # Isolated worktree for job 2
+│   └── ...             # (cleaned up after job completes)
+└── patches/            # Failed patches for debugging
+    ├── <taskId>-iter1.diff
+    └── ...
+```
+
+**Key Points:**
+- `/data/repos`: Persistent storage for project repositories
+- `/data/worktrees`: Temporary, per-job isolated environments
+- Worktrees are automatically cleaned up in finally blocks
+- Each job gets its own isolated worktree
 
 ### GitHub Permissions
 
@@ -115,6 +195,76 @@ Ensure your GitHub token has access to:
 - Open pull requests
 - Run workflows
 - Read repository contents
+
+### Project Management
+
+VIBE organizes work around projects. Before running jobs, you need to create or import a project:
+
+#### Creating a New Project from Template
+
+```bash
+# Via API
+curl -X POST http://localhost:3001/projects \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-awesome-project", "template": "empty"}'
+
+# Via UI
+# 1. Click "Create Project" button
+# 2. Enter project name
+# 3. Click "Create"
+```
+
+This creates:
+- A new git repository at `/data/repos/<projectId>`
+- An initial commit with a README
+- Default branch (usually `main`)
+
+#### Importing from GitHub
+
+```bash
+# Via API
+PROJECT_ID=$(uuidgen)
+curl -X POST http://localhost:3001/projects/$PROJECT_ID/import/github \
+  -H "Content-Type: application/json" \
+  -d '{"repo_url": "https://github.com/owner/repo"}'
+
+# Via UI
+# 1. Click "Import from GitHub" button
+# 2. Enter repository URL
+# 3. Click "Import"
+```
+
+This:
+- Clones the repository to `/data/repos/<projectId>`
+- Preserves all branches and history
+- Makes the project available for VIBE jobs
+
+#### Listing Projects
+
+```bash
+# Via API
+curl http://localhost:3001/projects
+
+# Via UI
+# Projects appear in the dropdown selector
+```
+
+#### Running Jobs on Projects
+
+```bash
+# Via API
+curl -X POST http://localhost:3001/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "your-project-id",
+    "prompt": "Add error handling to the API endpoints"
+  }'
+
+# Via UI
+# 1. Select project from dropdown
+# 2. Enter your prompt
+# 3. Click "Run"
+```
 
 ### Repository Setup
 
