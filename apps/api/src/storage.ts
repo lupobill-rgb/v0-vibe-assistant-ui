@@ -172,6 +172,27 @@ class VibeStorage {
     ORDER BY event_time ASC
   `);
 
+  // Project methods
+  createProject(project: VibeProject): void {
+    this.projectInsert.run(
+      project.id,
+      project.name,
+      project.repo_source,
+      project.repo_dir,
+      project.default_branch,
+      project.created_at
+    );
+  }
+
+  getProject(projectId: string): VibeProject | undefined {
+    return this.projectSelect.get(projectId) as VibeProject | undefined;
+  }
+
+  listProjects(): VibeProject[] {
+    return this.projectsAll.all() as VibeProject[];
+  }
+
+  // Task methods
   createTask(task: Omit<VibeTask, 'iteration_count'>): void {
     this.taskInsert.run(
       task.task_id,

@@ -439,6 +439,8 @@ export interface DiffFileBlock {
   filePath: string;
   isNewFile: boolean;
   isDeletedFile: boolean;
+  hasDevNullSource: boolean; // --- /dev/null (creating file)
+  hasDevNullTarget: boolean; // +++ /dev/null (deleting file)
   lineNumber: number;
 }
 
@@ -472,6 +474,8 @@ export function parseDiffFileBlocks(diffContent: string): DiffFileBlock[] {
         filePath,
         isNewFile: false,
         isDeletedFile: false,
+        hasDevNullSource: false,
+        hasDevNullTarget: false,
         lineNumber: i + 1
       };
     } else if (currentBlock) {
@@ -508,6 +512,8 @@ export function parseDiffFileBlocks(diffContent: string): DiffFileBlock[] {
  * Checks:
  * 1. If "new file mode" is declared for a file that already exists, reject it
  * 2. If "deleted file mode" is declared but deletion wasn't requested, reject it
+ * 3. If "--- /dev/null" (create-file patch) is used when file already exists, reject it
+ * 4. If "+++ /dev/null" (delete-file patch) is used when file does not exist, reject it
  * 
  * @param diffContent - The unified diff content to check
  * @param repoPath - Path to the git repository
@@ -562,6 +568,30 @@ export function performPreApplySanityChecks(
           `Rejecting diff: attempted to delete file '${block.filePath}' ` +
           `(line ${block.lineNumber}), but the user prompt did not request file deletion. ` +
           `Do not delete files unless explicitly requested.`
+        );
+      }
+    }
+    
+    // Check 3: --- /dev/null (creating file) when file already exists
+    if (block.hasDevNullSource) {
+      const fullPath = path.join(repoPath, block.filePath);
+      if (fs.existsSync(fullPath)) {
+        errors.push(
+          `Rejecting diff: patch uses '--- /dev/null' for file '${block.filePath}' ` +
+          `(line ${block.lineNumber}), but the file already exists in the worktree. ` +
+          `Generate a diff that modifies the existing file instead of creating it.`
+        );
+      }
+    }
+    
+    // Check 4: +++ /dev/null (deleting file) when file does not exist
+    if (block.hasDevNullTarget) {
+      const fullPath = path.join(repoPath, block.filePath);
+      if (!fs.existsSync(fullPath)) {
+        errors.push(
+          `Rejecting diff: patch uses '+++ /dev/null' for file '${block.filePath}' ` +
+          `(line ${block.lineNumber}), but the file does not exist in the worktree. ` +
+          `Cannot delete a non-existent file.`
         );
       }
     }
