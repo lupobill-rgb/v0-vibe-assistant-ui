@@ -451,6 +451,25 @@ describe('DiffValidator - Invalid Diff Line Format', () => {
     assert.ok(result.error?.includes('Invalid diff line'), 'Error should mention invalid diff line');
     assert.ok(result.error?.includes('// VIBE TEST APPLY'), 'Error should show the problematic line');
   });
+
+  it('should reject invalid patch with import statement without prefix', () => {
+    const invalidDiffWithImport = `diff --git a/src/App.tsx b/src/App.tsx
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,5 +1,6 @@
+import { useState } from 'react';
+ 
+ function App() {
++  const [count, setCount] = useState(0);
+   return <div>Hello</div>;
+ }
+`;
+    
+    const result = validateUnifiedDiff(invalidDiffWithImport);
+    assert.strictEqual(result.valid, false, 'Invalid diff with import statement (missing prefix) should fail');
+    assert.ok(result.error?.includes('Invalid diff line'), 'Error should mention invalid diff line');
+    assert.ok(result.error?.includes('import'), 'Error should show the problematic import line');
+  });
 });
 
 describe('sanitizeUnifiedDiff', () => {

@@ -270,7 +270,7 @@ export function validateUnifiedDiffEnhanced(content: string): ValidationResult {
       continue;
     }
 
-    if (line.startsWith('diff --git ')) {
+    if (line.startsWith('diff --git ') || line.startsWith('--- ') || line.startsWith('+++ ')) {
       inHunk = false;
       continue;
     }
