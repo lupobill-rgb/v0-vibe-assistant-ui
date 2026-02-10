@@ -512,6 +512,62 @@ diff --git a/test.js b/test.js
     assert.ok(!result.includes('```'));
     assert.ok(result.startsWith('diff --git'));
   });
+
+  it('should reject diff with commentary starting with "Here\'s"', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+Here's the explanation for the change.`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should reject diff with commentary starting with "Sure"', () => {
+    const input = `Sure, I can help with that.
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should reject diff with commentary starting with "I\'ll"', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+I'll add some more context here.`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should reject diff with markdown fence still present', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+\`\`\`
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
 });
 
 describe('validateUnifiedDiffEnhanced', () => {
@@ -652,7 +708,36 @@ rejected as too short`;
 });
 
 describe('Integration: sanitizeUnifiedDiff -> extractDiff -> validateUnifiedDiffEnhanced', () => {
-  it('should handle LLM output with explanation text and code fences', () => {
+  it('should handle LLM output with code fences (no commentary)', () => {
+    const llmOutput = `\`\`\`diff
+diff --git a/src/utils.js b/src/utils.js
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -1,5 +1,7 @@
+ export function process(data) {
++  if (!data) {
++    return null;
++  }
+   return data.trim();
+ }
+\`\`\``;
+
+    // Step 1: Sanitize
+    const sanitized = sanitizeUnifiedDiff(llmOutput);
+    assert.ok(sanitized !== null, 'Should successfully sanitize LLM output');
+    assert.ok(!sanitized.includes('```'), 'Should remove code fences');
+
+    // Step 2: Extract
+    const diff = extractDiff(sanitized);
+    assert.ok(diff.includes('diff --git'), 'Should contain diff header');
+
+    // Step 3: Validate
+    const validation = validateUnifiedDiffEnhanced(diff);
+    assert.strictEqual(validation.ok, true, 'Should pass validation');
+    assert.strictEqual(validation.errors.length, 0, 'Should have no errors');
+  });
+
+  it('should reject LLM output with commentary before diff', () => {
     const llmOutput = `I'll help you with that change. Here's the diff:
 
 \`\`\`diff
@@ -670,20 +755,9 @@ diff --git a/src/utils.js b/src/utils.js
 
 This adds a null check to the process function.`;
 
-    // Step 1: Sanitize
+    // Step 1: Sanitize - should reject due to commentary
     const sanitized = sanitizeUnifiedDiff(llmOutput);
-    assert.ok(sanitized !== null, 'Should successfully sanitize LLM output');
-    assert.ok(!sanitized.includes('help you with'), 'Should remove explanation text');
-    assert.ok(!sanitized.includes('```'), 'Should remove code fences');
-
-    // Step 2: Extract
-    const diff = extractDiff(sanitized);
-    assert.ok(diff.includes('diff --git'), 'Should contain diff header');
-
-    // Step 3: Validate
-    const validation = validateUnifiedDiffEnhanced(diff);
-    assert.strictEqual(validation.ok, true, 'Should pass validation');
-    assert.strictEqual(validation.errors.length, 0, 'Should have no errors');
+    assert.strictEqual(sanitized, null, 'Should reject output with commentary');
   });
 
   it('should reject LLM output with missing diff header', () => {

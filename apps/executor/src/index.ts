@@ -165,6 +165,7 @@ class VibeExecutor {
   private async iterationLoop(task: VibeTask, workDir: string, git: SimpleGit): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
+    let lastFailureFeedback: string | null = null;
 
     for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
       storage.incrementIteration(task.task_id);
@@ -187,7 +188,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const diff = await this.generateDiff(task.user_prompt, context, task.task_id);
+      const diff = await this.generateDiff(task.user_prompt, context, task.task_id, lastFailureFeedback);
       
       if (!diff) {
         consecutiveDiffFailures++;
@@ -207,11 +208,14 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'applying_diff');
       storage.logEvent(task.task_id, 'Applying diff to repository...', 'info');
 
-      const applied = await this.applyDiff(workDir, diff, task.task_id);
+      const applyResult = await this.applyDiff(workDir, diff, task.task_id);
       
-      if (!applied) {
+      if (!applyResult.success) {
         consecutiveApplyFailures++;
         storage.logEvent(task.task_id, 'Failed to apply diff', 'error');
+        
+        // Capture failure feedback for next iteration
+        lastFailureFeedback = this.buildFailureFeedback('git apply failed', applyResult.error || '');
 
         if (consecutiveApplyFailures >= 3) {
           storage.updateTaskState(task.task_id, 'failed');
@@ -222,6 +226,7 @@ class VibeExecutor {
       }
 
       consecutiveApplyFailures = 0;
+      lastFailureFeedback = null; // Clear feedback on success
 
       // Commit the changes
       await git.add('.');
@@ -264,12 +269,12 @@ class VibeExecutor {
     storage.logEvent(task.task_id, 'Failed: Max iterations reached', 'error');
   }
 
-  private async generateDiff(prompt: string, context: string, taskId: string): Promise<string | null> {
+  private async generateDiff(prompt: string, context: string, taskId: string, failureFeedback: string | null = null): Promise<string | null> {
     try {
       const systemPrompt = `You are a code modification assistant. Generate ONLY a unified diff (git diff format) to implement the requested changes.
 
-IMPORTANT RULES:
-1. Output MUST be a valid unified diff format with diff --git, +++, ---, and @@ markers
+CRITICAL RULES:
+1. Output must be a valid unified diff starting with diff --git. Output must contain no other text.
 2. Do NOT include any explanations, markdown, or code blocks
 3. Do NOT output anything except the diff itself
 4. The diff must be applicable with 'git apply'
@@ -277,13 +282,18 @@ IMPORTANT RULES:
 
 Context files are provided below.`;
 
-      const userPrompt = `${context}
+      let userPrompt = `${context}
 
 ---
 
 USER REQUEST: ${prompt}
 
 Generate a unified diff to implement this request. Output ONLY the diff, nothing else.`;
+
+      // Add failure feedback if available
+      if (failureFeedback) {
+        userPrompt += `\n\n---\n\nPATCH FAILURE FEEDBACK:\n${failureFeedback}`;
+      }
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4-turbo-preview',
@@ -301,7 +311,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       // Sanitize the raw output first
       const sanitized = sanitizeUnifiedDiff(rawOutput);
       if (sanitized === null) {
-        storage.logEvent(taskId, 'LLM output missing diff --git header; will retry', 'error');
+        storage.logEvent(taskId, 'LLM output missing diff --git header or contains commentary; will retry', 'error');
         return null;
       }
 
@@ -325,7 +335,18 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
     }
   }
 
-  private async applyDiff(workDir: string, diff: string, taskId: string): Promise<boolean> {
+  private buildFailureFeedback(reason: string, errorOutput: string): string {
+    // Extract last 30 lines from error output
+    const lines = errorOutput.split('\n').filter(line => line.trim().length > 0);
+    const last30Lines = lines.slice(-30).join('\n');
+    
+    return `${reason}
+
+Last 30 lines of error output:
+${last30Lines}`;
+  }
+
+  private async applyDiff(workDir: string, diff: string, taskId: string): Promise<{ success: boolean; error?: string }> {
     let tempWorktreePath: string | null = null;
     let patchFilePath: string | null = null;
 
@@ -360,13 +381,14 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
         storage.logEvent(taskId, '✓ Preflight check passed in temporary worktree', 'success');
       } catch (checkError: any) {
         storage.logEvent(taskId, `✗ Preflight check failed: ${checkError.message}`, 'error');
+        const errorOutput = [checkError.message, checkError.stderr, checkError.stdout].filter(Boolean).join('\n');
         if (checkError.stderr) {
           storage.logEvent(taskId, `git apply stderr: ${checkError.stderr}`, 'error');
         }
         if (checkError.stdout) {
           storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
         }
-        return false;
+        return { success: false, error: errorOutput };
       }
 
       // Preflight passed, now apply to real working directory
@@ -380,11 +402,12 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       fs.unlinkSync(realPatchPath);
 
       storage.logEvent(taskId, 'Diff applied successfully to working directory', 'success');
-      return true;
+      return { success: true };
 
     } catch (error: any) {
       storage.logEvent(taskId, `Git apply failed: ${error.message}`, 'error');
-      return false;
+      const errorOutput = [error.message, error.stderr, error.stdout].filter(Boolean).join('\n');
+      return { success: false, error: errorOutput };
     } finally {
       // Always clean up temporary worktree
       if (tempWorktreePath && fs.existsSync(tempWorktreePath)) {

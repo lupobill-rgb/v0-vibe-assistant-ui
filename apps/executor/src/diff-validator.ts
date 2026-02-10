@@ -22,11 +22,44 @@ const MAX_DIFF_SIZE = parseInt(process.env.MAX_DIFF_SIZE || '5000', 10);
  * Sanitizes raw LLM output to extract the unified diff.
  * Finds the first occurrence of "diff --git " and returns content from there.
  * Removes markdown code fences if present.
+ * Rejects output with commentary or explanatory text.
  * 
  * @param raw - Raw LLM output that may contain explanations, markdown, etc.
- * @returns Sanitized diff string or null if no valid diff header found
+ * @returns Sanitized diff string or null if no valid diff header found or commentary detected
  */
 export function sanitizeUnifiedDiff(raw: string): string | null {
+  // Check for commentary patterns in the raw output before processing
+  const lines = raw.split('\n');
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    // Skip empty lines
+    if (trimmedLine.length === 0) continue;
+    
+    // If we've reached the diff, stop checking
+    if (trimmedLine.startsWith('diff --git ')) break;
+    
+    // Check for common commentary patterns before the diff
+    const commentaryPatterns = [
+      /^Here's/i,
+      /^Sure/i,
+      /^I'll/i,
+      /^Let me/i,
+      /^I've/i,
+      /^I have/i,
+      /^This (diff|patch|change)/i,
+      /^The (diff|patch|change)/i,
+      /^Below is/i,
+      /^Above is/i,
+    ];
+    
+    for (const pattern of commentaryPatterns) {
+      if (pattern.test(trimmedLine)) {
+        return null;
+      }
+    }
+  }
+
   // Find the first occurrence of "diff --git "
   const index = raw.indexOf('diff --git ');
   if (index === -1) {
@@ -39,12 +72,61 @@ export function sanitizeUnifiedDiff(raw: string): string | null {
   // Trim leading/trailing whitespace
   result = result.trim();
 
-  // Remove markdown code fences if present
-  // Find the first ``` after the diff start (closing fence)
-  const closingFenceIndex = result.indexOf('```');
-  if (closingFenceIndex !== -1) {
-    // Remove everything from the closing fence onward
-    result = result.substring(0, closingFenceIndex).trim();
+  // Check if there are any ``` markers in the result (these shouldn't be in valid diffs)
+  if (result.includes('```')) {
+    // Only remove trailing ``` if it's at the very end (common LLM pattern)
+    const lines = result.split('\n');
+    const lastLine = lines[lines.length - 1].trim();
+    if (lastLine === '```') {
+      // Remove the last line
+      lines.pop();
+      result = lines.join('\n').trim();
+    } else {
+      // ``` appears somewhere else - this is invalid
+      return null;
+    }
+  }
+
+  // Final guard: Check for commentary still present in the diff
+  const resultLines = result.split('\n');
+  for (const line of resultLines) {
+    const trimmedLine = line.trim();
+    
+    // Check for markdown code fences (these should not be in a valid diff)
+    if (trimmedLine.startsWith('```')) {
+      return null;
+    }
+    
+    // Check for commentary patterns in the diff body
+    // Skip lines that are valid diff elements
+    if (trimmedLine.startsWith('diff --git ') || 
+        trimmedLine.startsWith('---') || 
+        trimmedLine.startsWith('+++') || 
+        trimmedLine.startsWith('@@') ||
+        trimmedLine.startsWith('+') ||
+        trimmedLine.startsWith('-') ||
+        trimmedLine.startsWith(' ') ||
+        trimmedLine.length === 0) {
+      continue;
+    }
+    
+    // Any other non-empty line that doesn't match diff format is suspicious
+    const commentaryPatterns = [
+      /^Here's/i,
+      /^Sure/i,
+      /^I'll/i,
+      /^Let me/i,
+      /^I've/i,
+      /^I have/i,
+      /^This (diff|patch|change)/i,
+      /^The (diff|patch|change)/i,
+    ];
+    
+    for (const pattern of commentaryPatterns) {
+      if (pattern.test(trimmedLine)) {
+        return null;
+      }
+    }
   }
 
   return result;
