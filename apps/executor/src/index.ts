@@ -16,6 +16,7 @@ dotenv.config();
 const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS || '6', 10);
 const POLL_INTERVAL = parseInt(process.env.EXECUTOR_POLL_INTERVAL || '5000', 10);
 const GIT_TERMINAL_PROMPT_DISABLED = "0";
+const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -465,20 +466,19 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
 
   /**
    * Persists a failed patch to disk for debugging purposes
-   * Saves to /data/patches/<task_id>-iter<k>.diff
+   * Saves to PATCHES_DIR/<task_id>-iter<k>.diff
    * Logs patch statistics (line count, character count, first 60 lines)
    */
   private async persistFailedPatch(diff: string, taskId: string, iteration: number): Promise<void> {
     try {
-      // Ensure /data/patches directory exists
-      const patchesDir = '/data/patches';
-      if (!fs.existsSync(patchesDir)) {
-        fs.mkdirSync(patchesDir, { recursive: true });
+      // Ensure patches directory exists
+      if (!fs.existsSync(PATCHES_DIR)) {
+        fs.mkdirSync(PATCHES_DIR, { recursive: true });
       }
 
       // Create patch file path
       const patchFileName = `${taskId}-iter${iteration}.diff`;
-      const patchFilePath = path.join(patchesDir, patchFileName);
+      const patchFilePath = path.join(PATCHES_DIR, patchFileName);
 
       // Write patch to file
       fs.writeFileSync(patchFilePath, diff, { encoding: 'utf-8' });
@@ -505,7 +505,17 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       }
 
     } catch (error: any) {
-      storage.logEvent(taskId, `[Patch Persistence] Failed to persist patch: ${error.message}`, 'warning');
+      // User-facing error message
+      storage.logEvent(
+        taskId, 
+        `[Patch Persistence] WARNING: Could not save failed patch for debugging. Error: ${error.message}`, 
+        'warning'
+      );
+      storage.logEvent(
+        taskId,
+        `[Patch Persistence] This means debugging artifacts will not be available for this iteration.`,
+        'warning'
+      );
     }
   }
 
