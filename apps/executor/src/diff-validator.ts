@@ -259,6 +259,8 @@ export function validateUnifiedDiffEnhanced(content: string): ValidationResult {
   }
 
   // Basic structure validation: check that +/- lines follow proper format
+  // Strengthened validation: once inside a hunk (after @@ line), every non-empty line
+  // must start with +, -, space, or \ (for "No newline at end of file" marker)
   let inHunk = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -274,11 +276,12 @@ export function validateUnifiedDiffEnhanced(content: string): ValidationResult {
     }
 
     // In hunk, lines should start with +, -, or space (or be empty)
+    // This catches corrupt patches where lines like "// VIBE TEST APPLY" appear without proper prefix
     if (inHunk && line.length > 0) {
       const firstChar = line[0];
       if (firstChar !== '+' && firstChar !== '-' && firstChar !== ' ' && firstChar !== '\\') {
         // Allow \ for "\ No newline at end of file"
-        errors.push(`Invalid diff line at ${i + 1}: lines in hunks must start with +, -, or space`);
+        errors.push(`Invalid diff line at ${i + 1}: lines in hunks must start with +, -, space, or \\. Found: "${line.substring(0, Math.min(50, line.length))}"`);
         break; // Only report first error of this type
       }
     }

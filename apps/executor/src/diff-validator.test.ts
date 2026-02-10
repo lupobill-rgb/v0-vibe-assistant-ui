@@ -418,6 +418,39 @@ describe('DiffValidator - Invalid Diff Line Format', () => {
     const result = validateUnifiedDiff(diffWithNoNewline);
     assert.strictEqual(result.valid, true);
   });
+
+  it('should accept valid patch with +// comment', () => {
+    const validDiffWithComment = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,3 +1,4 @@
+ function hello() {
++  // VIBE TEST APPLY
+   return true;
+ }
+`;
+    
+    const result = validateUnifiedDiff(validDiffWithComment);
+    assert.strictEqual(result.valid, true, 'Valid diff with +// comment should pass');
+    assert.ok(!result.error);
+  });
+
+  it('should reject invalid patch where hunk line starts with / without +', () => {
+    const invalidDiffMissingPrefix = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,3 +1,4 @@
+ function hello() {
+// VIBE TEST APPLY
+   return true;
+ }
+`;
+    
+    const result = validateUnifiedDiff(invalidDiffMissingPrefix);
+    assert.strictEqual(result.valid, false, 'Invalid diff with // comment (missing +) should fail');
+    assert.ok(result.error?.includes('Invalid diff line'), 'Error should mention invalid diff line');
+    assert.ok(result.error?.includes('// VIBE TEST APPLY'), 'Error should show the problematic line');
+  });
 });
 
 describe('sanitizeUnifiedDiff', () => {
