@@ -431,3 +431,136 @@ export function extractDiff(llmResponse: string): string {
   // Otherwise return as-is (will be validated), normalized
   return normalizeContent(llmResponse);
 }
+
+/**
+ * Represents a file block in a unified diff
+ */
+export interface DiffFileBlock {
+  filePath: string;
+  isNewFile: boolean;
+  isDeletedFile: boolean;
+  lineNumber: number;
+}
+
+/**
+ * Parses a unified diff and extracts file blocks with their metadata.
+ * 
+ * @param diffContent - The unified diff content to parse
+ * @returns Array of file blocks found in the diff
+ */
+export function parseDiffFileBlocks(diffContent: string): DiffFileBlock[] {
+  const lines = diffContent.split('\n');
+  const fileBlocks: DiffFileBlock[] = [];
+  
+  let currentBlock: DiffFileBlock | null = null;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // New file block starts with "diff --git"
+    if (line.startsWith('diff --git ')) {
+      // Save previous block if exists
+      if (currentBlock) {
+        fileBlocks.push(currentBlock);
+      }
+      
+      // Extract file path from "diff --git a/path b/path"
+      const match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+      const filePath = match ? match[2] : 'unknown';
+      
+      currentBlock = {
+        filePath,
+        isNewFile: false,
+        isDeletedFile: false,
+        lineNumber: i + 1
+      };
+    } else if (currentBlock) {
+      // Check for "new file mode" indicator
+      if (line.startsWith('new file mode ')) {
+        currentBlock.isNewFile = true;
+      }
+      // Check for "deleted file mode" indicator
+      else if (line.startsWith('deleted file mode ')) {
+        currentBlock.isDeletedFile = true;
+      }
+    }
+  }
+  
+  // Save last block
+  if (currentBlock) {
+    fileBlocks.push(currentBlock);
+  }
+  
+  return fileBlocks;
+}
+
+/**
+ * Performs pre-apply sanity checks on a diff before running git apply.
+ * 
+ * Checks:
+ * 1. If "new file mode" is declared for a file that already exists, reject it
+ * 2. If "deleted file mode" is declared but deletion wasn't requested, reject it
+ * 
+ * @param diffContent - The unified diff content to check
+ * @param repoPath - Path to the git repository
+ * @param userPrompt - The original user prompt (to check if deletion was requested)
+ * @returns ValidationResult with ok status and any errors found
+ */
+export function performPreApplySanityChecks(
+  diffContent: string,
+  repoPath: string,
+  userPrompt: string
+): ValidationResult {
+  const errors: string[] = [];
+  
+  // Parse file blocks from the diff
+  const fileBlocks = parseDiffFileBlocks(diffContent);
+  
+  // Check each file block
+  for (const block of fileBlocks) {
+    // Check 1: "new file mode" for existing files
+    if (block.isNewFile) {
+      const fullPath = path.join(repoPath, block.filePath);
+      if (fs.existsSync(fullPath)) {
+        errors.push(
+          `Rejecting diff: attempted to create existing file '${block.filePath}' ` +
+          `(line ${block.lineNumber}). File already exists in the worktree. ` +
+          `Generate a diff that modifies the existing file instead of creating it.`
+        );
+      }
+    }
+    
+    // Check 2: "deleted file mode" without user requesting deletion
+    if (block.isDeletedFile) {
+      // Check if user prompt contains deletion-related keywords
+      const deletionKeywords = [
+        'delete',
+        'remove',
+        'drop',
+        'eliminate',
+        'get rid of',
+        'take out',
+        'rm ',
+        'unlink'
+      ];
+      
+      const promptLower = userPrompt.toLowerCase();
+      const hasDeletionIntent = deletionKeywords.some(keyword => 
+        promptLower.includes(keyword.toLowerCase())
+      );
+      
+      if (!hasDeletionIntent) {
+        errors.push(
+          `Rejecting diff: attempted to delete file '${block.filePath}' ` +
+          `(line ${block.lineNumber}), but the user prompt did not request file deletion. ` +
+          `Do not delete files unless explicitly requested.`
+        );
+      }
+    }
+  }
+  
+  return {
+    ok: errors.length === 0,
+    errors
+  };
+}
