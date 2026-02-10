@@ -365,6 +365,65 @@ class VibeExecutor {
     storage.logEvent(task.task_id, 'Failed: Max iterations reached', 'error');
   }
 
+  /**
+   * Builds additional context for README file edits.
+   * Returns null if prompt doesn't mention README or no README exists.
+   */
+  private buildReadmeContext(prompt: string, repoDir: string): string | null {
+    // Check if prompt mentions README
+    const promptLower = prompt.toLowerCase();
+    if (!promptLower.includes('readme')) {
+      return null;
+    }
+
+    // Find existing README file (check common locations)
+    const readmePaths = [
+      'README.md',
+      'readme.md', 
+      'README',
+      'apps/web/README.md'
+    ];
+
+    let existingReadmePath: string | null = null;
+    let existingReadmeContent: string | null = null;
+
+    for (const readmePath of readmePaths) {
+      const fullPath = path.join(repoDir, readmePath);
+      if (fs.existsSync(fullPath)) {
+        existingReadmePath = readmePath;
+        try {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          // Include first ~60 lines as specified in the requirements
+          const lines = content.split('\n');
+          const preview = lines.slice(0, 60).join('\n');
+          existingReadmeContent = preview;
+          break;
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+
+    if (!existingReadmePath || !existingReadmeContent) {
+      return null;
+    }
+
+    // Build the README-specific context
+    return `
+---
+README FILE CONTEXT:
+- Existing file: ${existingReadmePath}
+- This file ALREADY EXISTS in the repository
+- DO NOT create ${existingReadmePath}. It already exists.
+- You must generate a MODIFY diff, not a new file diff.
+- The diff MUST NOT include "new file mode" or "--- /dev/null"
+- The diff MUST start with "--- a/${existingReadmePath}" (not "--- /dev/null")
+
+Current content (first 60 lines):
+${existingReadmeContent}
+---`;
+  }
+
   private async generateDiff(
     prompt: string, 
     context: string, 
@@ -376,6 +435,9 @@ class VibeExecutor {
   ): Promise<GenerateDiffResult> {
     const maxRetries = 2;
     let lastValidationError: string | null = null;
+
+    // Build README-specific context if applicable
+    const readmeContext = this.buildReadmeContext(prompt, repoDir);
 
     // Retry loop: initial attempt + up to 2 retries
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -419,7 +481,15 @@ Generate diffs that REPLACE THE ENTIRE FILE CONTENT for all modified files:${fal
         }
 
         let userPrompt = `${context}
+`;
 
+        // Add README-specific context if available
+        if (readmeContext) {
+          userPrompt += readmeContext;
+          storage.logEvent(taskId, 'Added README-specific context to LLM prompt', 'info');
+        }
+
+        userPrompt += `
 ---
 
 USER REQUEST: ${prompt}
@@ -442,6 +512,24 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
             'Or output exactly "NO_CHANGES" if no changes are needed.'
           ].join('');
           userPrompt += validationFeedback;
+        }
+
+        // Add example skeleton diff if retrying with validation error
+        if (attempt > 0 && lastValidationError) {
+          const exampleSkeleton = `
+
+Example of a correct modify diff:
+
+diff --git a/example.js b/example.js
+--- a/example.js
++++ b/example.js
+@@ -1,3 +1,4 @@
+ function example() {
++  console.log('added line');
+   return true;
+ }
+`;
+          userPrompt += exampleSkeleton;
         }
 
         const response = await openai.chat.completions.create({
@@ -539,12 +627,13 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
     
     // Use attemptWorkDir for worktree to ensure clean isolation per attempt
     const tempWorktreePath = path.join(attemptWorkDir, 'worktree');
+    const mainGit = simpleGit(repoDir);
+    let worktreeCreated = false;
     
     try {
       storage.logEvent(taskId, `Creating temporary worktree at ${tempWorktreePath}...`, 'info');
 
       // Get current branch name from the working directory
-      const mainGit = simpleGit(repoDir);
       const currentBranch = await mainGit.revparse(['--abbrev-ref', 'HEAD']);
       
       // Check applicability first with validateDiffApplicability
@@ -558,6 +647,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       
       // Add worktree pointing to current branch
       await mainGit.raw(['worktree', 'add', '--detach', tempWorktreePath, 'HEAD']);
+      worktreeCreated = true;
       storage.logEvent(taskId, `Temporary worktree created at ${tempWorktreePath}`, 'success');
 
       // Write diff to patch file in temp worktree
@@ -580,23 +670,9 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
         if (checkError.stdout) {
           storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
         }
-        // Clean up worktree before returning
-        try {
-          await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
-        } catch (cleanupError) {
-          // Ignore cleanup errors
-        }
         // Persist failed patch for debugging
         await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: errorOutput };
-      }
-
-      // Clean up worktree after successful preflight check
-      try {
-        await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
-        storage.logEvent(taskId, 'Temporary worktree cleaned up', 'info');
-      } catch (cleanupError: any) {
-        storage.logEvent(taskId, `Warning: Failed to clean up worktree: ${cleanupError.message}`, 'warning');
       }
 
       // Preflight passed, now apply to real working directory
@@ -616,19 +692,21 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const errorMessage = error.message || String(error);
       storage.logEvent(taskId, `Git apply failed: ${errorMessage}`, 'error');
       
-      // Try to clean up worktree if it exists
-      try {
-        const mainGit = simpleGit(repoDir);
-        if (fs.existsSync(tempWorktreePath)) {
-          await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
-        }
-      } catch (cleanupError) {
-        // Ignore cleanup errors
-      }
-      
       // Persist failed patch for debugging
       await this.persistFailedPatch(patch, taskId, iteration);
       return { success: false, error: errorMessage };
+    } finally {
+      // Always clean up worktree if it was created
+      if (worktreeCreated) {
+        try {
+          if (fs.existsSync(tempWorktreePath)) {
+            await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
+            storage.logEvent(taskId, 'Temporary worktree cleaned up', 'info');
+          }
+        } catch (cleanupError: any) {
+          storage.logEvent(taskId, `Warning: Failed to clean up worktree: ${cleanupError.message}`, 'warning');
+        }
+      }
     }
   }
 
