@@ -27,6 +27,16 @@ VIBE is an intelligent coding assistant that streamlines your development workfl
 - 🚀 **Automated PR Creation**: Open pull requests directly from the command line
 - 🔍 **Code Review Integration**: Get automated feedback before submitting
 - 🛡️ **Security Scanning**: Built-in CodeQL vulnerability detection
+- 📦 **Project-Centric Architecture**: Maintains a local cache of repositories at `/data/repos/` for faster execution
+
+## Architecture
+
+VIBE uses a **project-centric architecture (OPTION A)** where repositories are cached locally at `/data/repos/`. This approach:
+
+- **Eliminates redundant cloning**: Projects are cloned once and synced before each task
+- **Improves performance**: Subsequent tasks execute faster by reusing the cached repository
+- **Supports multiple projects**: Manage multiple repositories through the projects API
+- **Legacy mode support**: Can still accept repository URLs for backwards compatibility (deprecated)
 
 ## Prerequisites
 
@@ -116,22 +126,59 @@ Ensure your GitHub token has access to:
 - Run workflows
 - Read repository contents
 
-### Repository Setup
+### Project Setup
 
-Initialize VIBE in your target repository:
+VIBE uses a project-centric model. Before creating tasks, you need to register your repositories as projects:
+
+#### Creating a Project via API
 
 ```bash
-# Navigate to your project
-cd /path/to/your/project
-
-# Initialize VIBE configuration
-vibe init
-
-# This creates a .vibe/ directory with:
-# - .vibe/config.json (project-specific settings)
-# - .vibe/prompts/ (saved prompt templates)
-# - .vibe/history/ (past generation history)
+# Create a new project
+curl -X POST http://localhost:3001/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-project",
+    "repository_url": "https://github.com/owner/repo"
+  }'
 ```
+
+#### Creating a Project via Web UI
+
+1. Open VIBE web UI at `http://localhost:3000`
+2. Projects will be available in the dropdown after creation via API
+3. Select your project before running tasks
+
+#### Managing Projects
+
+```bash
+# List all projects
+curl http://localhost:3001/projects
+
+# Get project details
+curl http://localhost:3001/projects/{project_id}
+
+# Delete a project
+curl -X DELETE http://localhost:3001/projects/{project_id}
+```
+
+**Note**: Project repositories are cached at `/data/repos/{project_id}` and are automatically synced before each task execution.
+
+### Legacy Mode (Deprecated)
+
+For backwards compatibility, VIBE still supports direct repository URL input (Mode B). However, this is deprecated and should only be used for testing:
+
+```bash
+# Legacy mode - Creates task with repo_url
+curl -X POST http://localhost:3001/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Add error handling",
+    "repo_url": "https://github.com/owner/repo",
+    "base_branch": "main"
+  }'
+```
+
+In the web UI, enable "Use Legacy Mode" checkbox to use repository URLs instead of projects.
 
 ## Local Dev (Windows)
 
@@ -146,62 +193,88 @@ Set environment variables in `.env` file:
 
 This section walks through a complete workflow from prompt to merged PR.
 
-### Step 1: Start with a Prompt
+### Step 0: Register Your Project
 
-Describe what you want to implement in natural language:
-
-```bash
-vibe prompt "Add user authentication with JWT tokens to the Express API"
-```
-
-Or use the interactive mode:
+Before creating tasks, register your repository as a project:
 
 ```bash
-vibe interactive
-# Then type your prompt at the VIBE> prompt
+# Create project via API
+curl -X POST http://localhost:3001/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-app",
+    "repository_url": "https://github.com/myorg/my-app"
+  }'
+
+# The response will include the project_id:
+# {
+#   "project_id": "abc-123-def",
+#   "name": "my-app",
+#   ...
+# }
 ```
 
-### Step 2: Review Generated Changes
+Or use the web UI at `http://localhost:3000` to manage projects.
+
+### Step 1: Create a Task
+
+Submit a task using your project:
+
+```bash
+# Via API
+curl -X POST http://localhost:3001/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Add user authentication with JWT tokens",
+    "project_id": "abc-123-def",
+    "base_branch": "main"
+  }'
+
+# Or use the Web UI
+# 1. Open http://localhost:3000
+# 2. Select your project from the dropdown
+# 3. Enter your prompt
+# 4. Click "Run"
+```
+
+### Step 2: Monitor Execution
 
 VIBE will:
-1. Analyze your codebase structure
-2. Generate appropriate code changes
-3. Show you a diff of proposed modifications
+1. Sync the project cache with the latest remote changes
+2. Analyze your codebase structure
+3. Generate appropriate code changes
+4. Apply and validate the changes
+5. Run preflight checks (linting, tests, security scans)
+6. Create a pull request if all checks pass
+
+Monitor the task via the Web UI's live log console, or via the API:
 
 ```bash
-# Review the diff
-vibe diff
+# Get task status
+curl http://localhost:3001/jobs/{task_id}
 
-# See which files will be modified
-vibe status
-
-# Preview specific file changes
-vibe show src/auth/jwt.js
+# Stream logs via Server-Sent Events
+curl http://localhost:3001/jobs/{task_id}/logs
 ```
 
-### Step 3: Run Preflight Checks
-
-Before creating a PR, run the same checks that would run in CI:
-
-```bash
-# Run all preflight checks
-vibe preflight
-
-# This includes:
-# - Linting (ESLint, Pylint, etc.)
-# - Unit tests
-# - Integration tests
-# - Security scans (CodeQL)
-# - Build verification
+**Expected Log Output:**
 ```
-
-**Expected Output:**
-```
+✓ Syncing project cache...
+✓ Building context from repository...
+✓ Calling LLM...
+✓ Valid diff generated
+✓ Applying diff to repository...
+✓ Changes committed
+✓ Running preflight checks...
 ✓ Linting passed (0 errors, 0 warnings)
 ✓ Unit tests passed (247/247)
-✓ Integration tests passed (45/45)
 ✓ Security scan passed (0 vulnerabilities)
-✓ Build successful
+✓ All preflight checks passed!
+✓ Branch pushed
+✓ Pull request created: https://github.com/owner/repo/pull/123
+```
+
+### Step 3: Review the Pull Request
 ```
 
 ### Step 4: Address Any Issues
