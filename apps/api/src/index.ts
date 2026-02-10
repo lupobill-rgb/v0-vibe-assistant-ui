@@ -3,26 +3,183 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage } from './storage';
+import path from 'path';
+import fs from 'fs';
+import { execSync } from 'child_process';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
+const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 
 app.use(cors());
 app.use(express.json());
 
+// Ensure repos directory exists
+if (!fs.existsSync(REPOS_BASE_DIR)) {
+  fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
+}
+
+// POST /projects - Create a new project from template
+app.post('/projects', (req: Request, res: Response) => {
+  try {
+    const { name, template = 'empty', default_branch = 'main' } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Missing required field: name' });
+    }
+
+    const projectId = uuidv4();
+    const repoDir = path.join(REPOS_BASE_DIR, projectId);
+    
+    // Create project directory
+    fs.mkdirSync(repoDir, { recursive: true });
+    
+    // Initialize git repository
+    execSync('git init', { cwd: repoDir });
+    execSync(`git checkout -b ${default_branch}`, { cwd: repoDir });
+    
+    // Create initial README for template
+    const readmePath = path.join(repoDir, 'README.md');
+    fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
+    
+    // Configure git
+    execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
+    execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+    
+    // Initial commit
+    execSync('git add .', { cwd: repoDir });
+    execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
+
+    storage.createProject({
+      id: projectId,
+      name,
+      repo_source: 'template',
+      repo_dir: repoDir,
+      default_branch,
+      created_at: Date.now()
+    });
+
+    res.status(201).json({
+      id: projectId,
+      name,
+      repo_source: 'template',
+      default_branch,
+      message: 'Project created successfully'
+    });
+  } catch (error: any) {
+    console.error('Error creating project:', error);
+    res.status(500).json({ error: `Failed to create project: ${error.message}` });
+  }
+});
+
+// POST /projects/:id/import/github - Import project from GitHub
+app.post('/projects/:id/import/github', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const { repo_url, default_branch = 'main' } = req.body;
+
+    if (!repo_url) {
+      return res.status(400).json({ error: 'Missing required field: repo_url' });
+    }
+
+    const repoDir = path.join(REPOS_BASE_DIR, projectId);
+    
+    // Clone repository
+    const githubToken = process.env.GITHUB_TOKEN;
+    let cloneUrl = repo_url;
+    
+    if (githubToken && repo_url.includes('github.com')) {
+      // Add token to URL for authentication
+      cloneUrl = repo_url.replace('https://', `https://${githubToken}@`);
+    }
+    
+    execSync(`git clone ${cloneUrl} ${repoDir}`, { 
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+    });
+    
+    // Extract repo name from URL
+    const repoName = repo_url.split('/').pop()?.replace('.git', '') || 'imported-repo';
+
+    storage.createProject({
+      id: projectId,
+      name: repoName,
+      repo_source: 'github_import',
+      repo_dir: repoDir,
+      default_branch,
+      created_at: Date.now()
+    });
+
+    res.status(201).json({
+      id: projectId,
+      name: repoName,
+      repo_source: 'github_import',
+      default_branch,
+      message: 'Project imported successfully'
+    });
+  } catch (error: any) {
+    console.error('Error importing project:', error);
+    res.status(500).json({ error: `Failed to import project: ${error.message}` });
+  }
+});
+
+// GET /projects - List all projects
+app.get('/projects', (_req: Request, res: Response) => {
+  try {
+    const projects = storage.listProjects();
+    res.json(projects);
+  } catch (error) {
+    console.error('Error listing projects:', error);
+    res.status(500).json({ error: 'Failed to list projects' });
+  }
+});
+
+// GET /projects/:id - Get project details
+app.get('/projects/:id', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const project = storage.getProject(projectId);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    res.json(project);
+  } catch (error) {
+    console.error('Error fetching project:', error);
+    res.status(500).json({ error: 'Failed to fetch project' });
+  }
+});
+
 // POST /jobs - Create a new VIBE task
 app.post('/jobs', (req: Request, res: Response) => {
   try {
-    const { prompt, repo_url, base_branch = 'main', target_branch } = req.body;
+    const { prompt, project_id, repo_url, base_branch, target_branch } = req.body;
 
-    if (!prompt || !repo_url) {
-      return res.status(400).json({ error: 'Missing required fields: prompt, repo_url' });
+    if (!prompt) {
+      return res.status(400).json({ error: 'Missing required field: prompt' });
+    }
+
+    // Support both project-centric (Option A) and legacy mode (Mode B)
+    if (!project_id && !repo_url) {
+      return res.status(400).json({ 
+        error: 'Either project_id (recommended) or repo_url (legacy) must be provided' 
+      });
     }
 
     const taskId = uuidv4();
     const now = Date.now();
+    
+    // For project-centric jobs, get default branch from project if not specified
+    let finalBaseBranch = base_branch || 'main';
+    if (project_id) {
+      const project = storage.getProject(project_id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      finalBaseBranch = base_branch || project.default_branch;
+    }
     
     // Generate target branch name if not provided
     const finalTargetBranch = target_branch || `vibe/${taskId.slice(0, 8)}`;
@@ -30,15 +187,20 @@ app.post('/jobs', (req: Request, res: Response) => {
     storage.createTask({
       task_id: taskId,
       user_prompt: prompt,
-      repository_url: repo_url,
-      source_branch: base_branch,
+      project_id: project_id || undefined,
+      repository_url: repo_url || undefined,
+      source_branch: finalBaseBranch,
       destination_branch: finalTargetBranch,
       execution_state: 'queued',
       initiated_at: now,
       last_modified: now
     });
 
-    storage.logEvent(taskId, 'Task created and queued for execution', 'info');
+    if (repo_url) {
+      storage.logEvent(taskId, 'Task created (legacy Mode B with repo_url)', 'warning');
+    } else {
+      storage.logEvent(taskId, 'Task created and queued for execution', 'info');
+    }
 
     res.status(201).json({
       task_id: taskId,

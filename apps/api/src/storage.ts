@@ -13,17 +13,28 @@ const vibeDb = new Database(storePath);
 
 // Initialize VIBE storage schema with defined lifecycle states
 vibeDb.exec(`
+  CREATE TABLE IF NOT EXISTS vibe_projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    repo_source TEXT NOT NULL,
+    repo_dir TEXT NOT NULL,
+    default_branch TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS vibe_tasks (
     task_id TEXT PRIMARY KEY,
     user_prompt TEXT NOT NULL,
-    repository_url TEXT NOT NULL,
+    project_id TEXT,
+    repository_url TEXT,
     source_branch TEXT NOT NULL,
     destination_branch TEXT NOT NULL,
     execution_state TEXT NOT NULL,
     pull_request_link TEXT,
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
-    last_modified INTEGER NOT NULL
+    last_modified INTEGER NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -52,10 +63,22 @@ export type ExecutionState =
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
+export type RepoSource = 'template' | 'github_import';
+
+export interface VibeProject {
+  id: string;
+  name: string;
+  repo_source: RepoSource;
+  repo_dir: string;
+  default_branch: string;
+  created_at: number;
+}
+
 export interface VibeTask {
   task_id: string;
   user_prompt: string;
-  repository_url: string;
+  project_id?: string;
+  repository_url?: string;
   source_branch: string;
   destination_branch: string;
   execution_state: ExecutionState;
@@ -74,12 +97,26 @@ export interface VibeEvent {
 }
 
 class VibeStorage {
+  // Project statements
+  private projectInsert = vibeDb.prepare(`
+    INSERT INTO vibe_projects (id, name, repo_source, repo_dir, default_branch, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
+
+  private projectsAll = vibeDb.prepare(`
+    SELECT * FROM vibe_projects 
+    ORDER BY created_at DESC
+  `);
+
+  // Task statements
   private taskInsert = vibeDb.prepare(`
     INSERT INTO vibe_tasks (
-      task_id, user_prompt, repository_url, source_branch, 
+      task_id, user_prompt, project_id, repository_url, source_branch, 
       destination_branch, execution_state, iteration_count, 
       initiated_at, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
@@ -131,11 +168,33 @@ class VibeStorage {
     ORDER BY event_time ASC
   `);
 
+  // Project methods
+  createProject(project: VibeProject): void {
+    this.projectInsert.run(
+      project.id,
+      project.name,
+      project.repo_source,
+      project.repo_dir,
+      project.default_branch,
+      project.created_at
+    );
+  }
+
+  getProject(projectId: string): VibeProject | undefined {
+    return this.projectSelect.get(projectId) as VibeProject | undefined;
+  }
+
+  listProjects(): VibeProject[] {
+    return this.projectsAll.all() as VibeProject[];
+  }
+
+  // Task methods
   createTask(task: Omit<VibeTask, 'iteration_count'>): void {
     this.taskInsert.run(
       task.task_id,
       task.user_prompt,
-      task.repository_url,
+      task.project_id || null,
+      task.repository_url || null,
       task.source_branch,
       task.destination_branch,
       task.execution_state,

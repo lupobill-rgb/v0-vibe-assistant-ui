@@ -16,6 +16,9 @@ dotenv.config();
 const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS || '6', 10);
 const POLL_INTERVAL = parseInt(process.env.EXECUTOR_POLL_INTERVAL || '5000', 10);
 const GIT_TERMINAL_PROMPT_DISABLED = "0";
+// Directories for project repos and worktrees
+const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
+const WORKTREES_BASE_DIR = process.env.WORKTREES_BASE_DIR || '/data/worktrees';
 // Directory for persisting failed patches for debugging
 // Defaults to /data/patches which is mounted as a volume in docker-compose.yml
 const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
@@ -69,61 +72,68 @@ class VibeExecutor {
   }
 
   private async executeTask(task: VibeTask): Promise<void> {
-    // Create base work directory structure: .vibe/work/<task-id>/
-    const baseWorkDir = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
+    let repoDir: string;
+    let worktreeDir: string | null = null;
     let git: SimpleGit | null = null;
+    let isLegacyMode = false;
 
     try {
-      // Ensure base directory exists
-      if (!fs.existsSync(baseWorkDir)) {
-        fs.mkdirSync(baseWorkDir, { recursive: true });
-      }
-
-      // State: cloning
-      storage.updateTaskState(task.task_id, 'cloning');
-      
-      // Clone repository to base directory
-      const repoDir = path.join(baseWorkDir, 'repo');
-      storage.logEvent(task.task_id, `Base work directory: ${baseWorkDir}`, 'info');
-      storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
-
-      // Clone repository with credentialed URL
-      const cloneUrl = buildCredentialedUrl(task.repository_url);
-      
-      // Set environment variable to prevent git from prompting for credentials
-      const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
-      process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
-      
-      try {
-        await simpleGit().clone(cloneUrl, repoDir);
-      } finally {
-        // Restore original environment variable
-        if (originalGitPrompt !== undefined) {
-          process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
-        } else {
-          delete process.env.GIT_TERMINAL_PROMPT;
+      // Determine if this is project-centric (Option A) or legacy (Mode B)
+      if (task.project_id) {
+        // OPTION A: Project-centric mode
+        const project = storage.getProject(task.project_id);
+        if (!project) {
+          throw new Error(`Project not found: ${task.project_id}`);
         }
-      }
-      
-      // Directory diagnostics after clone
-      storage.logEvent(task.task_id, 'Clone completed. Running diagnostics...', 'info');
-      
-      try {
-        const files = fs.readdirSync(repoDir);
-        const fileCount = files.length;
-        const preview = files.slice(0, 10).join(', ');
-        const logMsg = fileCount <= 10 
-          ? `Directory listing (${fileCount} items): ${preview}`
-          : `Directory listing (${fileCount} items, showing first 10): ${preview}...`;
-        storage.logEvent(task.task_id, logMsg, 'info');
         
-        const readmePath = path.join(repoDir, 'README.md');
-        const readmeExists = fs.existsSync(readmePath);
-        storage.logEvent(task.task_id, `README.md exists: ${readmeExists}`, 'info');
-      } catch (error: any) {
-        storage.logEvent(task.task_id, `Directory listing failed: ${error.message}`, 'warning');
+        repoDir = project.repo_dir;
+        storage.logEvent(task.task_id, `Using project repo: ${repoDir}`, 'info');
+        
+        // Ensure repo directory exists
+        if (!fs.existsSync(repoDir)) {
+          throw new Error(`Project repo directory not found: ${repoDir}`);
+        }
+        
+      } else if (task.repository_url) {
+        // MODE B: Legacy mode (clone to temp directory)
+        isLegacyMode = true;
+        storage.logEvent(task.task_id, 'Running in legacy Mode B (repo_url)', 'warning');
+        
+        const baseWorkDir = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
+        repoDir = path.join(baseWorkDir, 'repo');
+        
+        // Ensure base directory exists
+        if (!fs.existsSync(baseWorkDir)) {
+          fs.mkdirSync(baseWorkDir, { recursive: true });
+        }
+
+        // State: cloning
+        storage.updateTaskState(task.task_id, 'cloning');
+        storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
+
+        // Clone repository with credentialed URL
+        const cloneUrl = buildCredentialedUrl(task.repository_url);
+        
+        // Set environment variable to prevent git from prompting for credentials
+        const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
+        process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
+        
+        try {
+          await simpleGit().clone(cloneUrl, repoDir);
+        } finally {
+          // Restore original environment variable
+          if (originalGitPrompt !== undefined) {
+            process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
+          } else {
+            delete process.env.GIT_TERMINAL_PROMPT;
+          }
+        }
+        
+        storage.logEvent(task.task_id, 'Clone completed', 'info');
+      } else {
+        throw new Error('Task must have either project_id or repository_url');
       }
-      
+
       git = simpleGit(repoDir);
 
       // Configure git
@@ -144,21 +154,65 @@ class VibeExecutor {
         storage.logEvent(task.task_id, `Using existing branch: ${task.destination_branch}`, 'info');
       }
 
-      // Run iteration loop with base directory and repo directory
-      await this.iterationLoop(task, baseWorkDir, repoDir, git);
+      // Create worktree for this job
+      worktreeDir = path.join(WORKTREES_BASE_DIR, task.task_id);
+      
+      // Ensure worktrees base directory exists
+      if (!fs.existsSync(WORKTREES_BASE_DIR)) {
+        fs.mkdirSync(WORKTREES_BASE_DIR, { recursive: true });
+      }
+      
+      // Remove worktree if it exists (from previous failed run)
+      if (fs.existsSync(worktreeDir)) {
+        try {
+          await git.raw(['worktree', 'remove', '--force', worktreeDir]);
+        } catch (e) {
+          // Ignore errors
+        }
+        if (fs.existsSync(worktreeDir)) {
+          fs.rmSync(worktreeDir, { recursive: true, force: true });
+        }
+      }
+      
+      // Create worktree
+      await git.raw(['worktree', 'add', worktreeDir, task.destination_branch]);
+      storage.logEvent(task.task_id, `Created worktree: ${worktreeDir}`, 'info');
+
+      // Run iteration loop with worktree directory
+      await this.iterationLoop(task, worktreeDir, git, repoDir);
 
     } catch (error: any) {
       storage.updateTaskState(task.task_id, 'failed');
       storage.logEvent(task.task_id, `Fatal error: ${error.message}`, 'error');
     } finally {
-      // Cleanup entire base work directory
-      if (fs.existsSync(baseWorkDir)) {
-        fs.rmSync(baseWorkDir, { recursive: true, force: true });
+      // Cleanup worktree
+      if (worktreeDir && fs.existsSync(worktreeDir)) {
+        try {
+          if (git) {
+            await git.raw(['worktree', 'remove', '--force', worktreeDir]);
+            storage.logEvent(task.task_id, 'Worktree cleaned up', 'info');
+          }
+        } catch (error: any) {
+          storage.logEvent(task.task_id, `Warning: Failed to remove worktree: ${error.message}`, 'warning');
+        }
+        
+        // Force remove directory if still exists
+        if (fs.existsSync(worktreeDir)) {
+          fs.rmSync(worktreeDir, { recursive: true, force: true });
+        }
+      }
+      
+      // Cleanup temp directory for legacy mode
+      if (isLegacyMode && repoDir) {
+        const baseWorkDir = path.dirname(repoDir);
+        if (fs.existsSync(baseWorkDir)) {
+          fs.rmSync(baseWorkDir, { recursive: true, force: true });
+        }
       }
     }
   }
 
-  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit): Promise<void> {
+  private async iterationLoop(task: VibeTask, worktreeDir: string, git: SimpleGit, mainRepoDir: string): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
     let fallbackFiles: Set<string> = new Set();
@@ -169,30 +223,23 @@ class VibeExecutor {
       storage.incrementIteration(task.task_id);
       storage.logEvent(task.task_id, `Starting iteration ${iteration}/${MAX_ITERATIONS}`, 'info');
 
-      // Create clean working directory for this attempt
-      const attemptWorkDir = path.join(baseWorkDir, `attempt-${iteration}`);
-      if (fs.existsSync(attemptWorkDir)) {
-        fs.rmSync(attemptWorkDir, { recursive: true, force: true });
-      }
-      fs.mkdirSync(attemptWorkDir, { recursive: true });
-      storage.logEvent(task.task_id, `Clean work directory created: ${attemptWorkDir}`, 'info');
-
-      // Reset repository to clean state before this iteration
+      // Reset worktree to clean state before this iteration
       // This ensures each attempt starts from a known good state
+      const worktreeGit = simpleGit(worktreeDir);
       try {
-        await git.reset(['--hard', 'HEAD']);
+        await worktreeGit.reset(['--hard', 'HEAD']);
         // Clean untracked files and directories
-        await git.raw(['clean', '-fd']);
-        storage.logEvent(task.task_id, 'Repository reset to clean state', 'info');
+        await worktreeGit.raw(['clean', '-fd']);
+        storage.logEvent(task.task_id, 'Worktree reset to clean state', 'info');
       } catch (error: any) {
-        storage.logEvent(task.task_id, `Warning: Failed to reset repo: ${error.message}`, 'warning');
+        storage.logEvent(task.task_id, `Warning: Failed to reset worktree: ${error.message}`, 'warning');
       }
 
       // State: building_context
       storage.updateTaskState(task.task_id, 'building_context');
       storage.logEvent(task.task_id, 'Building context from repository...', 'info');
 
-      const contextResult = await buildContext(repoDir, task.user_prompt);
+      const contextResult = await buildContext(worktreeDir, task.user_prompt);
       storage.logEvent(
         task.task_id,
         `Context built: ${contextResult.files.size} files, ${contextResult.totalSize} chars${contextResult.truncated ? ' (truncated)' : ''}`,
@@ -205,7 +252,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const result = await this.generateDiff(task.user_prompt, context, task.task_id, repoDir, globalFallback, fallbackFiles, failureFeedback);
+      const result = await this.generateDiff(task.user_prompt, context, task.task_id, worktreeDir, globalFallback, fallbackFiles, failureFeedback);
       
       if (!result.diff) {
         consecutiveDiffFailures++;
@@ -241,7 +288,7 @@ class VibeExecutor {
         storage.updateTaskState(task.task_id, 'running_preflight');
         storage.logEvent(task.task_id, 'Running preflight checks...', 'info');
 
-        const preflightResult = await runPreflightChecks(repoDir, (stage, output) => {
+        const preflightResult = await runPreflightChecks(worktreeDir, (stage, output) => {
           storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
         });
 
@@ -249,8 +296,8 @@ class VibeExecutor {
           storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
           
           // Check if there are any commits on the branch
-          const status = await git.status();
-          const log = await git.log({ from: task.source_branch, to: task.destination_branch });
+          const status = await worktreeGit.status();
+          const log = await worktreeGit.log({ from: task.source_branch, to: task.destination_branch });
           
           if (log.total === 0 && status.isClean()) {
             // No commits and working directory is clean - skip PR creation
@@ -260,7 +307,7 @@ class VibeExecutor {
           }
           
           // There are commits, create PR
-          await this.createPullRequest(task, git);
+          await this.createPullRequest(task, git, worktreeGit);
           return;
         } else {
           storage.logEvent(
@@ -276,9 +323,9 @@ class VibeExecutor {
 
       // State: applying_diff
       storage.updateTaskState(task.task_id, 'applying_diff');
-      storage.logEvent(task.task_id, 'Applying diff to repository...', 'info');
+      storage.logEvent(task.task_id, 'Applying diff to worktree...', 'info');
 
-      const applyResult = await this.applyDiff(repoDir, attemptWorkDir, diff, task.task_id, iteration);
+      const applyResult = await this.applyDiff(worktreeDir, diff, task.task_id, iteration);
       
       if (!applyResult.success) {
         consecutiveApplyFailures++;
@@ -324,23 +371,23 @@ class VibeExecutor {
       globalFallback = false;
       failureFeedback = null;
 
-      // Commit the changes
-      await git.add('.');
-      await git.commit(`VIBE iteration ${iteration}: ${task.user_prompt.slice(0, 50)}`);
+      // Commit the changes in worktree
+      await worktreeGit.add('.');
+      await worktreeGit.commit(`VIBE iteration ${iteration}: ${task.user_prompt.slice(0, 50)}`);
       storage.logEvent(task.task_id, `Changes committed (iteration ${iteration})`, 'success');
 
       // State: running_preflight
       storage.updateTaskState(task.task_id, 'running_preflight');
-      storage.logEvent(task.task_id, 'Running preflight checks...', 'info');
+      storage.logEvent(task.task_id, 'Running preflight checks from worktree...', 'info');
 
-      const preflightResult = await runPreflightChecks(repoDir, (stage, output) => {
+      const preflightResult = await runPreflightChecks(worktreeDir, (stage, output) => {
         storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
       });
 
       if (preflightResult.success) {
         // All checks passed! Create PR
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-        await this.createPullRequest(task, git);
+        await this.createPullRequest(task, git, worktreeGit);
         return;
       } else {
         storage.logEvent(
@@ -450,7 +497,7 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
-          temperature: 0.3,
+          temperature: 0,
           max_tokens: 4000
         });
 
@@ -531,105 +578,60 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
     return files;
   }
 
-  private async applyDiff(repoDir: string, attemptWorkDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
+  private async applyDiff(worktreeDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
     // Normalize line endings before any processing (CRLF and CR to LF)
     let patch = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     // Ensure exactly one trailing newline
     patch = patch.trimEnd() + '\n';
     
-    // Use attemptWorkDir for worktree to ensure clean isolation per attempt
-    const tempWorktreePath = path.join(attemptWorkDir, 'worktree');
-    
     try {
-      storage.logEvent(taskId, `Creating temporary worktree at ${tempWorktreePath}...`, 'info');
-
-      // Get current branch name from the working directory
-      const mainGit = simpleGit(repoDir);
-      const currentBranch = await mainGit.revparse(['--abbrev-ref', 'HEAD']);
-      
       // Check applicability first with validateDiffApplicability
-      const checkResult = validateDiffApplicability(patch, repoDir);
+      const checkResult = validateDiffApplicability(patch, worktreeDir);
       if (!checkResult.valid) {
         storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
         // Persist failed patch for debugging
         await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: checkResult.error };
       }
-      
-      // Add worktree pointing to current branch
-      await mainGit.raw(['worktree', 'add', '--detach', tempWorktreePath, 'HEAD']);
-      storage.logEvent(taskId, `Temporary worktree created at ${tempWorktreePath}`, 'success');
 
-      // Write diff to patch file in temp worktree
-      const patchFilePath = path.join(tempWorktreePath, 'patch.diff');
+      // Apply diff directly to worktree
+      storage.logEvent(taskId, 'Applying diff to worktree...', 'info');
+      const worktreeGit = simpleGit(worktreeDir);
+      
+      // Write diff to patch file in worktree
+      const patchFilePath = path.join(worktreeDir, '.vibe-diff.patch');
       fs.writeFileSync(patchFilePath, patch, { encoding: 'utf-8' });
       
-      // Run git apply --check in temp worktree
-      storage.logEvent(taskId, 'Running git apply --check in temporary worktree...', 'info');
-      const worktreeGit = simpleGit(tempWorktreePath);
-      
       try {
-        await worktreeGit.raw(['apply', '--check', 'patch.diff']);
-        storage.logEvent(taskId, '✓ Preflight check passed in temporary worktree', 'success');
-      } catch (checkError: any) {
-        storage.logEvent(taskId, `✗ Preflight check failed: ${checkError.message}`, 'error');
-        const errorOutput = [checkError.message, checkError.stderr, checkError.stdout].filter(Boolean).join('\n');
-        if (checkError.stderr) {
-          storage.logEvent(taskId, `git apply stderr: ${checkError.stderr}`, 'error');
+        await worktreeGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
+        storage.logEvent(taskId, 'Diff applied successfully', 'success');
+      } catch (applyError: any) {
+        const errorOutput = [applyError.message, applyError.stderr, applyError.stdout].filter(Boolean).join('\n');
+        if (applyError.stderr) {
+          storage.logEvent(taskId, `git apply stderr: ${applyError.stderr}`, 'error');
         }
-        if (checkError.stdout) {
-          storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
-        }
-        // Clean up worktree before returning
-        try {
-          await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
-        } catch (cleanupError) {
-          // Ignore cleanup errors
+        if (applyError.stdout) {
+          storage.logEvent(taskId, `git apply stdout: ${applyError.stdout}`, 'error');
         }
         // Persist failed patch for debugging
         await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: errorOutput };
+      } finally {
+        // Clean up patch file
+        if (fs.existsSync(patchFilePath)) {
+          fs.unlinkSync(patchFilePath);
+        }
       }
 
-      // Clean up worktree after successful preflight check
-      try {
-        await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
-        storage.logEvent(taskId, 'Temporary worktree cleaned up', 'info');
-      } catch (cleanupError: any) {
-        storage.logEvent(taskId, `Warning: Failed to clean up worktree: ${cleanupError.message}`, 'warning');
-      }
-
-      // Preflight passed, now apply to real working directory
-      storage.logEvent(taskId, 'Applying diff to real working directory...', 'info');
-      const realPatchPath = path.join(repoDir, '.vibe-diff.patch');
-      fs.writeFileSync(realPatchPath, patch, { encoding: 'utf-8' });
-      
-      await mainGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
-      
-      // Clean up patch file from real working directory
-      fs.unlinkSync(realPatchPath);
-
-      storage.logEvent(taskId, 'Diff applied successfully', 'success');
       return { success: true };
 
     } catch (error: any) {
       const errorMessage = error.message || String(error);
       storage.logEvent(taskId, `Git apply failed: ${errorMessage}`, 'error');
       
-      // Try to clean up worktree if it exists
-      try {
-        const mainGit = simpleGit(repoDir);
-        if (fs.existsSync(tempWorktreePath)) {
-          await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
-        }
-      } catch (cleanupError) {
-        // Ignore cleanup errors
-      }
-      
       // Persist failed patch for debugging
       await this.persistFailedPatch(patch, taskId, iteration);
       return { success: false, error: errorMessage };
-    }
   }
 
   /**
@@ -687,18 +689,48 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
     }
   }
 
-  private async createPullRequest(task: VibeTask, git: SimpleGit): Promise<void> {
+  private async createPullRequest(task: VibeTask, mainGit: SimpleGit, worktreeGit: SimpleGit): Promise<void> {
     try {
       storage.updateTaskState(task.task_id, 'creating_pr');
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
-      // Push branch
-      await git.push('origin', task.destination_branch, ['--force']);
+      // Push branch from main repo (not worktree)
+      await mainGit.push('origin', task.destination_branch, ['--force']);
       storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
+
+      // Determine repository URL
+      let repoUrl: string;
+      if (task.project_id) {
+        const project = storage.getProject(task.project_id);
+        if (!project) {
+          throw new Error(`Project not found: ${task.project_id}`);
+        }
+        
+        // Try to get remote URL from the repository
+        try {
+          const remotes = await mainGit.getRemotes(true);
+          const origin = remotes.find(r => r.name === 'origin');
+          if (origin && origin.refs.fetch) {
+            repoUrl = origin.refs.fetch;
+          } else {
+            storage.logEvent(task.task_id, 'No GitHub remote found, PR creation skipped', 'warning');
+            storage.updateTaskState(task.task_id, 'completed');
+            return;
+          }
+        } catch (error: any) {
+          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}`, 'warning');
+          storage.updateTaskState(task.task_id, 'completed');
+          return;
+        }
+      } else if (task.repository_url) {
+        repoUrl = task.repository_url;
+      } else {
+        throw new Error('Task has neither project_id nor repository_url');
+      }
 
       // Create PR
       const prResult = await createGitHubPr({
-        repoUrl: task.repository_url,
+        repoUrl,
         sourceBranch: task.source_branch,
         targetBranch: task.destination_branch,
         prompt: task.user_prompt,
