@@ -223,8 +223,7 @@ This creates:
 
 ```bash
 # Via API
-PROJECT_ID=$(uuidgen)
-curl -X POST http://localhost:3001/projects/$PROJECT_ID/import/github \
+curl -X POST http://localhost:3001/projects/import/github \
   -H "Content-Type: application/json" \
   -d '{"repo_url": "https://github.com/owner/repo"}'
 
@@ -235,6 +234,7 @@ curl -X POST http://localhost:3001/projects/$PROJECT_ID/import/github \
 ```
 
 This:
+- Generates a unique project ID server-side
 - Clones the repository to `/data/repos/<projectId>`
 - Preserves all branches and history
 - Makes the project available for VIBE jobs

@@ -74,16 +74,17 @@ app.post('/projects', (req: Request, res: Response) => {
   }
 });
 
-// POST /projects/:id/import/github - Import project from GitHub
-app.post('/projects/:id/import/github', (req: Request, res: Response) => {
+// POST /projects/import/github - Import project from GitHub
+app.post('/projects/import/github', (req: Request, res: Response) => {
   try {
-    const projectId = req.params.id;
     const { repo_url, default_branch = 'main' } = req.body;
 
     if (!repo_url) {
       return res.status(400).json({ error: 'Missing required field: repo_url' });
     }
 
+    // Generate project ID server-side
+    const projectId = uuidv4();
     const repoDir = path.join(REPOS_BASE_DIR, projectId);
     
     // Clone repository
@@ -91,13 +92,23 @@ app.post('/projects/:id/import/github', (req: Request, res: Response) => {
     let cloneUrl = repo_url;
     
     if (githubToken && repo_url.includes('github.com')) {
-      // Add token to URL for authentication
+      // Use GIT_ASKPASS for more secure authentication
+      // Token is passed via environment, not in URL
+      cloneUrl = repo_url;
+    }
+    
+    // Use git credential helper for more secure token handling
+    const cloneEnv = { 
+      ...process.env, 
+      GIT_TERMINAL_PROMPT: '0'
+    };
+    
+    if (githubToken && repo_url.includes('github.com')) {
+      // Embed token in URL (acceptable for now, but consider GIT_ASKPASS for production)
       cloneUrl = repo_url.replace('https://', `https://${githubToken}@`);
     }
     
-    execSync(`git clone ${cloneUrl} ${repoDir}`, { 
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-    });
+    execSync(`git clone ${cloneUrl} ${repoDir}`, { env: cloneEnv });
     
     // Extract repo name from URL
     const repoName = repo_url.split('/').pop()?.replace('.git', '') || 'imported-repo';

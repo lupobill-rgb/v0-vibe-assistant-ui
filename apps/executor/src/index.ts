@@ -497,6 +497,9 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
+          // Temperature 0 ensures deterministic outputs for diff generation.
+          // This is critical to prevent non-deterministic formatting variations
+          // and ensure reproducible results across retries.
           temperature: 0,
           max_tokens: 4000
         });

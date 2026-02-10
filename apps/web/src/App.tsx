@@ -157,10 +157,7 @@ function App() {
     }
 
     try {
-      // First create a project ID
-      const projectId = crypto.randomUUID();
-      
-      const response = await fetch(`${API_URL}/projects/${projectId}/import/github`, {
+      const response = await fetch(`${API_URL}/projects/import/github`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_url: importRepoUrl }),
