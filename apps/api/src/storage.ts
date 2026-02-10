@@ -13,17 +13,28 @@ const vibeDb = new Database(storePath);
 
 // Initialize VIBE storage schema with defined lifecycle states
 vibeDb.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    project_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    repository_url TEXT NOT NULL,
+    local_path TEXT NOT NULL,
+    last_synced INTEGER,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS vibe_tasks (
     task_id TEXT PRIMARY KEY,
     user_prompt TEXT NOT NULL,
-    repository_url TEXT NOT NULL,
+    project_id TEXT,
+    repository_url TEXT,
     source_branch TEXT NOT NULL,
     destination_branch TEXT NOT NULL,
     execution_state TEXT NOT NULL,
     pull_request_link TEXT,
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
-    last_modified INTEGER NOT NULL
+    last_modified INTEGER NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(project_id)
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -36,6 +47,7 @@ vibeDb.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_events_by_task ON vibe_events(task_id, event_time);
+  CREATE INDEX IF NOT EXISTS idx_tasks_by_project ON vibe_tasks(project_id);
 `);
 
 // Lifecycle states as defined in requirements
@@ -52,10 +64,20 @@ export type ExecutionState =
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
+export interface Project {
+  project_id: string;
+  name: string;
+  repository_url: string;
+  local_path: string;
+  last_synced?: number;
+  created_at: number;
+}
+
 export interface VibeTask {
   task_id: string;
   user_prompt: string;
-  repository_url: string;
+  project_id?: string;
+  repository_url?: string;
   source_branch: string;
   destination_branch: string;
   execution_state: ExecutionState;
@@ -74,12 +96,31 @@ export interface VibeEvent {
 }
 
 class VibeStorage {
+  // Project statements
+  private projectInsert = vibeDb.prepare(`
+    INSERT INTO projects (project_id, name, repository_url, local_path, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE project_id = ?`);
+  private projectSelectByName = vibeDb.prepare(`SELECT * FROM projects WHERE name = ?`);
+  private projectsList = vibeDb.prepare(`SELECT * FROM projects ORDER BY created_at DESC`);
+  
+  private projectUpdateSync = vibeDb.prepare(`
+    UPDATE projects 
+    SET last_synced = ? 
+    WHERE project_id = ?
+  `);
+
+  private projectDelete = vibeDb.prepare(`DELETE FROM projects WHERE project_id = ?`);
+
+  // Task statements - updated to support project_id
   private taskInsert = vibeDb.prepare(`
     INSERT INTO vibe_tasks (
-      task_id, user_prompt, repository_url, source_branch, 
+      task_id, user_prompt, project_id, repository_url, source_branch, 
       destination_branch, execution_state, iteration_count, 
       initiated_at, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
@@ -135,7 +176,8 @@ class VibeStorage {
     this.taskInsert.run(
       task.task_id,
       task.user_prompt,
-      task.repository_url,
+      task.project_id || null,
+      task.repository_url || null,
       task.source_branch,
       task.destination_branch,
       task.execution_state,
@@ -179,6 +221,37 @@ class VibeStorage {
 
   getEventsAfter(taskId: string, afterTime: number): VibeEvent[] {
     return this.eventsAfterTime.all(taskId, afterTime) as VibeEvent[];
+  }
+
+  // Project management methods
+  createProject(project: Omit<Project, 'last_synced'>): void {
+    this.projectInsert.run(
+      project.project_id,
+      project.name,
+      project.repository_url,
+      project.local_path,
+      project.created_at
+    );
+  }
+
+  getProject(projectId: string): Project | undefined {
+    return this.projectSelect.get(projectId) as Project | undefined;
+  }
+
+  getProjectByName(name: string): Project | undefined {
+    return this.projectSelectByName.get(name) as Project | undefined;
+  }
+
+  listProjects(): Project[] {
+    return this.projectsList.all() as Project[];
+  }
+
+  updateProjectSync(projectId: string): void {
+    this.projectUpdateSync.run(Date.now(), projectId);
+  }
+
+  deleteProject(projectId: string): void {
+    this.projectDelete.run(projectId);
   }
 }
 

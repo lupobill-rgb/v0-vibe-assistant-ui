@@ -10,9 +10,20 @@ interface LogEvent {
   event_time: number;
 }
 
+interface Project {
+  project_id: string;
+  name: string;
+  repository_url: string;
+  local_path: string;
+  last_synced?: number;
+  created_at: number;
+}
+
 function App() {
   const [prompt, setPrompt] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
+  const [useLegacyMode, setUseLegacyMode] = useState(false);
   const [baseBranch, setBaseBranch] = useState('main');
   const [targetBranch, setTargetBranch] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -20,7 +31,24 @@ function App() {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<string>('');
+  const [projects, setProjects] = useState<Project[]>([]);
   const logContainerRef = useRef<HTMLDivElement>(null);
+
+  // Load projects on mount
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const response = await fetch(`${API_URL}/projects`);
+        if (response.ok) {
+          const data = await response.json();
+          setProjects(data);
+        }
+      } catch (error) {
+        console.error('Error loading projects:', error);
+      }
+    };
+    loadProjects();
+  }, []);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -87,9 +115,22 @@ function App() {
   }, [taskId, isRunning, prUrl]);
 
   const handleRun = async () => {
-    if (!prompt.trim() || !repoUrl.trim()) {
-      alert('Please provide a prompt and repository URL');
+    // Validate inputs based on mode
+    if (!prompt.trim()) {
+      alert('Please provide a prompt');
       return;
+    }
+
+    if (useLegacyMode) {
+      if (!repoUrl.trim()) {
+        alert('Please provide a repository URL');
+        return;
+      }
+    } else {
+      if (!projectId) {
+        alert('Please select a project');
+        return;
+      }
     }
 
     setIsRunning(true);
@@ -99,17 +140,24 @@ function App() {
     setTaskStatus('');
 
     try {
+      const body: any = {
+        prompt,
+        base_branch: baseBranch || 'main',
+        target_branch: targetBranch || undefined,
+      };
+
+      if (useLegacyMode) {
+        body.repo_url = repoUrl;
+      } else {
+        body.project_id = projectId;
+      }
+
       const response = await fetch(`${API_URL}/jobs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          prompt,
-          repo_url: repoUrl,
-          base_branch: baseBranch || 'main',
-          target_branch: targetBranch || undefined,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
@@ -150,18 +198,54 @@ function App() {
 
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="repoUrl">Repository URL</label>
-              <input
-                id="repoUrl"
-                type="text"
-                className="text-input"
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                placeholder="https://github.com/owner/repo"
-                disabled={isRunning}
-              />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={useLegacyMode}
+                  onChange={(e) => setUseLegacyMode(e.target.checked)}
+                  disabled={isRunning}
+                />
+                {' '}Use Legacy Mode (Repository URL)
+              </label>
             </div>
           </div>
+
+          {!useLegacyMode ? (
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="projectId">Project</label>
+                <select
+                  id="projectId"
+                  className="text-input"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  disabled={isRunning}
+                >
+                  <option value="">Select a project...</option>
+                  {projects.map((project) => (
+                    <option key={project.project_id} value={project.project_id}>
+                      {project.name} ({project.repository_url})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="repoUrl">Repository URL (Deprecated)</label>
+                <input
+                  id="repoUrl"
+                  type="text"
+                  className="text-input"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  placeholder="https://github.com/owner/repo"
+                  disabled={isRunning}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="form-row">
             <div className="form-group">
@@ -194,7 +278,7 @@ function App() {
           <button
             className="run-button"
             onClick={handleRun}
-            disabled={isRunning || !prompt.trim() || !repoUrl.trim()}
+            disabled={isRunning || !prompt.trim() || (useLegacyMode ? !repoUrl.trim() : !projectId)}
           >
             {isRunning ? 'Running...' : 'Run'}
           </button>

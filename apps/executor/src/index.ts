@@ -72,6 +72,9 @@ class VibeExecutor {
     // Create base work directory structure: .vibe/work/<task-id>/
     const baseWorkDir = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
     let git: SimpleGit | null = null;
+    let repoDir: string;
+    let repoUrl: string;
+    let isProjectMode = false;
 
     try {
       // Ensure base directory exists
@@ -79,34 +82,94 @@ class VibeExecutor {
         fs.mkdirSync(baseWorkDir, { recursive: true });
       }
 
-      // State: cloning
-      storage.updateTaskState(task.task_id, 'cloning');
-      
-      // Clone repository to base directory
-      const repoDir = path.join(baseWorkDir, 'repo');
-      storage.logEvent(task.task_id, `Base work directory: ${baseWorkDir}`, 'info');
-      storage.logEvent(task.task_id, `Cloning repository: ${task.repository_url}`, 'info');
-
-      // Clone repository with credentialed URL
-      const cloneUrl = buildCredentialedUrl(task.repository_url);
-      
-      // Set environment variable to prevent git from prompting for credentials
-      const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
-      process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
-      
-      try {
-        await simpleGit().clone(cloneUrl, repoDir);
-      } finally {
-        // Restore original environment variable
-        if (originalGitPrompt !== undefined) {
-          process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
-        } else {
-          delete process.env.GIT_TERMINAL_PROMPT;
+      // Determine if this is project-centric mode (OPTION A) or legacy mode (Mode B)
+      if (task.project_id) {
+        // OPTION A: Project-centric mode - use cached repo
+        isProjectMode = true;
+        const project = storage.getProject(task.project_id);
+        
+        if (!project) {
+          throw new Error(`Project not found: ${task.project_id}`);
         }
+
+        repoDir = project.local_path;
+        repoUrl = project.repository_url;
+
+        storage.logEvent(task.task_id, `Using project: ${project.name} (${task.project_id})`, 'info');
+        storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
+
+        // Ensure project directory exists
+        if (!fs.existsSync(repoDir)) {
+          storage.logEvent(task.task_id, `Project cache not initialized. Cloning repository...`, 'info');
+          storage.updateTaskState(task.task_id, 'cloning');
+          
+          // Ensure parent directory exists
+          const reposDir = path.dirname(repoDir);
+          if (!fs.existsSync(reposDir)) {
+            fs.mkdirSync(reposDir, { recursive: true });
+          }
+
+          const cloneUrl = buildCredentialedUrl(repoUrl);
+          const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
+          process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
+          
+          try {
+            await simpleGit().clone(cloneUrl, repoDir);
+            storage.updateProjectSync(task.project_id);
+          } finally {
+            if (originalGitPrompt !== undefined) {
+              process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
+            } else {
+              delete process.env.GIT_TERMINAL_PROMPT;
+            }
+          }
+          
+          storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
+        } else {
+          // Project cache exists - sync with remote
+          storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
+          git = simpleGit(repoDir);
+          
+          try {
+            await git.fetch(['--all', '--prune']);
+            storage.updateProjectSync(task.project_id);
+            storage.logEvent(task.task_id, 'Project cache synced', 'success');
+          } catch (error: any) {
+            storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
+          }
+        }
+      } else if (task.repository_url) {
+        // Legacy Mode B: Clone to temporary directory
+        isProjectMode = false;
+        storage.logEvent(task.task_id, '[DEPRECATED] Using legacy Mode B with repo_url', 'warning');
+        
+        repoDir = path.join(baseWorkDir, 'repo');
+        repoUrl = task.repository_url;
+
+        storage.updateTaskState(task.task_id, 'cloning');
+        storage.logEvent(task.task_id, `Base work directory: ${baseWorkDir}`, 'info');
+        storage.logEvent(task.task_id, `Cloning repository: ${repoUrl}`, 'info');
+
+        const cloneUrl = buildCredentialedUrl(repoUrl);
+        const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
+        process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
+        
+        try {
+          await simpleGit().clone(cloneUrl, repoDir);
+        } finally {
+          if (originalGitPrompt !== undefined) {
+            process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
+          } else {
+            delete process.env.GIT_TERMINAL_PROMPT;
+          }
+        }
+        
+        storage.logEvent(task.task_id, 'Clone completed', 'success');
+      } else {
+        throw new Error('Task has neither project_id nor repository_url');
       }
       
-      // Directory diagnostics after clone
-      storage.logEvent(task.task_id, 'Clone completed. Running diagnostics...', 'info');
+      // Directory diagnostics
       
       try {
         const files = fs.readdirSync(repoDir);
@@ -145,20 +208,41 @@ class VibeExecutor {
       }
 
       // Run iteration loop with base directory and repo directory
-      await this.iterationLoop(task, baseWorkDir, repoDir, git);
+      await this.iterationLoop(task, baseWorkDir, repoDir, git, repoUrl);
 
     } catch (error: any) {
       storage.updateTaskState(task.task_id, 'failed');
       storage.logEvent(task.task_id, `Fatal error: ${error.message}`, 'error');
     } finally {
-      // Cleanup entire base work directory
-      if (fs.existsSync(baseWorkDir)) {
-        fs.rmSync(baseWorkDir, { recursive: true, force: true });
+      // Cleanup: Only delete temporary work directories
+      // In project mode, preserve the project cache at /data/repos/
+      if (!isProjectMode) {
+        // Legacy mode: cleanup the entire base work directory including cloned repo
+        if (fs.existsSync(baseWorkDir)) {
+          fs.rmSync(baseWorkDir, { recursive: true, force: true });
+        }
+      } else {
+        // Project mode: only cleanup temporary work directories, not the project cache
+        if (fs.existsSync(baseWorkDir)) {
+          const attemptDirs = fs.readdirSync(baseWorkDir).filter(name => name.startsWith('attempt-'));
+          for (const dir of attemptDirs) {
+            const dirPath = path.join(baseWorkDir, dir);
+            if (fs.existsSync(dirPath)) {
+              fs.rmSync(dirPath, { recursive: true, force: true });
+            }
+          }
+          // Remove the base work directory if it's empty or only has attempt dirs
+          try {
+            fs.rmSync(baseWorkDir, { recursive: true, force: true });
+          } catch (error) {
+            // Ignore cleanup errors
+          }
+        }
       }
     }
   }
 
-  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit): Promise<void> {
+  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
     let fallbackFiles: Set<string> = new Set();
@@ -260,7 +344,7 @@ class VibeExecutor {
           }
           
           // There are commits, create PR
-          await this.createPullRequest(task, git);
+          await this.createPullRequest(task, git, repoUrl);
           return;
         } else {
           storage.logEvent(
@@ -340,7 +424,7 @@ class VibeExecutor {
       if (preflightResult.success) {
         // All checks passed! Create PR
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-        await this.createPullRequest(task, git);
+        await this.createPullRequest(task, git, repoUrl);
         return;
       } else {
         storage.logEvent(
@@ -765,7 +849,7 @@ diff --git a/example.js b/example.js
     }
   }
 
-  private async createPullRequest(task: VibeTask, git: SimpleGit): Promise<void> {
+  private async createPullRequest(task: VibeTask, git: SimpleGit, repoUrl: string): Promise<void> {
     try {
       storage.updateTaskState(task.task_id, 'creating_pr');
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
@@ -776,7 +860,7 @@ diff --git a/example.js b/example.js
 
       // Create PR
       const prResult = await createGitHubPr({
-        repoUrl: task.repository_url,
+        repoUrl: repoUrl,
         sourceBranch: task.source_branch,
         targetBranch: task.destination_branch,
         prompt: task.user_prompt,
