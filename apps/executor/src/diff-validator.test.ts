@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, validateDiffApplicability, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced } from './diff-validator';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -72,7 +72,7 @@ diff --git a/src/login.js b/src/login.js
     
     const result = validateUnifiedDiff(incompleteDiff);
     assert.strictEqual(result.valid, false);
-    assert.ok(result.error?.includes('file markers'));
+    assert.ok(result.error?.includes('missing --- header') || result.error?.includes('missing +++ header'));
   });
 
   it('should reject incomplete diff (missing hunk markers)', () => {
@@ -417,5 +417,236 @@ describe('DiffValidator - Invalid Diff Line Format', () => {
     
     const result = validateUnifiedDiff(diffWithNoNewline);
     assert.strictEqual(result.valid, true);
+  });
+});
+
+describe('sanitizeUnifiedDiff', () => {
+  it('should extract diff when it starts with diff --git', () => {
+    const input = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(result.startsWith('diff --git'));
+  });
+
+  it('should return null when diff --git is missing', () => {
+    const input = `This is just some text
+without any diff markers
+at all`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.strictEqual(result, null);
+  });
+
+  it('should extract diff from middle of text', () => {
+    const input = `Here is some explanation text
+that comes before the diff.
+
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(result.startsWith('diff --git'));
+    assert.ok(!result.includes('Here is some explanation'));
+  });
+
+  it('should remove trailing markdown code fences', () => {
+    const input = `Some text before
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+\`\`\``;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(!result.includes('```'));
+    assert.ok(result.endsWith('line3'));
+  });
+
+  it('should trim whitespace', () => {
+    const input = `  
+    diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+    `;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(result.startsWith('diff --git'));
+    assert.ok(!result.startsWith(' '));
+  });
+
+  it('should handle markdown code fence with diff label', () => {
+    const input = `\`\`\`diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+\`\`\``;
+    
+    const result = sanitizeUnifiedDiff(input);
+    assert.ok(result !== null);
+    assert.ok(!result.includes('```'));
+    assert.ok(result.startsWith('diff --git'));
+  });
+});
+
+describe('validateUnifiedDiffEnhanced', () => {
+  it('should return ok: true for valid diff', () => {
+    const validDiff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(validDiff);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.errors.length, 0);
+  });
+
+  it('should detect missing --- header', () => {
+    const invalidDiff = `diff --git a/test.js b/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('missing --- header')));
+  });
+
+  it('should detect missing +++ header', () => {
+    const invalidDiff = `diff --git a/test.js b/test.js
+--- a/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('missing +++ header')));
+  });
+
+  it('should detect missing both headers', () => {
+    const invalidDiff = `diff --git a/test.js b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('missing --- header')));
+    assert.ok(result.errors.some(e => e.includes('missing +++ header')));
+  });
+
+  it('should validate multiple file blocks', () => {
+    const multiFileDiff = `diff --git a/file1.js b/file1.js
+--- a/file1.js
++++ b/file1.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+diff --git a/file2.js b/file2.js
+--- a/file2.js
++++ b/file2.js
+@@ -1,2 +1,3 @@
+ lineA
++lineB
+ lineC`;
+    
+    const result = validateUnifiedDiffEnhanced(multiFileDiff);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.errors.length, 0);
+  });
+
+  it('should detect missing headers in second file block', () => {
+    const multiFileDiff = `diff --git a/file1.js b/file1.js
+--- a/file1.js
++++ b/file1.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+diff --git a/file2.js b/file2.js
+@@ -1,2 +1,3 @@
+ lineA
++lineB
+ lineC`;
+    
+    const result = validateUnifiedDiffEnhanced(multiFileDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('file2.js') && e.includes('missing --- header')));
+    assert.ok(result.errors.some(e => e.includes('file2.js') && e.includes('missing +++ header')));
+  });
+
+  it('should reject content before first diff --git', () => {
+    const invalidDiff = `Some text before the diff
+diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.some(e => e.includes('content before the first diff --git')));
+  });
+
+  it('should reject diff with no file blocks', () => {
+    const invalidDiff = `Just some random text
+without any proper diff structure
+but enough lines to not be
+rejected as too short`;
+    
+    const result = validateUnifiedDiffEnhanced(invalidDiff);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.errors.length > 0);
+    assert.ok(result.errors.some(e => e.includes('Missing unified diff header') || e.includes('no file blocks')));
+  });
+
+  it('should allow /dev/null headers for new/deleted files', () => {
+    const newFileDiff = `diff --git a/newfile.js b/newfile.js
+--- /dev/null
++++ b/newfile.js
+@@ -0,0 +1,3 @@
++line1
++line2
++line3`;
+    
+    const result = validateUnifiedDiffEnhanced(newFileDiff);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.errors.length, 0);
   });
 });

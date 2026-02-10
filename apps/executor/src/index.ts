@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, validateDiffApplicability } from './diff-validator';
+import { validateUnifiedDiff, extractDiff, validateDiffApplicability, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
@@ -298,16 +298,25 @@ Generate a unified diff to implement this request. Output ONLY the diff, nothing
       const rawOutput = response.choices[0]?.message?.content || '';
       storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
-      // Extract and validate diff
-      const diff = extractDiff(rawOutput);
-      const validation = validateUnifiedDiff(diff);
-
-      if (!validation.valid) {
-        storage.logEvent(taskId, `Invalid diff: ${validation.error}`, 'error');
+      // Sanitize the raw output first
+      const sanitized = sanitizeUnifiedDiff(rawOutput);
+      if (sanitized === null) {
+        storage.logEvent(taskId, 'LLM output missing diff --git header; will retry', 'error');
         return null;
       }
 
-      storage.logEvent(taskId, `Valid diff generated (${validation.lineCount} lines)`, 'success');
+      // Extract and validate diff
+      const diff = extractDiff(sanitized);
+      const enhancedValidation = validateUnifiedDiffEnhanced(diff);
+
+      if (!enhancedValidation.ok) {
+        const errorMsg = enhancedValidation.errors.join('; ');
+        storage.logEvent(taskId, `Invalid diff: ${errorMsg}`, 'error');
+        return null;
+      }
+
+      const lineCount = diff.split('\n').length;
+      storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
       return diff;
 
     } catch (error: any) {
