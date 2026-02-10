@@ -8,6 +8,7 @@ VIBE is an intelligent coding assistant that streamlines your development workfl
 ## Table of Contents
 
 - [Features](#features)
+- [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -27,6 +28,102 @@ VIBE is an intelligent coding assistant that streamlines your development workfl
 - 🚀 **Automated PR Creation**: Open pull requests directly from the command line
 - 🔍 **Code Review Integration**: Get automated feedback before submitting
 - 🛡️ **Security Scanning**: Built-in CodeQL vulnerability detection
+
+## Architecture
+
+VIBE supports two operational modes:
+
+### Mode A: Project-Based (Recommended)
+
+**Status**: In Development
+
+Mode A is designed for managing persistent projects with pre-imported repositories. This mode provides:
+
+- **Project Management**: Create and manage multiple projects
+- **GitHub Repository Import**: Import repositories from GitHub into local storage
+- **Persistent Storage**: Projects are stored in `/data/repos` with associated metadata
+- **Worktree Isolation**: Each job execution uses dedicated worktrees in `/data/worktrees`
+- **Efficient Operations**: No need to re-clone repositories for each job
+
+#### Data Directory Layout
+
+```
+/data/
+├── vibe.db              # SQLite database (tasks, events, projects)
+├── repos/               # Permanent repository storage
+│   ├── <project-1>/     # Git repository for project 1
+│   ├── <project-2>/     # Git repository for project 2
+│   └── ...
+├── worktrees/           # Temporary worktrees for isolated testing
+│   ├── <task-id-1>/     # Worktree for task 1
+│   ├── <task-id-2>/     # Worktree for task 2
+│   └── ...
+└── patches/             # Failed patches for debugging
+    ├── <task-id>-iter1.diff
+    └── ...
+```
+
+#### How Mode A Works
+
+1. **Create Project**: Define a project with a unique ID and description
+2. **Import Repository**: Import a GitHub repository into `/data/repos/<project-id>`
+3. **Run Jobs**: Submit prompts against the project
+4. **Isolated Execution**: Each job creates a temporary worktree in `/data/worktrees/<task-id>`
+5. **Apply Changes**: Validated diffs are applied and changes are committed
+6. **Create PR**: Push to target branch and open pull request
+7. **Cleanup**: Worktrees are automatically removed after completion
+
+#### Mode A Commands (Coming Soon)
+
+```bash
+# Create a new project
+vibe project create my-app --description "My application"
+
+# Import a GitHub repository
+vibe project import my-app https://github.com/owner/repo
+
+# List projects
+vibe project list
+
+# Run a job against a project
+vibe job create my-app --prompt "Add user authentication"
+
+# View project details
+vibe project show my-app
+```
+
+### Mode B: Direct Repository URL (Legacy)
+
+**Status**: Fully Functional
+
+Mode B is the current implementation that accepts a `repo_url` parameter for each job. This mode:
+
+- Clones the repository fresh for each job into temporary storage
+- Executes the job in the cloned repository
+- Cleans up the clone after completion
+- **Use Case**: Quick one-off jobs without project setup
+- **Limitation**: Less efficient for repeated operations on the same repository
+
+#### When to Use Mode B
+
+- Quick experimentation with a repository
+- One-time fixes or updates
+- No need for project persistence
+- Legacy API compatibility
+
+#### Mode B API Example
+
+```bash
+# POST /jobs
+{
+  "prompt": "Add error handling to login function",
+  "repo_url": "https://github.com/owner/repo",
+  "base_branch": "main",
+  "target_branch": "vibe/add-error-handling"
+}
+```
+
+> **Note**: Mode B will remain supported for backward compatibility and quick operations, but Mode A is recommended for regular use once available.
 
 ## Prerequisites
 
@@ -144,9 +241,190 @@ Set environment variables in `.env` file:
 
 ## End-to-End Usage Guide
 
-This section walks through a complete workflow from prompt to merged PR.
+This section walks through complete workflows for both operational modes.
 
-### Step 1: Start with a Prompt
+### Mode A Workflow: Project-Based (Recommended)
+
+> **Note**: Mode A is currently in development. These instructions will be available in a future release.
+
+#### 1. Create a Project
+
+```bash
+# Create a new project
+vibe project create my-web-app --description "My web application"
+
+# Output: Project 'my-web-app' created successfully
+```
+
+#### 2. Import a GitHub Repository
+
+```bash
+# Import repository into the project
+vibe project import my-web-app https://github.com/myorg/my-repo
+
+# This clones the repo to /data/repos/my-web-app
+# Output: Repository imported successfully
+```
+
+#### 3. Run a Job Against the Project
+
+```bash
+# Submit a prompt for the project
+vibe job create my-web-app --prompt "Add user authentication with JWT"
+
+# The system will:
+# - Create a worktree in /data/worktrees/<task-id>
+# - Generate a diff using LLM
+# - Validate the diff
+# - Apply changes in isolation
+# - Run preflight checks (lint, test, build)
+# - Create a pull request
+```
+
+#### 4. Monitor Job Progress
+
+```bash
+# View job status
+vibe job status <task-id>
+
+# Stream job logs in real-time
+vibe job logs <task-id> --follow
+
+# View all jobs for a project
+vibe job list my-web-app
+```
+
+#### 5. Review and Merge
+
+```bash
+# View the generated PR link in job output
+# Review changes on GitHub
+# Merge when ready
+```
+
+### Mode B Workflow: Direct Repository URL (Legacy)
+
+This is the current implementation using the REST API.
+
+#### 1. Start VIBE Services
+
+```bash
+# Start all services (API, Executor, Web UI)
+docker-compose up -d
+
+# Or run individually:
+npm run dev:api      # API server on port 3001
+npm run dev:executor # Executor service
+npm run dev:web      # Web UI on port 5173
+```
+
+#### 2. Create a Job via API
+
+```bash
+# Using curl
+curl -X POST http://localhost:3001/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Add error handling to the login endpoint",
+    "repo_url": "https://github.com/myorg/my-repo",
+    "base_branch": "main",
+    "target_branch": "vibe/add-error-handling"
+  }'
+
+# Response:
+# {
+#   "task_id": "abc123...",
+#   "status": "queued",
+#   "message": "Task created successfully"
+# }
+```
+
+#### 3. Monitor Job Status
+
+```bash
+# Get job status
+curl http://localhost:3001/jobs/<task-id>
+
+# Stream logs via Server-Sent Events
+curl -N http://localhost:3001/jobs/<task-id>/logs
+
+# Or use the Web UI at http://localhost:5173
+```
+
+#### 4. Review the Pull Request
+
+The job will output a pull request URL when complete:
+
+```bash
+# Check final status
+curl http://localhost:3001/jobs/<task-id>
+
+# Response includes:
+# {
+#   "execution_state": "completed",
+#   "pull_request_link": "https://github.com/myorg/my-repo/pull/123",
+#   ...
+# }
+```
+
+### Step-by-Step Execution Process (Both Modes)
+
+Regardless of mode, each job follows this execution flow:
+
+1. **Cloning** (Mode B) or **Worktree Creation** (Mode A)
+   - Mode A: Creates isolated worktree from `/data/repos/<project>`
+   - Mode B: Clones repository to temporary location
+
+2. **Building Context**
+   - Scans repository for relevant files using ripgrep
+   - Extracts file content and resolves imports
+   - Builds context prompt for LLM
+
+3. **Calling LLM**
+   - Sends context + user prompt to GPT-4
+   - LLM generates unified diff
+   - Validates diff format and structure
+   - Performs pre-apply sanity checks:
+     - Rejects attempts to create existing files (e.g., `--- /dev/null` for existing files)
+     - Rejects file deletion without explicit request
+   - Retries up to 3 times on validation failure
+
+4. **Applying Diff**
+   - Creates temporary worktree for isolation testing
+   - Runs `git apply --check` in worktree
+   - If successful, applies to main working directory
+   - Cleans up temporary worktree (guaranteed via finally block)
+
+5. **Running Preflight**
+   - Executes linting (`npm run lint`)
+   - Runs type checking (`npm run typecheck`)
+   - Runs tests (`npm test`)
+   - All checks must pass to proceed
+
+6. **Creating PR**
+   - Commits changes with descriptive message
+   - Pushes to target branch
+   - Opens pull request via GitHub API
+   - Links PR in job record
+
+7. **Completion**
+   - Mode A: Removes worktree from `/data/worktrees`
+   - Mode B: Removes entire clone directory
+   - Sets job state to `completed` or `failed`
+
+### Iteration and Retry Logic
+
+VIBE includes intelligent retry mechanisms:
+
+- **Max Iterations**: 6 attempts per job
+- **LLM Retries**: Up to 3 attempts for valid diff generation
+- **Validation Feedback**: Includes specific error messages in retry prompts
+- **Fallback Modes**: After 2 consecutive apply failures, switches to full-file replacement
+- **Failed Patches**: Saves to `/data/patches/<task-id>-iter<N>.diff` for debugging
+
+### Step 1: Start with a Prompt (Legacy CLI - Deprecated)
+
+> **Note**: The CLI examples below are from legacy documentation and may not reflect current implementation.
 
 Describe what you want to implement in natural language:
 
