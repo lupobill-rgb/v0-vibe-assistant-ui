@@ -17,10 +17,20 @@ export type ExecutionState =
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
+export interface Project {
+  project_id: string;
+  name: string;
+  repository_url: string;
+  local_path: string;
+  last_synced?: number;
+  created_at: number;
+}
+
 export interface VibeTask {
   task_id: string;
   user_prompt: string;
-  repository_url: string;
+  project_id?: string;
+  repository_url?: string;
   source_branch: string;
   destination_branch: string;
   execution_state: ExecutionState;
@@ -39,6 +49,13 @@ export interface VibeEvent {
 }
 
 class ExecutorStorage {
+  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE project_id = ?`);
+  private projectUpdateSync = vibeDb.prepare(`
+    UPDATE projects 
+    SET last_synced = ? 
+    WHERE project_id = ?
+  `);
+
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
   private taskStateUpdate = vibeDb.prepare(`
@@ -89,6 +106,14 @@ class ExecutorStorage {
 
   getNextQueuedTask(): VibeTask | undefined {
     return this.tasksQueued.get() as VibeTask | undefined;
+  }
+
+  getProject(projectId: string): Project | undefined {
+    return this.projectSelect.get(projectId) as Project | undefined;
+  }
+
+  updateProjectSync(projectId: string): void {
+    this.projectUpdateSync.run(Date.now(), projectId);
   }
 
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
