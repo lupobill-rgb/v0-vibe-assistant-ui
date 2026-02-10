@@ -344,40 +344,52 @@ class VibeExecutor {
     globalFallback: boolean = false,
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
-  ): Promise<GenerateDiffResult> {
-    try {
-      const baseSystemPrompt = `You are a code modification assistant. You MUST output ONLY one of the following:
+  ): Promise<string | null> {
+    const maxRetries = 2;
+    let lastValidationError: string | null = null;
 
-1. A valid unified diff starting with "diff --git" that includes --- and +++ headers and @@ hunk markers
-2. The exact token "NO_CHANGES" (if no changes are needed)
+    // Retry loop: initial attempt + up to 2 retries
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        storage.logEvent(taskId, `Retrying LLM call (attempt ${attempt + 1}/${maxRetries + 1})...`, 'warning');
+      }
 
-CRITICAL OUTPUT RULES:
-- NO explanations, NO markdown, NO code fences (no \`\`\`), NO commentary
-- NO prose before or after the diff
-- First non-whitespace characters MUST be either "diff --git" or "NO_CHANGES"
-- The diff must be applicable with 'git apply'
-- Keep changes minimal and focused on the request
+      try {
+        const baseSystemPrompt = `You are a code modification assistant. You MUST output ONLY a unified diff or the token NO_CHANGES.
+
+STRICT OUTPUT REQUIREMENTS:
+- NO prose, explanations, markdown formatting, or code blocks are allowed
+- Output must start with "diff --git" (for diffs) OR be exactly "NO_CHANGES" (if no changes needed)
+- Every diff block MUST have "---" and "+++" headers
+- Every diff block MUST have "@@ ... @@" hunk markers
+- The diff must be directly applicable with 'git apply'
+
+ALLOWED OUTPUTS:
+1. A valid unified diff starting with "diff --git a/... b/..."
+2. The single token "NO_CHANGES" (only if the requested change is already satisfied)
+
+ANY OTHER OUTPUT WILL BE REJECTED.
 
 Context files are provided below.`;
 
-      const fallbackInstructions = `
+        const fallbackInstructions = `
 - Use the format: delete all lines of the old file and add all lines of the new file
 - This ensures the diff will apply regardless of the current file state`;
 
-      // Build system prompt with fallback mode instructions if needed
-      let systemPrompt = baseSystemPrompt;
-      if (globalFallback || fallbackFiles.size > 0) {
-        if (fallbackFiles.size > 0) {
-          const fileList = Array.from(fallbackFiles).join(', ');
-          systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply for files: ${fileList}
+        // Build system prompt with fallback mode instructions if needed
+        let systemPrompt = baseSystemPrompt;
+        if (globalFallback || fallbackFiles.size > 0) {
+          if (fallbackFiles.size > 0) {
+            const fileList = Array.from(fallbackFiles).join(', ');
+            systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply for files: ${fileList}
 For these specific files, generate a diff that REPLACES THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
-        } else {
-          systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply.
+          } else {
+            systemPrompt += `\n\nFALLBACK MODE: Previous diffs failed to apply.
 Generate diffs that REPLACE THE ENTIRE FILE CONTENT for all modified files:${fallbackInstructions}`;
+          }
         }
-      }
 
-      let userPrompt = `${context}
+        let userPrompt = `${context}
 
 ---
 
@@ -385,66 +397,76 @@ USER REQUEST: ${prompt}
 
 Generate a unified diff to implement this request. Output ONLY the diff, nothing else.`;
 
-      // Add failure feedback if available
-      if (failureFeedback) {
-        userPrompt += `\n\n---\n\nPATCH FAILURE FEEDBACK:\n${failureFeedback}`;
+        // Add failure feedback if available
+        if (failureFeedback) {
+          userPrompt += `\n\n---\n\nPATCH FAILURE FEEDBACK:\n${failureFeedback}`;
+        }
+
+        // Add validation error feedback for retries
+        if (attempt > 0 && lastValidationError) {
+          const validationFeedback = [
+            '\n\n---\n\n',
+            'VALIDATION ERROR: You returned an invalid diff. ',
+            `Here is the validator error: ${lastValidationError}\n\n`,
+            'Please output a valid unified diff that starts with "diff --git", ',
+            'includes --- and +++ headers, and has @@ hunk markers. ',
+            'Or output exactly "NO_CHANGES" if no changes are needed.'
+          ].join('');
+          userPrompt += validationFeedback;
+        }
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4-turbo-preview',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 4000
+        });
+
+        const rawOutput = response.choices[0]?.message?.content || '';
+        storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
+
+        // Check for NO_CHANGES response
+        const normalizedOutput = rawOutput.trim();
+        if (normalizedOutput === 'NO_CHANGES') {
+          storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
+          return 'NO_CHANGES';
+        }
+
+        // Sanitize the raw output first
+        const sanitized = sanitizeUnifiedDiff(rawOutput);
+        if (sanitized === null) {
+          lastValidationError = 'LLM output missing diff --git header or contains commentary/markdown';
+          storage.logEvent(taskId, lastValidationError, 'error');
+          continue; // Retry
+        }
+
+        // Extract and validate diff
+        const diff = extractDiff(sanitized);
+        const enhancedValidation = validateUnifiedDiffEnhanced(diff);
+
+        if (!enhancedValidation.ok) {
+          lastValidationError = enhancedValidation.errors.join('; ');
+          storage.logEvent(taskId, `Invalid diff: ${lastValidationError}`, 'error');
+          continue; // Retry
+        }
+
+        const lineCount = diff.split('\n').length;
+        storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
+        return diff;
+
+      } catch (error: any) {
+        storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
+        lastValidationError = `LLM API error: ${error.message}`;
+        continue; // Retry
       }
-
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 4000
-      });
-
-      const rawOutput = response.choices[0]?.message?.content || '';
-      storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
-
-      // Normalize the output before any validation
-      const normalized = normalizeLLMOutput(rawOutput);
-      
-      if (normalized === null) {
-        const error = 'Output does not start with "diff --git" or "NO_CHANGES"';
-        storage.logEvent(taskId, `Invalid LLM output: ${error}`, 'error');
-        return { diff: null, error };
-      }
-
-      // Check for NO_CHANGES response
-      if (normalized === 'NO_CHANGES') {
-        storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
-        return { diff: 'NO_CHANGES', error: null };
-      }
-
-      // Sanitize the normalized output
-      const sanitized = sanitizeUnifiedDiff(normalized);
-      if (sanitized === null) {
-        const error = 'Output contains commentary or invalid diff format';
-        storage.logEvent(taskId, `LLM output validation failed: ${error}`, 'error');
-        return { diff: null, error };
-      }
-
-      // Extract and validate diff
-      const diff = extractDiff(sanitized);
-      const enhancedValidation = validateUnifiedDiffEnhanced(diff);
-
-      if (!enhancedValidation.ok) {
-        const error = enhancedValidation.errors.join('; ');
-        storage.logEvent(taskId, `Invalid diff: ${error}`, 'error');
-        return { diff: null, error };
-      }
-
-      const lineCount = diff.split('\n').length;
-      storage.logEvent(taskId, `Valid diff generated (${lineCount} lines)`, 'success');
-      return { diff, error: null };
-
-    } catch (error: any) {
-      const errorMsg = `LLM error: ${error.message}`;
-      storage.logEvent(taskId, errorMsg, 'error');
-      return { diff: null, error: errorMsg };
     }
+
+    // All retries exhausted
+    storage.logEvent(taskId, `Failed to generate valid diff after ${maxRetries + 1} attempts`, 'error');
+    return null;
   }
 
   private extractFailedFiles(errorMessage: string): string[] {
