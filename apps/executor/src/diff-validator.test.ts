@@ -749,3 +749,135 @@ diff --git a/file2.js b/file2.js
     assert.strictEqual(validation.errors.length, 0);
   });
 });
+
+describe('Git Worktree Integration', () => {
+  it('should successfully apply patch using worktree preflight', () => {
+    // Create a temporary git repo for testing
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-test-'));
+    
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tempDir });
+      execSync('git config user.email "test@test.com"', { cwd: tempDir });
+      execSync('git config user.name "Test"', { cwd: tempDir });
+      
+      // Create a test file
+      const testFile = path.join(tempDir, 'test.js');
+      fs.writeFileSync(testFile, 'function hello() {\n  console.log("hi");\n}\n');
+      execSync('git add test.js', { cwd: tempDir });
+      execSync('git commit -m "Initial commit"', { cwd: tempDir });
+      
+      // Create a valid diff for this file
+      const validDiff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,3 +1,4 @@
+ function hello() {
++  console.log("world");
+   console.log("hi");
+ }
+`;
+      
+      // Create a temporary worktree
+      const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-'));
+      
+      try {
+        // Add worktree
+        execSync(`git worktree add --detach "${worktreeDir}" HEAD`, { cwd: tempDir });
+        
+        // Write patch to worktree
+        const patchPath = path.join(worktreeDir, 'patch.diff');
+        fs.writeFileSync(patchPath, validDiff);
+        
+        // Test git apply --check in worktree
+        execSync('git apply --check patch.diff', { cwd: worktreeDir });
+        
+        // If we got here, preflight passed - now apply to main repo
+        const mainPatchPath = path.join(tempDir, 'patch.diff');
+        fs.writeFileSync(mainPatchPath, validDiff);
+        execSync('git apply patch.diff', { cwd: tempDir });
+        
+        // Verify the patch was applied
+        const content = fs.readFileSync(testFile, 'utf-8');
+        assert.ok(content.includes('console.log("world")'));
+        
+        // Clean up worktree
+        execSync(`git worktree remove --force "${worktreeDir}"`, { cwd: tempDir });
+        
+      } finally {
+        // Clean up worktree directory if it still exists
+        if (fs.existsSync(worktreeDir)) {
+          fs.rmSync(worktreeDir, { recursive: true, force: true });
+        }
+      }
+      
+    } finally {
+      // Clean up test repo
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should detect invalid patch in worktree before applying to main repo', () => {
+    // Create a temporary git repo for testing
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-test-'));
+    
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tempDir });
+      execSync('git config user.email "test@test.com"', { cwd: tempDir });
+      execSync('git config user.name "Test"', { cwd: tempDir });
+      
+      // Create a test file
+      const testFile = path.join(tempDir, 'test.js');
+      fs.writeFileSync(testFile, 'function hello() {\n  return true;\n}\n');
+      execSync('git add test.js', { cwd: tempDir });
+      execSync('git commit -m "Initial commit"', { cwd: tempDir });
+      
+      // Create an invalid diff (doesn't match the file content)
+      const invalidDiff = `diff --git a/test.js b/test.js
+--- a/test.js
++++ b/test.js
+@@ -1,3 +1,4 @@
+ function goodbye() {
++  console.log("bye");
+   return false;
+ }
+`;
+      
+      // Create a temporary worktree
+      const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-worktree-'));
+      
+      try {
+        // Add worktree
+        execSync(`git worktree add --detach "${worktreeDir}" HEAD`, { cwd: tempDir });
+        
+        // Write patch to worktree
+        const patchPath = path.join(worktreeDir, 'patch.diff');
+        fs.writeFileSync(patchPath, invalidDiff);
+        
+        // Test git apply --check in worktree - should fail
+        let checkFailed = false;
+        try {
+          execSync('git apply --check patch.diff', { cwd: worktreeDir, stdio: 'pipe' });
+        } catch (error) {
+          checkFailed = true;
+        }
+        
+        assert.strictEqual(checkFailed, true, 'git apply --check should fail for invalid diff');
+        
+        // Clean up worktree
+        execSync(`git worktree remove --force "${worktreeDir}"`, { cwd: tempDir });
+        
+      } finally {
+        // Clean up worktree directory if it still exists
+        if (fs.existsSync(worktreeDir)) {
+          fs.rmSync(worktreeDir, { recursive: true, force: true });
+        }
+      }
+      
+    } finally {
+      // Clean up test repo
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
