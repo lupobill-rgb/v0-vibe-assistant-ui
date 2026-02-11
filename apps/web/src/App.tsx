@@ -11,7 +11,7 @@ interface LogEvent {
 }
 
 interface Project {
-  project_id: string;
+  id: string;
   name: string;
   repository_url: string;
   local_path: string;
@@ -292,7 +292,7 @@ function App() {
                     <option value="">Select a project...</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
-                        {project.name} ({project.repo_source})
+                        {project.name}
                       </option>
                     ))}
                   </select>
@@ -361,7 +361,7 @@ function App() {
                 >
                   <option value="">Select a project...</option>
                   {projects.map((project) => (
-                    <option key={project.project_id} value={project.project_id}>
+                    <option key={project.id} value={project.id}>
                       {project.name} ({project.repository_url})
                     </option>
                   ))}
