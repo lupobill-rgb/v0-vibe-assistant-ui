@@ -151,7 +151,6 @@ describe('GitHub Client - Import Functionality (Mode A)', () => {
     // - Project ID
     // - GitHub URL
     // - Clone path (/data/repos/<project-id>)
-    // - Default branch
     // - Import timestamp
     // - Last sync timestamp
     
@@ -159,12 +158,11 @@ describe('GitHub Client - Import Functionality (Mode A)', () => {
       'project_id',
       'github_url',
       'clone_path',
-      'default_branch',
       'imported_at',
       'last_sync_at'
     ];
     
-    assert.strictEqual(metadataFields.length, 6, 'Should track 6 metadata fields');
+    assert.strictEqual(metadataFields.length, 5, 'Should track 5 metadata fields');
   });
 });
 
