@@ -21,24 +21,10 @@ services:
       dockerfile: apps/executor/Dockerfile
     environment:
       - NODE_ENV=production
-      - DATABASE_PATH=/data/vibe.db
+      - DATABASE_PATH=/app/data/vibe.db
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - EXECUTOR_POLL_INTERVAL=${EXECUTOR_POLL_INTERVAL:-5000}
-      - MAX_ITERATIONS=${MAX_ITERATIONS:-6}
-      - MAX_CONTEXT_SIZE=${MAX_CONTEXT_SIZE:-50000}
-      - MAX_DIFF_SIZE=${MAX_DIFF_SIZE:-5000}
-      - LINT_COMMAND=${LINT_COMMAND}
-      - TYPECHECK_COMMAND=${TYPECHECK_COMMAND}
-      - TEST_COMMAND=${TEST_COMMAND}
-      - SMOKE_COMMAND=${SMOKE_COMMAND}
-      - PREFLIGHT_TIMEOUT=${PREFLIGHT_TIMEOUT:-300000}
-      - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-VIBE Bot}
-      - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-vibe@example.com}
     volumes:
-      - ./data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
+      - ./data:/app/data
     depends_on:
       - api
 
@@ -49,7 +35,7 @@ services:
     ports:
       - "3000:80"
     environment:
-      - VITE_API_URL=http://localhost:3001
+      - VITE_API_URL=http://api:3001
     depends_on:
       - api
     restart: unless-stopped
