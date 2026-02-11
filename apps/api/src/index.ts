@@ -24,7 +24,7 @@ if (!fs.existsSync(REPOS_BASE_DIR)) {
 // POST /projects - Create a new project from template
 app.post('/projects', (req: Request, res: Response) => {
   try {
-    const { name, template = 'empty', default_branch = 'main' } = req.body;
+    const { name, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -38,7 +38,7 @@ app.post('/projects', (req: Request, res: Response) => {
     
     // Initialize git repository
     execSync('git init', { cwd: repoDir });
-    execSync(`git checkout -b ${default_branch}`, { cwd: repoDir });
+    execSync(`git checkout -b main`, { cwd: repoDir });
     
     // Create initial README for template
     const readmePath = path.join(repoDir, 'README.md');
@@ -76,7 +76,7 @@ app.post('/projects', (req: Request, res: Response) => {
 // POST /projects/import/github - Import project from GitHub
 app.post('/projects/import/github', (req: Request, res: Response) => {
   try {
-    const { repo_url, default_branch = 'main' } = req.body;
+    const { repo_url } = req.body;
 
     if (!repo_url) {
       return res.status(400).json({ error: 'Missing required field: repo_url' });

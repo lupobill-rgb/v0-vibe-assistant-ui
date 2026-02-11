@@ -13,12 +13,12 @@ const vibeDb = new Database(storePath);
 
 // Initialize VIBE storage schema with defined lifecycle states
 vibeDb.exec(`
-  CREATE TABLE IF NOT EXISTS vibe_projects (
+  CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    repo_source TEXT NOT NULL,
-    repo_dir TEXT NOT NULL,
-    default_branch TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
+    repository_url TEXT NOT NULL,
+    local_path TEXT NOT NULL,
+    last_synced INTEGER,
     created_at INTEGER NOT NULL
   );
 
@@ -34,7 +34,7 @@ vibeDb.exec(`
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
     last_modified INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
+    FOREIGN KEY (project_id) REFERENCES projects(id)
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -47,6 +47,7 @@ vibeDb.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_events_by_task ON vibe_events(task_id, event_time);
+  CREATE INDEX IF NOT EXISTS idx_tasks_by_project ON vibe_tasks(project_id);
 `);
 
 // Lifecycle states as defined in requirements
@@ -66,9 +67,9 @@ export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 export interface Project {
   id: string;
   name: string;
-  repo_source: string;
-  repo_dir: string;
-  default_branch: string;
+  repository_url: string;
+  local_path: string;
+  last_synced?: number;
   created_at: number;
 }
 
@@ -95,7 +96,15 @@ export interface VibeEvent {
 }
 
 class ExecutorStorage {
-  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
+
+  private taskInsert = vibeDb.prepare(`
+    INSERT INTO vibe_tasks (
+      task_id, user_prompt, project_id, repository_url, source_branch, 
+      destination_branch, execution_state, iteration_count, 
+      initiated_at, last_modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
 
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
