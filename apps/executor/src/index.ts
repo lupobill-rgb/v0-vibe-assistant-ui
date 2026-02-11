@@ -119,8 +119,8 @@ class VibeExecutor {
           throw new Error(`Project not found: ${task.project_id}`);
         }
 
-        repoDir = project.local_path;
-        repoUrl = project.repository_url;
+        repoDir = project.repo_dir;
+        repoUrl = project.repo_source;
 
         storage.logEvent(task.task_id, `Using project: ${project.name} (${task.project_id})`, 'info');
         storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
