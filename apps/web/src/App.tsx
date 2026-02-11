@@ -39,8 +39,6 @@ function App() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [importRepoUrl, setImportRepoUrl] = useState('');
-  const [useLegacyMode, setUseLegacyMode] = useState(false);
-
   // Load projects on mount
   useEffect(() => {
     loadProjects();
@@ -355,7 +353,7 @@ function App() {
                 <select
                   id="projectId"
                   className="text-input"
-                  value={projectId}
+                  setProjectId
                   onChange={(e) => setProjectId(e.target.value)}
                   disabled={isRunning}
                 >
