@@ -55,17 +55,16 @@ app.post('/projects', (req: Request, res: Response) => {
     storage.createProject({
       id: projectId,
       name,
-      repo_source: 'template',
-      repo_dir: repoDir,
-      default_branch,
+      repository_url: `file://${repoDir}`,
+      local_path: repoDir,
       created_at: Date.now()
     });
 
     res.status(201).json({
       id: projectId,
       name,
-      repo_source: 'template',
-      default_branch,
+      repository_url: `file://${repoDir}`,
+      local_path: repoDir,
       message: 'Project created successfully'
     });
   } catch (error: any) {
@@ -116,17 +115,16 @@ app.post('/projects/import/github', (req: Request, res: Response) => {
     storage.createProject({
       id: projectId,
       name: repoName,
-      repo_source: 'github_import',
-      repo_dir: repoDir,
-      default_branch,
+      repository_url: repo_url,
+      local_path: repoDir,
       created_at: Date.now()
     });
 
     res.status(201).json({
       id: projectId,
       name: repoName,
-      repo_source: 'github_import',
-      default_branch,
+      repository_url: repo_url,
+      local_path: repoDir,
       message: 'Project imported successfully'
     });
   } catch (error: any) {
@@ -195,16 +193,7 @@ app.post('/jobs', (req: Request, res: Response) => {
 
     const taskId = uuidv4();
     const now = Date.now();
-    
-    // For project-centric jobs, get default branch from project if not specified
-    let finalBaseBranch = base_branch || 'main';
-    if (project_id) {
-      const project = storage.getProject(project_id);
-      if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
-      }
-      finalBaseBranch = base_branch || project.default_branch;
-    }
+    const finalBaseBranch = base_branch || 'main';
     
     // Generate target branch name if not provided
     const finalTargetBranch = target_branch || `vibe/${taskId.slice(0, 8)}`;
@@ -214,7 +203,7 @@ app.post('/jobs', (req: Request, res: Response) => {
       user_prompt: prompt,
       project_id: project_id || undefined,
       repository_url: repo_url || undefined,
-      source_branch: base_branch,
+      source_branch: finalBaseBranch,
       destination_branch: finalTargetBranch,
       execution_state: 'queued',
       initiated_at: now,
