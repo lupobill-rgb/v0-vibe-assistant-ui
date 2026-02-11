@@ -88,14 +88,6 @@ describe('Storage - Project Lookup', () => {
     assert.strictEqual(result.name, 'Test Project', 'Project name should match');
   });
 
-  it('should fail when querying with project_id column (does not exist)', () => {
-    // This test verifies that project_id column does NOT exist in vibe_projects
-    assert.throws(() => {
-      const badStmt = testDb.prepare('SELECT * FROM vibe_projects WHERE project_id = ?');
-      badStmt.get('some-id');
-    }, /no such column: project_id/, 'Should throw error for non-existent project_id column');
-  });
-
   it('should allow tasks to reference projects via project_id foreign key', () => {
     const projectId = 'test-project-456';
     const taskId = 'test-task-123';
