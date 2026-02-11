@@ -20,12 +20,12 @@ describe('Storage - Project Lookup', () => {
 
     // Initialize the same schema as storage.ts
     testDb.exec(`
-      CREATE TABLE IF NOT EXISTS vibe_projects (
+      CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        repo_source TEXT NOT NULL,
-        repo_dir TEXT NOT NULL,
-        default_branch TEXT NOT NULL,
+        name TEXT NOT NULL UNIQUE,
+        repository_url TEXT NOT NULL,
+        local_path TEXT NOT NULL,
+        last_synced INTEGER,
         created_at INTEGER NOT NULL
       );
 
@@ -41,8 +41,20 @@ describe('Storage - Project Lookup', () => {
         iteration_count INTEGER DEFAULT 0,
         initiated_at INTEGER NOT NULL,
         last_modified INTEGER NOT NULL,
-        FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
+        FOREIGN KEY (project_id) REFERENCES projects(id)
       );
+
+      CREATE TABLE IF NOT EXISTS vibe_events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        event_message TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        event_time INTEGER NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES vibe_tasks(task_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_events_by_task ON vibe_events(task_id, event_time);
+      CREATE INDEX IF NOT EXISTS idx_tasks_by_project ON vibe_tasks(project_id);
     `);
   });
 
@@ -59,28 +71,26 @@ describe('Storage - Project Lookup', () => {
     const projectData = {
       id: projectId,
       name: 'Test Project',
-      repo_source: 'https://github.com/test/repo',
-      repo_dir: '/data/repos/test-project-123',
-      default_branch: 'main',
+      repository_url: 'https://github.com/test/repo',
+      local_path: '/data/repos/test-project-123',
       created_at: Date.now()
     };
 
     // Insert project using id column
     const insertStmt = testDb.prepare(`
-      INSERT INTO vibe_projects (id, name, repo_source, repo_dir, default_branch, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, repository_url, local_path, created_at)
+      VALUES (?, ?, ?, ?, ?)
     `);
     insertStmt.run(
       projectData.id,
       projectData.name,
-      projectData.repo_source,
-      projectData.repo_dir,
-      projectData.default_branch,
+      projectData.repository_url,
+      projectData.local_path,
       projectData.created_at
     );
 
     // Query using id column (not project_id)
-    const selectStmt = testDb.prepare('SELECT * FROM vibe_projects WHERE id = ?');
+    const selectStmt = testDb.prepare('SELECT * FROM projects WHERE id = ?');
     const result = selectStmt.get(projectId);
 
     assert.ok(result, 'Project should be retrieved');
@@ -94,13 +104,13 @@ describe('Storage - Project Lookup', () => {
 
     // Insert a project
     const insertProject = testDb.prepare(`
-      INSERT INTO vibe_projects (id, name, repo_source, repo_dir, default_branch, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, repository_url, local_path, created_at)
+      VALUES (?, ?, ?, ?, ?)
     `);
-    insertProject.run(projectId, 'Test Project 2', 'https://github.com/test/repo2', '/data/repos/test-project-456', 'main', Date.now());
+    insertProject.run(projectId, 'Test Project 2', 'https://github.com/test/repo2', '/data/repos/test-project-456', Date.now());
 
     // Insert a task that references the project
-    // Note: vibe_tasks.project_id is a foreign key to vibe_projects.id
+    // Note: vibe_tasks.project_id is a foreign key to projects.id
     const insertTask = testDb.prepare(`
       INSERT INTO vibe_tasks (task_id, user_prompt, project_id, source_branch, destination_branch, execution_state, initiated_at, last_modified)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -118,7 +128,7 @@ describe('Storage - Project Lookup', () => {
     const joinQuery = testDb.prepare(`
       SELECT t.*, p.name as project_name
       FROM vibe_tasks t
-      INNER JOIN vibe_projects p ON t.project_id = p.id
+      INNER JOIN projects p ON t.project_id = p.id
       WHERE t.task_id = ?
     `);
     const joinResult = joinQuery.get(taskId);

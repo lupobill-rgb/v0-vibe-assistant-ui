@@ -24,7 +24,7 @@ if (!fs.existsSync(REPOS_BASE_DIR)) {
 // POST /projects - Create a new project from template
 app.post('/projects', (req: Request, res: Response) => {
   try {
-    const { name, template = 'empty', default_branch = 'main' } = req.body;
+    const { name, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -38,7 +38,7 @@ app.post('/projects', (req: Request, res: Response) => {
     
     // Initialize git repository
     execSync('git init', { cwd: repoDir });
-    execSync(`git checkout -b ${default_branch}`, { cwd: repoDir });
+    execSync(`git checkout -b main`, { cwd: repoDir });
     
     // Create initial README for template
     const readmePath = path.join(repoDir, 'README.md');
@@ -55,17 +55,14 @@ app.post('/projects', (req: Request, res: Response) => {
     storage.createProject({
       id: projectId,
       name,
-      repo_source: 'template',
-      repo_dir: repoDir,
-      default_branch,
+      repository_url: 'template',
+      local_path: repoDir,
       created_at: Date.now()
     });
 
     res.status(201).json({
       id: projectId,
       name,
-      repo_source: 'template',
-      default_branch,
       message: 'Project created successfully'
     });
   } catch (error: any) {
@@ -77,7 +74,7 @@ app.post('/projects', (req: Request, res: Response) => {
 // POST /projects/import/github - Import project from GitHub
 app.post('/projects/import/github', (req: Request, res: Response) => {
   try {
-    const { repo_url, default_branch = 'main' } = req.body;
+    const { repo_url } = req.body;
 
     if (!repo_url) {
       return res.status(400).json({ error: 'Missing required field: repo_url' });
@@ -116,17 +113,15 @@ app.post('/projects/import/github', (req: Request, res: Response) => {
     storage.createProject({
       id: projectId,
       name: repoName,
-      repo_source: 'github_import',
-      repo_dir: repoDir,
-      default_branch,
+      repository_url: repo_url,
+      local_path: repoDir,
       created_at: Date.now()
     });
 
     res.status(201).json({
       id: projectId,
       name: repoName,
-      repo_source: 'github_import',
-      default_branch,
+      repository_url: repo_url,
       message: 'Project imported successfully'
     });
   } catch (error: any) {
@@ -196,14 +191,14 @@ app.post('/jobs', (req: Request, res: Response) => {
     const taskId = uuidv4();
     const now = Date.now();
     
-    // For project-centric jobs, get default branch from project if not specified
+    // For project-centric jobs, use base_branch or 'main' as default
     let finalBaseBranch = base_branch || 'main';
     if (project_id) {
       const project = storage.getProject(project_id);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
-      finalBaseBranch = base_branch || project.default_branch;
+      finalBaseBranch = base_branch || 'main';
     }
     
     // Generate target branch name if not provided
