@@ -316,7 +316,7 @@ app.post('/projects', (req: Request, res: Response) => {
     const localPath = `/data/repos/${projectId}`;
 
     storage.createProject({
-      project_id: projectId,
+      id: projectId,
       name,
       repository_url,
       local_path: localPath,
@@ -324,7 +324,7 @@ app.post('/projects', (req: Request, res: Response) => {
     });
 
     res.status(201).json({
-      project_id: projectId,
+      id: projectId,
       name,
       repository_url,
       local_path: localPath,

@@ -64,11 +64,11 @@ export type ExecutionState =
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
 export interface Project {
-  project_id: string;
+  id: string;
   name: string;
-  repository_url: string;
-  local_path: string;
-  last_synced?: number;
+  repo_source: string;
+  repo_dir: string;
+  default_branch: string;
   created_at: number;
 }
 
@@ -95,12 +95,7 @@ export interface VibeEvent {
 }
 
 class ExecutorStorage {
-  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE project_id = ?`);
-  private projectUpdateSync = vibeDb.prepare(`
-    UPDATE projects 
-    SET last_synced = ? 
-    WHERE project_id = ?
-  `);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
 
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
@@ -151,26 +146,6 @@ class ExecutorStorage {
     ORDER BY event_time ASC
   `);
 
-  // Project methods
-  createProject(project: VibeProject): void {
-    this.projectInsert.run(
-      project.id,
-      project.name,
-      project.repo_source,
-      project.repo_dir,
-      project.default_branch,
-      project.created_at
-    );
-  }
-
-  getProject(projectId: string): VibeProject | undefined {
-    return this.projectSelect.get(projectId) as VibeProject | undefined;
-  }
-
-  listProjects(): VibeProject[] {
-    return this.projectsAll.all() as VibeProject[];
-  }
-
   // Task methods
   createTask(task: Omit<VibeTask, 'iteration_count'>): void {
     this.taskInsert.run(
@@ -220,10 +195,6 @@ class ExecutorStorage {
     return this.projectSelect.get(projectId) as Project | undefined;
   }
 
-  updateProjectSync(projectId: string): void {
-    this.projectUpdateSync.run(Date.now(), projectId);
-  }
-
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
     this.eventInsert.run(taskId, message, severity, Date.now());
   }
@@ -237,5 +208,5 @@ class ExecutorStorage {
   }
 }
 
-export const storage = new VibeStorage();
+export const storage = new ExecutorStorage();
 export default vibeDb;
