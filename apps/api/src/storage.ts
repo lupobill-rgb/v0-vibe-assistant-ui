@@ -14,7 +14,7 @@ const vibeDb = new Database(storePath);
 // Initialize VIBE storage schema with defined lifecycle states
 vibeDb.exec(`
   CREATE TABLE IF NOT EXISTS projects (
-    project_id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     repository_url TEXT NOT NULL,
     local_path TEXT NOT NULL,
@@ -34,7 +34,7 @@ vibeDb.exec(`
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
     last_modified INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(project_id)
+    FOREIGN KEY (project_id) REFERENCES projects(id)
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -65,7 +65,7 @@ export type ExecutionState =
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
 export interface Project {
-  project_id: string;
+  id: string;
   name: string;
   repository_url: string;
   local_path: string;
@@ -98,21 +98,21 @@ export interface VibeEvent {
 class VibeStorage {
   // Project statements
   private projectInsert = vibeDb.prepare(`
-    INSERT INTO projects (project_id, name, repository_url, local_path, created_at)
+    INSERT INTO projects (id, name, repository_url, local_path, created_at)
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE project_id = ?`);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
   private projectSelectByName = vibeDb.prepare(`SELECT * FROM projects WHERE name = ?`);
   private projectsList = vibeDb.prepare(`SELECT * FROM projects ORDER BY created_at DESC`);
   
   private projectUpdateSync = vibeDb.prepare(`
     UPDATE projects 
     SET last_synced = ? 
-    WHERE project_id = ?
+    WHERE id = ?
   `);
 
-  private projectDelete = vibeDb.prepare(`DELETE FROM projects WHERE project_id = ?`);
+  private projectDelete = vibeDb.prepare(`DELETE FROM projects WHERE id = ?`);
 
   // Task statements - updated to support project_id
   private taskInsert = vibeDb.prepare(`
@@ -172,26 +172,6 @@ class VibeStorage {
     ORDER BY event_time ASC
   `);
 
-  // Project methods
-  createProject(project: VibeProject): void {
-    this.projectInsert.run(
-      project.id,
-      project.name,
-      project.repo_source,
-      project.repo_dir,
-      project.default_branch,
-      project.created_at
-    );
-  }
-
-  getProject(projectId: string): VibeProject | undefined {
-    return this.projectSelect.get(projectId) as VibeProject | undefined;
-  }
-
-  listProjects(): VibeProject[] {
-    return this.projectsAll.all() as VibeProject[];
-  }
-
   // Task methods
   createTask(task: Omit<VibeTask, 'iteration_count'>): void {
     this.taskInsert.run(
@@ -247,7 +227,7 @@ class VibeStorage {
   // Project management methods
   createProject(project: Omit<Project, 'last_synced'>): void {
     this.projectInsert.run(
-      project.project_id,
+      project.id,
       project.name,
       project.repository_url,
       project.local_path,

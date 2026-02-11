@@ -119,8 +119,8 @@ class VibeExecutor {
           throw new Error(`Project not found: ${task.project_id}`);
         }
 
-        repoDir = project.local_path;
-        repoUrl = project.repository_url;
+        repoDir = project.repo_dir;
+        repoUrl = project.repo_source;
 
         storage.logEvent(task.task_id, `Using project: ${project.name} (${task.project_id})`, 'info');
         storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
@@ -142,7 +142,6 @@ class VibeExecutor {
           
           try {
             await simpleGit().clone(cloneUrl, repoDir);
-            storage.updateProjectSync(task.project_id);
           } finally {
             if (originalGitPrompt !== undefined) {
               process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
@@ -159,7 +158,6 @@ class VibeExecutor {
           
           try {
             await git.fetch(['--all', '--prune']);
-            storage.updateProjectSync(task.project_id);
             storage.logEvent(task.task_id, 'Project cache synced', 'success');
           } catch (error: any) {
             storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
