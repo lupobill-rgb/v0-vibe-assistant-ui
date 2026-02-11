@@ -275,7 +275,7 @@ function App() {
                     <option value="">Select a project...</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
-                        {project.name}
+                        {project.name} - {project.repository_url}
                       </option>
                     ))}
                   </select>
