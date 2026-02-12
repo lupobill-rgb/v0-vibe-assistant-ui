@@ -21,6 +21,15 @@ if (!fs.existsSync(REPOS_BASE_DIR)) {
   fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
 }
 
+// Startup sanity check: verify git is available
+try {
+  const gitVersion = execSync('git --version', { encoding: 'utf-8' }).trim();
+  console.log(`✓ Git is available: ${gitVersion}`);
+} catch (error) {
+  console.error('✗ ERROR: git command not found. The API service requires git to be installed.');
+  console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
+}
+
 // POST /projects - Create a new project from template
 app.post('/projects', (req: Request, res: Response) => {
   try {

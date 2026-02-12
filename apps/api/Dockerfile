@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+RUN apk add --no-cache git openssh-client
+# Verify git installation: docker compose exec api git --version
+
 WORKDIR /app
 
 # Copy package files

@@ -830,6 +830,19 @@ vibe prompt "Add error handling to the login endpoint"
 
 ## Troubleshooting
 
+### "Add Project" Fails with git: not found
+
+**Problem**: Creating a project fails with error: `Failed to create project: Command failed: git init /bin/sh: git: not found`
+
+**Solution**: Rebuild the Docker images to ensure git is installed in the API container:
+```bash
+docker compose build --no-cache api
+docker compose up -d
+# Verify git is available in containers:
+docker compose exec api git --version
+docker compose exec executor git --version
+```
+
 ### Authentication Issues
 
 **Problem**: `gh: authentication failed`
