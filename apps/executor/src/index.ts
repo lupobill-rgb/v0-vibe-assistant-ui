@@ -206,8 +206,11 @@ class VibeExecutor {
         storage.logEvent(task.task_id, `Using existing branch: ${task.destination_branch}`, 'info');
       }
 
+      // For now, worktree is same as repo directory (no git worktree used)
+      worktreeDir = repoDir;
+
       // Run iteration loop with base directory and repo directory
-      await this.iterationLoop(task, baseWorkDir, repoDir, git, repoUrl);
+      await this.iterationLoop(task, baseWorkDir, repoDir, git, repoUrl, worktreeDir);
 
     } catch (error: any) {
       storage.updateTaskState(task.task_id, 'failed');
@@ -241,7 +244,7 @@ class VibeExecutor {
     }
   }
 
-  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string): Promise<void> {
+  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string, worktreeDir: string): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
     let fallbackFiles: Set<string> = new Set();
@@ -354,7 +357,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'applying_diff');
       storage.logEvent(task.task_id, 'Applying diff to worktree...', 'info');
 
-      const applyResult = await this.applyDiff(worktreeDir, diff, task.task_id, iteration);
+      const applyResult = await this.applyDiff(worktreeDir, diff, task.task_id, iteration, baseWorkDir, repoDir);
       
       if (!applyResult.success) {
         consecutiveApplyFailures++;
@@ -698,13 +701,14 @@ diff --git a/example.js b/example.js
     return files;
   }
 
-  private async applyDiff(worktreeDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
+  private async applyDiff(worktreeDir: string, diff: string, taskId: string, iteration: number, baseWorkDir: string, repoDir: string): Promise<{ success: boolean; error?: string }> {
     // Normalize line endings before any processing (CRLF and CR to LF)
     let patch = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     // Ensure exactly one trailing newline
     patch = patch.trimEnd() + '\n';
     
     // Use attemptWorkDir for worktree to ensure clean isolation per attempt
+    const attemptWorkDir = path.join(baseWorkDir, `attempt-${iteration}`);
     const tempWorktreePath = path.join(attemptWorkDir, 'worktree');
     const mainGit = simpleGit(repoDir);
     let worktreeCreated = false;
@@ -745,8 +749,8 @@ diff --git a/example.js b/example.js
         if (applyError.stderr) {
           storage.logEvent(taskId, `git apply stderr: ${applyError.stderr}`, 'error');
         }
-        if (checkError.stdout) {
-          storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
+        if (applyError.stdout) {
+          storage.logEvent(taskId, `git apply stdout: ${applyError.stdout}`, 'error');
         }
         // Persist failed patch for debugging
         await this.persistFailedPatch(patch, taskId, iteration);
@@ -854,7 +858,7 @@ diff --git a/example.js b/example.js
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
       // Push branch from main repo (not worktree)
-      await mainGit.push('origin', task.destination_branch, ['--force']);
+      await git.push('origin', task.destination_branch, ['--force']);
       storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
 
       // Determine repository URL
@@ -867,8 +871,8 @@ diff --git a/example.js b/example.js
         
         // Try to get remote URL from the repository
         try {
-          const remotes = await mainGit.getRemotes(true);
-          const origin = remotes.find(r => r.name === 'origin');
+          const remotes = await git.getRemotes(true);
+          const origin = remotes.find((r: any) => r.name === 'origin');
           if (origin && origin.refs.fetch) {
             repoUrl = origin.refs.fetch;
           } else {
