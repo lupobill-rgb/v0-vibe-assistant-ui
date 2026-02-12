@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Install git for repository operations and ripgrep for code search (ca-certificates already in base image)
-RUN apk add --no-cache git ripgrep
+RUN apk add --no-cache git openssh ripgrep
 # Verify git installation: docker compose exec executor git --version
 
 WORKDIR /app
