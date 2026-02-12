@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
-import simpleGit, { SimpleGit } from 'simple-git';
+import simpleGit, { SimpleGit, RemoteWithRefs } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
 import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput, performPreApplySanityChecks } from './diff-validator';
 import { runPreflightChecks } from './preflight';
@@ -72,43 +72,14 @@ class VibeExecutor {
   }
 
   private async executeTask(task: VibeTask): Promise<void> {
-    let repoDir: string = '';
     let worktreeDir: string | null = null;
     let git: SimpleGit | null = null;
     let repoDir: string;
     let repoUrl: string;
     let isProjectMode = false;
+    let baseWorkDir: string = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
 
     try {
-      // Determine if this is project-centric (Option A) or legacy (Mode B)
-      if (task.project_id) {
-        // OPTION A: Project-centric mode
-        const project = storage.getProject(task.project_id);
-        if (!project) {
-          throw new Error(`Project not found: ${task.project_id}`);
-        }
-        
-        repoDir = project.local_path;
-        storage.logEvent(task.task_id, `Using project repo: ${repoDir}`, 'info');
-        
-        // Ensure repo directory exists
-        if (!fs.existsSync(repoDir)) {
-          throw new Error(`Project repo directory not found: ${repoDir}`);
-        }
-        
-      } else if (task.repository_url) {
-        // MODE B: Legacy mode (clone to temp directory)
-        isLegacyMode = true;
-        storage.logEvent(task.task_id, 'Running in legacy Mode B (repo_url)', 'warning');
-        
-        const baseWorkDir = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
-        repoDir = path.join(baseWorkDir, 'repo');
-        
-        // Ensure base directory exists
-        if (!fs.existsSync(baseWorkDir)) {
-          fs.mkdirSync(baseWorkDir, { recursive: true });
-        }
-
       // Determine if this is project-centric mode (OPTION A) or legacy mode (Mode B)
       if (task.project_id) {
         // OPTION A: Project-centric mode - use cached repo
@@ -168,6 +139,11 @@ class VibeExecutor {
         isProjectMode = false;
         storage.logEvent(task.task_id, '[DEPRECATED] Using legacy Mode B with repo_url', 'warning');
         
+        // Ensure base directory exists
+        if (!fs.existsSync(baseWorkDir)) {
+          fs.mkdirSync(baseWorkDir, { recursive: true });
+        }
+        
         repoDir = path.join(baseWorkDir, 'repo');
         repoUrl = task.repository_url;
 
@@ -206,8 +182,8 @@ class VibeExecutor {
         storage.logEvent(task.task_id, logMsg, 'info');
         
         storage.logEvent(task.task_id, 'Clone completed', 'info');
-      } else {
-        throw new Error('Task must have either project_id or repository_url');
+      } catch (error: any) {
+        storage.logEvent(task.task_id, `Warning: Failed to list directory contents: ${error.message}`, 'warning');
       }
 
       git = simpleGit(repoDir);
@@ -230,8 +206,11 @@ class VibeExecutor {
         storage.logEvent(task.task_id, `Using existing branch: ${task.destination_branch}`, 'info');
       }
 
+      // For now, worktree is same as repo directory (no git worktree used)
+      worktreeDir = repoDir;
+
       // Run iteration loop with base directory and repo directory
-      await this.iterationLoop(task, baseWorkDir, repoDir, git, repoUrl);
+      await this.iterationLoop(task, baseWorkDir, repoDir, git, repoUrl, worktreeDir);
 
     } catch (error: any) {
       storage.updateTaskState(task.task_id, 'failed');
@@ -265,7 +244,7 @@ class VibeExecutor {
     }
   }
 
-  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string): Promise<void> {
+  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string, worktreeDir: string): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
     let fallbackFiles: Set<string> = new Set();
@@ -378,7 +357,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'applying_diff');
       storage.logEvent(task.task_id, 'Applying diff to worktree...', 'info');
 
-      const applyResult = await this.applyDiff(worktreeDir, diff, task.task_id, iteration);
+      const applyResult = await this.applyDiff(worktreeDir, diff, task.task_id, iteration, baseWorkDir, repoDir);
       
       if (!applyResult.success) {
         consecutiveApplyFailures++;
@@ -722,13 +701,14 @@ diff --git a/example.js b/example.js
     return files;
   }
 
-  private async applyDiff(worktreeDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
+  private async applyDiff(worktreeDir: string, diff: string, taskId: string, iteration: number, baseWorkDir: string, repoDir: string): Promise<{ success: boolean; error?: string }> {
     // Normalize line endings before any processing (CRLF and CR to LF)
     let patch = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     // Ensure exactly one trailing newline
     patch = patch.trimEnd() + '\n';
     
     // Use attemptWorkDir for worktree to ensure clean isolation per attempt
+    const attemptWorkDir = path.join(baseWorkDir, `attempt-${iteration}`);
     const tempWorktreePath = path.join(attemptWorkDir, 'worktree');
     const mainGit = simpleGit(repoDir);
     let worktreeCreated = false;
@@ -769,8 +749,8 @@ diff --git a/example.js b/example.js
         if (applyError.stderr) {
           storage.logEvent(taskId, `git apply stderr: ${applyError.stderr}`, 'error');
         }
-        if (checkError.stdout) {
-          storage.logEvent(taskId, `git apply stdout: ${checkError.stdout}`, 'error');
+        if (applyError.stdout) {
+          storage.logEvent(taskId, `git apply stdout: ${applyError.stdout}`, 'error');
         }
         // Persist failed patch for debugging
         await this.persistFailedPatch(patch, taskId, iteration);
@@ -878,7 +858,7 @@ diff --git a/example.js b/example.js
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
       // Push branch from main repo (not worktree)
-      await mainGit.push('origin', task.destination_branch, ['--force']);
+      await git.push('origin', task.destination_branch, ['--force']);
       storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
 
       // Determine repository URL
@@ -891,8 +871,8 @@ diff --git a/example.js b/example.js
         
         // Try to get remote URL from the repository
         try {
-          const remotes = await mainGit.getRemotes(true);
-          const origin = remotes.find(r => r.name === 'origin');
+          const remotes = await git.getRemotes(true);
+          const origin = remotes.find((r: RemoteWithRefs) => r.name === 'origin');
           if (origin && origin.refs.fetch) {
             repoUrl = origin.refs.fetch;
           } else {
