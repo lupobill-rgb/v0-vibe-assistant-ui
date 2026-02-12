@@ -1,6 +1,7 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache git openssh-client
+# Install git for repository operations (ca-certificates already in base image)
+RUN apk add --no-cache git
 # Verify git installation: docker compose exec api git --version
 
 WORKDIR /app
