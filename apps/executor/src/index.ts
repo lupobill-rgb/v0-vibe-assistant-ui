@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
-import simpleGit, { SimpleGit } from 'simple-git';
+import simpleGit, { SimpleGit, RemoteWithRefs } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
 import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput, performPreApplySanityChecks } from './diff-validator';
 import { runPreflightChecks } from './preflight';
@@ -183,7 +183,7 @@ class VibeExecutor {
         
         storage.logEvent(task.task_id, 'Clone completed', 'info');
       } catch (error: any) {
-        storage.logEvent(task.task_id, `Warning: Failed to read directory: ${error.message}`, 'warning');
+        storage.logEvent(task.task_id, `Warning: Failed to list directory contents: ${error.message}`, 'warning');
       }
 
       git = simpleGit(repoDir);
@@ -872,7 +872,7 @@ diff --git a/example.js b/example.js
         // Try to get remote URL from the repository
         try {
           const remotes = await git.getRemotes(true);
-          const origin = remotes.find((r: any) => r.name === 'origin');
+          const origin = remotes.find((r: RemoteWithRefs) => r.name === 'origin');
           if (origin && origin.refs.fetch) {
             repoUrl = origin.refs.fetch;
           } else {
