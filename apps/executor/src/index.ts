@@ -72,43 +72,14 @@ class VibeExecutor {
   }
 
   private async executeTask(task: VibeTask): Promise<void> {
-    let repoDir: string = '';
     let worktreeDir: string | null = null;
     let git: SimpleGit | null = null;
     let repoDir: string;
     let repoUrl: string;
     let isProjectMode = false;
+    let baseWorkDir: string = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
 
     try {
-      // Determine if this is project-centric (Option A) or legacy (Mode B)
-      if (task.project_id) {
-        // OPTION A: Project-centric mode
-        const project = storage.getProject(task.project_id);
-        if (!project) {
-          throw new Error(`Project not found: ${task.project_id}`);
-        }
-        
-        repoDir = project.local_path;
-        storage.logEvent(task.task_id, `Using project repo: ${repoDir}`, 'info');
-        
-        // Ensure repo directory exists
-        if (!fs.existsSync(repoDir)) {
-          throw new Error(`Project repo directory not found: ${repoDir}`);
-        }
-        
-      } else if (task.repository_url) {
-        // MODE B: Legacy mode (clone to temp directory)
-        isLegacyMode = true;
-        storage.logEvent(task.task_id, 'Running in legacy Mode B (repo_url)', 'warning');
-        
-        const baseWorkDir = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
-        repoDir = path.join(baseWorkDir, 'repo');
-        
-        // Ensure base directory exists
-        if (!fs.existsSync(baseWorkDir)) {
-          fs.mkdirSync(baseWorkDir, { recursive: true });
-        }
-
       // Determine if this is project-centric mode (OPTION A) or legacy mode (Mode B)
       if (task.project_id) {
         // OPTION A: Project-centric mode - use cached repo
@@ -168,6 +139,11 @@ class VibeExecutor {
         isProjectMode = false;
         storage.logEvent(task.task_id, '[DEPRECATED] Using legacy Mode B with repo_url', 'warning');
         
+        // Ensure base directory exists
+        if (!fs.existsSync(baseWorkDir)) {
+          fs.mkdirSync(baseWorkDir, { recursive: true });
+        }
+        
         repoDir = path.join(baseWorkDir, 'repo');
         repoUrl = task.repository_url;
 
@@ -206,8 +182,8 @@ class VibeExecutor {
         storage.logEvent(task.task_id, logMsg, 'info');
         
         storage.logEvent(task.task_id, 'Clone completed', 'info');
-      } else {
-        throw new Error('Task must have either project_id or repository_url');
+      } catch (error: any) {
+        storage.logEvent(task.task_id, `Warning: Failed to read directory: ${error.message}`, 'warning');
       }
 
       git = simpleGit(repoDir);
