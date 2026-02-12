@@ -2,6 +2,7 @@ FROM node:20-alpine
 
 # Install git and ripgrep
 RUN apk add --no-cache git ripgrep
+# Verify git installation: docker compose exec executor git --version
 
 WORKDIR /app
 
