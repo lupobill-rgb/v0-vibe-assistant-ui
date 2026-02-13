@@ -1,5 +1,4 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
+import { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage } from './storage';
@@ -12,12 +11,8 @@ import 'reflect-metadata';
 
 dotenv.config();
 
-const app = express();
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
-
-app.use(cors());
-app.use(express.json());
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -33,10 +28,25 @@ try {
   console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
 }
 
-// POST /projects - Create a new project from template
-app.post('/projects', (req: Request, res: Response) => {
-  try {
-    const { name, template = 'empty' } = req.body;
+// Bootstrap NestJS and add Express routes
+async function bootstrap() {
+  // Create NestJS application
+  const nestApp = await NestFactory.create(AppModule);
+  
+  // Enable CORS
+  nestApp.enableCors();
+  
+  // Get the underlying Express instance
+  const app = nestApp.getHttpAdapter().getInstance();
+  
+  // Ensure JSON parsing is enabled (NestJS should enable this by default)
+  const express = await import('express');
+  app.use(express.json());
+
+  // POST /projects - Create a new project from template
+  app.post('/projects', (req: Request, res: Response) => {
+    try {
+      const { name, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -285,24 +295,14 @@ app.get('/jobs', (_req: Request, res: Response) => {
   }
 });
 
-// Health check
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
-});
-
-// Bootstrap NestJS and integrate with Express
-async function bootstrap() {
-  // Create NestJS application using existing Express instance
-  const { ExpressAdapter } = await import('@nestjs/platform-express');
-  const nestApp = await NestFactory.create(AppModule, new ExpressAdapter(app));
-  
-  // Initialize NestJS (this will register all NestJS routes including SSE)
-  await nestApp.init();
-  
-  // Start the server
-  app.listen(PORT, () => {
-    console.log(`VIBE API server running on port ${PORT}`);
+  // Health check
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
   });
+
+  // Start the NestJS server
+  await nestApp.listen(PORT);
+  console.log(`VIBE API server running on port ${PORT}`);
 }
 
 bootstrap().catch((error) => {

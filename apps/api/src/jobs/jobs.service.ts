@@ -25,15 +25,20 @@ export class JobsService {
    * Poll for new logs and emit them through the EventEmitter
    */
   private pollLogsForJob(jobId: string, emitter: EventEmitter): void {
-    // Send existing logs first
-    const existingEvents = storage.getTaskEvents(jobId);
-    existingEvents.forEach(event => {
-      emitter.emit('log', event);
-    });
-
-    let lastEventTime = existingEvents.length > 0 
-      ? existingEvents[existingEvents.length - 1].event_time 
-      : 0;
+    let lastEventTime = 0;
+    
+    // Delay sending existing logs to ensure Observable is subscribed
+    setTimeout(() => {
+      // Send existing logs first
+      const existingEvents = storage.getTaskEvents(jobId);
+      existingEvents.forEach(event => {
+        emitter.emit('log', event);
+      });
+      
+      lastEventTime = existingEvents.length > 0 
+        ? existingEvents[existingEvents.length - 1].event_time 
+        : 0;
+    }, 100);
 
     // Poll for new logs
     const pollInterval = setInterval(() => {
