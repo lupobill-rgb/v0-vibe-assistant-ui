@@ -9,7 +9,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
 
-dotenv.config();
+// Load .env from the repository root
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
