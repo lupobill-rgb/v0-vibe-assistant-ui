@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-import { storage } from './storage';
+import { storage, VibeEvent } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
@@ -315,7 +315,7 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
   const emitter = storage.getLogEmitter(taskId);
   
   // Listen for new log events in real-time
-  const logHandler = (event: any) => {
+  const logHandler = (event: VibeEvent) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
   

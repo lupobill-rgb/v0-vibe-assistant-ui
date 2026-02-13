@@ -198,6 +198,14 @@ class VibeStorage {
 
   updateTaskState(taskId: string, newState: ExecutionState): void {
     this.taskStateUpdate.run(newState, Date.now(), taskId);
+    
+    // Clean up EventEmitter for terminal states if no active listeners
+    if (newState === 'completed' || newState === 'failed') {
+      const emitter = this.logEmitters.get(taskId);
+      if (emitter && emitter.listenerCount('log') === 0) {
+        this.removeLogEmitter(taskId);
+      }
+    }
   }
 
   incrementIteration(taskId: string): void {
