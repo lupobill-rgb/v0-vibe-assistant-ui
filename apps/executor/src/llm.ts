@@ -1,68 +1,45 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { ProjectContext } from './context';
 
-let openaiClient: OpenAI | null = null;
+const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env
 
-function getOpenAIClient(): OpenAI {
-  if (!openaiClient) {
-    openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
-  }
-  return openaiClient;
-}
+const SYSTEM_PROMPT = `You are a code modification engine. 
+Given a user prompt and repository context, output ONLY a valid unified diff (git diff format).
+- Do NOT include any explanation, prose, or markdown code fences.
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root.
+- If creating a new file, use /dev/null as the source path.
+- If no changes are needed, output exactly: NO_CHANGES`;
 
 export async function generateDiff(
   prompt: string,
   context: ProjectContext,
   previousError?: string
 ): Promise<string> {
-  const systemPrompt = `You are an expert programmer. Generate unified diffs to implement code changes.
-Output ONLY a valid unified diff in this format:
+  const contextBlock = Object.entries(context.files)
+    .map(([path, content]) => `### ${path}\n\`\`\`\n${content}\n\`\`\``)
+    .join('\n\n');
 
-diff --git a/path/to/file.ext b/path/to/file.ext
---- a/path/to/file.ext
-+++ b/path/to/file.ext
-@@ -start,count +start,count @@
- context line
--removed line
-+added line
- context line
+  const userMessage = previousError
+    ? `Original prompt: ${prompt}\n\nPrevious diff failed preflight with this error:\n${previousError}\n\nPlease fix the diff.`
+    : `Prompt: ${prompt}`;
 
-Rules:
-1. Output ONLY the diff, no explanations, no markdown code blocks
-2. If no changes are needed, output exactly "NO_CHANGES"
-3. Use unified diff format (diff --git, ---, +++, @@)
-4. Include context lines around changes
-5. For new files, use "--- /dev/null" and "new file mode 100644"
-6. For modified files, use "--- a/file" and "+++ b/file"`;
-
-  let userPrompt = `Repository context:\n\n`;
-  
-  // Add file contents from context
-  const files = Object.entries(context.files);
-  for (const [filePath, content] of files) {
-    userPrompt += `File: ${filePath}\n\`\`\`\n${content}\n\`\`\`\n\n`;
-  }
-
-  userPrompt += `\nUser request: ${prompt}\n\n`;
-  userPrompt += `Generate a unified diff to implement this request.`;
-
-  if (previousError) {
-    userPrompt += `\n\nPrevious attempt failed with error:\n${previousError}\n\nPlease fix the issue and try again.`;
-  }
-
-  const openai = getOpenAIClient();
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4-turbo-preview',
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 4096,
+    system: SYSTEM_PROMPT,
     messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
+      {
+        role: 'user',
+        content: `${userMessage}\n\n## Repository Context\n${contextBlock}`,
+      },
     ],
-    temperature: 0,
-    max_tokens: 4000
   });
 
-  const output = response.choices[0]?.message?.content || '';
-  return output.trim();
+  const text = response.content
+    .filter((b) => b.type === 'text')
+    .map((b) => (b as { text: string }).text)
+    .join('');
+
+  return text.trim();
 }
