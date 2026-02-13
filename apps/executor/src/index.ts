@@ -75,7 +75,7 @@ class VibeExecutor {
     let worktreeDir: string | null = null;
     let git: SimpleGit | null = null;
     let repoDir: string;
-    let repoUrl: string;
+    let repoUrl: string | null;
     let isProjectMode = false;
     let baseWorkDir: string = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
 
@@ -96,8 +96,19 @@ class VibeExecutor {
         storage.logEvent(task.task_id, `Using project: ${project.name} (${task.project_id})`, 'info');
         storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
 
+        // Check if this is a local-only project (no remote repository)
+        const hasNoRemote = !repoUrl;
+        
+        if (hasNoRemote) {
+          storage.logEvent(task.task_id, 'Local-only project (no remote repository)', 'info');
+        }
+
         // Ensure project directory exists
         if (!fs.existsSync(repoDir)) {
+          if (hasNoRemote) {
+            throw new Error(`Local project directory does not exist: ${repoDir}`);
+          }
+          
           storage.logEvent(task.task_id, `Project cache not initialized. Cloning repository...`, 'info');
           storage.updateTaskState(task.task_id, 'cloning');
           
@@ -107,7 +118,7 @@ class VibeExecutor {
             fs.mkdirSync(reposDir, { recursive: true });
           }
 
-          const cloneUrl = buildCredentialedUrl(repoUrl);
+          const cloneUrl = buildCredentialedUrl(repoUrl!);
           const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
           process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
           
@@ -122,8 +133,8 @@ class VibeExecutor {
           }
           
           storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
-        } else {
-          // Project cache exists - sync with remote
+        } else if (!hasNoRemote) {
+          // Project cache exists and has remote - sync with remote
           storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
           git = simpleGit(repoDir);
           
@@ -133,6 +144,8 @@ class VibeExecutor {
           } catch (error: any) {
             storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
           }
+        } else {
+          storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
         }
       } else if (task.repository_url) {
         // Legacy Mode B: Clone to temporary directory
@@ -244,7 +257,7 @@ class VibeExecutor {
     }
   }
 
-  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string, worktreeDir: string): Promise<void> {
+  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string | null, worktreeDir: string): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
     let fallbackFiles: Set<string> = new Set();
@@ -339,7 +352,7 @@ class VibeExecutor {
           }
           
           // There are commits, create PR
-          await this.createPullRequest(task, git, repoUrl);
+          await this.createPullRequest(task, git);
           return;
         } else {
           storage.logEvent(
@@ -419,7 +432,7 @@ class VibeExecutor {
       if (preflightResult.success) {
         // All checks passed! Create PR
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-        await this.createPullRequest(task, git, repoUrl);
+        await this.createPullRequest(task, git);
         return;
       } else {
         storage.logEvent(
@@ -852,17 +865,24 @@ diff --git a/example.js b/example.js
     }
   }
 
-  private async createPullRequest(task: VibeTask, git: SimpleGit, repoUrl: string): Promise<void> {
+  private async createPullRequest(task: VibeTask, git: SimpleGit, repoUrlParam: string | null): Promise<void> {
     try {
       storage.updateTaskState(task.task_id, 'creating_pr');
+      
+      // For local-only projects (no remote), skip push and PR creation
+      if (!repoUrlParam) {
+        storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
+        storage.updateTaskState(task.task_id, 'completed');
+        storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
+        return;
+      }
+      
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
-      // Push branch from main repo (not worktree)
-      await git.push('origin', task.destination_branch, ['--force']);
-      storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
-
-      // Determine repository URL
-      let repoUrl: string;
+      // Determine repository URL and check if remote exists
+      let repoUrl: string | undefined;
+      let hasRemote = false;
+      
       if (task.project_id) {
         const project = storage.getProject(task.project_id);
         if (!project) {
@@ -875,20 +895,30 @@ diff --git a/example.js b/example.js
           const origin = remotes.find((r: RemoteWithRefs) => r.name === 'origin');
           if (origin && origin.refs.fetch) {
             repoUrl = origin.refs.fetch;
+            hasRemote = true;
           } else {
-            storage.logEvent(task.task_id, 'No GitHub remote found, PR creation skipped', 'warning');
+            storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
             storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
-          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}`, 'warning');
+          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
           storage.updateTaskState(task.task_id, 'completed');
           return;
         }
       } else if (task.repository_url) {
         repoUrl = task.repository_url;
+        // For legacy mode, assume there's a remote
+        hasRemote = true;
       } else {
         throw new Error('Task has neither project_id nor repository_url');
+      }
+
+      // Only push if we have a remote
+      if (hasRemote) {
+        storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
+        await git.push('origin', task.destination_branch, ['--force']);
+        storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
       }
 
       // Create PR

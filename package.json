@@ -11,7 +11,7 @@
     "dev:executor": "npm run dev --workspace=apps/executor",
     "build": "npm run build --workspaces --if-present",
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:executor\" \"npm run dev:web\"",
-    "test:e2e": "tsx --test tests/e2e/**/*.spec.ts"
+    "test:e2e": "cd tests && npm run test:e2e"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",

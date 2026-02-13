@@ -2,8 +2,13 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { EventEmitter } from 'events';
+import dotenv from 'dotenv';
 
-const storePath = process.env.DATABASE_PATH || '/app/data/vibe.db';
+// Load .env from the repository root (go up from apps/api/src to root)
+const envPath = path.join(__dirname, '../../../.env');
+dotenv.config({ path: envPath });
+
+const storePath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data/vibe.db');
 const storeDir = path.dirname(storePath);
 
 if (!fs.existsSync(storeDir)) {
@@ -17,7 +22,7 @@ vibeDb.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
-    repository_url TEXT NOT NULL,
+    repository_url TEXT,
     local_path TEXT NOT NULL,
     last_synced INTEGER,
     created_at INTEGER NOT NULL
@@ -68,7 +73,7 @@ export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 export interface Project {
   id: string;
   name: string;
-  repository_url: string;
+  repository_url: string | null;
   local_path: string;
   last_synced?: number;
   created_at: number;

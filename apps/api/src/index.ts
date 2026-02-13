@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
@@ -9,7 +10,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
 
-dotenv.config();
+// Load .env from the repository root
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
@@ -30,19 +32,26 @@ try {
 
 // Bootstrap NestJS and add Express routes
 async function bootstrap() {
-  // Create NestJS application
-  const nestApp = await NestFactory.create(AppModule);
+  // Create NestJS application with body parser
+  const nestApp = await NestFactory.create(AppModule, {
+    bodyParser: true,
+  });
   
   // Enable CORS
   nestApp.enableCors();
   
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
+  
+  // Add JSON body parser middleware for custom Express routes
+  // Note: NestJS has its own body parser for its controllers,
+  // but our custom routes added directly to the Express instance need this
+  app.use(express.json());
 
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
     try {
-      const { name, template = 'empty' } = req.body;
+      const { name, repository_url, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -73,7 +82,7 @@ async function bootstrap() {
     storage.createProject({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       created_at: Date.now()
     });
@@ -81,7 +90,7 @@ async function bootstrap() {
     res.status(201).json({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       message: 'Project created successfully'
     });
