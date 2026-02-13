@@ -42,7 +42,7 @@ async function bootstrap() {
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
     try {
-      const { name, template = 'empty' } = req.body;
+      const { name, repository_url, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -73,7 +73,7 @@ async function bootstrap() {
     storage.createProject({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       created_at: Date.now()
     });
@@ -81,7 +81,7 @@ async function bootstrap() {
     res.status(201).json({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       message: 'Project created successfully'
     });
