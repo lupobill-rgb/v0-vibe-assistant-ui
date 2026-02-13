@@ -97,15 +97,15 @@ class VibeExecutor {
         storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
 
         // Check if this is a local-only project (no remote repository)
-        const isLocalOnly = !repoUrl;
+        const hasNoRemote = !repoUrl;
         
-        if (isLocalOnly) {
+        if (hasNoRemote) {
           storage.logEvent(task.task_id, 'Local-only project (no remote repository)', 'info');
         }
 
         // Ensure project directory exists
         if (!fs.existsSync(repoDir)) {
-          if (isLocalOnly) {
+          if (hasNoRemote) {
             throw new Error(`Local project directory does not exist: ${repoDir}`);
           }
           
@@ -133,7 +133,7 @@ class VibeExecutor {
           }
           
           storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
-        } else if (!isLocalOnly) {
+        } else if (!hasNoRemote) {
           // Project cache exists and has remote - sync with remote
           storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
           git = simpleGit(repoDir);
@@ -145,7 +145,6 @@ class VibeExecutor {
             storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
           }
         } else {
-          // Local-only project, directory exists - no syncing needed
           storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
         }
       } else if (task.repository_url) {
