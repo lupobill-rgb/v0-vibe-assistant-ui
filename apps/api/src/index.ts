@@ -43,14 +43,15 @@ async function bootstrap() {
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
   
-  // Add Express middleware for larger JSON bodies if needed
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  // Add JSON body parser middleware for custom Express routes
+  // Note: NestJS has its own body parser for its controllers,
+  // but our custom routes added directly to the Express instance need this
+  app.use(express.json());
 
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
     try {
-      const { name, template = 'empty' } = req.body;
+      const { name, repository_url, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -81,7 +82,7 @@ async function bootstrap() {
     storage.createProject({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       created_at: Date.now()
     });
@@ -89,7 +90,7 @@ async function bootstrap() {
     res.status(201).json({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       message: 'Project created successfully'
     });
