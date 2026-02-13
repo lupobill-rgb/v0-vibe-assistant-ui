@@ -1,3 +1,5 @@
-export interface LogEmitter {
-  emit(message: string): void;
+export class LogEmitter {
+  emit(message: string): void {
+    console.log(message);
+  }
 }
