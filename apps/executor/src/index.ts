@@ -352,7 +352,7 @@ class VibeExecutor {
           }
           
           // There are commits, create PR
-          await this.createPullRequest(task, git, repoUrl);
+          await this.createPullRequest(task, git);
           return;
         } else {
           storage.logEvent(
@@ -432,7 +432,7 @@ class VibeExecutor {
       if (preflightResult.success) {
         // All checks passed! Create PR
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-        await this.createPullRequest(task, git, repoUrl);
+        await this.createPullRequest(task, git);
         return;
       } else {
         storage.logEvent(
@@ -879,12 +879,10 @@ diff --git a/example.js b/example.js
       
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
-      // Push branch from main repo (not worktree)
-      await git.push('origin', task.destination_branch, ['--force']);
-      storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
-
-      // Determine repository URL
-      let repoUrl: string;
+      // Determine repository URL and check if remote exists
+      let repoUrl: string | undefined;
+      let hasRemote = false;
+      
       if (task.project_id) {
         const project = storage.getProject(task.project_id);
         if (!project) {
@@ -897,20 +895,30 @@ diff --git a/example.js b/example.js
           const origin = remotes.find((r: RemoteWithRefs) => r.name === 'origin');
           if (origin && origin.refs.fetch) {
             repoUrl = origin.refs.fetch;
+            hasRemote = true;
           } else {
-            storage.logEvent(task.task_id, 'No GitHub remote found, PR creation skipped', 'warning');
+            storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
             storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
-          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}`, 'warning');
+          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
           storage.updateTaskState(task.task_id, 'completed');
           return;
         }
       } else if (task.repository_url) {
         repoUrl = task.repository_url;
+        // For legacy mode, assume there's a remote
+        hasRemote = true;
       } else {
         throw new Error('Task has neither project_id nor repository_url');
+      }
+
+      // Only push if we have a remote
+      if (hasRemote) {
+        storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
+        await git.push('origin', task.destination_branch, ['--force']);
+        storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
       }
 
       // Create PR
