@@ -1,20 +1,18 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
+import { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import 'reflect-metadata';
 
 dotenv.config();
 
-const app = express();
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
-
-app.use(cors());
-app.use(express.json());
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -30,10 +28,21 @@ try {
   console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
 }
 
-// POST /projects - Create a new project from template
-app.post('/projects', (req: Request, res: Response) => {
-  try {
-    const { name, template = 'empty' } = req.body;
+// Bootstrap NestJS and add Express routes
+async function bootstrap() {
+  // Create NestJS application
+  const nestApp = await NestFactory.create(AppModule);
+  
+  // Enable CORS
+  nestApp.enableCors();
+  
+  // Get the underlying Express instance
+  const app = nestApp.getHttpAdapter().getInstance();
+
+  // POST /projects - Create a new project from template
+  app.post('/projects', (req: Request, res: Response) => {
+    try {
+      const { name, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -282,69 +291,17 @@ app.get('/jobs', (_req: Request, res: Response) => {
   }
 });
 
-// GET /jobs/:id/logs - Stream logs via SSE
-app.get('/jobs/:id/logs', (req: Request, res: Response) => {
-  const taskId = req.params.id;
-  
-  // Check if task exists
-  const task = storage.getTask(taskId);
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-
-  // Set up SSE
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // Send existing logs
-  const existingEvents = storage.getTaskEvents(taskId);
-  existingEvents.forEach(event => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  // Health check
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
   });
 
-  let lastEventTime = existingEvents.length > 0 
-    ? existingEvents[existingEvents.length - 1].event_time 
-    : 0;
-
-  // Poll for new logs
-  const pollInterval = setInterval(() => {
-    try {
-      const newEvents = storage.getEventsAfter(taskId, lastEventTime);
-      
-      newEvents.forEach(event => {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-        lastEventTime = event.event_time;
-      });
-
-      // Check if task is in terminal state
-      const currentTask = storage.getTask(taskId);
-      if (currentTask && (currentTask.execution_state === 'completed' || currentTask.execution_state === 'failed')) {
-        // Send completion event
-        res.write(`data: ${JSON.stringify({ type: 'complete', state: currentTask.execution_state })}\n\n`);
-        clearInterval(pollInterval);
-        res.end();
-      }
-    } catch (error) {
-      console.error('Error polling logs:', error);
-      clearInterval(pollInterval);
-      res.end();
-    }
-  }, 1000);
-
-  // Clean up on client disconnect
-  req.on('close', () => {
-    clearInterval(pollInterval);
-    res.end();
-  });
-});
-
-// Health check
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
-});
-
-app.listen(PORT, () => {
+  // Start the NestJS server
+  await nestApp.listen(PORT);
   console.log(`VIBE API server running on port ${PORT}`);
+}
+
+bootstrap().catch((error) => {
+  console.error('Error starting server:', error);
+  process.exit(1);
 });
