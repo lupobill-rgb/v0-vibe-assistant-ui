@@ -14,6 +14,12 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   executor:
     build:
@@ -26,7 +32,8 @@ services:
     volumes:
       - ./data:/app/data
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   web:
     build:
@@ -37,5 +44,12 @@ services:
     environment:
       - VITE_API_URL=http://api:3001
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s

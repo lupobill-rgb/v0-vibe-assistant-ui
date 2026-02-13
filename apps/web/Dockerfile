@@ -19,6 +19,9 @@ RUN npm run build --workspace=apps/web
 # Production image
 FROM nginx:alpine
 
+# Install curl for health checks
+RUN apk add --no-cache curl
+
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
 # Add nginx config for SPA routing
