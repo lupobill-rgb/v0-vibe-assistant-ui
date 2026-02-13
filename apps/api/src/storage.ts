@@ -19,7 +19,7 @@ const vibeDb = new Database(storePath);
 
 // Initialize VIBE storage schema with defined lifecycle states
 vibeDb.exec(`
-  CREATE TABLE IF NOT EXISTS projects (
+  CREATE TABLE IF NOT EXISTS vibe_projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     repository_url TEXT,
@@ -40,7 +40,7 @@ vibeDb.exec(`
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
     last_modified INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id)
+    FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -107,21 +107,21 @@ class VibeStorage {
 
   // Project statements
   private projectInsert = vibeDb.prepare(`
-    INSERT INTO projects (id, name, repository_url, local_path, created_at)
+    INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
-  private projectSelectByName = vibeDb.prepare(`SELECT * FROM projects WHERE name = ?`);
-  private projectsList = vibeDb.prepare(`SELECT * FROM projects ORDER BY created_at DESC`);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
+  private projectSelectByName = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE name = ?`);
+  private projectsList = vibeDb.prepare(`SELECT * FROM vibe_projects ORDER BY created_at DESC`);
   
   private projectUpdateSync = vibeDb.prepare(`
-    UPDATE projects 
+    UPDATE vibe_projects 
     SET last_synced = ? 
     WHERE id = ?
   `);
 
-  private projectDelete = vibeDb.prepare(`DELETE FROM projects WHERE id = ?`);
+  private projectDelete = vibeDb.prepare(`DELETE FROM vibe_projects WHERE id = ?`);
 
   // Task statements - updated to support project_id
   private taskInsert = vibeDb.prepare(`

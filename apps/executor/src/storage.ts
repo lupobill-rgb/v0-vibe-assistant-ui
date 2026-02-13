@@ -13,7 +13,7 @@ const vibeDb = new Database(storePath);
 
 // Initialize VIBE storage schema with defined lifecycle states
 vibeDb.exec(`
-  CREATE TABLE IF NOT EXISTS projects (
+  CREATE TABLE IF NOT EXISTS vibe_projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     repository_url TEXT,
@@ -34,7 +34,7 @@ vibeDb.exec(`
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
     last_modified INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id)
+    FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -100,7 +100,7 @@ class ExecutorStorage {
     INSERT INTO vibe_tasks (task_id, user_prompt, project_id, repository_url, source_branch, destination_branch, execution_state, iteration_count, initiated_at, last_modified)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
   private taskStateUpdate = vibeDb.prepare(`
