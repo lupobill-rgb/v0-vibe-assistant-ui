@@ -105,7 +105,7 @@ class VibeExecutor {
 
         // Ensure project directory exists
         if (!fs.existsSync(repoDir)) {
-          if (!repoUrl) {
+          if (hasNoRemote) {
             storage.logEvent(task.task_id, `Project has no repo_source — using local path only`, 'info');
             fs.mkdirSync(repoDir, { recursive: true });
           } else {
