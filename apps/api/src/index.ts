@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
@@ -38,6 +39,9 @@ async function bootstrap() {
   
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
+  
+  // Add JSON body parser middleware for custom routes
+  app.use(express.json());
 
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
