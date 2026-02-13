@@ -96,16 +96,11 @@ export interface VibeEvent {
 }
 
 class ExecutorStorage {
-  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
-
   private taskInsert = vibeDb.prepare(`
-    INSERT INTO vibe_tasks (
-      task_id, user_prompt, project_id, repository_url, source_branch, 
-      destination_branch, execution_state, iteration_count, 
-      initiated_at, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO vibe_tasks (task_id, user_prompt, project_id, repository_url, source_branch, destination_branch, execution_state, iteration_count, initiated_at, last_modified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-
+  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
   private taskStateUpdate = vibeDb.prepare(`
