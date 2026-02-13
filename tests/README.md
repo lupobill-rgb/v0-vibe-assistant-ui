@@ -2,6 +2,20 @@
 
 This directory contains end-to-end tests for the VIBE pipeline.
 
+## Quick Start
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Start services in the background (in separate terminals)
+npm run dev:api
+npm run dev:executor
+
+# 3. Run E2E tests
+npm run test:e2e
+```
+
 ## Structure
 
 ```
