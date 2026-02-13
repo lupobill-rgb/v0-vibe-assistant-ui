@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install git for repository operations (ca-certificates already in base image)
-RUN apk add --no-cache git openssh
+# Install git for repository operations
+RUN apk add --no-cache git openssh ca-certificates
 # Verify git installation: docker compose exec api git --version
 
 WORKDIR /app
