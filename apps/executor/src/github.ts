@@ -27,7 +27,7 @@ export async function pushBranchAndOpenPR(
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
     method: 'POST',
     headers: {
-      Authorization: `token ${token}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept: 'application/vnd.github+json',
     },
