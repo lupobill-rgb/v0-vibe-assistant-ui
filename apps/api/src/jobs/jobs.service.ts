@@ -2,9 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter } from 'events';
 import { storage } from '../storage';
 
+// Constants for timing configuration
+const OBSERVABLE_SUBSCRIPTION_DELAY_MS = 100; // Delay to ensure Observable subscribes before emitting events
+const LOG_POLL_INTERVAL_MS = 1000; // Interval for polling new log events
+const EMITTER_CLEANUP_DELAY_MS = 5000; // Delay before cleaning up completed job emitters
+
 @Injectable()
 export class JobsService {
   private logEmitters = new Map<string, EventEmitter>();
+  private pollIntervals = new Map<string, NodeJS.Timeout>();
 
   /**
    * Get or create an EventEmitter for a specific job
@@ -38,7 +44,7 @@ export class JobsService {
       lastEventTime = existingEvents.length > 0 
         ? existingEvents[existingEvents.length - 1].event_time 
         : 0;
-    }, 100);
+    }, OBSERVABLE_SUBSCRIPTION_DELAY_MS);
 
     // Poll for new logs
     const pollInterval = setInterval(() => {
@@ -55,22 +61,31 @@ export class JobsService {
         if (currentTask && (currentTask.execution_state === 'completed' || currentTask.execution_state === 'failed')) {
           // Emit completion event
           emitter.emit('log', { type: 'complete', state: currentTask.execution_state });
-          clearInterval(pollInterval);
-          // Clean up emitter after a delay to allow final messages to be sent
-          setTimeout(() => {
-            this.logEmitters.delete(jobId);
-          }, 5000);
+          this.cleanupJob(jobId);
         }
       } catch (error) {
         console.error(`Error polling logs for job ${jobId}:`, error);
-        clearInterval(pollInterval);
-        this.logEmitters.delete(jobId);
+        this.cleanupJob(jobId);
       }
-    }, 1000);
-
-    // Set up cleanup on emitter removal
-    emitter.on('removeAllListeners', () => {
-      clearInterval(pollInterval);
-    });
+    }, LOG_POLL_INTERVAL_MS);
+    
+    this.pollIntervals.set(jobId, pollInterval);
+  }
+  
+  /**
+   * Clean up resources for a job
+   */
+  private cleanupJob(jobId: string): void {
+    // Clear the polling interval
+    const interval = this.pollIntervals.get(jobId);
+    if (interval) {
+      clearInterval(interval);
+      this.pollIntervals.delete(jobId);
+    }
+    
+    // Clean up emitter after a delay to allow final messages to be sent
+    setTimeout(() => {
+      this.logEmitters.delete(jobId);
+    }, EMITTER_CLEANUP_DELAY_MS);
   }
 }

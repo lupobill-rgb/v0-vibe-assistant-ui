@@ -38,10 +38,6 @@ async function bootstrap() {
   
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
-  
-  // Ensure JSON parsing is enabled (NestJS should enable this by default)
-  const express = await import('express');
-  app.use(express.json());
 
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
