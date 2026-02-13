@@ -10,7 +10,8 @@
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:executor": "npm run dev --workspace=apps/executor",
     "build": "npm run build --workspaces --if-present",
-    "dev": "concurrently \"npm run dev:api\" \"npm run dev:executor\" \"npm run dev:web\""
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:executor\" \"npm run dev:web\"",
+    "test:e2e": "cd tests && npm run test:e2e"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
