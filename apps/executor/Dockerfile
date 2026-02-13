@@ -1,8 +1,17 @@
-FROM node:20-alpine
+FROM node:20-slim
 
-# Install git for repository operations and ripgrep for code search (ca-certificates already in base image)
-RUN apk add --no-cache git openssh ripgrep
-# Verify git installation: docker compose exec executor git --version
+# Install git for repository operations (ripgrep not available in Debian repos, will install separately)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    openssh-client \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ripgrep from GitHub releases
+RUN curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb \
+    && dpkg -i ripgrep_14.1.0-1_amd64.deb \
+    && rm ripgrep_14.1.0-1_amd64.deb
 
 WORKDIR /app
 
