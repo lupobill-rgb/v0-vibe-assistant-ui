@@ -304,7 +304,14 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   });
 
-  // Get the EventEmitter for this task
+  // Check if task is already in terminal state
+  if (task.execution_state === 'completed' || task.execution_state === 'failed') {
+    res.write(`data: ${JSON.stringify({ type: 'complete', state: task.execution_state })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // Get the EventEmitter for this task (only for non-terminal tasks)
   const emitter = storage.getLogEmitter(taskId);
   
   // Listen for new log events in real-time
@@ -329,15 +336,7 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
     }
   };
 
-  // Check if task is already in terminal state
-  if (task.execution_state === 'completed' || task.execution_state === 'failed') {
-    res.write(`data: ${JSON.stringify({ type: 'complete', state: task.execution_state })}\n\n`);
-    cleanup();
-    res.end();
-    return;
-  }
-
-  // Poll periodically to check task completion status
+  // Poll periodically to check task completion status (less frequently since we have real-time events)
   statusCheckInterval = setInterval(() => {
     try {
       const currentTask = storage.getTask(taskId);
@@ -352,7 +351,7 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
       cleanup();
       res.end();
     }
-  }, 1000);
+  }, 5000); // Check every 5 seconds (less frequent since logs stream in real-time)
 
   // Clean up on client disconnect
   req.on('close', () => {

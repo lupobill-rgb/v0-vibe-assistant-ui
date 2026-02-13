@@ -217,13 +217,14 @@ class VibeStorage {
   }
 
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
+    const eventTime = Date.now();
     const event = {
       task_id: taskId,
       event_message: message,
       severity,
-      event_time: Date.now()
+      event_time: eventTime
     };
-    this.eventInsert.run(taskId, message, severity, event.event_time);
+    this.eventInsert.run(taskId, message, severity, eventTime);
     
     // Emit the event in real-time to any listeners
     const emitter = this.logEmitters.get(taskId);
