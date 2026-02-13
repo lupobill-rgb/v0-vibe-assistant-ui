@@ -1,6 +1,16 @@
 /**
  * E2E Test: Full VIBE Pipeline
- * Tests the complete flow from prompt to PR creation
+ * 
+ * Tests the complete flow from prompt to PR creation in under 3 minutes:
+ * 1. Creates a project via POST /projects
+ * 2. Submits a job/task via POST /jobs
+ * 3. Monitors execution via Server-Sent Events (SSE) at /jobs/:id/logs
+ * 4. Validates successful PR creation and absence of errors
+ * 
+ * This test scaffold validates the core VIBE workflow and ensures:
+ * - The pipeline completes successfully
+ * - A PR is opened to GitHub
+ * - No runtime errors occur (e.g., null pointer exceptions)
  */
 
 import { describe, it, before, after } from 'node:test';
@@ -56,10 +66,11 @@ describe('E2E: Full Pipeline', () => {
           timeout: 180000, // 3 minutes
           until: (log) => {
             // Stop collecting when we see terminal conditions
+            // Use specific terminal messages to avoid premature stopping
             return log.includes('PR opened') || 
-                   log.includes('FAIL') ||
-                   log.includes('failed') ||
-                   log.includes('error');
+                   log.includes('Pipeline failed') ||
+                   log.includes('Task failed') ||
+                   log.toLowerCase().includes('fatal error');
           }
         }
       );
@@ -92,7 +103,7 @@ describe('E2E: Full Pipeline', () => {
 
     // Additional assertions for pipeline stages
     assert.ok(
-      allLogs.includes('Task created') || allLogs.includes('queued'),
+      allLogs.includes('Task created') || allLogs.includes('Task created and queued'),
       'Expected logs to show task creation'
     );
 

@@ -107,6 +107,7 @@ export class TestApiClient {
 export interface SSECollectorOptions {
   timeout?: number;
   until?: (log: string) => boolean;
+  onParseError?: (line: string, error: Error) => void;
 }
 
 /**
@@ -118,7 +119,7 @@ export async function collectSSE(
   logs: string[],
   options: SSECollectorOptions = {}
 ): Promise<void> {
-  const { timeout = 180000, until } = options;
+  const { timeout = 180000, until, onParseError } = options;
   const url = `${baseUrl}${path}`;
 
   return new Promise((resolve, reject) => {
@@ -181,9 +182,13 @@ export async function collectSSE(
                       return;
                     }
                   }
-                } catch (parseError) {
-                  // Ignore parse errors for malformed SSE messages
-                  console.warn('Failed to parse SSE data:', line);
+                } catch (parseError: any) {
+                  // Report parse errors via callback or silently continue
+                  if (onParseError) {
+                    onParseError(line, parseError);
+                  }
+                  // In test environments, parse errors may indicate bugs in SSE implementation
+                  // but we continue collecting other logs
                 }
               }
             }
