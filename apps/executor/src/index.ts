@@ -75,7 +75,7 @@ class VibeExecutor {
     let worktreeDir: string | null = null;
     let git: SimpleGit | null = null;
     let repoDir: string;
-    let repoUrl: string;
+    let repoUrl: string | null;
     let isProjectMode = false;
     let baseWorkDir: string = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
 
@@ -96,8 +96,19 @@ class VibeExecutor {
         storage.logEvent(task.task_id, `Using project: ${project.name} (${task.project_id})`, 'info');
         storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
 
+        // Check if this is a local-only project (no remote repository)
+        const hasNoRemote = !repoUrl;
+        
+        if (hasNoRemote) {
+          storage.logEvent(task.task_id, 'Local-only project (no remote repository)', 'info');
+        }
+
         // Ensure project directory exists
         if (!fs.existsSync(repoDir)) {
+          if (hasNoRemote) {
+            throw new Error(`Local project directory does not exist: ${repoDir}`);
+          }
+          
           storage.logEvent(task.task_id, `Project cache not initialized. Cloning repository...`, 'info');
           storage.updateTaskState(task.task_id, 'cloning');
           
@@ -107,7 +118,7 @@ class VibeExecutor {
             fs.mkdirSync(reposDir, { recursive: true });
           }
 
-          const cloneUrl = buildCredentialedUrl(repoUrl);
+          const cloneUrl = buildCredentialedUrl(repoUrl!);
           const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
           process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
           
@@ -122,8 +133,8 @@ class VibeExecutor {
           }
           
           storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
-        } else {
-          // Project cache exists - sync with remote
+        } else if (!hasNoRemote) {
+          // Project cache exists and has remote - sync with remote
           storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
           git = simpleGit(repoDir);
           
@@ -133,6 +144,8 @@ class VibeExecutor {
           } catch (error: any) {
             storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
           }
+        } else {
+          storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
         }
       } else if (task.repository_url) {
         // Legacy Mode B: Clone to temporary directory
@@ -244,7 +257,7 @@ class VibeExecutor {
     }
   }
 
-  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string, worktreeDir: string): Promise<void> {
+  private async iterationLoop(task: VibeTask, baseWorkDir: string, repoDir: string, git: SimpleGit, repoUrl: string | null, worktreeDir: string): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
     let fallbackFiles: Set<string> = new Set();
@@ -852,9 +865,18 @@ diff --git a/example.js b/example.js
     }
   }
 
-  private async createPullRequest(task: VibeTask, git: SimpleGit, repoUrl: string): Promise<void> {
+  private async createPullRequest(task: VibeTask, git: SimpleGit, repoUrlParam: string | null): Promise<void> {
     try {
       storage.updateTaskState(task.task_id, 'creating_pr');
+      
+      // For local-only projects (no remote), skip push and PR creation
+      if (!repoUrlParam) {
+        storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
+        storage.updateTaskState(task.task_id, 'completed');
+        storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
+        return;
+      }
+      
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
       // Push branch from main repo (not worktree)
