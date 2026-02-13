@@ -857,7 +857,7 @@ diff --git a/example.js b/example.js
       storage.updateTaskState(task.task_id, 'creating_pr');
 
       // Determine repository URL and check if remote exists
-      let repoUrl: string;
+      let repoUrl: string | undefined;
       let hasRemote = false;
       
       if (task.project_id) {
@@ -874,14 +874,12 @@ diff --git a/example.js b/example.js
             repoUrl = origin.refs.fetch;
             hasRemote = true;
           } else {
-            storage.logEvent(task.task_id, 'No remote repository configured - this is a local-only project', 'info');
-            storage.logEvent(task.task_id, 'Changes have been committed locally. PR creation skipped.', 'info');
+            storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
             storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
-          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}`, 'warning');
-          storage.logEvent(task.task_id, 'Changes have been committed locally. PR creation skipped.', 'info');
+          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
           storage.updateTaskState(task.task_id, 'completed');
           return;
         }
