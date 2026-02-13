@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-import { storage } from './storage';
+import { storage, VibeEvent } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
