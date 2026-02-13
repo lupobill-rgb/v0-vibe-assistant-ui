@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { Job } from './runner';
+import { Job, MAX_ITERATIONS } from './runner';
 
 describe('Runner Module', () => {
   describe('Job Interface', () => {
@@ -24,18 +24,20 @@ describe('Runner Module', () => {
       assert.strictEqual(job.project.github_repo, 'owner/repo');
     });
 
-    it('should allow optional github_repo', () => {
+    it('should allow optional github_repo and base_branch', () => {
       const job: Job = {
         id: 'test-456',
         prompt: 'Fix a bug',
         project: {
           id: 'project-2',
           local_path: '/local/path',
-          repository_url: null
+          repository_url: null,
+          base_branch: 'develop'
         }
       };
       
       assert.strictEqual(job.project.github_repo, undefined);
+      assert.strictEqual(job.project.base_branch, 'develop');
     });
 
     it('should allow null values for paths', () => {
@@ -55,11 +57,8 @@ describe('Runner Module', () => {
   
   describe('Runner Configuration', () => {
     it('should use MAX_ITERATIONS of 6', () => {
-      // This is defined in runner.ts as const MAX_ITERATIONS = 6
-      // We can't directly test it without running the actual function,
-      // but we can document the expected behavior
-      const expectedMaxIterations = 6;
-      assert.strictEqual(expectedMaxIterations, 6);
+      // Test the actual exported constant
+      assert.strictEqual(MAX_ITERATIONS, 6);
     });
   });
 });

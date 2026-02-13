@@ -1,9 +1,16 @@
 import OpenAI from 'openai';
 import { ProjectContext } from './context';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+  }
+  return openaiClient;
+}
 
 export async function generateDiff(
   prompt: string,
@@ -45,6 +52,7 @@ Rules:
     userPrompt += `\n\nPrevious attempt failed with error:\n${previousError}\n\nPlease fix the issue and try again.`;
   }
 
+  const openai = getOpenAIClient();
   const response = await openai.chat.completions.create({
     model: 'gpt-4-turbo-preview',
     messages: [

@@ -18,10 +18,20 @@ export interface Job {
     local_path: string | null;
     repository_url: string | null;
     github_repo?: string; // e.g. "owner/repo"
+    base_branch?: string; // e.g. "main" or "master"
   };
 }
 
-const MAX_ITERATIONS = 6;
+export const MAX_ITERATIONS = 6;
+const PREFLIGHT_TIMEOUT = parseInt(process.env.PREFLIGHT_TIMEOUT || '300000', 10); // 5 minutes
+
+/**
+ * Helper function to reset working tree to clean state
+ */
+async function resetWorkingTree(sandboxDir: string): Promise<void> {
+  await execAsync(`git -C "${sandboxDir}" reset HEAD~1`);
+  await execAsync(`git -C "${sandboxDir}" checkout -- .`);
+}
 
 export async function runJob(job: Job, log: LogEmitter): Promise<void> {
   const { prompt, project } = job;
@@ -98,8 +108,7 @@ export async function runJob(job: Job, log: LogEmitter): Promise<void> {
       previousError = preflightError;
 
       // Undo commit + reset for next iteration
-      await execAsync(`git -C "${sandboxDir}" reset HEAD~1`);
-      await execAsync(`git -C "${sandboxDir}" checkout -- .`);
+      await resetWorkingTree(sandboxDir);
 
       if (iteration === MAX_ITERATIONS) {
         throw new Error(`Preflight still failing after ${MAX_ITERATIONS} iterations:\n${preflightError}`);
@@ -109,7 +118,8 @@ export async function runJob(job: Job, log: LogEmitter): Promise<void> {
     // ── 5. Push branch + open PR ──────────────────────────────────────────
     if (project.github_repo) {
       log.emit('Pushing branch and opening PR...');
-      const prUrl = await pushBranchAndOpenPR(sandboxDir, branchName, prompt, project.github_repo, log);
+      const baseBranch = project.base_branch || 'main';
+      const prUrl = await pushBranchAndOpenPR(sandboxDir, branchName, prompt, project.github_repo, baseBranch, log);
       log.emit(`🎉 PR opened: ${prUrl}`);
     } else {
       // Local-only: copy results back
@@ -134,7 +144,9 @@ async function runPreflight(repoDir: string, log: LogEmitter): Promise<string | 
   for (const check of checks) {
     log.emit(`  Running ${check.name}...`);
     try {
-      await execAsync(check.cmd, { cwd: repoDir, timeout: 120_000 });
+      // Use longer timeout for install, shorter for other checks
+      const timeout = check.name === 'install' ? PREFLIGHT_TIMEOUT : 120_000;
+      await execAsync(check.cmd, { cwd: repoDir, timeout });
     } catch (err: any) {
       return `${check.name} failed:\n${err.stdout ?? ''}\n${err.stderr ?? ''}`;
     }
