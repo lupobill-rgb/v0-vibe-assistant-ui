@@ -5,8 +5,10 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:nest": "tsx watch src/nest-main.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "start:nest": "node dist/nest-main.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.13",
