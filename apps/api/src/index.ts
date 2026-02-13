@@ -304,38 +304,47 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   });
 
-  let lastEventTime = existingEvents.length > 0 
-    ? existingEvents[existingEvents.length - 1].event_time 
-    : 0;
+  // Get the EventEmitter for this task
+  const emitter = storage.getLogEmitter(taskId);
+  
+  // Listen for new log events in real-time
+  const logHandler = (event: any) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+  
+  emitter.on('log', logHandler);
 
-  // Poll for new logs
-  const pollInterval = setInterval(() => {
+  // Check if task is already in terminal state
+  if (task.execution_state === 'completed' || task.execution_state === 'failed') {
+    res.write(`data: ${JSON.stringify({ type: 'complete', state: task.execution_state })}\n\n`);
+    emitter.off('log', logHandler);
+    res.end();
+    return;
+  }
+
+  // Poll periodically to check task completion status
+  const statusCheckInterval = setInterval(() => {
     try {
-      const newEvents = storage.getEventsAfter(taskId, lastEventTime);
-      
-      newEvents.forEach(event => {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-        lastEventTime = event.event_time;
-      });
-
-      // Check if task is in terminal state
       const currentTask = storage.getTask(taskId);
       if (currentTask && (currentTask.execution_state === 'completed' || currentTask.execution_state === 'failed')) {
         // Send completion event
         res.write(`data: ${JSON.stringify({ type: 'complete', state: currentTask.execution_state })}\n\n`);
-        clearInterval(pollInterval);
+        clearInterval(statusCheckInterval);
+        emitter.off('log', logHandler);
         res.end();
       }
     } catch (error) {
-      console.error('Error polling logs:', error);
-      clearInterval(pollInterval);
+      console.error('Error checking task status:', error);
+      clearInterval(statusCheckInterval);
+      emitter.off('log', logHandler);
       res.end();
     }
   }, 1000);
 
   // Clean up on client disconnect
   req.on('close', () => {
-    clearInterval(pollInterval);
+    clearInterval(statusCheckInterval);
+    emitter.off('log', logHandler);
     res.end();
   });
 });

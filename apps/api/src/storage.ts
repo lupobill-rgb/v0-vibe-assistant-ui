@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { EventEmitter } from 'events';
 
 const storePath = process.env.DATABASE_PATH || '/app/data/vibe.db';
 const storeDir = path.dirname(storePath);
@@ -96,6 +97,9 @@ export interface VibeEvent {
 }
 
 class VibeStorage {
+  // EventEmitters for real-time log streaming
+  private logEmitters = new Map<string, EventEmitter>();
+
   // Project statements
   private projectInsert = vibeDb.prepare(`
     INSERT INTO projects (id, name, repository_url, local_path, created_at)
@@ -213,7 +217,19 @@ class VibeStorage {
   }
 
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
-    this.eventInsert.run(taskId, message, severity, Date.now());
+    const event = {
+      task_id: taskId,
+      event_message: message,
+      severity,
+      event_time: Date.now()
+    };
+    this.eventInsert.run(taskId, message, severity, event.event_time);
+    
+    // Emit the event in real-time to any listeners
+    const emitter = this.logEmitters.get(taskId);
+    if (emitter) {
+      emitter.emit('log', event);
+    }
   }
 
   getTaskEvents(taskId: string): VibeEvent[] {
@@ -222,6 +238,25 @@ class VibeStorage {
 
   getEventsAfter(taskId: string, afterTime: number): VibeEvent[] {
     return this.eventsAfterTime.all(taskId, afterTime) as VibeEvent[];
+  }
+
+  // Get or create an EventEmitter for a task's log stream
+  getLogEmitter(taskId: string): EventEmitter {
+    let emitter = this.logEmitters.get(taskId);
+    if (!emitter) {
+      emitter = new EventEmitter();
+      this.logEmitters.set(taskId, emitter);
+    }
+    return emitter;
+  }
+
+  // Clean up EventEmitter when no longer needed
+  removeLogEmitter(taskId: string): void {
+    const emitter = this.logEmitters.get(taskId);
+    if (emitter) {
+      emitter.removeAllListeners();
+      this.logEmitters.delete(taskId);
+    }
   }
 
   // Project management methods
