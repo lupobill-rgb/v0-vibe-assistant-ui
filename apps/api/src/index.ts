@@ -314,53 +314,49 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
   
   emitter.on('log', logHandler);
 
-  // Check if task is already in terminal state
-  if (task.execution_state === 'completed' || task.execution_state === 'failed') {
-    res.write(`data: ${JSON.stringify({ type: 'complete', state: task.execution_state })}\n\n`);
+  // Variable to track status check interval
+  let statusCheckInterval: NodeJS.Timeout | null = null;
+
+  // Helper function for cleanup
+  const cleanup = () => {
+    if (statusCheckInterval) {
+      clearInterval(statusCheckInterval);
+    }
     emitter.off('log', logHandler);
     // Clean up emitter if no more listeners
     if (emitter.listenerCount('log') === 0) {
       storage.removeLogEmitter(taskId);
     }
+  };
+
+  // Check if task is already in terminal state
+  if (task.execution_state === 'completed' || task.execution_state === 'failed') {
+    res.write(`data: ${JSON.stringify({ type: 'complete', state: task.execution_state })}\n\n`);
+    cleanup();
     res.end();
     return;
   }
 
   // Poll periodically to check task completion status
-  const statusCheckInterval = setInterval(() => {
+  statusCheckInterval = setInterval(() => {
     try {
       const currentTask = storage.getTask(taskId);
       if (currentTask && (currentTask.execution_state === 'completed' || currentTask.execution_state === 'failed')) {
         // Send completion event
         res.write(`data: ${JSON.stringify({ type: 'complete', state: currentTask.execution_state })}\n\n`);
-        clearInterval(statusCheckInterval);
-        emitter.off('log', logHandler);
-        // Clean up emitter if no more listeners
-        if (emitter.listenerCount('log') === 0) {
-          storage.removeLogEmitter(taskId);
-        }
+        cleanup();
         res.end();
       }
     } catch (error) {
       console.error('Error checking task status:', error);
-      clearInterval(statusCheckInterval);
-      emitter.off('log', logHandler);
-      // Clean up emitter if no more listeners
-      if (emitter.listenerCount('log') === 0) {
-        storage.removeLogEmitter(taskId);
-      }
+      cleanup();
       res.end();
     }
   }, 1000);
 
   // Clean up on client disconnect
   req.on('close', () => {
-    clearInterval(statusCheckInterval);
-    emitter.off('log', logHandler);
-    // Clean up emitter if no more listeners
-    if (emitter.listenerCount('log') === 0) {
-      storage.removeLogEmitter(taskId);
-    }
+    cleanup();
     res.end();
   });
 });
