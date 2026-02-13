@@ -6,7 +6,7 @@ import path from 'path';
 
 /**
  * Tests for storage functionality, specifically verifying that
- * projects table uses `id` as primary key (not `project_id`)
+ * vibe_projects table uses `id` as primary key (not `project_id`)
  */
 
 describe('Storage - Project Lookup', () => {
@@ -20,7 +20,7 @@ describe('Storage - Project Lookup', () => {
 
     // Initialize the same schema as storage.ts
     testDb.exec(`
-      CREATE TABLE IF NOT EXISTS projects (
+      CREATE TABLE IF NOT EXISTS vibe_projects (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         repository_url TEXT NOT NULL,
@@ -41,7 +41,7 @@ describe('Storage - Project Lookup', () => {
         iteration_count INTEGER DEFAULT 0,
         initiated_at INTEGER NOT NULL,
         last_modified INTEGER NOT NULL,
-        FOREIGN KEY (project_id) REFERENCES projects(id)
+        FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
       );
 
       CREATE TABLE IF NOT EXISTS vibe_events (
@@ -78,7 +78,7 @@ describe('Storage - Project Lookup', () => {
 
     // Insert project using id column
     const insertStmt = testDb.prepare(`
-      INSERT INTO projects (id, name, repository_url, local_path, created_at)
+      INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
       VALUES (?, ?, ?, ?, ?)
     `);
     insertStmt.run(
@@ -90,7 +90,7 @@ describe('Storage - Project Lookup', () => {
     );
 
     // Query using id column (not project_id)
-    const selectStmt = testDb.prepare('SELECT * FROM projects WHERE id = ?');
+    const selectStmt = testDb.prepare('SELECT * FROM vibe_projects WHERE id = ?');
     const result = selectStmt.get(projectId);
 
     assert.ok(result, 'Project should be retrieved');
@@ -104,7 +104,7 @@ describe('Storage - Project Lookup', () => {
 
     // Insert a project
     const insertProject = testDb.prepare(`
-      INSERT INTO projects (id, name, repository_url, local_path, created_at)
+      INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
       VALUES (?, ?, ?, ?, ?)
     `);
     insertProject.run(projectId, 'Test Project 2', 'https://github.com/test/repo2', '/data/repos/test-project-456', Date.now());
@@ -128,7 +128,7 @@ describe('Storage - Project Lookup', () => {
     const joinQuery = testDb.prepare(`
       SELECT t.*, p.name as project_name
       FROM vibe_tasks t
-      INNER JOIN projects p ON t.project_id = p.id
+      INNER JOIN vibe_projects p ON t.project_id = p.id
       WHERE t.task_id = ?
     `);
     const joinResult = joinQuery.get(taskId);
