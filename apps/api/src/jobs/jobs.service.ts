@@ -9,15 +9,18 @@ export class JobsService {
    */
   getLogStream(jobId: string): Observable<any> {
     return new Observable((observer: Observer<any>) => {
-      let lastEventTime = 0;
+      let lastEventTime = Date.now(); // Start from current time if no existing events
       let pollInterval: NodeJS.Timeout;
       
       // Send existing logs immediately
       const existingEvents = storage.getTaskEvents(jobId);
-      existingEvents.forEach(event => {
-        observer.next(event);
-        lastEventTime = event.event_time;
-      });
+      if (existingEvents.length > 0) {
+        existingEvents.forEach(event => {
+          observer.next(event);
+        });
+        // Update lastEventTime to the most recent event
+        lastEventTime = existingEvents[existingEvents.length - 1].event_time;
+      }
 
       // Poll for new logs
       pollInterval = setInterval(() => {
