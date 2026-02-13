@@ -10,7 +10,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
 
-dotenv.config();
+// Load .env from the repository root
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
@@ -31,8 +32,10 @@ try {
 
 // Bootstrap NestJS and add Express routes
 async function bootstrap() {
-  // Create NestJS application
-  const nestApp = await NestFactory.create(AppModule);
+  // Create NestJS application with body parser
+  const nestApp = await NestFactory.create(AppModule, {
+    bodyParser: true,
+  });
   
   // Enable CORS
   nestApp.enableCors();

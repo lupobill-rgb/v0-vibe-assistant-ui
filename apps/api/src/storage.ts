@@ -2,8 +2,13 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { EventEmitter } from 'events';
+import dotenv from 'dotenv';
 
-const storePath = process.env.DATABASE_PATH || '/app/data/vibe.db';
+// Load .env from the repository root (go up from apps/api/src to root)
+const envPath = path.join(__dirname, '../../../.env');
+dotenv.config({ path: envPath });
+
+const storePath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data/vibe.db');
 const storeDir = path.dirname(storePath);
 
 if (!fs.existsSync(storeDir)) {
