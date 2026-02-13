@@ -13,7 +13,7 @@ export class JobsController {
   streamLogs(@Param('id') id: string): Observable<MessageEvent> {
     const emitter = this.jobsService.getLogEmitter(id);
     return fromEvent(emitter, 'log').pipe(
-      map((data) => ({ data: JSON.stringify({ log: data }) } as MessageEvent))
+      map((data) => ({ data: JSON.stringify({ log: JSON.parse(data as string) }) } as MessageEvent))
     );
   }
 }

@@ -6,6 +6,7 @@ import { LogEmitter } from './log-emitter';
 @Injectable()
 export class JobsService {
   private logEmitters = new Map<string, LogEmitter>();
+  private pollIntervals = new Map<string, NodeJS.Timeout>();
   /**
    * Create an observable that streams logs for a specific job
    */
@@ -60,15 +61,18 @@ export class JobsService {
    * Get or create an EventEmitter for a specific job
    */
   getLogEmitter(jobId: string): LogEmitter {
-    if (!this.logEmitters.has(jobId)) {
-      const emitter = new LogEmitter();
-      this.logEmitters.set(jobId, emitter);
-      
-      // Start polling for logs and emit them
-      this.startLogPolling(jobId, emitter);
+    // Return existing emitter if it exists
+    const existingEmitter = this.logEmitters.get(jobId);
+    if (existingEmitter) {
+      return existingEmitter;
     }
     
-    return this.logEmitters.get(jobId)!;
+    // Create new emitter and start polling
+    const emitter = new LogEmitter();
+    this.logEmitters.set(jobId, emitter);
+    this.startLogPolling(jobId, emitter);
+    
+    return emitter;
   }
 
   /**
@@ -101,18 +105,28 @@ export class JobsService {
         if (task && (task.execution_state === 'completed' || task.execution_state === 'failed')) {
           // Send completion event
           emitter.emit(JSON.stringify({ type: 'complete', state: task.execution_state }));
-          clearInterval(pollInterval);
-          
-          // Cleanup after 60 seconds
-          setTimeout(() => {
-            this.logEmitters.delete(jobId);
-          }, 60000);
+          this.cleanupJob(jobId, pollInterval);
         }
       } catch (error) {
         console.error(`Error polling logs for job ${jobId}:`, error);
-        clearInterval(pollInterval);
-        this.logEmitters.delete(jobId);
+        this.cleanupJob(jobId, pollInterval);
       }
     }, 1000);
+    
+    // Store the interval ID for proper cleanup
+    this.pollIntervals.set(jobId, pollInterval);
+  }
+
+  /**
+   * Clean up resources for a job
+   */
+  private cleanupJob(jobId: string, pollInterval: NodeJS.Timeout): void {
+    clearInterval(pollInterval);
+    this.pollIntervals.delete(jobId);
+    
+    // Cleanup emitter after 60 seconds
+    setTimeout(() => {
+      this.logEmitters.delete(jobId);
+    }, 60000);
   }
 }
