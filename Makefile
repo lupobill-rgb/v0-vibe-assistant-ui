@@ -1,10 +1,10 @@
 .PHONY: down up health
 
 down:
-	docker-compose down
+	docker compose down
 
 up:
-	docker-compose up -d
+	docker compose up -d
 
 health:
 	@echo "Checking API health..."
