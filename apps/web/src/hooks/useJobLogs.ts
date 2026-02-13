@@ -13,12 +13,14 @@ interface UseJobLogsReturn {
   logs: LogEvent[];
   isComplete: boolean;
   taskStatus: string;
+  error: string | null;
 }
 
 export function useJobLogs(jobId: string | null): UseJobLogsReturn {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [isComplete, setIsComplete] = useState(false);
   const [taskStatus, setTaskStatus] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!jobId) {
@@ -26,6 +28,14 @@ export function useJobLogs(jobId: string | null): UseJobLogsReturn {
       setLogs([]);
       setIsComplete(false);
       setTaskStatus('');
+      setError(null);
+      return;
+    }
+
+    // Validate jobId format to prevent malformed URLs
+    if (!/^[a-zA-Z0-9_-]+$/.test(jobId)) {
+      setError('Invalid job ID format');
+      setIsComplete(true);
       return;
     }
 
@@ -47,7 +57,9 @@ export function useJobLogs(jobId: string | null): UseJobLogsReturn {
       }
     };
 
-    eventSource.onerror = () => {
+    eventSource.onerror = (err) => {
+      console.error('Error streaming logs:', err);
+      setError('Failed to connect to log stream');
       eventSource.close();
       setIsComplete(true);
     };
@@ -57,5 +69,5 @@ export function useJobLogs(jobId: string | null): UseJobLogsReturn {
     };
   }, [jobId]);
 
-  return { logs, isComplete, taskStatus };
+  return { logs, isComplete, taskStatus, error };
 }
