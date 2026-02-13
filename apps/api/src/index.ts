@@ -318,6 +318,10 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
   if (task.execution_state === 'completed' || task.execution_state === 'failed') {
     res.write(`data: ${JSON.stringify({ type: 'complete', state: task.execution_state })}\n\n`);
     emitter.off('log', logHandler);
+    // Clean up emitter if no more listeners
+    if (emitter.listenerCount('log') === 0) {
+      storage.removeLogEmitter(taskId);
+    }
     res.end();
     return;
   }
@@ -331,12 +335,20 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
         res.write(`data: ${JSON.stringify({ type: 'complete', state: currentTask.execution_state })}\n\n`);
         clearInterval(statusCheckInterval);
         emitter.off('log', logHandler);
+        // Clean up emitter if no more listeners
+        if (emitter.listenerCount('log') === 0) {
+          storage.removeLogEmitter(taskId);
+        }
         res.end();
       }
     } catch (error) {
       console.error('Error checking task status:', error);
       clearInterval(statusCheckInterval);
       emitter.off('log', logHandler);
+      // Clean up emitter if no more listeners
+      if (emitter.listenerCount('log') === 0) {
+        storage.removeLogEmitter(taskId);
+      }
       res.end();
     }
   }, 1000);
@@ -345,6 +357,10 @@ app.get('/jobs/:id/logs', (req: Request, res: Response) => {
   req.on('close', () => {
     clearInterval(statusCheckInterval);
     emitter.off('log', logHandler);
+    // Clean up emitter if no more listeners
+    if (emitter.listenerCount('log') === 0) {
+      storage.removeLogEmitter(taskId);
+    }
     res.end();
   });
 });
