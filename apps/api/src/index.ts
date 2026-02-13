@@ -1,20 +1,18 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
+import { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import 'reflect-metadata';
 
 dotenv.config();
 
-const app = express();
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
-
-app.use(cors());
-app.use(express.json());
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -30,10 +28,21 @@ try {
   console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
 }
 
-// POST /projects - Create a new project from template
-app.post('/projects', (req: Request, res: Response) => {
-  try {
-    const { name, template = 'empty' } = req.body;
+// Bootstrap NestJS and add Express routes
+async function bootstrap() {
+  // Create NestJS application
+  const nestApp = await NestFactory.create(AppModule);
+  
+  // Enable CORS
+  nestApp.enableCors();
+  
+  // Get the underlying Express instance
+  const app = nestApp.getHttpAdapter().getInstance();
+
+  // POST /projects - Create a new project from template
+  app.post('/projects', (req: Request, res: Response) => {
+    try {
+      const { name, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -282,89 +291,17 @@ app.get('/jobs', (_req: Request, res: Response) => {
   }
 });
 
-// GET /jobs/:id/logs - Stream logs via SSE
-app.get('/jobs/:id/logs', (req: Request, res: Response) => {
-  const taskId = req.params.id;
-  
-  // Check if task exists
-  const task = storage.getTask(taskId);
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-
-  // Set up SSE
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // Send existing logs
-  const existingEvents = storage.getTaskEvents(taskId);
-  existingEvents.forEach(event => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  // Health check
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
   });
 
-  // Check if task is already in terminal state
-  if (task.execution_state === 'completed' || task.execution_state === 'failed') {
-    res.write(`data: ${JSON.stringify({ type: 'complete', state: task.execution_state })}\n\n`);
-    res.end();
-    return;
-  }
-
-  // Get the EventEmitter for this task (only for non-terminal tasks)
-  const emitter = storage.getLogEmitter(taskId);
-  
-  // Listen for new log events in real-time
-  const logHandler = (event: VibeEvent) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  };
-  
-  emitter.on('log', logHandler);
-
-  // Variable to track status check interval
-  let statusCheckInterval: NodeJS.Timeout | null = null;
-
-  // Helper function for cleanup
-  const cleanup = () => {
-    if (statusCheckInterval) {
-      clearInterval(statusCheckInterval);
-    }
-    emitter.off('log', logHandler);
-    // Clean up emitter if no more listeners
-    if (emitter.listenerCount('log') === 0) {
-      storage.removeLogEmitter(taskId);
-    }
-  };
-
-  // Poll periodically to check task completion status (less frequently since we have real-time events)
-  statusCheckInterval = setInterval(() => {
-    try {
-      const currentTask = storage.getTask(taskId);
-      if (currentTask && (currentTask.execution_state === 'completed' || currentTask.execution_state === 'failed')) {
-        // Send completion event
-        res.write(`data: ${JSON.stringify({ type: 'complete', state: currentTask.execution_state })}\n\n`);
-        cleanup();
-        res.end();
-      }
-    } catch (error) {
-      console.error('Error checking task status:', error);
-      cleanup();
-      res.end();
-    }
-  }, 5000); // Check every 5 seconds (less frequent since logs stream in real-time)
-
-  // Clean up on client disconnect
-  req.on('close', () => {
-    cleanup();
-    res.end();
-  });
-});
-
-// Health check
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
-});
-
-app.listen(PORT, () => {
+  // Start the NestJS server
+  await nestApp.listen(PORT);
   console.log(`VIBE API server running on port ${PORT}`);
+}
+
+bootstrap().catch((error) => {
+  console.error('Error starting server:', error);
+  process.exit(1);
 });
