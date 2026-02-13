@@ -17,10 +17,7 @@ export function gatherProjectContext(
   truncated: boolean
 ): ProjectContext {
   // Convert Map to Record
-  const filesRecord: Record<string, string> = {};
-  files.forEach((content, filePath) => {
-    filesRecord[filePath] = content;
-  });
+  const filesRecord: Record<string, string> = Object.fromEntries(files);
 
   return {
     files: filesRecord,
