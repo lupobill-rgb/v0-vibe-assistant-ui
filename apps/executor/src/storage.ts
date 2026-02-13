@@ -16,7 +16,7 @@ vibeDb.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
-    repository_url TEXT NOT NULL,
+    repository_url TEXT,
     local_path TEXT NOT NULL,
     last_synced INTEGER,
     created_at INTEGER NOT NULL
@@ -67,7 +67,7 @@ export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 export interface Project {
   id: string;
   name: string;
-  repository_url: string;
+  repository_url: string | null;
   local_path: string;
   last_synced?: number;
   created_at: number;
