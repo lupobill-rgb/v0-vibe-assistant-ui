@@ -1,3 +1,6 @@
+# Health checks:
+# - Docker health checks use 'wget' (available in Alpine/BusyBox by default)
+# - Makefile health target uses 'curl' (typically available on host machines)
 .PHONY: down up health
 
 down:
