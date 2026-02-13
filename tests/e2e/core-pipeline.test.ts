@@ -107,9 +107,14 @@ export function main() {
     const projectPath = data.local_path;
     assert.ok(fs.existsSync(projectPath), 'Project directory should exist');
     
-    // Copy our test files to the project repo
-    execSync(`cp -r ${testRepoPath}/src ${projectPath}/`, { stdio: 'inherit' });
-    execSync(`cp ${testRepoPath}/package.json ${projectPath}/`, { stdio: 'inherit' });
+    // Copy our test files to the project repo using cross-platform fs operations
+    const srcPath = path.join(testRepoPath, 'src');
+    const targetSrcPath = path.join(projectPath, 'src');
+    fs.cpSync(srcPath, targetSrcPath, { recursive: true });
+    
+    const packageJsonSource = path.join(testRepoPath, 'package.json');
+    const packageJsonTarget = path.join(projectPath, 'package.json');
+    fs.copyFileSync(packageJsonSource, packageJsonTarget);
     
     // Commit the test files to the project repo
     execSync('git add .', { cwd: projectPath });

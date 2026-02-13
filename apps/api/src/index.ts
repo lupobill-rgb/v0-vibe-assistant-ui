@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
@@ -10,7 +11,7 @@ import { AppModule } from './app.module';
 import 'reflect-metadata';
 
 // Load .env from the repository root
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
@@ -31,8 +32,10 @@ try {
 
 // Bootstrap NestJS and add Express routes
 async function bootstrap() {
-  // Create NestJS application
-  const nestApp = await NestFactory.create(AppModule);
+  // Create NestJS application with body parser
+  const nestApp = await NestFactory.create(AppModule, {
+    bodyParser: true,
+  });
   
   // Enable CORS
   nestApp.enableCors();
@@ -40,10 +43,9 @@ async function bootstrap() {
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
   
-  // Add body parser middleware for JSON
-  const express = require('express');
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Add Express middleware for larger JSON bodies if needed
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
