@@ -303,7 +303,7 @@ function Home() {
           ) : (
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="repoUrl">Repository URL (Legacy Mode B)</label>
+                <label htmlFor="repoUrl">Repository URL (Legacy Mode)</label>
                 <input
                   id="repoUrl"
                   type="text"
