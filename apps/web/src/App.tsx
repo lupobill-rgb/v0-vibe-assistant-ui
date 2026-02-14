@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './App.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -20,6 +21,7 @@ interface Project {
 }
 
 function App() {
+  const navigate = useNavigate();
   const [prompt, setPrompt] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [useLegacyMode, setUseLegacyMode] = useState(false);
@@ -371,11 +373,22 @@ function App() {
         <div className="output-section">
           <div className="log-header">
             <h2>Live Log Console</h2>
-            {taskStatus && (
-              <span className={`status status-${taskStatus}`}>
-                {taskStatus}
-              </span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {taskId && (
+                <button
+                  className="secondary-button"
+                  onClick={() => navigate(`/task/${taskId}`)}
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                >
+                  View Full Details →
+                </button>
+              )}
+              {taskStatus && (
+                <span className={`status status-${taskStatus}`}>
+                  {taskStatus}
+                </span>
+              )}
+            </div>
           </div>
           
           <div className="log-console" ref={logContainerRef}>
