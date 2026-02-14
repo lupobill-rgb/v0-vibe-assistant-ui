@@ -46,7 +46,7 @@ export default function TaskView() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `task-logs-${taskId || 'unknown'}.txt`;
+    a.download = `task-logs-${taskId.trim() || 'unknown'}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
