@@ -10,8 +10,7 @@
   transition: margin-left 0.3s ease;
 }
 
-/* Adjust main-content when sidebar is collapsed */
-.sidebar.collapsed ~ .main-content {
+.main-content.sidebar-collapsed {
   margin-left: 70px;
 }
 

@@ -37,6 +37,7 @@ function App() {
   
   // Sidebar navigation state
   const [activeSection, setActiveSection] = useState('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   // Project modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -244,8 +245,13 @@ function App() {
 
   return (
     <div className="app">
-      <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
-      <div className="main-content">
+      <Sidebar 
+        activeSection={activeSection} 
+        onSectionChange={setActiveSection}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={setIsSidebarCollapsed}
+      />
+      <div className={`main-content ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <header className="header">
           <h1>VIBE</h1>
           <p className="subtitle">Vibe-coding prompt box that generates diffs, runs CI-parity preflight, and opens GitHub PRs</p>

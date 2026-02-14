@@ -1,13 +1,13 @@
-import { useState } from 'react';
 import './Sidebar.css';
 
 interface SidebarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: (collapsed: boolean) => void;
 }
 
-function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+function Sidebar({ activeSection, onSectionChange, isCollapsed, onToggleCollapse }: SidebarProps) {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -24,7 +24,7 @@ function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         </div>
         <button
           className="sidebar-toggle"
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={() => onToggleCollapse(!isCollapsed)}
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {isCollapsed ? '→' : '←'}
