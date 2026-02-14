@@ -1,6 +1,18 @@
 .app {
+  display: flex;
   min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  margin-left: 260px;
   padding: 2rem;
+  transition: margin-left 0.3s ease;
+}
+
+/* Adjust main-content when sidebar is collapsed */
+.sidebar.collapsed ~ .main-content {
+  margin-left: 70px;
 }
 
 .header {
@@ -36,6 +48,12 @@
 @media (max-width: 1024px) {
   .container {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 70px;
   }
 }
 

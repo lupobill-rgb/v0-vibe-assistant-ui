@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
+import Sidebar from './components/Sidebar';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -33,6 +34,9 @@ function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
   const logContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Sidebar navigation state
+  const [activeSection, setActiveSection] = useState('dashboard');
   
   // Project modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -240,12 +244,14 @@ function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <h1>VIBE</h1>
-        <p className="subtitle">Vibe-coding prompt box that generates diffs, runs CI-parity preflight, and opens GitHub PRs</p>
-      </header>
+      <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+      <div className="main-content">
+        <header className="header">
+          <h1>VIBE</h1>
+          <p className="subtitle">Vibe-coding prompt box that generates diffs, runs CI-parity preflight, and opens GitHub PRs</p>
+        </header>
 
-      <div className="container">
+        <div className="container">
         <div className="input-section">
           <div className="form-group">
             <label htmlFor="prompt">Prompt</label>
@@ -458,6 +464,7 @@ function App() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
