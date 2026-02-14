@@ -1,40 +1,62 @@
-import { 
-  HomeIcon, 
-  FolderIcon, 
-  StarIcon, 
-  ClockIcon,
-  Cog6ToothIcon 
-} from '@heroicons/react/24/outline';
+import './Sidebar.css';
 
-export default function Sidebar() {
-  const menuItems = [
-    { icon: HomeIcon, label: 'Home', active: true },
-    { icon: FolderIcon, label: 'Projects', active: false },
-    { icon: StarIcon, label: 'Starred', active: false },
-    { icon: ClockIcon, label: 'Recent', active: false },
-    { icon: Cog6ToothIcon, label: 'Settings', active: false },
+interface SidebarProps {
+  activeSection: string;
+  onSectionChange: (section: string) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: (collapsed: boolean) => void;
+}
+
+function Sidebar({ activeSection, onSectionChange, isCollapsed, onToggleCollapse }: SidebarProps) {
+
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'projects', label: 'Projects', icon: '📁' },
+    { id: 'history', label: 'Job History', icon: '📜' },
+    { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
   return (
-    <aside className="w-64 bg-gray-50 border-r border-gray-200 min-h-screen">
-      <nav className="p-4 space-y-2">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.label}
-              className={`w-full flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors ${
-                item.active
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="font-medium">{item.label}</span>
-            </button>
-          );
-        })}
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        <div className="sidebar-logo">
+          {!isCollapsed && <span className="logo-text">VIBE</span>}
+        </div>
+        <button
+          className="sidebar-toggle"
+          onClick={() => onToggleCollapse(!isCollapsed)}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? '→' : '←'}
+        </button>
+      </div>
+
+      <nav className="sidebar-nav">
+        <ul className="nav-list">
+          {navItems.map((item) => (
+            <li key={item.id}>
+              <button
+                className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
+                onClick={() => onSectionChange(item.id)}
+                title={isCollapsed ? item.label : undefined}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                {!isCollapsed && <span className="nav-label">{item.label}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
       </nav>
+
+      <div className="sidebar-footer">
+        {!isCollapsed && (
+          <div className="sidebar-footer-content">
+            <p className="footer-text">v1.0.0</p>
+          </div>
+        )}
+      </div>
     </aside>
   );
 }
+
+export default Sidebar;
