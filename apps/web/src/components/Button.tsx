@@ -1,52 +1,46 @@
-interface ButtonProps {
+import React from 'react';
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
   children: React.ReactNode;
-  onClick?: () => void;
-  variant?: 'primary' | 'secondary' | 'danger';
-  disabled?: boolean;
+  href?: string;
 }
 
 export default function Button({ 
+  variant = 'primary', 
+  size = 'md', 
   children, 
-  onClick, 
-  variant = 'primary',
-  disabled = false 
+  href,
+  className = '',
+  ...props 
 }: ButtonProps) {
-  const getVariantStyles = () => {
-    switch (variant) {
-      case 'secondary':
-        return {
-          backgroundColor: '#6c757d',
-          color: '#fff'
-        };
-      case 'danger':
-        return {
-          backgroundColor: '#dc3545',
-          color: '#fff'
-        };
-      case 'primary':
-      default:
-        return {
-          backgroundColor: '#007bff',
-          color: '#fff'
-        };
-    }
+  const baseStyles = 'font-medium rounded-xl transition-all duration-200 flex items-center justify-center gap-2';
+  
+  const variants = {
+    primary: 'bg-vibe-blue text-white hover:bg-blue-600 shadow-sm',
+    secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+    ghost: 'text-gray-600 hover:bg-gray-50'
+  };
+  
+  const sizes = {
+    sm: 'px-3 py-1.5 text-sm',
+    md: 'px-4 py-2 text-base',
+    lg: 'px-6 py-3 text-lg'
   };
 
+  const classes = `${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`;
+
+  if (href) {
+    return (
+      <a href={href} className={classes}>
+        {children}
+      </a>
+    );
+  }
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        ...getVariantStyles(),
-        padding: '0.5rem 1rem',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.6 : 1,
-        fontSize: '0.875rem',
-        fontWeight: 'bold'
-      }}
-    >
+    <button className={classes} {...props}>
       {children}
     </button>
   );

@@ -1,11 +1,8 @@
-interface HeaderProps {
-  title?: string;
-}
-
-export default function Header({ title = 'VIBE Task View' }: HeaderProps) {
+export default function Header() {
   return (
-    <header style={{ padding: '1rem', borderBottom: '1px solid #ddd', backgroundColor: '#f5f5f5' }}>
-      <h1 style={{ margin: 0, fontSize: '1.5rem' }}>{title}</h1>
+    <header className="header">
+      <h1>VIBE</h1>
+      <p className="subtitle">Vibe-coding prompt box that generates diffs, runs CI-parity preflight, and opens GitHub PRs</p>
     </header>
   );
 }
