@@ -19,29 +19,23 @@ export interface PreflightResult {
 }
 
 // Define the 4-stage preflight pipeline
+// Only includes stages where the environment variable is explicitly set.
+// Stages without a configured command are skipped entirely.
 export function getPreflightStages(): PreflightStage[] {
-  return [
-    {
-      name: 'lint',
-      command: process.env.LINT_COMMAND || 'echo "No lint command configured"',
-      timeout: PREFLIGHT_TIMEOUT
-    },
-    {
-      name: 'typecheck',
-      command: process.env.TYPECHECK_COMMAND || 'echo "No typecheck command configured"',
-      timeout: PREFLIGHT_TIMEOUT
-    },
-    {
-      name: 'test',
-      command: process.env.TEST_COMMAND || 'echo "No test command configured"',
-      timeout: PREFLIGHT_TIMEOUT
-    },
-    {
-      name: 'smoke',
-      command: process.env.SMOKE_COMMAND || 'echo "No smoke test configured"',
-      timeout: PREFLIGHT_TIMEOUT
-    }
+  const stageDefinitions = [
+    { name: 'lint', envVar: 'LINT_COMMAND' },
+    { name: 'typecheck', envVar: 'TYPECHECK_COMMAND' },
+    { name: 'test', envVar: 'TEST_COMMAND' },
+    { name: 'smoke', envVar: 'SMOKE_COMMAND' },
   ];
+
+  return stageDefinitions
+    .filter(def => !!process.env[def.envVar])
+    .map(def => ({
+      name: def.name,
+      command: process.env[def.envVar]!,
+      timeout: PREFLIGHT_TIMEOUT,
+    }));
 }
 
 // Run preflight checks (fail-fast)
@@ -50,6 +44,15 @@ export async function runPreflightChecks(
   onProgress: (stage: string, output: string) => void
 ): Promise<PreflightResult> {
   const stages = getPreflightStages();
+
+  if (stages.length === 0) {
+    onProgress('preflight', 'No preflight commands configured — skipping all checks');
+    return {
+      success: true,
+      stage: 'all',
+      output: 'No preflight commands configured'
+    };
+  }
 
   for (const stage of stages) {
     onProgress(stage.name, `Starting ${stage.name} check...`);

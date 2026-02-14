@@ -353,7 +353,7 @@ class VibeExecutor {
           }
           
           // There are commits, create PR
-          await this.createPullRequest(task, git);
+          await this.createPullRequest(task, git, repoUrl);
           return;
         } else {
           storage.logEvent(
@@ -433,7 +433,7 @@ class VibeExecutor {
       if (preflightResult.success) {
         // All checks passed! Create PR
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-        await this.createPullRequest(task, git);
+        await this.createPullRequest(task, git, repoUrl);
         return;
       } else {
         storage.logEvent(
