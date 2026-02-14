@@ -18,18 +18,18 @@ interface TaskDetails {
   target_branch?: string;
 }
 
-interface FileChange {
-  path: string;
-  additions: number;
-  deletions: number;
-  status: 'added' | 'modified' | 'deleted';
-}
+// TODO: Add FileChange interface when API endpoint is available
+// interface FileChange {
+//   path: string;
+//   additions: number;
+//   deletions: number;
+//   status: 'added' | 'modified' | 'deleted';
+// }
 
 export function TaskView() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const [taskDetails, setTaskDetails] = useState<TaskDetails | null>(null);
-  const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
   const [loadingTask, setLoadingTask] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -71,17 +71,8 @@ export function TaskView() {
     return () => clearInterval(interval);
   }, [taskId]);
 
-  // Mock file changes data (in a real app, this would come from the API)
-  useEffect(() => {
-    if (taskDetails && taskDetails.execution_state === 'completed') {
-      // This would be fetched from the API in a real implementation
-      setFileChanges([
-        { path: 'src/components/Auth.tsx', additions: 45, deletions: 12, status: 'modified' },
-        { path: 'src/utils/jwt.ts', additions: 78, deletions: 0, status: 'added' },
-        { path: 'tests/auth.test.ts', additions: 123, deletions: 5, status: 'modified' },
-      ]);
-    }
-  }, [taskDetails]);
+  // TODO: Fetch file changes from API when endpoint is available
+  // For now, file changes section will be hidden until API endpoint is implemented
 
   const getStatusColor = (status: string) => {
     const statusMap: Record<string, string> = {
@@ -227,7 +218,8 @@ export function TaskView() {
           </div>
 
           {/* File Changes (if completed) */}
-          {taskDetails.execution_state === 'completed' && fileChanges.length > 0 && (
+          {/* TODO: Add file changes display when API endpoint is available */}
+          {/* {taskDetails.execution_state === 'completed' && fileChanges.length > 0 && (
             <div className="file-changes-card">
               <h2>File Changes</h2>
               <div className="file-list">
@@ -249,7 +241,7 @@ export function TaskView() {
                 ))}
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Result Actions */}
           {taskDetails.execution_state === 'completed' && (
