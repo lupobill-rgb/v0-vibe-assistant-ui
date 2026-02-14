@@ -80,14 +80,14 @@ make health   # Check API (port 3001) and Web (port 3000) health
 5. **LLM call** (OpenAI GPT-4, temperature=0) generates a unified diff
 6. **Diff validator** performs multi-layer validation and sanitization
 7. Diff is applied to the worktree with pre-apply sanity checks
-8. **Preflight pipeline** runs 4 stages: lint, typecheck, test, smoke
-9. On success, a **GitHub PR** is created via Octokit
+8. **Preflight pipeline** conditionally runs configured stages (lint, typecheck, test, smoke) — stages are skipped when their env vars are not set
+9. On success, a **GitHub PR** is created via Octokit (skipped for local-only projects without a remote)
 
 ### Key Services
 
 - **API** (`apps/api/src/index.ts`): REST endpoints for projects and jobs, NestJS bootstrap with Express routes, SQLite storage layer
 - **Executor** (`apps/executor/src/index.ts`): `VibeExecutor` class polls for tasks, orchestrates the full pipeline (context → LLM → validate → apply → preflight → PR)
-- **Web** (`apps/web/src/`): React SPA with live log streaming via Server-Sent Events (SSE)
+- **Web** (`apps/web/src/`): React SPA with glass-morphism dark theme UI, live log streaming via Server-Sent Events (SSE)
 
 ### API Endpoints
 
@@ -159,10 +159,10 @@ Key variables (see `.env.example` for the full list):
 | `MAX_CONTEXT_SIZE` | Max repo context size (chars) | `50000` |
 | `MAX_DIFF_SIZE` | Max diff size (chars) | `5000` |
 | `DATABASE_PATH` | SQLite database file path | `./data/vibe.db` |
-| `LINT_COMMAND` | Preflight lint command | `npm run lint` |
-| `TYPECHECK_COMMAND` | Preflight typecheck command | `npm run typecheck` |
-| `TEST_COMMAND` | Preflight test command | `npm test` |
-| `SMOKE_COMMAND` | Preflight smoke test command | `echo "Smoke test placeholder"` |
+| `LINT_COMMAND` | Preflight lint command | Not set (stage skipped) |
+| `TYPECHECK_COMMAND` | Preflight typecheck command | Not set (stage skipped) |
+| `TEST_COMMAND` | Preflight test command | Not set (stage skipped) |
+| `SMOKE_COMMAND` | Preflight smoke test command | Not set (stage skipped) |
 | `PREFLIGHT_TIMEOUT` | Preflight timeout (ms) | `300000` |
 
 ## Important Patterns
@@ -191,10 +191,21 @@ See `HUNK_LINE_VALIDATION.md` for the detailed diff validation specification.
 
 ### Preflight Pipeline
 
-Four-stage CI-parity checks run in sequence after applying a diff:
-1. **Lint** (`LINT_COMMAND`)
-2. **Typecheck** (`TYPECHECK_COMMAND`)
-3. **Test** (`TEST_COMMAND`)
-4. **Smoke** (`SMOKE_COMMAND`)
+Conditional CI-parity checks run in sequence after applying a diff. Only stages with their environment variable set are executed — unconfigured stages are skipped entirely:
+1. **Lint** (`LINT_COMMAND`) — only runs if `LINT_COMMAND` env var is set
+2. **Typecheck** (`TYPECHECK_COMMAND`) — only runs if `TYPECHECK_COMMAND` env var is set
+3. **Test** (`TEST_COMMAND`) — only runs if `TEST_COMMAND` env var is set
+4. **Smoke** (`SMOKE_COMMAND`) — only runs if `SMOKE_COMMAND` env var is set
 
-All commands are configurable via environment variables with a configurable timeout.
+If no preflight env vars are configured, the entire preflight phase is skipped with a success result. All stages share a configurable timeout (`PREFLIGHT_TIMEOUT`).
+
+### Web UI Design System
+
+The frontend uses a glass-morphism dark theme with these conventions:
+- **Background**: Dark gradient (`#1a1035` → `#0f0f23` → `#0a0a1a`)
+- **Cards**: `.glass-card` utility — `rgba(255,255,255,0.06)` background, `blur(12px)` backdrop, `1px solid rgba(255,255,255,0.1)` border, `16px` border-radius
+- **Colors**: `vibe-blue` (#3B82F6), `vibe-purple` (#8B5CF6), `vibe-pink` (#EC4899) used in gradients
+- **Components**: Button (3 variants), Header, Sidebar (collapsible), StatusPipeline, LogEntry (4 severities), ProjectCard
+- **Pages**: Home (hero + prompt input + project grid) and TaskView (split layout: details+pipeline | live logs)
+- **Routing**: BrowserRouter with `/` (Home) and `/task/:taskId` (TaskView)
+- **Real-time**: SSE via `useJobLogs` hook for live log streaming, 3s polling for task status
