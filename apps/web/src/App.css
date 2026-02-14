@@ -252,6 +252,11 @@
   background: #FFFFFF;
 }
 
+.log-icon {
+  margin-right: 0.5rem;
+  font-size: 1rem;
+}
+
 .log-time {
   color: #6B7280;
   margin-right: 16px;
