@@ -77,15 +77,10 @@ export function TaskView() {
   const getStatusColor = (status: string) => {
     const statusMap: Record<string, string> = {
       queued: '#aaa',
-      cloning: '#7da3e0',
-      building_context: '#7da3e0',
-      calling_llm: '#7da3e0',
-      applying_diff: '#7da3e0',
-      running_preflight: '#7da3e0',
-      creating_pr: '#7da3e0',
       completed: '#6ee7b7',
       failed: '#f87171',
     };
+    // All in-progress statuses use the same color
     return statusMap[status] || '#7da3e0';
   };
 
@@ -199,8 +194,10 @@ export function TaskView() {
             <div className="pipeline-stages">
               {pipelineStages.map((stage, index) => {
                 const isActive = index === currentStageIndex;
-                const isCompleted = index < currentStageIndex || taskDetails.execution_state === 'completed';
                 const isFailed = taskDetails.execution_state === 'failed' && index === currentStageIndex;
+                // Only mark as completed if: 1) index is before current stage, OR 2) task is completed (not failed)
+                const isCompleted = index < currentStageIndex || 
+                                   (taskDetails.execution_state === 'completed' && index <= currentStageIndex);
                 
                 return (
                   <div 
