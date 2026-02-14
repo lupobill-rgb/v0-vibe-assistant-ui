@@ -1,7 +1,7 @@
 import { Controller, Param, Sse } from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { Observable, fromEvent } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, filter } from 'rxjs/operators';
 
 @Controller('jobs')
 export class JobsController {
@@ -13,7 +13,14 @@ export class JobsController {
   streamLogs(@Param('id') id: string): Observable<MessageEvent> {
     const emitter = this.jobsService.getLogEmitter(id);
     return fromEvent(emitter, 'log').pipe(
-      map((data) => ({ data: JSON.stringify({ log: JSON.parse(data as string) }) } as MessageEvent))
+      map((data) => {
+        try {
+          return { data: JSON.stringify({ log: JSON.parse(data as string) }) } as MessageEvent;
+        } catch {
+          return null;
+        }
+      }),
+      filter((event): event is MessageEvent => event !== null)
     );
   }
 }

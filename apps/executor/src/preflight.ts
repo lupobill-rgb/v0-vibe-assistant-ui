@@ -73,9 +73,9 @@ export async function runPreflightChecks(
     } catch (error: any) {
       // Command failed or timed out
       const output = (error.stdout || '') + (error.stderr || '');
-      const errorMsg = error.killed 
+      const errorMsg = error.killed
         ? `Timeout after ${stage.timeout}ms`
-        : `Exit code ${error.code}`;
+        : `Exit code ${error.code ?? 'unknown'}`;
 
       onProgress(stage.name, output);
       onProgress(stage.name, `✗ ${stage.name} failed: ${errorMsg}`);

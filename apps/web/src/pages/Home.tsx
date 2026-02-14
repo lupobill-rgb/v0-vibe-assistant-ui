@@ -51,6 +51,7 @@ function Home() {
   const loadProjects = async () => {
     try {
       const response = await fetch(`${API_URL}/projects`);
+      if (!response.ok) throw new Error(`Failed to load projects: ${response.status}`);
       const data = await response.json();
       setProjects(data);
       if (data.length > 0 && !selectedProject) {
@@ -108,8 +109,9 @@ function Home() {
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`${API_URL}/jobs/${taskId}`);
+        if (!response.ok) throw new Error(`Failed to poll task: ${response.status}`);
         const task = await response.json();
-        if (task.pull_request_link && !prUrl) {
+        if (task.pull_request_link) {
           setPrUrl(task.pull_request_link);
         }
         if (task.execution_state === 'completed' || task.execution_state === 'failed') {
@@ -121,7 +123,7 @@ function Home() {
       }
     }, 2000);
     return () => clearInterval(interval);
-  }, [taskId, isRunning, prUrl]);
+  }, [taskId, isRunning]);
 
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
@@ -184,12 +186,12 @@ function Home() {
         }),
       });
 
-      const data = await response.json();
-      if (response.ok) {
-        setTaskId(data.task_id);
-      } else {
+      if (!response.ok) {
         setIsRunning(false);
+        return;
       }
+      const data = await response.json();
+      setTaskId(data.task_id);
     } catch (error) {
       console.error('Run error:', error);
       setIsRunning(false);

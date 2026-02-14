@@ -776,17 +776,6 @@ diff --git a/example.js b/example.js
         }
       }
 
-      // Preflight passed, now apply to real working directory
-      storage.logEvent(taskId, 'Applying diff to real working directory...', 'info');
-      const realPatchPath = path.join(repoDir, '.vibe-diff.patch');
-      fs.writeFileSync(realPatchPath, patch, { encoding: 'utf-8' });
-      
-      await mainGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
-      
-      // Clean up patch file from real working directory
-      fs.unlinkSync(realPatchPath);
-
-      storage.logEvent(taskId, 'Diff applied successfully', 'success');
       return { success: true };
 
     } catch (error: any) {

@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
@@ -134,7 +134,7 @@ app.post('/projects/import/github', (req: Request, res: Response) => {
       cloneUrl = repo_url.replace('https://', `https://${githubToken}@`);
     }
     
-    execSync(`git clone ${cloneUrl} ${repoDir}`, { env: cloneEnv });
+    execFileSync('git', ['clone', cloneUrl, repoDir], { env: cloneEnv });
     
     // Extract repo name from URL
     const repoName = repo_url.split('/').pop()?.replace('.git', '') || 'imported-repo';
