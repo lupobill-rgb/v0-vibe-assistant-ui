@@ -1,3 +1,8 @@
+:root {
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 70px;
+}
+
 .app {
   display: flex;
   min-height: 100vh;
@@ -5,13 +10,13 @@
 
 .main-content {
   flex: 1;
-  margin-left: 260px;
+  margin-left: var(--sidebar-width);
   padding: 2rem;
   transition: margin-left 0.3s ease;
 }
 
 .main-content.sidebar-collapsed {
-  margin-left: 70px;
+  margin-left: var(--sidebar-collapsed-width);
 }
 
 .header {
@@ -52,7 +57,7 @@
 
 @media (max-width: 768px) {
   .main-content {
-    margin-left: 70px;
+    margin-left: var(--sidebar-collapsed-width);
   }
 }
 

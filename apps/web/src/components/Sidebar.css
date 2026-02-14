@@ -7,13 +7,13 @@
   position: fixed;
   left: 0;
   top: 0;
-  width: 260px;
+  width: var(--sidebar-width);
   transition: width 0.3s ease;
   z-index: 100;
 }
 
 .sidebar.collapsed {
-  width: 70px;
+  width: var(--sidebar-collapsed-width);
 }
 
 .sidebar-header {
@@ -168,7 +168,7 @@
 /* Mobile responsiveness */
 @media (max-width: 768px) {
   .sidebar {
-    width: 70px;
+    width: var(--sidebar-collapsed-width);
   }
   
   .sidebar .nav-label {
