@@ -48,6 +48,8 @@ export function TaskView() {
   useEffect(() => {
     if (!taskId) return;
 
+    let intervalId: NodeJS.Timeout;
+
     const fetchTaskDetails = async () => {
       try {
         const response = await fetch(`${API_URL}/jobs/${taskId}`);
@@ -57,18 +59,24 @@ export function TaskView() {
         const data = await response.json();
         setTaskDetails(data);
         setLoadingTask(false);
+        
+        // Stop polling if task is complete or failed
+        if (data.execution_state === 'completed' || data.execution_state === 'failed') {
+          clearInterval(intervalId);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
         setLoadingTask(false);
+        clearInterval(intervalId);
       }
     };
 
     fetchTaskDetails();
     
     // Poll for updates until task is complete
-    const interval = setInterval(fetchTaskDetails, 3000);
+    intervalId = setInterval(fetchTaskDetails, 3000);
     
-    return () => clearInterval(interval);
+    return () => clearInterval(intervalId);
   }, [taskId]);
 
   // TODO: Fetch file changes from API when endpoint is available
@@ -100,8 +108,22 @@ export function TaskView() {
   ];
 
   const getCurrentStageIndex = (status: string) => {
+    // Handle 'failed' status - it should use the last known state before failure
+    // For now, treat 'failed' as the last stage it was in
+    if (status === 'failed') {
+      // Failed tasks should show as failed at the stage they were processing
+      // Since we don't have the intermediate state, we'll mark it as failed at running_preflight
+      // This is a reasonable assumption as failures often occur during preflight
+      return pipelineStages.findIndex(stage => stage.id === 'running_preflight');
+    }
+    
     const index = pipelineStages.findIndex(stage => stage.id === status);
-    return index >= 0 ? index : 0;
+    // If status is not found in pipeline stages, return the last stage for completed
+    // or first stage for unknown statuses
+    if (index === -1) {
+      return status === 'completed' ? pipelineStages.length - 1 : 0;
+    }
+    return index;
   };
 
   if (loadingTask) {
@@ -193,11 +215,11 @@ export function TaskView() {
             <h2>Execution Pipeline</h2>
             <div className="pipeline-stages">
               {pipelineStages.map((stage, index) => {
-                const isActive = index === currentStageIndex;
+                const isActive = index === currentStageIndex && taskDetails.execution_state !== 'completed' && taskDetails.execution_state !== 'failed';
                 const isFailed = taskDetails.execution_state === 'failed' && index === currentStageIndex;
-                // Only mark as completed if: 1) index is before current stage, OR 2) task is completed (not failed)
-                const isCompleted = index < currentStageIndex || 
-                                   (taskDetails.execution_state === 'completed' && index <= currentStageIndex);
+                // Only mark as completed if: 1) index is before current stage, OR 2) task is completed at this stage
+                const isCompleted = (index < currentStageIndex) || 
+                                   (taskDetails.execution_state === 'completed' && index === pipelineStages.length - 1);
                 
                 return (
                   <div 
@@ -205,7 +227,7 @@ export function TaskView() {
                     className={`pipeline-stage ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${isFailed ? 'failed' : ''}`}
                   >
                     <div className="stage-indicator">
-                      {isCompleted ? '✓' : isActive ? '●' : '○'}
+                      {isFailed ? '✗' : isCompleted ? '✓' : isActive ? '●' : '○'}
                     </div>
                     <div className="stage-label">{stage.label}</div>
                   </div>
