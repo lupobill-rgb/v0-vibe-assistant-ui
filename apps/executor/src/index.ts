@@ -106,33 +106,34 @@ class VibeExecutor {
         // Ensure project directory exists
         if (!fs.existsSync(repoDir)) {
           if (hasNoRemote) {
-            throw new Error(`Local project directory does not exist: ${repoDir}`);
-          }
-          
-          storage.logEvent(task.task_id, `Project cache not initialized. Cloning repository...`, 'info');
-          storage.updateTaskState(task.task_id, 'cloning');
-          
-          // Ensure parent directory exists
-          const reposDir = path.dirname(repoDir);
-          if (!fs.existsSync(reposDir)) {
-            fs.mkdirSync(reposDir, { recursive: true });
-          }
-
-          const cloneUrl = buildCredentialedUrl(repoUrl!);
-          const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
-          process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
-          
-          try {
-            await simpleGit().clone(cloneUrl, repoDir);
-          } finally {
-            if (originalGitPrompt !== undefined) {
-              process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
-            } else {
-              delete process.env.GIT_TERMINAL_PROMPT;
+            storage.logEvent(task.task_id, `Project has no repo_source — using local path only`, 'info');
+            fs.mkdirSync(repoDir, { recursive: true });
+          } else {
+            storage.logEvent(task.task_id, `Project cache not initialized. Cloning repository...`, 'info');
+            storage.updateTaskState(task.task_id, 'cloning');
+            
+            // Ensure parent directory exists
+            const reposDir = path.dirname(repoDir);
+            if (!fs.existsSync(reposDir)) {
+              fs.mkdirSync(reposDir, { recursive: true });
             }
+
+            const cloneUrl = buildCredentialedUrl(repoUrl!);
+            const originalGitPrompt = process.env.GIT_TERMINAL_PROMPT;
+            process.env.GIT_TERMINAL_PROMPT = GIT_TERMINAL_PROMPT_DISABLED;
+            
+            try {
+              await simpleGit().clone(cloneUrl, repoDir);
+            } finally {
+              if (originalGitPrompt !== undefined) {
+                process.env.GIT_TERMINAL_PROMPT = originalGitPrompt;
+              } else {
+                delete process.env.GIT_TERMINAL_PROMPT;
+              }
+            }
+            
+            storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
           }
-          
-          storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
         } else if (!hasNoRemote) {
           // Project cache exists and has remote - sync with remote
           storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
