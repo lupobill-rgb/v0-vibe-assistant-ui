@@ -1,5 +1,6 @@
 import { BellIcon, UserCircleIcon } from '@heroicons/react/24/outline';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   onCreateProject?: () => void;
@@ -7,16 +8,12 @@ interface HeaderProps {
 }
 
 export default function Header({ onCreateProject, onImportProject }: HeaderProps) {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
   return (
     <header className="flex items-center justify-between px-6 py-4">
-      <Link to="/" className="flex items-center gap-3 no-underline">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-vibe-blue via-vibe-purple to-vibe-pink flex items-center justify-center">
-          <span className="text-white font-bold text-sm">V</span>
-        </div>
-        <span className="text-xl font-bold text-white tracking-tight">VIBE</span>
-      </Link>
-
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         {onCreateProject && (
           <button
             onClick={onCreateProject}
@@ -33,12 +30,36 @@ export default function Header({ onCreateProject, onImportProject }: HeaderProps
             Import
           </button>
         )}
-        <button className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => navigate('/history')}
+          title="Job History"
+          className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+        >
           <BellIcon className="w-5 h-5" />
         </button>
-        <button className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-          <UserCircleIcon className="w-6 h-6" />
-        </button>
+        {user ? (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-white/60 hidden sm:inline">{user.name}</span>
+            <button
+              onClick={logout}
+              className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+              title="Sign out"
+            >
+              <UserCircleIcon className="w-6 h-6" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => navigate('/login')}
+            className="p-2 text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+            title="Sign in"
+          >
+            <UserCircleIcon className="w-6 h-6" />
+          </button>
+        )}
       </div>
     </header>
   );

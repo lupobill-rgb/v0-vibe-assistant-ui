@@ -1,10 +1,10 @@
 import {
   HomeIcon,
-  FolderIcon,
   ClockIcon,
   Cog6ToothIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
@@ -16,8 +16,8 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: HomeIcon },
-  { id: 'projects', label: 'Projects', icon: FolderIcon },
   { id: 'history', label: 'Job History', icon: ClockIcon },
+  { id: 'analytics', label: 'Analytics', icon: ChartBarIcon },
   { id: 'settings', label: 'Settings', icon: Cog6ToothIcon },
 ];
 
@@ -31,23 +31,19 @@ export default function Sidebar({ activeSection, onSectionChange, isCollapsed, o
       {/* Logo */}
       <div className="flex items-center justify-between px-4 py-5 border-b border-white/10">
         {!isCollapsed && (
-          <div className="flex items-center gap-2.5">
+          <button onClick={() => onSectionChange('dashboard')} className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-vibe-blue via-vibe-purple to-vibe-pink flex items-center justify-center">
               <span className="text-white font-bold text-xs">V</span>
             </div>
             <span className="text-lg font-bold text-white">VIBE</span>
-          </div>
+          </button>
         )}
         <button
           onClick={() => onToggleCollapse(!isCollapsed)}
           className="p-1.5 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-all"
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {isCollapsed ? (
-            <ChevronRightIcon className="w-4 h-4" />
-          ) : (
-            <ChevronLeftIcon className="w-4 h-4" />
-          )}
+          {isCollapsed ? <ChevronRightIcon className="w-4 h-4" /> : <ChevronLeftIcon className="w-4 h-4" />}
         </button>
       </div>
 
@@ -79,9 +75,7 @@ export default function Sidebar({ activeSection, onSectionChange, isCollapsed, o
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-white/10">
-        {!isCollapsed && (
-          <p className="text-white/30 text-xs text-center">v1.0.0</p>
-        )}
+        {!isCollapsed && <p className="text-white/30 text-xs text-center">v1.0.0</p>}
       </div>
     </aside>
   );

@@ -2,11 +2,11 @@ import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
 import simpleGit, { SimpleGit, RemoteWithRefs } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput, performPreApplySanityChecks } from './diff-validator';
+import { extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, performPreApplySanityChecks } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
-import OpenAI from 'openai';
+import { createLLMProvider, LLMProvider } from './llm-provider';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -16,16 +16,9 @@ dotenv.config();
 const MAX_ITERATIONS = parseInt(process.env.MAX_ITERATIONS || '6', 10);
 const POLL_INTERVAL = parseInt(process.env.EXECUTOR_POLL_INTERVAL || '5000', 10);
 const GIT_TERMINAL_PROMPT_DISABLED = "0";
-// Directories for project repos and worktrees
-const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
-const WORKTREES_BASE_DIR = process.env.WORKTREES_BASE_DIR || '/data/worktrees';
 // Directory for persisting failed patches for debugging
 // Defaults to /data/patches which is mounted as a volume in docker-compose.yml
 const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 interface GenerateDiffResult {
   diff: string | null;
@@ -194,8 +187,6 @@ class VibeExecutor {
           ? `Directory listing (${fileCount} items): ${preview}`
           : `Directory listing (${fileCount} items, showing first 10): ${preview}...`;
         storage.logEvent(task.task_id, logMsg, 'info');
-        
-        storage.logEvent(task.task_id, 'Clone completed', 'info');
       } catch (error: any) {
         storage.logEvent(task.task_id, `Warning: Failed to list directory contents: ${error.message}`, 'warning');
       }
@@ -298,7 +289,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'calling_llm');
       storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
-      const result = await this.generateDiff(task.user_prompt, context, task.task_id, worktreeDir, globalFallback, fallbackFiles, failureFeedback);
+      const result = await this.generateDiff(task, context, task.task_id, worktreeDir, globalFallback, fallbackFiles, failureFeedback);
       
       if (!result.diff) {
         consecutiveDiffFailures++;
@@ -371,7 +362,7 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'applying_diff');
       storage.logEvent(task.task_id, 'Applying diff to worktree...', 'info');
 
-      const applyResult = await this.applyDiff(worktreeDir, diff, task.task_id, iteration, baseWorkDir, repoDir);
+      const applyResult = await this.applyDiff(worktreeDir, diff, task.task_id, iteration);
       
       if (!applyResult.success) {
         consecutiveApplyFailures++;
@@ -518,14 +509,15 @@ ${existingReadmeContent}
   }
 
   private async generateDiff(
-    prompt: string, 
-    context: string, 
-    taskId: string, 
+    task: VibeTask,
+    context: string,
+    taskId: string,
     repoDir: string,
     globalFallback: boolean = false,
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
   ): Promise<GenerateDiffResult> {
+    const prompt = task.user_prompt;
     const maxRetries = 2;
     let lastValidationError: string | null = null;
 
@@ -625,20 +617,14 @@ diff --git a/example.js b/example.js
           userPrompt += exampleSkeleton;
         }
 
-        const response = await openai.chat.completions.create({
-          model: 'gpt-4-turbo-preview',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          // Temperature 0 ensures deterministic outputs for diff generation.
-          // This is critical to prevent non-deterministic formatting variations
-          // and ensure reproducible results across retries.
-          temperature: 0,
-          max_tokens: 4000
-        });
+        // Use per-task LLM provider or default
+        const llmProvider: LLMProvider = createLLMProvider(
+          (task as any).llm_provider || undefined,
+          (task as any).llm_model || undefined
+        );
+        storage.logEvent(taskId, `Using LLM provider: ${llmProvider.name}`, 'info');
 
-        const rawOutput = response.choices[0]?.message?.content || '';
+        const rawOutput = await llmProvider.generate(systemPrompt, userPrompt, 4000);
         storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
         // Check for NO_CHANGES response
@@ -715,46 +701,28 @@ diff --git a/example.js b/example.js
     return files;
   }
 
-  private async applyDiff(worktreeDir: string, diff: string, taskId: string, iteration: number, baseWorkDir: string, repoDir: string): Promise<{ success: boolean; error?: string }> {
+  private async applyDiff(worktreeDir: string, diff: string, taskId: string, iteration: number): Promise<{ success: boolean; error?: string }> {
     // Normalize line endings before any processing (CRLF and CR to LF)
     let patch = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     // Ensure exactly one trailing newline
     patch = patch.trimEnd() + '\n';
     
-    // Use attemptWorkDir for worktree to ensure clean isolation per attempt
-    const attemptWorkDir = path.join(baseWorkDir, `attempt-${iteration}`);
-    const tempWorktreePath = path.join(attemptWorkDir, 'worktree');
-    const mainGit = simpleGit(repoDir);
-    let worktreeCreated = false;
-    
     try {
-      storage.logEvent(taskId, `Creating temporary worktree at ${tempWorktreePath}...`, 'info');
-
-      // Get current branch name from the working directory
-      const currentBranch = await mainGit.revparse(['--abbrev-ref', 'HEAD']);
-      
       // Check applicability first with validateDiffApplicability
       const checkResult = validateDiffApplicability(patch, worktreeDir);
       if (!checkResult.valid) {
         storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
-        // Persist failed patch for debugging
         await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: checkResult.error };
       }
-      
-      // Add worktree pointing to current branch
-      await mainGit.raw(['worktree', 'add', '--detach', tempWorktreePath, 'HEAD']);
-      worktreeCreated = true;
-      storage.logEvent(taskId, `Temporary worktree created at ${tempWorktreePath}`, 'success');
 
-      // Apply diff directly to worktree
-      storage.logEvent(taskId, 'Applying diff to worktree...', 'info');
+      // Apply diff directly to the working directory
+      storage.logEvent(taskId, 'Applying diff...', 'info');
       const worktreeGit = simpleGit(worktreeDir);
-      
-      // Write diff to patch file in worktree
+
       const patchFilePath = path.join(worktreeDir, '.vibe-diff.patch');
       fs.writeFileSync(patchFilePath, patch, { encoding: 'utf-8' });
-      
+
       try {
         await worktreeGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
         storage.logEvent(taskId, 'Diff applied successfully', 'success');
@@ -766,11 +734,9 @@ diff --git a/example.js b/example.js
         if (applyError.stdout) {
           storage.logEvent(taskId, `git apply stdout: ${applyError.stdout}`, 'error');
         }
-        // Persist failed patch for debugging
         await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: errorOutput };
       } finally {
-        // Clean up patch file
         if (fs.existsSync(patchFilePath)) {
           fs.unlinkSync(patchFilePath);
         }
@@ -781,22 +747,8 @@ diff --git a/example.js b/example.js
     } catch (error: any) {
       const errorMessage = error.message || String(error);
       storage.logEvent(taskId, `Git apply failed: ${errorMessage}`, 'error');
-      
-      // Persist failed patch for debugging
       await this.persistFailedPatch(patch, taskId, iteration);
       return { success: false, error: errorMessage };
-    } finally {
-      // Always clean up worktree if it was created
-      if (worktreeCreated) {
-        try {
-          if (fs.existsSync(tempWorktreePath)) {
-            await mainGit.raw(['worktree', 'remove', '--force', tempWorktreePath]);
-            storage.logEvent(taskId, 'Temporary worktree cleaned up', 'info');
-          }
-        } catch (cleanupError: any) {
-          storage.logEvent(taskId, `Warning: Failed to clean up worktree: ${cleanupError.message}`, 'warning');
-        }
-      }
     }
   }
 

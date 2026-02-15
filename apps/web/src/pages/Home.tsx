@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRightIcon, PlusIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/solid';
-import Header from '../components/Header';
 import ProjectCard from '../components/ProjectCard';
 import LogEntry from '../components/LogEntry';
 
@@ -183,6 +182,8 @@ function Home() {
           project_id: selectedProject,
           base_branch: baseBranch || 'main',
           target_branch: targetBranch || undefined,
+          llm_provider: localStorage.getItem('vibe_llm_provider') || undefined,
+          llm_model: localStorage.getItem('vibe_llm_model') || undefined,
         }),
       });
 
@@ -218,14 +219,9 @@ function Home() {
   ];
 
   return (
-    <div className="min-h-screen">
-      <Header
-        onCreateProject={() => setShowCreateModal(true)}
-        onImportProject={() => setShowImportModal(true)}
-      />
-
+    <div>
       {/* Hero Section */}
-      <div className="max-w-3xl mx-auto px-6 pt-16 pb-8 text-center">
+      <div className="max-w-3xl mx-auto px-6 pt-8 pb-8 text-center">
         <h1 className="text-5xl font-bold mb-4">
           <span className="bg-gradient-to-r from-vibe-blue via-vibe-purple to-vibe-pink bg-clip-text text-transparent">
             What do you want to build?

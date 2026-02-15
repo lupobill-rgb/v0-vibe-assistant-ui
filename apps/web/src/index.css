@@ -48,3 +48,23 @@ code {
     border-radius: 16px;
   }
 }
+
+/* Mobile responsive overrides */
+@media (max-width: 768px) {
+  aside.fixed {
+    transform: translateX(-100%);
+  }
+  aside.fixed.mobile-open {
+    transform: translateX(0);
+  }
+
+  .ml-\[68px\],
+  .ml-\[240px\] {
+    margin-left: 0 !important;
+  }
+
+  .text-5xl {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+}

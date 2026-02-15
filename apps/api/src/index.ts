@@ -3,6 +3,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
+import { hashPassword, verifyPassword, generateToken, TOKEN_EXPIRY_MS, optionalAuth } from './auth';
 import path from 'path';
 import fs from 'fs';
 import { execSync, execFileSync } from 'child_process';
@@ -209,7 +210,7 @@ app.delete('/projects/:id', (req: Request, res: Response) => {
 // POST /jobs - Create a new VIBE task
 app.post('/jobs', (req: Request, res: Response) => {
   try {
-    const { prompt, project_id, repo_url, base_branch = 'main', target_branch } = req.body;
+    const { prompt, project_id, repo_url, base_branch = 'main', target_branch, llm_provider, llm_model } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: 'Missing required field: prompt' });
@@ -299,6 +300,150 @@ app.get('/jobs', (_req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to list tasks' });
   }
 });
+
+  // Optional auth middleware
+  app.use(optionalAuth((token) => storage.lookupAuthToken(token)));
+
+  // ── Auth endpoints ──
+
+  app.post('/auth/register', (req: Request, res: Response) => {
+    try {
+      const { email, password, name } = req.body;
+      if (!email || !password || !name) {
+        return res.status(400).json({ error: 'email, password, and name are required' });
+      }
+      if (storage.getUserByEmail(email)) {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+      const userId = uuidv4();
+      const passwordHash = hashPassword(password);
+      storage.createUser(userId, email, passwordHash, name);
+      const token = generateToken();
+      storage.createAuthToken(token, userId, Date.now() + TOKEN_EXPIRY_MS);
+      res.status(201).json({ token, user: { id: userId, email, name } });
+    } catch (error: any) {
+      console.error('Register error:', error);
+      res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  app.post('/auth/login', (req: Request, res: Response) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: 'email and password are required' });
+      }
+      const user = storage.getUserByEmail(email);
+      if (!user || !verifyPassword(password, user.password_hash)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      const token = generateToken();
+      storage.createAuthToken(token, user.id, Date.now() + TOKEN_EXPIRY_MS);
+      res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+    } catch (error: any) {
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  app.get('/auth/me', (req: Request, res: Response) => {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const user = storage.getUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  });
+
+  // ── Workspace endpoints ──
+
+  app.post('/workspaces', (req: Request, res: Response) => {
+    try {
+      const { name } = req.body;
+      const userId = (req as any).userId;
+      if (!name) return res.status(400).json({ error: 'name is required' });
+      if (!userId) return res.status(401).json({ error: 'Authentication required' });
+      const id = uuidv4();
+      storage.createWorkspace(id, name, userId);
+      res.status(201).json({ id, name });
+    } catch (error: any) {
+      console.error('Create workspace error:', error);
+      res.status(500).json({ error: 'Failed to create workspace' });
+    }
+  });
+
+  app.get('/workspaces', (req: Request, res: Response) => {
+    const userId = (req as any).userId;
+    if (!userId) return res.json([]);
+    res.json(storage.listWorkspacesForUser(userId));
+  });
+
+  app.get('/workspaces/:id/projects', (req: Request, res: Response) => {
+    try {
+      res.json(storage.listProjectsByWorkspace(req.params.id));
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to list workspace projects' });
+    }
+  });
+
+  app.post('/workspaces/:id/members', (req: Request, res: Response) => {
+    try {
+      const { user_id, role } = req.body;
+      if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+      storage.addWorkspaceMember(req.params.id, user_id, role || 'member');
+      res.json({ message: 'Member added' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to add member' });
+    }
+  });
+
+  // ── Diff preview endpoints ──
+
+  app.get('/jobs/:id/diff', (req: Request, res: Response) => {
+    try {
+      const diff = storage.getTaskDiff(req.params.id);
+      if (!diff) return res.status(404).json({ error: 'No diff available' });
+      res.json({ diff });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to get diff' });
+    }
+  });
+
+  app.post('/jobs/:id/diff/apply', (req: Request, res: Response) => {
+    try {
+      const { diff } = req.body;
+      if (!diff) return res.status(400).json({ error: 'diff is required' });
+      storage.setTaskDiff(req.params.id, diff);
+      res.json({ message: 'Diff updated successfully' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to apply diff' });
+    }
+  });
+
+  // ── Analytics endpoint ──
+
+  app.get('/analytics/overview', (_req: Request, res: Response) => {
+    try {
+      const overview = storage.getAnalyticsOverview();
+      const tasks = storage.listRecentTasks();
+      const successRate = overview.totalJobs > 0
+        ? Math.round((overview.completedJobs / overview.totalJobs) * 100)
+        : 0;
+
+      // Group by day
+      const byDay = new Map<string, number>();
+      for (const t of tasks) {
+        const d = new Date(t.initiated_at).toLocaleDateString();
+        byDay.set(d, (byDay.get(d) || 0) + 1);
+      }
+      const recentJobs = Array.from(byDay.entries())
+        .map(([date, count]) => ({ date, count }))
+        .slice(-7);
+
+      res.json({ ...overview, successRate, recentJobs });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to get analytics' });
+    }
+  });
 
   // Health check
   app.get('/health', (_req: Request, res: Response) => {
