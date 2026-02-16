@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './App.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -11,7 +11,7 @@ interface LogEvent {
 }
 
 interface Project {
-  project_id: string;
+  id: string;
   name: string;
   repository_url: string;
   local_path: string;
@@ -22,8 +22,6 @@ interface Project {
 function App() {
   const [prompt, setPrompt] = useState('');
   const [projectId, setProjectId] = useState('');
-  const [repoUrl, setRepoUrl] = useState('');
-  const [useLegacyMode, setUseLegacyMode] = useState(false);
   const [baseBranch, setBaseBranch] = useState('main');
   const [targetBranch, setTargetBranch] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -32,71 +30,61 @@ function App() {
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<string>('');
   const [projects, setProjects] = useState<Project[]>([]);
-  const logContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Project modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [importRepoUrl, setImportRepoUrl] = useState('');
-  // Load projects on mount
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   const loadProjects = async () => {
     try {
       const response = await fetch(`${API_URL}/projects`);
-      const data = await response.json();
+      if (!response.ok) {
+        return;
+      }
+
+      const data: Project[] = await response.json();
       setProjects(data);
-      if (data.length > 0 && !selectedProject) {
-        setSelectedProject(data[0].id);
+
+      if (data.length > 0) {
+        setProjectId((prev) => prev || data[0].id);
+      } else {
+        setProjectId('');
       }
     } catch (error) {
       console.error('Error loading projects:', error);
     }
   };
 
-  // Load projects on mount
   useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const response = await fetch(`${API_URL}/projects`);
-        if (response.ok) {
-          const data = await response.json();
-          setProjects(data);
-        }
-      } catch (error) {
-        console.error('Error loading projects:', error);
-      }
-    };
     loadProjects();
   }, []);
 
-  // Auto-scroll logs
   useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    if (!logContainerRef.current) {
+      return;
     }
+
+    logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
   }, [logs]);
 
-  // Stream logs via SSE
   useEffect(() => {
-    if (!taskId) return;
+    if (!taskId) {
+      return;
+    }
 
     const eventSource = new EventSource(`${API_URL}/jobs/${taskId}/logs`);
 
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         if (data.type === 'complete') {
           setTaskStatus(data.state);
           setIsRunning(false);
           eventSource.close();
-        } else {
-          setLogs((prev) => [...prev, data]);
+          return;
         }
+
+        setLogs((prev) => [...prev, data]);
       } catch (error) {
         console.error('Error parsing SSE data:', error);
       }
@@ -107,20 +95,22 @@ function App() {
       setIsRunning(false);
     };
 
-    return () => {
-      eventSource.close();
-    };
+    return () => eventSource.close();
   }, [taskId]);
 
-  // Poll for task status and PR URL
   useEffect(() => {
-    if (!taskId || !isRunning) return;
+    if (!taskId || !isRunning) {
+      return;
+    }
 
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`${API_URL}/jobs/${taskId}`);
+        if (!response.ok) {
+          return;
+        }
+
         const task = await response.json();
-        
         if (task.pull_request_link && !prUrl) {
           setPrUrl(task.pull_request_link);
         }
@@ -138,78 +128,47 @@ function App() {
   }, [taskId, isRunning, prUrl]);
 
   const handleCreateProject = async () => {
-    if (!newProjectName.trim()) {
+    const trimmedName = newProjectName.trim();
+    if (!trimmedName) {
       alert('Please provide a project name');
       return;
     }
 
+    setIsCreatingProject(true);
     try {
       const response = await fetch(`${API_URL}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newProjectName }),
+        body: JSON.stringify({ name: trimmedName }),
       });
 
-      if (response.ok) {
-        const project = await response.json();
-        setNewProjectName('');
-        setShowCreateModal(false);
-        await loadProjects();
-        setSelectedProject(project.id);
-      } else {
-        const error = await response.json();
-        alert(`Error: ${error.error || 'Failed to create project'}`);
+      const data = await response.json();
+      if (!response.ok) {
+        alert(`Error: ${data.error || 'Failed to create project'}`);
+        return;
+      }
+
+      setNewProjectName('');
+      await loadProjects();
+      if (data.id) {
+        setProjectId(data.id);
       }
     } catch (error) {
       alert(`Error: ${error}`);
-    }
-  };
-
-  const handleImportProject = async () => {
-    if (!importRepoUrl.trim()) {
-      alert('Please provide a repository URL');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_URL}/projects/import/github`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: importRepoUrl }),
-      });
-
-      if (response.ok) {
-        const project = await response.json();
-        setImportRepoUrl('');
-        setShowImportModal(false);
-        await loadProjects();
-        setSelectedProject(project.id);
-      } else {
-        const error = await response.json();
-        alert(`Error: ${error.error || 'Failed to import project'}`);
-      }
-    } catch (error) {
-      alert(`Error: ${error}`);
+    } finally {
+      setIsCreatingProject(false);
     }
   };
 
   const handleRun = async () => {
-    // Validate inputs based on mode
     if (!prompt.trim()) {
       alert('Please provide a prompt');
       return;
     }
 
-    if (useLegacyMode) {
-      if (!repoUrl.trim()) {
-        alert('Please provide a repository URL');
-        return;
-      }
-    } else {
-      if (!projectId) {
-        alert('Please select a project');
-        return;
-      }
+    if (!projectId) {
+      alert('Please select a project');
+      return;
     }
 
     setIsRunning(true);
@@ -219,34 +178,25 @@ function App() {
     setTaskStatus('');
 
     try {
-      const body: any = {
-        prompt,
-        base_branch: baseBranch || 'main',
-        target_branch: targetBranch || undefined,
-      };
-
-      if (useLegacyMode) {
-        body.repo_url = repoUrl;
-      } else {
-        body.project_id = projectId;
-      }
-
       const response = await fetch(`${API_URL}/jobs`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          project_id: projectId,
+          base_branch: baseBranch || 'main',
+          target_branch: targetBranch || undefined,
+        }),
       });
 
       const data = await response.json();
-      
-      if (response.ok) {
-        setTaskId(data.task_id);
-      } else {
+      if (!response.ok) {
         alert(`Error: ${data.error || 'Failed to create task'}`);
         setIsRunning(false);
+        return;
       }
+
+      setTaskId(data.task_id);
     } catch (error) {
       alert(`Error: ${error}`);
       setIsRunning(false);
@@ -257,7 +207,9 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>VIBE</h1>
-        <p className="subtitle">Vibe-coding prompt box that generates diffs, runs CI-parity preflight, and opens GitHub PRs</p>
+        <p className="subtitle">
+          Vibe-coding prompt box that generates diffs, runs CI-parity preflight, and opens GitHub PRs
+        </p>
       </header>
 
       <div className="container">
@@ -275,110 +227,49 @@ function App() {
             />
           </div>
 
-          {!useLegacyMode ? (
-            <>
-              <div className="form-row">
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label htmlFor="project">Project</label>
-                  <select
-                    id="project"
-                    className="text-input"
-                    value={selectedProject}
-                    onChange={(e) => setSelectedProject(e.target.value)}
-                    disabled={isRunning}
-                  >
-                    <option value="">Select a project...</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} ({project.repo_source})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setShowCreateModal(true)}
-                    disabled={isRunning}
-                  >
-                    Create Project
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setShowImportModal(true)}
-                    disabled={isRunning}
-                  >
-                    Import from GitHub
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="repoUrl">Repository URL (Legacy Mode B)</label>
-                <input
-                  id="repoUrl"
-                  type="text"
-                  className="text-input"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="https://github.com/owner/repo"
-                  disabled={isRunning}
-                />
-              </div>
-            </div>
-          )}
-
           <div className="form-row">
             <div className="form-group">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={useLegacyMode}
-                  onChange={(e) => setUseLegacyMode(e.target.checked)}
-                  disabled={isRunning}
-                />
-                {' '}Use Legacy Mode (Repository URL)
-              </label>
+              <label htmlFor="projectId">Project</label>
+              <select
+                id="projectId"
+                className="text-input"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                disabled={isRunning || projects.length === 0}
+              >
+                <option value="">Select a project...</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {!useLegacyMode ? (
+          {projects.length === 0 && (
             <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="projectId">Project</label>
-                <select
-                  id="projectId"
-                  className="text-input"
-                  setProjectId
-                  onChange={(e) => setProjectId(e.target.value)}
-                  disabled={isRunning}
-                >
-                  <option value="">Select a project...</option>
-                  {projects.map((project) => (
-                    <option key={project.project_id} value={project.project_id}>
-                      {project.name} ({project.repository_url})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          ) : (
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="repoUrl">Repository URL (Deprecated)</label>
-                <input
-                  id="repoUrl"
-                  type="text"
-                  className="text-input"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="https://github.com/owner/repo"
-                  disabled={isRunning}
-                />
+              <div className="form-group" style={{ width: '100%' }}>
+                <label htmlFor="newProjectName">Add Project</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    id="newProjectName"
+                    type="text"
+                    className="text-input"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="my-project"
+                    disabled={isRunning || isCreatingProject}
+                  />
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleCreateProject}
+                    disabled={isRunning || isCreatingProject}
+                  >
+                    {isCreatingProject ? 'Adding...' : 'Add'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -411,11 +302,7 @@ function App() {
             </div>
           </div>
 
-          <button
-            className="run-button"
-            onClick={handleRun}
-            disabled={isRunning || !prompt.trim() || (useLegacyMode ? !repoUrl.trim() : !projectId)}
-          >
+          <button className="run-button" onClick={handleRun} disabled={isRunning || !prompt.trim() || !projectId}>
             {isRunning ? 'Running...' : 'Run'}
           </button>
         </div>
@@ -423,22 +310,16 @@ function App() {
         <div className="output-section">
           <div className="log-header">
             <h2>Live Log Console</h2>
-            {taskStatus && (
-              <span className={`status status-${taskStatus}`}>
-                {taskStatus}
-              </span>
-            )}
+            {taskStatus && <span className={`status status-${taskStatus}`}>{taskStatus}</span>}
           </div>
-          
+
           <div className="log-console" ref={logContainerRef}>
             {logs.length === 0 && !isRunning && (
               <div className="log-empty">No logs yet. Submit a task to see live output.</div>
             )}
             {logs.map((log) => (
               <div key={log.event_id} className={`log-entry log-${log.severity}`}>
-                <span className="log-time">
-                  {new Date(log.event_time).toLocaleTimeString()}
-                </span>
+                <span className="log-time">{new Date(log.event_time).toLocaleTimeString()}</span>
                 <span className="log-message">{log.event_message}</span>
               </div>
             ))}
@@ -454,62 +335,6 @@ function App() {
           )}
         </div>
       </div>
-
-      {/* Create Project Modal */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Create New Project</h2>
-            <div className="form-group">
-              <label htmlFor="newProjectName">Project Name</label>
-              <input
-                id="newProjectName"
-                type="text"
-                className="text-input"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="my-awesome-project"
-              />
-            </div>
-            <div className="modal-buttons">
-              <button className="secondary-button" onClick={() => setShowCreateModal(false)}>
-                Cancel
-              </button>
-              <button className="run-button" onClick={handleCreateProject}>
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import Project Modal */}
-      {showImportModal && (
-        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Import from GitHub</h2>
-            <div className="form-group">
-              <label htmlFor="importRepoUrl">Repository URL</label>
-              <input
-                id="importRepoUrl"
-                type="text"
-                className="text-input"
-                value={importRepoUrl}
-                onChange={(e) => setImportRepoUrl(e.target.value)}
-                placeholder="https://github.com/owner/repo"
-              />
-            </div>
-            <div className="modal-buttons">
-              <button className="secondary-button" onClick={() => setShowImportModal(false)}>
-                Cancel
-              </button>
-              <button className="run-button" onClick={handleImportProject}>
-                Import
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

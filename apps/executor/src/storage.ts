@@ -13,12 +13,12 @@ const vibeDb = new Database(storePath);
 
 // Initialize VIBE storage schema with defined lifecycle states
 vibeDb.exec(`
-  CREATE TABLE IF NOT EXISTS vibe_projects (
+  CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    repo_source TEXT NOT NULL,
-    repo_dir TEXT NOT NULL,
-    default_branch TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
+    repository_url TEXT NOT NULL,
+    local_path TEXT NOT NULL,
+    last_synced INTEGER,
     created_at INTEGER NOT NULL
   );
 
@@ -34,7 +34,7 @@ vibeDb.exec(`
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
     last_modified INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
+    FOREIGN KEY (project_id) REFERENCES projects(id)
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -50,7 +50,7 @@ vibeDb.exec(`
 `);
 
 // Lifecycle states as defined in requirements
-export type ExecutionState = 
+export type ExecutionState =
   | 'queued'
   | 'cloning'
   | 'building_context'
@@ -66,9 +66,9 @@ export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 export interface Project {
   id: string;
   name: string;
-  repo_source: string;
-  repo_dir: string;
-  default_branch: string;
+  repository_url: string;
+  local_path: string;
+  last_synced?: number;
   created_at: number;
 }
 
@@ -95,8 +95,11 @@ export interface VibeEvent {
 }
 
 class ExecutorStorage {
-  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
-
+  private taskInsert = vibeDb.prepare(`
+    INSERT INTO vibe_tasks (task_id, user_prompt, project_id, repository_url, source_branch, destination_branch, execution_state, iteration_count, initiated_at, last_modified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
   private taskStateUpdate = vibeDb.prepare(`
@@ -104,19 +107,19 @@ class ExecutorStorage {
     SET execution_state = ?, last_modified = ? 
     WHERE task_id = ?
   `);
-  
+
   private taskIterationIncrement = vibeDb.prepare(`
     UPDATE vibe_tasks 
     SET iteration_count = iteration_count + 1, last_modified = ? 
     WHERE task_id = ?
   `);
-  
+
   private taskPrUpdate = vibeDb.prepare(`
     UPDATE vibe_tasks 
     SET pull_request_link = ?, last_modified = ? 
     WHERE task_id = ?
   `);
-  
+
   private tasksRecent = vibeDb.prepare(`
     SELECT * FROM vibe_tasks 
     ORDER BY initiated_at DESC 
@@ -130,16 +133,16 @@ class ExecutorStorage {
   `);
 
   private eventInsert = vibeDb.prepare(`
-    INSERT INTO vibe_events (task_id, event_message, severity, event_time)
+    INSERT INTO vibe_events (task_id, event_message, severity, event_time) 
     VALUES (?, ?, ?, ?)
   `);
-  
+
   private eventsForTask = vibeDb.prepare(`
     SELECT * FROM vibe_events 
     WHERE task_id = ? 
     ORDER BY event_time ASC
   `);
-  
+
   private eventsAfterTime = vibeDb.prepare(`
     SELECT * FROM vibe_events 
     WHERE task_id = ? AND event_time > ? 
@@ -166,8 +169,8 @@ class ExecutorStorage {
     return this.taskSelect.get(taskId) as VibeTask | undefined;
   }
 
-  updateTaskState(taskId: string, newState: ExecutionState): void {
-    this.taskStateUpdate.run(newState, Date.now(), taskId);
+  updateTaskState(taskId: string, state: ExecutionState): void {
+    this.taskStateUpdate.run(state, Date.now(), taskId);
   }
 
   incrementIteration(taskId: string): void {
@@ -178,12 +181,8 @@ class ExecutorStorage {
     this.taskPrUpdate.run(prUrl, Date.now(), taskId);
   }
 
-  listRecentTasks(): VibeTask[] {
+  getRecentTasks(): VibeTask[] {
     return this.tasksRecent.all() as VibeTask[];
-  }
-
-  getQueuedTasks(): VibeTask[] {
-    return this.tasksQueued.all() as VibeTask[];
   }
 
   getNextQueuedTask(): VibeTask | undefined {
@@ -195,18 +194,19 @@ class ExecutorStorage {
     return this.projectSelect.get(projectId) as Project | undefined;
   }
 
+  // Event methods
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
     this.eventInsert.run(taskId, message, severity, Date.now());
+    console.log(`[${severity.toUpperCase()}] ${taskId}: ${message}`);
   }
 
-  getTaskEvents(taskId: string): VibeEvent[] {
+  getEventsForTask(taskId: string): VibeEvent[] {
     return this.eventsForTask.all(taskId) as VibeEvent[];
   }
 
-  getEventsAfter(taskId: string, afterTime: number): VibeEvent[] {
+  getEventsAfterTime(taskId: string, afterTime: number): VibeEvent[] {
     return this.eventsAfterTime.all(taskId, afterTime) as VibeEvent[];
   }
 }
 
 export const storage = new ExecutorStorage();
-export default vibeDb;

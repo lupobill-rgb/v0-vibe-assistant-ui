@@ -2,7 +2,7 @@
  * Builds a credentialed GitHub HTTPS URL for authentication.
  * 
  * @param url - The repository URL (e.g., https://github.com/UbiGrowth/VIBE or https://github.com/UbiGrowth/VIBE.git)
- * @returns Credentialed URL with token if GITHUB_TOKEN is set, otherwise the original URL
+ * @returns Credentialed URL with token if GITHUB_TOKEN is set, otherwise null if url is null
  * 
  * @example
  * // With GITHUB_TOKEN set
@@ -13,7 +13,9 @@
  * buildCredentialedUrl('https://github.com/UbiGrowth/VIBE')
  * // Returns: 'https://github.com/UbiGrowth/VIBE.git'
  */
-export function buildCredentialedUrl(url: string): string {
+export function buildCredentialedUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+
   const token = process.env.GITHUB_TOKEN;
   
   // If no token, return original URL with .git suffix
