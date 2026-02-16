@@ -301,81 +301,11 @@ app.get('/jobs', (_req: Request, res: Response) => {
   }
 });
 
-  // Optional auth middleware
-  app.use(optionalAuth((token) => storage.lookupAuthToken(token)));
-
-  // ── Auth endpoints ──
-
-  app.post('/auth/register', (req: Request, res: Response) => {
-    try {
-      const { email, password, name } = req.body;
-      if (!email || !password || !name) {
-        return res.status(400).json({ error: 'email, password, and name are required' });
-      }
-      if (storage.getUserByEmail(email)) {
-        return res.status(409).json({ error: 'Email already registered' });
-      }
-      const userId = uuidv4();
-      const passwordHash = hashPassword(password);
-      storage.createUser(userId, email, passwordHash, name);
-      const token = generateToken();
-      storage.createAuthToken(token, userId, Date.now() + TOKEN_EXPIRY_MS);
-      res.status(201).json({ token, user: { id: userId, email, name } });
-    } catch (error: any) {
-      console.error('Register error:', error);
-      res.status(500).json({ error: 'Registration failed' });
-    }
-  });
-
-  app.post('/auth/login', (req: Request, res: Response) => {
-    try {
-      const { email, password } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ error: 'email and password are required' });
-      }
-      const user = storage.getUserByEmail(email);
-      if (!user || !verifyPassword(password, user.password_hash)) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-      const token = generateToken();
-      storage.createAuthToken(token, user.id, Date.now() + TOKEN_EXPIRY_MS);
-      res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
-    } catch (error: any) {
-      console.error('Login error:', error);
-      res.status(500).json({ error: 'Login failed' });
-    }
-  });
-
-  app.get('/auth/me', (req: Request, res: Response) => {
-    const userId = (req as any).userId;
-    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
-    const user = storage.getUserById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
-  });
-
-  // ── Workspace endpoints ──
-
-  app.post('/workspaces', (req: Request, res: Response) => {
-    try {
-      const { name } = req.body;
-      const userId = (req as any).userId;
-      if (!name) return res.status(400).json({ error: 'name is required' });
-      if (!userId) return res.status(401).json({ error: 'Authentication required' });
-      const id = uuidv4();
-      storage.createWorkspace(id, name, userId);
-      res.status(201).json({ id, name });
-    } catch (error: any) {
-      console.error('Create workspace error:', error);
-      res.status(500).json({ error: 'Failed to create workspace' });
-    }
-  });
-
-  app.get('/workspaces', (req: Request, res: Response) => {
-    const userId = (req as any).userId;
-    if (!userId) return res.json([]);
-    res.json(storage.listWorkspacesForUser(userId));
-  });
+// DELETE /projects/:id - Delete a project
+app.delete('/projects/:id', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const project = storage.getProject(projectId);
 
   app.get('/workspaces/:id/projects', (req: Request, res: Response) => {
     try {

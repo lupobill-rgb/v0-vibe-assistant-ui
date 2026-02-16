@@ -2,7 +2,6 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
-
 const PREFLIGHT_TIMEOUT = parseInt(process.env.PREFLIGHT_TIMEOUT || '300000', 10);
 
 export interface PreflightStage {
@@ -18,24 +17,43 @@ export interface PreflightResult {
   error?: string;
 }
 
-// Define the 4-stage preflight pipeline
-// Only includes stages where the environment variable is explicitly set.
-// Stages without a configured command are skipped entirely.
+// Define the 4-stage preflight pipeline (only stages with configured commands)
 export function getPreflightStages(): PreflightStage[] {
-  const stageDefinitions = [
-    { name: 'lint', envVar: 'LINT_COMMAND' },
-    { name: 'typecheck', envVar: 'TYPECHECK_COMMAND' },
-    { name: 'test', envVar: 'TEST_COMMAND' },
-    { name: 'smoke', envVar: 'SMOKE_COMMAND' },
-  ];
+  const stages: PreflightStage[] = [];
 
-  return stageDefinitions
-    .filter(def => !!process.env[def.envVar])
-    .map(def => ({
-      name: def.name,
-      command: process.env[def.envVar]!,
-      timeout: PREFLIGHT_TIMEOUT,
-    }));
+  if (process.env.LINT_COMMAND && process.env.LINT_COMMAND.trim()) {
+    stages.push({
+      name: 'lint',
+      command: process.env.LINT_COMMAND,
+      timeout: PREFLIGHT_TIMEOUT
+    });
+  }
+
+  if (process.env.TYPECHECK_COMMAND && process.env.TYPECHECK_COMMAND.trim()) {
+    stages.push({
+      name: 'typecheck',
+      command: process.env.TYPECHECK_COMMAND,
+      timeout: PREFLIGHT_TIMEOUT
+    });
+  }
+
+  if (process.env.TEST_COMMAND && process.env.TEST_COMMAND.trim()) {
+    stages.push({
+      name: 'test',
+      command: process.env.TEST_COMMAND,
+      timeout: PREFLIGHT_TIMEOUT
+    });
+  }
+
+  if (process.env.SMOKE_COMMAND && process.env.SMOKE_COMMAND.trim()) {
+    stages.push({
+      name: 'smoke',
+      command: process.env.SMOKE_COMMAND,
+      timeout: PREFLIGHT_TIMEOUT
+    });
+  }
+
+  return stages;
 }
 
 // Run preflight checks (fail-fast)
@@ -45,12 +63,13 @@ export async function runPreflightChecks(
 ): Promise<PreflightResult> {
   const stages = getPreflightStages();
 
+  // If no stages configured, skip preflight entirely
   if (stages.length === 0) {
-    onProgress('preflight', 'No preflight commands configured — skipping all checks');
+    onProgress('preflight', 'No preflight checks configured - skipping');
     return {
       success: true,
-      stage: 'all',
-      output: 'No preflight commands configured'
+      stage: 'skipped',
+      output: 'No preflight checks configured'
     };
   }
 
@@ -66,8 +85,6 @@ export async function runPreflightChecks(
 
       const output = stdout + stderr;
       onProgress(stage.name, output);
-
-      // Check if command succeeded (exit code 0)
       onProgress(stage.name, `✓ ${stage.name} passed`);
 
     } catch (error: any) {
