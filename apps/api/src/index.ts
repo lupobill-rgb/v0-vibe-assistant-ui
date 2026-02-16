@@ -1,30 +1,58 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
+import { Request, Response } from 'express';
+import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-import { storage } from './storage';
+import { storage, VibeEvent } from './storage';
+import { hashPassword, verifyPassword, generateToken, TOKEN_EXPIRY_MS, optionalAuth } from './auth';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import 'reflect-metadata';
 
-dotenv.config();
+// Load .env from the repository root
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-const app = express();
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
-
-app.use(cors());
-app.use(express.json());
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
   fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
 }
 
-// POST /projects - Create a new project from template
-app.post('/projects', (req: Request, res: Response) => {
-  try {
-    const { name, template = 'empty', default_branch = 'main' } = req.body;
+// Startup sanity check: verify git is available
+try {
+  const gitVersion = execSync('git --version', { encoding: 'utf-8' }).trim();
+  console.log(`✓ Git is available: ${gitVersion}`);
+} catch (error) {
+  console.error('✗ ERROR: git command not found. The API service requires git to be installed.');
+  console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
+}
+
+// Bootstrap NestJS and add Express routes
+async function bootstrap() {
+  // Create NestJS application with body parser
+  const nestApp = await NestFactory.create(AppModule, {
+    bodyParser: true,
+  });
+  
+  // Enable CORS
+  nestApp.enableCors();
+  
+  // Get the underlying Express instance
+  const app = nestApp.getHttpAdapter().getInstance();
+  
+  // Add JSON body parser middleware for custom Express routes
+  // Note: NestJS has its own body parser for its controllers,
+  // but our custom routes added directly to the Express instance need this
+  app.use(express.json());
+
+  // POST /projects - Create a new project from template
+  app.post('/projects', (req: Request, res: Response) => {
+    try {
+      const { name, repository_url, template = 'empty' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
@@ -38,7 +66,7 @@ app.post('/projects', (req: Request, res: Response) => {
     
     // Initialize git repository
     execSync('git init', { cwd: repoDir });
-    execSync(`git checkout -b ${default_branch}`, { cwd: repoDir });
+    execSync(`git checkout -b main`, { cwd: repoDir });
     
     // Create initial README for template
     const readmePath = path.join(repoDir, 'README.md');
@@ -55,7 +83,7 @@ app.post('/projects', (req: Request, res: Response) => {
     storage.createProject({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       created_at: Date.now()
     });
@@ -63,7 +91,7 @@ app.post('/projects', (req: Request, res: Response) => {
     res.status(201).json({
       id: projectId,
       name,
-      repository_url: `file://${repoDir}`,
+      repository_url: repository_url || null,
       local_path: repoDir,
       message: 'Project created successfully'
     });
@@ -76,7 +104,7 @@ app.post('/projects', (req: Request, res: Response) => {
 // POST /projects/import/github - Import project from GitHub
 app.post('/projects/import/github', (req: Request, res: Response) => {
   try {
-    const { repo_url, default_branch = 'main' } = req.body;
+    const { repo_url } = req.body;
 
     if (!repo_url) {
       return res.status(400).json({ error: 'Missing required field: repo_url' });
@@ -107,7 +135,7 @@ app.post('/projects/import/github', (req: Request, res: Response) => {
       cloneUrl = repo_url.replace('https://', `https://${githubToken}@`);
     }
     
-    execSync(`git clone ${cloneUrl} ${repoDir}`, { env: cloneEnv });
+    execFileSync('git', ['clone', cloneUrl, repoDir], { env: cloneEnv });
     
     // Extract repo name from URL
     const repoName = repo_url.split('/').pop()?.replace('.git', '') || 'imported-repo';
@@ -161,10 +189,28 @@ app.get('/projects/:id', (req: Request, res: Response) => {
   }
 });
 
+// DELETE /projects/:id - Delete a project
+app.delete('/projects/:id', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const project = storage.getProject(projectId);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    storage.deleteProject(projectId);
+    res.json({ message: 'Project deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    res.status(500).json({ error: 'Failed to delete project' });
+  }
+});
+
 // POST /jobs - Create a new VIBE task
 app.post('/jobs', (req: Request, res: Response) => {
   try {
-    const { prompt, project_id, repo_url, base_branch = 'main', target_branch } = req.body;
+    const { prompt, project_id, repo_url, base_branch = 'main', target_branch, llm_provider, llm_model } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: 'Missing required field: prompt' });
@@ -261,81 +307,85 @@ app.delete('/projects/:id', (req: Request, res: Response) => {
     const projectId = req.params.id;
     const project = storage.getProject(projectId);
 
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
-
-    storage.deleteProject(projectId);
-    res.json({ message: 'Project deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting project:', error);
-    res.status(500).json({ error: 'Failed to delete project' });
-  }
-});
-
-// GET /jobs/:id/logs - Stream logs via SSE
-app.get('/jobs/:id/logs', (req: Request, res: Response) => {
-  const taskId = req.params.id;
-  
-  // Check if task exists
-  const task = storage.getTask(taskId);
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-
-  // Set up SSE
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // Send existing logs
-  const existingEvents = storage.getTaskEvents(taskId);
-  existingEvents.forEach(event => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  });
-
-  let lastEventTime = existingEvents.length > 0 
-    ? existingEvents[existingEvents.length - 1].event_time 
-    : 0;
-
-  // Poll for new logs
-  const pollInterval = setInterval(() => {
+  app.get('/workspaces/:id/projects', (req: Request, res: Response) => {
     try {
-      const newEvents = storage.getEventsAfter(taskId, lastEventTime);
-      
-      newEvents.forEach(event => {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-        lastEventTime = event.event_time;
-      });
-
-      // Check if task is in terminal state
-      const currentTask = storage.getTask(taskId);
-      if (currentTask && (currentTask.execution_state === 'completed' || currentTask.execution_state === 'failed')) {
-        // Send completion event
-        res.write(`data: ${JSON.stringify({ type: 'complete', state: currentTask.execution_state })}\n\n`);
-        clearInterval(pollInterval);
-        res.end();
-      }
-    } catch (error) {
-      console.error('Error polling logs:', error);
-      clearInterval(pollInterval);
-      res.end();
+      res.json(storage.listProjectsByWorkspace(req.params.id));
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to list workspace projects' });
     }
-  }, 1000);
-
-  // Clean up on client disconnect
-  req.on('close', () => {
-    clearInterval(pollInterval);
-    res.end();
   });
-});
 
-// Health check
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
-});
+  app.post('/workspaces/:id/members', (req: Request, res: Response) => {
+    try {
+      const { user_id, role } = req.body;
+      if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+      storage.addWorkspaceMember(req.params.id, user_id, role || 'member');
+      res.json({ message: 'Member added' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to add member' });
+    }
+  });
 
-app.listen(PORT, () => {
+  // ── Diff preview endpoints ──
+
+  app.get('/jobs/:id/diff', (req: Request, res: Response) => {
+    try {
+      const diff = storage.getTaskDiff(req.params.id);
+      if (!diff) return res.status(404).json({ error: 'No diff available' });
+      res.json({ diff });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to get diff' });
+    }
+  });
+
+  app.post('/jobs/:id/diff/apply', (req: Request, res: Response) => {
+    try {
+      const { diff } = req.body;
+      if (!diff) return res.status(400).json({ error: 'diff is required' });
+      storage.setTaskDiff(req.params.id, diff);
+      res.json({ message: 'Diff updated successfully' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to apply diff' });
+    }
+  });
+
+  // ── Analytics endpoint ──
+
+  app.get('/analytics/overview', (_req: Request, res: Response) => {
+    try {
+      const overview = storage.getAnalyticsOverview();
+      const tasks = storage.listRecentTasks();
+      const successRate = overview.totalJobs > 0
+        ? Math.round((overview.completedJobs / overview.totalJobs) * 100)
+        : 0;
+
+      // Group by day
+      const byDay = new Map<string, number>();
+      for (const t of tasks) {
+        const d = new Date(t.initiated_at).toLocaleDateString();
+        byDay.set(d, (byDay.get(d) || 0) + 1);
+      }
+      const recentJobs = Array.from(byDay.entries())
+        .map(([date, count]) => ({ date, count }))
+        .slice(-7);
+
+      res.json({ ...overview, successRate, recentJobs });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to get analytics' });
+    }
+  });
+
+  // Health check
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
+  });
+
+  // Start the NestJS server
+  await nestApp.listen(PORT);
   console.log(`VIBE API server running on port ${PORT}`);
+}
+
+bootstrap().catch((error) => {
+  console.error('Error starting server:', error);
+  process.exit(1);
 });

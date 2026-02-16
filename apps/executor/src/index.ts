@@ -1,12 +1,12 @@
 import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
-import simpleGit, { SimpleGit } from 'simple-git';
+import simpleGit, { SimpleGit, RemoteWithRefs } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { validateUnifiedDiff, extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, normalizeLLMOutput, performPreApplySanityChecks } from './diff-validator';
+import { extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, performPreApplySanityChecks } from './diff-validator';
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
-import OpenAI from 'openai';
+import { createLLMProvider, LLMProvider } from './llm-provider';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -19,10 +19,6 @@ const GIT_TERMINAL_PROMPT_DISABLED = "0";
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 const WORKTREES_BASE_DIR = process.env.WORKTREES_BASE_DIR || '/data/worktrees';
 const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 interface GenerateDiffResult {
   diff: string | null;
@@ -133,6 +129,8 @@ class VibeExecutor {
               storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
             }
           }
+        } else {
+          storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
         }
 
       } else if (task.repository_url) {
@@ -411,6 +409,7 @@ class VibeExecutor {
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
   ): Promise<GenerateDiffResult> {
+    const prompt = task.user_prompt;
     const maxRetries = 2;
     let lastValidationError: string | null = null;
     const readmeContext = this.buildReadmeContext(prompt, repoDir);
@@ -470,7 +469,7 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
           max_tokens: 4000
         });
 
-        const rawOutput = response.choices[0]?.message?.content || '';
+        const rawOutput = await llmProvider.generate(systemPrompt, userPrompt, 4000);
         storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
         if (rawOutput.trim() === 'NO_CHANGES') {
@@ -596,6 +595,15 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
   private async createPullRequest(task: VibeTask, mainGit: SimpleGit, repoUrl: string | null): Promise<void> {
     try {
       storage.updateTaskState(task.task_id, 'creating_pr');
+      
+      // For local-only projects (no remote), skip push and PR creation
+      if (!repoUrlParam) {
+        storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
+        storage.updateTaskState(task.task_id, 'completed');
+        storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
+        return;
+      }
+      
       storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
       await mainGit.push('origin', task.destination_branch, ['--force']);
@@ -610,12 +618,12 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
           if (origin?.refs?.fetch) {
             effectiveRepoUrl = origin.refs.fetch;
           } else {
-            storage.logEvent(task.task_id, 'No GitHub remote found, PR creation skipped', 'warning');
+            storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
             storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
-          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}`, 'warning');
+          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
           storage.updateTaskState(task.task_id, 'completed');
           return;
         }

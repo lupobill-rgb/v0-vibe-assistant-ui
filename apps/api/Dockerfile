@@ -1,6 +1,10 @@
 FROM node:20-alpine
 RUN apk add --no-cache git
 
+# Install git for repository operations
+RUN apk add --no-cache git openssh
+# Verify git installation: docker compose exec api git --version
+
 WORKDIR /app
 
 # Copy package files

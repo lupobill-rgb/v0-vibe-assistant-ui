@@ -56,7 +56,8 @@ describe('Clean Working Directory Per Iteration', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test User"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a file and commit it
       const testFile = path.join(tempDir, 'test.txt');
       fs.writeFileSync(testFile, 'original content\n');
@@ -95,7 +96,8 @@ describe('Clean Working Directory Per Iteration', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test User"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a file and commit it
       const trackedFile = path.join(tempDir, 'tracked.txt');
       fs.writeFileSync(trackedFile, 'tracked content\n');
@@ -172,7 +174,8 @@ describe('Clean Working Directory Per Iteration', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test User"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a file and commit it
       const testFile = path.join(tempDir, 'test.txt');
       fs.writeFileSync(testFile, 'original content\n');

@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const storePath = process.env.DATABASE_PATH || './data/vibe.db';
+const storePath = process.env.DATABASE_PATH || '/app/data/vibe.db';
 const storeDir = path.dirname(storePath);
 
 if (!fs.existsSync(storeDir)) {
@@ -47,6 +47,7 @@ vibeDb.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_events_by_task ON vibe_events(task_id, event_time);
+  CREATE INDEX IF NOT EXISTS idx_tasks_by_project ON vibe_tasks(project_id);
 `);
 
 // Lifecycle states as defined in requirements
