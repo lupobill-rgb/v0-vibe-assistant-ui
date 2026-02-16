@@ -282,7 +282,8 @@ describe('DiffValidator - Git Apply Check', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a test file
       const testFile = path.join(tempDir, 'test.js');
       fs.writeFileSync(testFile, 'function hello() {\n  console.log("hi");\n}\n');
@@ -319,7 +320,8 @@ describe('DiffValidator - Git Apply Check', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a test file
       const testFile = path.join(tempDir, 'test.js');
       fs.writeFileSync(testFile, 'function hello() {\n  return true;\n}\n');
@@ -357,7 +359,8 @@ describe('DiffValidator - Git Apply Check', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a test file
       const testFile = path.join(tempDir, 'test.js');
       fs.writeFileSync(testFile, 'function hello() {\n  console.log("hi");\n}\n');
@@ -889,7 +892,8 @@ describe('Git Worktree Integration', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a test file
       const testFile = path.join(tempDir, 'test.js');
       fs.writeFileSync(testFile, 'function hello() {\n  console.log("hi");\n}\n');
@@ -955,7 +959,8 @@ describe('Git Worktree Integration', () => {
       execSync('git init', { cwd: tempDir });
       execSync('git config user.email "test@test.com"', { cwd: tempDir });
       execSync('git config user.name "Test"', { cwd: tempDir });
-      
+      execSync('git config commit.gpgsign false', { cwd: tempDir });
+
       // Create a test file
       const testFile = path.join(tempDir, 'test.js');
       fs.writeFileSync(testFile, 'function hello() {\n  return true;\n}\n');

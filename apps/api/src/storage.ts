@@ -1,8 +1,15 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { EventEmitter } from 'events';
+import dotenv from 'dotenv';
+import { runMigrations } from './migrations';
 
-const storePath = process.env.DATABASE_PATH || './data/vibe.db';
+// Load .env from the repository root (go up from apps/api/src to root)
+const envPath = path.join(__dirname, '../../../.env');
+dotenv.config({ path: envPath });
+
+const storePath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data/vibe.db');
 const storeDir = path.dirname(storePath);
 
 if (!fs.existsSync(storeDir)) {
@@ -11,44 +18,8 @@ if (!fs.existsSync(storeDir)) {
 
 const vibeDb = new Database(storePath);
 
-// Initialize VIBE storage schema with defined lifecycle states
-vibeDb.exec(`
-  CREATE TABLE IF NOT EXISTS projects (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    repository_url TEXT NOT NULL,
-    local_path TEXT NOT NULL,
-    last_synced INTEGER,
-    created_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS vibe_tasks (
-    task_id TEXT PRIMARY KEY,
-    user_prompt TEXT NOT NULL,
-    project_id TEXT,
-    repository_url TEXT,
-    source_branch TEXT NOT NULL,
-    destination_branch TEXT NOT NULL,
-    execution_state TEXT NOT NULL,
-    pull_request_link TEXT,
-    iteration_count INTEGER DEFAULT 0,
-    initiated_at INTEGER NOT NULL,
-    last_modified INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS vibe_events (
-    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    event_message TEXT NOT NULL,
-    severity TEXT NOT NULL,
-    event_time INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES vibe_tasks(task_id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_events_by_task ON vibe_events(task_id, event_time);
-  CREATE INDEX IF NOT EXISTS idx_tasks_by_project ON vibe_tasks(project_id);
-`);
+// Run migrations (creates all tables and applies schema changes)
+runMigrations(vibeDb);
 
 // Lifecycle states as defined in requirements
 export type ExecutionState = 
@@ -67,7 +38,7 @@ export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 export interface Project {
   id: string;
   name: string;
-  repository_url: string;
+  repository_url: string | null;
   local_path: string;
   last_synced?: number;
   created_at: number;
@@ -96,23 +67,26 @@ export interface VibeEvent {
 }
 
 class VibeStorage {
+  // EventEmitters for real-time log streaming
+  private logEmitters = new Map<string, EventEmitter>();
+
   // Project statements
   private projectInsert = vibeDb.prepare(`
-    INSERT INTO projects (id, name, repository_url, local_path, created_at)
+    INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
-  private projectSelectByName = vibeDb.prepare(`SELECT * FROM projects WHERE name = ?`);
-  private projectsList = vibeDb.prepare(`SELECT * FROM projects ORDER BY created_at DESC`);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
+  private projectSelectByName = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE name = ?`);
+  private projectsList = vibeDb.prepare(`SELECT * FROM vibe_projects ORDER BY created_at DESC`);
   
   private projectUpdateSync = vibeDb.prepare(`
-    UPDATE projects 
+    UPDATE vibe_projects 
     SET last_synced = ? 
     WHERE id = ?
   `);
 
-  private projectDelete = vibeDb.prepare(`DELETE FROM projects WHERE id = ?`);
+  private projectDelete = vibeDb.prepare(`DELETE FROM vibe_projects WHERE id = ?`);
 
   // Task statements - updated to support project_id
   private taskInsert = vibeDb.prepare(`
@@ -194,6 +168,14 @@ class VibeStorage {
 
   updateTaskState(taskId: string, newState: ExecutionState): void {
     this.taskStateUpdate.run(newState, Date.now(), taskId);
+    
+    // Clean up EventEmitter for terminal states if no active listeners
+    if (newState === 'completed' || newState === 'failed') {
+      const emitter = this.logEmitters.get(taskId);
+      if (emitter && emitter.listenerCount('log') === 0) {
+        this.removeLogEmitter(taskId);
+      }
+    }
   }
 
   incrementIteration(taskId: string): void {
@@ -213,7 +195,20 @@ class VibeStorage {
   }
 
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
-    this.eventInsert.run(taskId, message, severity, Date.now());
+    const eventTime = Date.now();
+    const event = {
+      task_id: taskId,
+      event_message: message,
+      severity,
+      event_time: eventTime
+    };
+    this.eventInsert.run(taskId, message, severity, eventTime);
+    
+    // Emit the event in real-time to any listeners
+    const emitter = this.logEmitters.get(taskId);
+    if (emitter) {
+      emitter.emit('log', event);
+    }
   }
 
   getTaskEvents(taskId: string): VibeEvent[] {
@@ -222,6 +217,25 @@ class VibeStorage {
 
   getEventsAfter(taskId: string, afterTime: number): VibeEvent[] {
     return this.eventsAfterTime.all(taskId, afterTime) as VibeEvent[];
+  }
+
+  // Get or create an EventEmitter for a task's log stream
+  getLogEmitter(taskId: string): EventEmitter {
+    let emitter = this.logEmitters.get(taskId);
+    if (!emitter) {
+      emitter = new EventEmitter();
+      this.logEmitters.set(taskId, emitter);
+    }
+    return emitter;
+  }
+
+  // Clean up EventEmitter when no longer needed
+  removeLogEmitter(taskId: string): void {
+    const emitter = this.logEmitters.get(taskId);
+    if (emitter) {
+      emitter.removeAllListeners();
+      this.logEmitters.delete(taskId);
+    }
   }
 
   // Project management methods
@@ -253,6 +267,114 @@ class VibeStorage {
 
   deleteProject(projectId: string): void {
     this.projectDelete.run(projectId);
+  }
+
+  // ── User / Auth methods ──
+
+  createUser(id: string, email: string, passwordHash: string, name: string): void {
+    vibeDb.prepare(
+      'INSERT INTO vibe_users (id, email, password_hash, name, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(id, email, passwordHash, name, Date.now());
+  }
+
+  getUserByEmail(email: string): { id: string; email: string; password_hash: string; name: string } | undefined {
+    return vibeDb.prepare('SELECT id, email, password_hash, name FROM vibe_users WHERE email = ?').get(email) as any;
+  }
+
+  getUserById(id: string): { id: string; email: string; name: string } | undefined {
+    return vibeDb.prepare('SELECT id, email, name FROM vibe_users WHERE id = ?').get(id) as any;
+  }
+
+  createAuthToken(token: string, userId: string, expiresAt: number): void {
+    vibeDb.prepare(
+      'INSERT INTO vibe_auth_tokens (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
+    ).run(token, userId, Date.now(), expiresAt);
+  }
+
+  lookupAuthToken(token: string): { user_id: string; email: string; expires_at: number } | undefined {
+    return vibeDb.prepare(`
+      SELECT t.user_id, u.email, t.expires_at
+      FROM vibe_auth_tokens t JOIN vibe_users u ON t.user_id = u.id
+      WHERE t.token = ?
+    `).get(token) as any;
+  }
+
+  deleteAuthToken(token: string): void {
+    vibeDb.prepare('DELETE FROM vibe_auth_tokens WHERE token = ?').run(token);
+  }
+
+  // ── Workspace methods ──
+
+  createWorkspace(id: string, name: string, ownerId: string): void {
+    const now = Date.now();
+    vibeDb.prepare(
+      'INSERT INTO vibe_workspaces (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)'
+    ).run(id, name, ownerId, now);
+    vibeDb.prepare(
+      'INSERT INTO vibe_workspace_members (workspace_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)'
+    ).run(id, ownerId, 'owner', now);
+  }
+
+  getWorkspace(id: string): { id: string; name: string; owner_id: string; created_at: number } | undefined {
+    return vibeDb.prepare('SELECT * FROM vibe_workspaces WHERE id = ?').get(id) as any;
+  }
+
+  listWorkspacesForUser(userId: string): { id: string; name: string; role: string }[] {
+    return vibeDb.prepare(`
+      SELECT w.id, w.name, m.role
+      FROM vibe_workspaces w JOIN vibe_workspace_members m ON w.id = m.workspace_id
+      WHERE m.user_id = ?
+      ORDER BY w.created_at DESC
+    `).all(userId) as any[];
+  }
+
+  addWorkspaceMember(workspaceId: string, userId: string, role: string = 'member'): void {
+    vibeDb.prepare(
+      'INSERT OR IGNORE INTO vibe_workspace_members (workspace_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)'
+    ).run(workspaceId, userId, role, Date.now());
+  }
+
+  listProjectsByWorkspace(workspaceId: string): Project[] {
+    return vibeDb.prepare(
+      'SELECT * FROM vibe_projects WHERE workspace_id = ? ORDER BY created_at DESC'
+    ).all(workspaceId) as Project[];
+  }
+
+  setProjectWorkspace(projectId: string, workspaceId: string): void {
+    vibeDb.prepare('UPDATE vibe_projects SET workspace_id = ? WHERE id = ?').run(workspaceId, projectId);
+  }
+
+  // ── Diff storage ──
+
+  setTaskDiff(taskId: string, diff: string): void {
+    vibeDb.prepare('UPDATE vibe_tasks SET last_diff = ?, last_modified = ? WHERE task_id = ?').run(diff, Date.now(), taskId);
+  }
+
+  getTaskDiff(taskId: string): string | undefined {
+    const row = vibeDb.prepare('SELECT last_diff FROM vibe_tasks WHERE task_id = ?').get(taskId) as any;
+    return row?.last_diff || undefined;
+  }
+
+  // ── Analytics ──
+
+  getAnalyticsOverview(): {
+    totalJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    totalProjects: number;
+    avgIterations: number;
+  } {
+    const total = (vibeDb.prepare('SELECT COUNT(*) as c FROM vibe_tasks').get() as any).c;
+    const completed = (vibeDb.prepare("SELECT COUNT(*) as c FROM vibe_tasks WHERE execution_state = 'completed'").get() as any).c;
+    const failed = (vibeDb.prepare("SELECT COUNT(*) as c FROM vibe_tasks WHERE execution_state = 'failed'").get() as any).c;
+    const projects = (vibeDb.prepare('SELECT COUNT(*) as c FROM vibe_projects').get() as any).c;
+    const avgIter = (vibeDb.prepare('SELECT AVG(iteration_count) as a FROM vibe_tasks').get() as any).a || 0;
+    return { totalJobs: total, completedJobs: completed, failedJobs: failed, totalProjects: projects, avgIterations: Math.round(avgIter * 10) / 10 };
+  }
+
+  getNextQueuedTask(): VibeTask | undefined {
+    const tasks = vibeDb.prepare("SELECT * FROM vibe_tasks WHERE execution_state = 'queued' ORDER BY initiated_at ASC").all() as VibeTask[];
+    return tasks.length > 0 ? tasks[0] : undefined;
   }
 }
 
