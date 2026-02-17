@@ -78,6 +78,12 @@ export async function deleteProject(
   return response.json();
 }
 
+export async function fetchProjectJobs(projectId: string): Promise<Task[]> {
+  const response = await fetch(`${API_URL}/projects/${projectId}/jobs`);
+  if (!response.ok) return [];
+  return response.json();
+}
+
 // ── Jobs ───────────────────────────────────────────────────────────────────
 
 export async function fetchJobs(): Promise<Task[]> {
