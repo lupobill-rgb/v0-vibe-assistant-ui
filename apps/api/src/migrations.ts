@@ -126,6 +126,7 @@ export function runMigrations(db: Database.Database): void {
     ['vibe_tasks', 'llm_model'],
     ['vibe_tasks', 'user_id'],
     ['vibe_tasks', 'last_diff'],
+    ['vibe_tasks', 'preview_url'],
     ['vibe_projects', 'workspace_id'],
   ];
   for (const [table, col] of alterations) {

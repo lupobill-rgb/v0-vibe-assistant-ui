@@ -23,6 +23,7 @@ export interface Task {
   user_prompt: string;
   execution_state: string;
   pull_request_link?: string;
+  preview_url?: string;
   initiated_at: number;
   completed_at?: number;
   iteration_count: number;

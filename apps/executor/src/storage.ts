@@ -82,6 +82,7 @@ export interface VibeTask {
   destination_branch: string;
   execution_state: ExecutionState;
   pull_request_link?: string;
+  preview_url?: string;
   iteration_count: number;
   initiated_at: number;
   last_modified: number;
@@ -118,6 +119,12 @@ class ExecutorStorage {
   private taskPrUpdate = vibeDb.prepare(`
     UPDATE vibe_tasks 
     SET pull_request_link = ?, last_modified = ? 
+    WHERE task_id = ?
+  `);
+
+  private taskPreviewUpdate = vibeDb.prepare(`
+    UPDATE vibe_tasks 
+    SET preview_url = ?, last_modified = ? 
     WHERE task_id = ?
   `);
 
@@ -180,6 +187,10 @@ class ExecutorStorage {
 
   setPrUrl(taskId: string, prUrl: string): void {
     this.taskPrUpdate.run(prUrl, Date.now(), taskId);
+  }
+
+  setPreviewUrl(taskId: string, previewUrl: string): void {
+    this.taskPreviewUpdate.run(previewUrl, Date.now(), taskId);
   }
 
   getRecentTasks(): VibeTask[] {
