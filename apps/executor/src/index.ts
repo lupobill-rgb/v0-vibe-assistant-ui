@@ -333,6 +333,7 @@ class VibeExecutor {
           const log = await worktreeGit.log({ from: task.source_branch, to: task.destination_branch });
           const status = await worktreeGit.status();
           if (log.total === 0 && status.isClean()) {
+            await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
             storage.updateTaskState(task.task_id, 'completed');
             storage.logEvent(task.task_id, 'No changes; no PR created.', 'success');
             return;
@@ -630,6 +631,16 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
     }
   }
 
+  private async createCheckpointTag(mainGit: SimpleGit, taskId: string, branch: string): Promise<void> {
+    try {
+      const tagName = `vibe/job-${taskId}`;
+      await mainGit.tag([tagName, branch]);
+      storage.logEvent(taskId, `✓ Created checkpoint tag: ${tagName}`, 'success');
+    } catch (error: any) {
+      storage.logEvent(taskId, `Warning: Failed to create checkpoint tag: ${error.message}`, 'warning');
+    }
+  }
+
   private async createPullRequest(task: VibeTask, mainGit: SimpleGit, repoUrl: string | null): Promise<void> {
     try {
       storage.updateTaskState(task.task_id, 'creating_pr');
@@ -637,6 +648,7 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
       // For local-only projects (no remote), skip push and PR creation
       if (!repoUrl) {
         storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
+        await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
         storage.updateTaskState(task.task_id, 'completed');
         storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
         return;
@@ -657,11 +669,13 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
             effectiveRepoUrl = origin.refs.fetch;
           } else {
             storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
+            await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
             storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
           storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
+          await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
           storage.updateTaskState(task.task_id, 'completed');
           return;
         }
@@ -678,6 +692,7 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
 
       if (prResult.success && prResult.prUrl) {
         storage.setPrUrl(task.task_id, prResult.prUrl);
+        await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
         storage.updateTaskState(task.task_id, 'completed');
         storage.logEvent(task.task_id, `✓ Pull request created: ${prResult.prUrl}`, 'success');
       } else {
