@@ -16,7 +16,7 @@ function App() {
         isCollapsed={isCollapsed}
         onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
       />
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className={`flex flex-col flex-1 min-w-0 transition-all duration-300 ${isCollapsed ? 'ml-[68px]' : 'ml-[240px]'}`}>
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
           {activeSection === 'dashboard' && <Home />}
