@@ -1,35 +1,34 @@
-FROM node:20-alpine as builder
+﻿# Build stage
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
-COPY package.json ./
-COPY apps/web/package.json ./apps/web/
+COPY package*.json ./
 
 # Install dependencies
-RUN npm install
-RUN npm install --workspace=apps/web
+RUN npm ci
 
 # Copy source
-COPY apps/web ./apps/web
+COPY . .
 
-# Build
-RUN npm run build --workspace=apps/web
+# Build Next.js app
+RUN npm run build
 
-# Production image
-FROM nginx:alpine
+# Production stage
+FROM node:20-alpine
 
-COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+WORKDIR /app
 
-# Add nginx config for SPA routing
-RUN echo 'server { \
-    listen 80; \
-    location / { \
-        root /usr/share/nginx/html; \
-        try_files $uri $uri/ /index.html; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+# Copy built app
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/next.config.mjs ./
 
-EXPOSE 80
+# Install production dependencies only
+RUN npm ci --only=production
 
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 3000
+
+CMD ["npm", "start"]
