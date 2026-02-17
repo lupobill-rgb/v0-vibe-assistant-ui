@@ -128,6 +128,12 @@ class ExecutorStorage {
     WHERE task_id = ?
   `);
 
+  private taskDiffUpdate = vibeDb.prepare(`
+    UPDATE vibe_tasks 
+    SET last_diff = ?, last_modified = ? 
+    WHERE task_id = ?
+  `);
+
   private tasksRecent = vibeDb.prepare(`
     SELECT * FROM vibe_tasks 
     ORDER BY initiated_at DESC 
@@ -191,6 +197,10 @@ class ExecutorStorage {
 
   setPreviewUrl(taskId: string, previewUrl: string): void {
     this.taskPreviewUpdate.run(previewUrl, Date.now(), taskId);
+  }
+
+  setTaskDiff(taskId: string, diff: string): void {
+    this.taskDiffUpdate.run(diff, Date.now(), taskId);
   }
 
   getRecentTasks(): VibeTask[] {

@@ -23,6 +23,7 @@ const GIT_TERMINAL_PROMPT_DISABLED = "0";
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 const WORKTREES_BASE_DIR = process.env.WORKTREES_BASE_DIR || '/data/worktrees';
 const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
+const JOBS_DIR = process.env.JOBS_DIR || '/data/jobs';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
 const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
 
@@ -369,6 +370,9 @@ class VibeExecutor {
       globalFallback = false;
       failureFeedback = null;
 
+      // Persist the successful diff to database and file system
+      await this.persistSuccessfulDiff(diff, task.task_id);
+
       await worktreeGit.add('.');
       await worktreeGit.commit(`VIBE iteration ${iteration}: ${task.user_prompt.slice(0, 50)}`);
       storage.logEvent(task.task_id, `Changes committed (iteration ${iteration})`, 'success');
@@ -600,12 +604,32 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
     }
   }
 
+  private async persistSuccessfulDiff(diff: string, taskId: string): Promise<void> {
+    try {
+      // Store in SQLite database
+      storage.setTaskDiff(taskId, diff);
+      storage.logEvent(taskId, '✓ Diff persisted to database', 'info');
+
+      // Also store as a file in /data/jobs/
+      if (!fs.existsSync(JOBS_DIR)) fs.mkdirSync(JOBS_DIR, { recursive: true });
+
+      const diffFilePath = path.join(JOBS_DIR, `${taskId}.diff`);
+      fs.writeFileSync(diffFilePath, diff, { encoding: 'utf-8' });
+
+      const lines = diff.split('\n');
+      storage.logEvent(taskId, `✓ Diff saved to: ${diffFilePath} (${lines.length} lines, ${diff.length} chars)`, 'info');
+
+    } catch (error: any) {
+      storage.logEvent(taskId, `WARNING: Could not persist diff: ${error.message}`, 'warning');
+    }
+  }
+
   private async createPullRequest(task: VibeTask, mainGit: SimpleGit, repoUrl: string | null): Promise<void> {
     try {
       storage.updateTaskState(task.task_id, 'creating_pr');
       
       // For local-only projects (no remote), skip push and PR creation
-      if (!repoUrlParam) {
+      if (!repoUrl) {
         storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
         storage.updateTaskState(task.task_id, 'completed');
         storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
