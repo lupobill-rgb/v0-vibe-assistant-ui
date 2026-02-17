@@ -124,6 +124,12 @@ class VibeStorage {
     WHERE task_id = ?
   `);
   
+  private taskPreviewUpdate = vibeDb.prepare(`
+    UPDATE vibe_tasks 
+    SET preview_url = ?, last_modified = ? 
+    WHERE task_id = ?
+  `);
+  
   private tasksRecent = vibeDb.prepare(`
     SELECT * FROM vibe_tasks 
     ORDER BY initiated_at DESC 

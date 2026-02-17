@@ -174,21 +174,35 @@ export function TaskView() {
           {isCompleted && (
             <div className="glass-card p-5 animate-slide-up">
               <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wide mb-4">Result</h2>
-              {taskDetails.pull_request_link ? (
-                <a
-                  href={taskDetails.pull_request_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-xl hover:shadow-glow transition-all"
-                >
-                  <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                  View Pull Request
-                </a>
-              ) : (
-                <p className="text-center text-white/40 text-sm py-2">
-                  Completed without PR (local project)
-                </p>
-              )}
+              <div className="space-y-3">
+                {taskDetails.pull_request_link && (
+                  <a
+                    href={taskDetails.pull_request_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-xl hover:shadow-glow transition-all"
+                  >
+                    <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                    View Pull Request
+                  </a>
+                )}
+                {taskDetails.preview_url && (
+                  <a
+                    href={`http://localhost:3001${taskDetails.preview_url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gradient-to-r from-vibe-purple to-vibe-pink text-white font-semibold rounded-xl hover:shadow-glow transition-all"
+                  >
+                    <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                    View Preview
+                  </a>
+                )}
+                {!taskDetails.pull_request_link && !taskDetails.preview_url && (
+                  <p className="text-center text-white/40 text-sm py-2">
+                    Completed without PR or preview
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
