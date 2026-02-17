@@ -38,6 +38,16 @@ class VibeExecutor {
 
   constructor() {
     this.llmProvider = createLLMProvider();
+    this.initializeDirectories();
+  }
+
+  private initializeDirectories(): void {
+    // Ensure required directories exist
+    for (const dir of [REPOS_BASE_DIR, WORKTREES_BASE_DIR, PATCHES_DIR, JOBS_DIR, PREVIEWS_DIR]) {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    }
   }
 
   async start(): Promise<void> {
@@ -587,8 +597,6 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
 
   private async persistFailedPatch(diff: string, taskId: string, iteration: number): Promise<void> {
     try {
-      if (!fs.existsSync(PATCHES_DIR)) fs.mkdirSync(PATCHES_DIR, { recursive: true });
-
       const patchFilePath = path.join(PATCHES_DIR, `${taskId}-iter${iteration}.diff`);
       fs.writeFileSync(patchFilePath, diff, { encoding: 'utf-8' });
 
@@ -611,8 +619,6 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
       storage.logEvent(taskId, '✓ Diff persisted to database', 'info');
 
       // Also store as a file in /data/jobs/
-      if (!fs.existsSync(JOBS_DIR)) fs.mkdirSync(JOBS_DIR, { recursive: true });
-
       const diffFilePath = path.join(JOBS_DIR, `${taskId}.diff`);
       fs.writeFileSync(diffFilePath, diff, { encoding: 'utf-8' });
 
