@@ -23,6 +23,7 @@ export function TaskView() {
   const [taskDetails, setTaskDetails] = useState<Task | null>(null);
   const [loadingTask, setLoadingTask] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'logs' | 'preview'>('logs');
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   const { logs, error: logsError } = useJobLogs(taskId || null);
@@ -221,41 +222,97 @@ export function TaskView() {
           )}
         </div>
 
-        {/* Right: Live Logs */}
+        {/* Right: Live Logs & Preview */}
         <div className="glass-card flex flex-col h-[calc(100vh-120px)] min-h-[500px] animate-slide-in-right">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
-            <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wide">Live Logs</h2>
-            <span className="text-xs text-white/30 font-mono">{logs.length} events</span>
+          {/* Tab Navigation */}
+          <div className="flex items-center border-b border-white/10">
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`flex-1 px-5 py-3 text-sm font-semibold uppercase tracking-wide transition-all ${
+                activeTab === 'logs'
+                  ? 'text-white border-b-2 border-vibe-blue bg-white/5'
+                  : 'text-white/40 hover:text-white/60 hover:bg-white/5'
+              }`}
+            >
+              Live Logs
+              <span className="ml-2 text-xs text-white/30 font-mono">{logs.length} events</span>
+            </button>
+            {taskDetails?.preview_url && (
+              <button
+                onClick={() => setActiveTab('preview')}
+                className={`flex-1 px-5 py-3 text-sm font-semibold uppercase tracking-wide transition-all ${
+                  activeTab === 'preview'
+                    ? 'text-white border-b-2 border-vibe-purple bg-white/5'
+                    : 'text-white/40 hover:text-white/60 hover:bg-white/5'
+                }`}
+              >
+                Preview
+              </button>
+            )}
           </div>
-          {logsError && (
-            <div className="px-5 py-2 bg-red-500/10 border-b border-red-500/20">
-              <span className="text-xs text-red-400">{logsError}</span>
+
+          {/* Tab Content: Logs */}
+          {activeTab === 'logs' && (
+            <>
+              {logsError && (
+                <div className="px-5 py-2 bg-red-500/10 border-b border-red-500/20">
+                  <span className="text-xs text-red-400">{logsError}</span>
+                </div>
+              )}
+              <div
+                ref={logContainerRef}
+                className="flex-1 overflow-y-auto p-2 bg-black/20"
+              >
+                {logs.length === 0 && !logsError && (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="flex items-center gap-2 text-white/30">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <span className="text-sm">Waiting for logs...</span>
+                    </div>
+                  </div>
+                )}
+                {logs.map((log) => (
+                  <LogEntry
+                    key={log.event_id}
+                    timestamp={new Date(log.event_time).toLocaleTimeString()}
+                    message={log.event_message}
+                    severity={log.severity}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Tab Content: Preview */}
+          {activeTab === 'preview' && taskDetails?.preview_url && (
+            <div className="flex-1 flex flex-col bg-black/20">
+              {/* Preview Header with Open Link */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 bg-black/10">
+                <span className="text-xs text-white/50">Preview URL:</span>
+                <a
+                  href={taskDetails.preview_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs bg-white/10 text-white/80 hover:text-white hover:bg-white/15 rounded-lg transition-all border border-white/10"
+                >
+                  <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                  Open Preview
+                </a>
+              </div>
+              {/* Preview Iframe */}
+              <div className="flex-1 relative">
+                <iframe
+                  src={`${taskDetails.preview_url}?t=${taskDetails.initiated_at}`}
+                  className="absolute inset-0 w-full h-full border-0"
+                  title="Preview"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+                />
+              </div>
             </div>
           )}
-          <div
-            ref={logContainerRef}
-            className="flex-1 overflow-y-auto p-2 bg-black/20"
-          >
-            {logs.length === 0 && !logsError && (
-              <div className="flex items-center justify-center h-full">
-                <div className="flex items-center gap-2 text-white/30">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span className="text-sm">Waiting for logs...</span>
-                </div>
-              </div>
-            )}
-            {logs.map((log) => (
-              <LogEntry
-                key={log.event_id}
-                timestamp={new Date(log.event_time).toLocaleTimeString()}
-                message={log.event_message}
-                severity={log.severity}
-              />
-            ))}
-          </div>
         </div>
       </div>
     </div>

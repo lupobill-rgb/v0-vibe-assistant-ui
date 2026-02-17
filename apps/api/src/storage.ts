@@ -117,6 +117,12 @@ class VibeStorage {
     SET pull_request_link = ?, last_modified = ? 
     WHERE task_id = ?
   `);
+
+  private taskPreviewUpdate = vibeDb.prepare(`
+    UPDATE vibe_tasks 
+    SET preview_url = ?, last_modified = ? 
+    WHERE task_id = ?
+  `);
   
   private taskPreviewUpdate = vibeDb.prepare(`
     UPDATE vibe_tasks 
