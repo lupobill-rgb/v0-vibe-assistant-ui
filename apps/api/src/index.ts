@@ -459,6 +459,19 @@ app.get('/jobs', (_req: Request, res: Response) => {
     }
   });
 
+  // ── Preview URL endpoint (for testing) ──
+
+  app.post('/jobs/:id/preview', (req: Request, res: Response) => {
+    try {
+      const { preview_url } = req.body;
+      if (!preview_url) return res.status(400).json({ error: 'preview_url is required' });
+      storage.setPreviewUrl(req.params.id, preview_url);
+      res.json({ message: 'Preview URL updated successfully' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to set preview URL' });
+    }
+  });
+
   // ── Analytics endpoint ──
 
   app.get('/analytics/overview', (_req: Request, res: Response) => {
