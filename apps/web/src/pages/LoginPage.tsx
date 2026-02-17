@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { authLogin, authRegister } from '../api/client';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -18,27 +17,15 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const endpoint = isRegister ? '/auth/register' : '/auth/login';
-      const body: Record<string, string> = { email, password };
-      if (isRegister) body.name = name;
-
-      const res = await fetch(`${API_URL}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Something went wrong');
-        return;
-      }
+      const data = isRegister
+        ? await authRegister(email, password, name)
+        : await authLogin(email, password);
 
       localStorage.setItem('vibe_token', data.token);
       localStorage.setItem('vibe_user', JSON.stringify(data.user));
       navigate('/');
-    } catch {
-      setError('Network error');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }

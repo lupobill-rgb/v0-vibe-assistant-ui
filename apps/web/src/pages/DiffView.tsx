@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeftIcon, PencilSquareIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { fetchDiff, applyDiff } from '../api/client';
 
 interface DiffLine {
   type: 'add' | 'remove' | 'context' | 'header' | 'hunk';
@@ -44,9 +43,7 @@ export default function DiffView() {
     if (!taskId) return;
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/jobs/${taskId}/diff`);
-        if (!res.ok) throw new Error(res.status === 404 ? 'No diff available for this task' : 'Failed to fetch diff');
-        const data = await res.json();
+        const data = await fetchDiff(taskId);
         setDiff(data.diff || null);
         setEditedDiff(data.diff || '');
       } catch (err) {
@@ -62,14 +59,9 @@ export default function DiffView() {
     setApplying(true);
     setApplyResult(null);
     try {
-      const res = await fetch(`${API_URL}/jobs/${taskId}/diff/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ diff: editedDiff }),
-      });
-      const data = await res.json();
-      setApplyResult({ ok: res.ok, message: data.message || data.error || 'Done' });
-      if (res.ok) {
+      const result = await applyDiff(taskId, editedDiff);
+      setApplyResult(result);
+      if (result.ok) {
         setEditing(false);
         setDiff(editedDiff);
       }
