@@ -3,24 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRightIcon, PlusIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import ProjectCard from '../components/ProjectCard';
 import LogEntry from '../components/LogEntry';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface LogEvent {
-  event_id: number;
-  event_message: string;
-  severity: 'info' | 'error' | 'success' | 'warning';
-  event_time: number;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  repository_url: string;
-  local_path: string;
-  last_synced?: number;
-  created_at: number;
-}
+import {
+  fetchProjects,
+  createProject,
+  importGithubProject,
+  createJob,
+  fetchJob,
+  getLogsSSEUrl,
+  type LogEvent,
+  type Project,
+} from '../api/client';
 
 type Tab = 'recent' | 'starred';
 
@@ -49,9 +41,7 @@ function Home() {
 
   const loadProjects = async () => {
     try {
-      const response = await fetch(`${API_URL}/projects`);
-      if (!response.ok) throw new Error(`Failed to load projects: ${response.status}`);
-      const data = await response.json();
+      const data = await fetchProjects();
       setProjects(data);
       if (data.length > 0 && !selectedProject) {
         setSelectedProject(data[0].id);
@@ -75,7 +65,7 @@ function Home() {
   // Stream logs via SSE
   useEffect(() => {
     if (!taskId) return;
-    const eventSource = new EventSource(`${API_URL}/jobs/${taskId}/logs`);
+    const eventSource = new EventSource(getLogsSSEUrl(taskId));
 
     eventSource.onmessage = (event) => {
       try {
@@ -107,9 +97,7 @@ function Home() {
     if (!taskId || !isRunning) return;
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${API_URL}/jobs/${taskId}`);
-        if (!response.ok) throw new Error(`Failed to poll task: ${response.status}`);
-        const task = await response.json();
+        const task = await fetchJob(taskId);
         if (task.pull_request_link) {
           setPrUrl(task.pull_request_link);
         }
@@ -127,13 +115,8 @@ function Home() {
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
     try {
-      const response = await fetch(`${API_URL}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newProjectName }),
-      });
-      if (response.ok) {
-        const project = await response.json();
+      const project = await createProject(newProjectName);
+      if (project.id) {
         setNewProjectName('');
         setShowCreateModal(false);
         await loadProjects();
@@ -147,13 +130,8 @@ function Home() {
   const handleImportProject = async () => {
     if (!importRepoUrl.trim()) return;
     try {
-      const response = await fetch(`${API_URL}/projects/import/github`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: importRepoUrl }),
-      });
-      if (response.ok) {
-        const project = await response.json();
+      const project = await importGithubProject(importRepoUrl);
+      if (project.id) {
         setImportRepoUrl('');
         setShowImportModal(false);
         await loadProjects();
@@ -174,24 +152,19 @@ function Home() {
     setTaskStatus('');
 
     try {
-      const response = await fetch(`${API_URL}/jobs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          project_id: selectedProject,
-          base_branch: baseBranch || 'main',
-          target_branch: targetBranch || undefined,
-          llm_provider: localStorage.getItem('vibe_llm_provider') || undefined,
-          llm_model: localStorage.getItem('vibe_llm_model') || undefined,
-        }),
+      const data = await createJob({
+        prompt,
+        project_id: selectedProject,
+        base_branch: baseBranch || 'main',
+        target_branch: targetBranch || undefined,
+        llm_provider: localStorage.getItem('vibe_llm_provider') || undefined,
+        llm_model: localStorage.getItem('vibe_llm_model') || undefined,
       });
 
-      if (!response.ok) {
+      if (!data.task_id) {
         setIsRunning(false);
         return;
       }
-      const data = await response.json();
       setTaskId(data.task_id);
     } catch (error) {
       console.error('Run error:', error);

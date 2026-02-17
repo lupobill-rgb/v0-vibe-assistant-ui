@@ -1,17 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface Task {
-  task_id: string;
-  user_prompt: string;
-  execution_state: string;
-  initiated_at: number;
-  pull_request_link?: string;
-  iteration_count: number;
-  llm_provider?: string;
-}
+import { fetchJobs, type Task } from '../api/client';
 
 const stateColors: Record<string, string> = {
   completed: 'bg-emerald-500/20 text-emerald-400',
@@ -27,8 +16,8 @@ export default function HistoryPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/jobs`);
-        if (res.ok) setTasks(await res.json());
+        const data = await fetchJobs();
+        setTasks(data);
       } catch {
         // ignore
       } finally {

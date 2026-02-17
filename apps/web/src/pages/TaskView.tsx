@@ -4,21 +4,7 @@ import { ArrowLeftIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/ou
 import { useJobLogs } from '../hooks/useJobLogs';
 import StatusPipeline from '../components/StatusPipeline';
 import LogEntry from '../components/LogEntry';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface TaskDetails {
-  task_id: string;
-  prompt: string;
-  execution_state: string;
-  pull_request_link?: string;
-  created_at: number;
-  completed_at?: number;
-  project_id?: string;
-  repo_url?: string;
-  base_branch?: string;
-  target_branch?: string;
-}
+import { fetchJob, type Task } from '../api/client';
 
 const pipelineStages = [
   { id: 'queued', label: 'Queued' },
@@ -34,7 +20,7 @@ const pipelineStages = [
 export function TaskView() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
-  const [taskDetails, setTaskDetails] = useState<TaskDetails | null>(null);
+  const [taskDetails, setTaskDetails] = useState<Task | null>(null);
   const [loadingTask, setLoadingTask] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -55,9 +41,7 @@ export function TaskView() {
 
     const fetchTaskDetails = async () => {
       try {
-        const response = await fetch(`${API_URL}/jobs/${taskId}`);
-        if (!response.ok) throw new Error('Failed to fetch task details');
-        const data = await response.json();
+        const data = await fetchJob(taskId);
         setTaskDetails(data);
         setLoadingTask(false);
         if (data.execution_state === 'completed' || data.execution_state === 'failed') {
@@ -152,7 +136,7 @@ export function TaskView() {
               <div>
                 <span className="text-xs text-white/40 block mb-0.5">Prompt</span>
                 <div className="text-sm text-white/80 bg-black/30 rounded-lg px-3 py-2 font-mono whitespace-pre-wrap break-words border border-white/5">
-                  {taskDetails.prompt}
+                  {taskDetails.user_prompt}
                 </div>
               </div>
               {taskDetails.repo_url && (
