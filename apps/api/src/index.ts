@@ -17,6 +17,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
+const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -26,6 +27,11 @@ if (!fs.existsSync(REPOS_BASE_DIR)) {
 // Ensure previews directory exists
 if (!fs.existsSync(PREVIEWS_DIR)) {
   fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+}
+
+// Ensure published directory exists
+if (!fs.existsSync(PUBLISHED_DIR)) {
+  fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
 }
 
 // Startup sanity check: verify git is available
@@ -57,6 +63,9 @@ async function bootstrap() {
 
   // Serve static preview files
   app.use('/previews', express.static(PREVIEWS_DIR));
+
+  // Serve static published files
+  app.use('/published', express.static(PUBLISHED_DIR));
 
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
@@ -232,6 +241,85 @@ app.delete('/projects/:id', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error deleting project:', error);
     res.status(500).json({ error: 'Failed to delete project' });
+  }
+});
+
+// POST /projects/:id/publish - Publish a job's preview to the project
+app.post('/projects/:id/publish', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const { job_id } = req.body;
+
+    if (!job_id) {
+      return res.status(400).json({ error: 'Missing required field: job_id' });
+    }
+
+    // Validate project exists
+    const project = storage.getProject(projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Validate job exists and belongs to this project
+    const job = storage.getTask(job_id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.project_id !== projectId) {
+      return res.status(400).json({ error: 'Job does not belong to this project' });
+    }
+
+    // Check if job has a preview
+    if (!job.preview_url) {
+      return res.status(400).json({ error: 'Job does not have a preview to publish' });
+    }
+
+    // Source: /data/previews/{job_id}
+    const sourceDir = path.join(PREVIEWS_DIR, job_id);
+    if (!fs.existsSync(sourceDir)) {
+      return res.status(404).json({ error: 'Preview files not found' });
+    }
+
+    // Destination: /data/published/{project_id}
+    const destDir = path.join(PUBLISHED_DIR, projectId);
+
+    // Remove existing published version if it exists
+    if (fs.existsSync(destDir)) {
+      fs.rmSync(destDir, { recursive: true, force: true });
+    }
+
+    // Copy preview to published directory
+    const copyRecursive = (src: string, dest: string) => {
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
+      }
+      const entries = fs.readdirSync(src, { withFileTypes: true });
+      for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+          copyRecursive(srcPath, destPath);
+        } else {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+    };
+
+    copyRecursive(sourceDir, destDir);
+
+    // Update project with published URL
+    const publishedUrl = `/published/${projectId}/index.html`;
+    storage.publishProject(projectId, job_id, publishedUrl);
+
+    res.json({
+      message: 'Project published successfully',
+      published_url: publishedUrl,
+      job_id: job_id
+    });
+  } catch (error: any) {
+    console.error('Error publishing project:', error);
+    res.status(500).json({ error: `Failed to publish project: ${error.message}` });
   }
 });
 
