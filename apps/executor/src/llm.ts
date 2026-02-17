@@ -11,11 +11,22 @@ Given a user prompt and repository context, output ONLY a valid unified diff (gi
 - If creating a new file, use /dev/null as the source path.
 - If no changes are needed, output exactly: NO_CHANGES`;
 
+export interface LLMUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface DiffResult {
+  diff: string;
+  usage: LLMUsage;
+}
+
 export async function generateDiff(
   prompt: string,
   context: ProjectContext,
   previousError?: string
-): Promise<string> {
+): Promise<DiffResult> {
   const contextBlock = Object.entries(context.files)
     .map(([path, content]) => `### ${path}\n\`\`\`\n${content}\n\`\`\``)
     .join('\n\n');
@@ -41,5 +52,12 @@ export async function generateDiff(
     .map((b) => (b as { text: string }).text)
     .join('');
 
-  return text.trim();
+  return {
+    diff: text.trim(),
+    usage: {
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens,
+      total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+    },
+  };
 }
