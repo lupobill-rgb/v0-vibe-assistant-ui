@@ -33,6 +33,11 @@ interface GenerateDiffResult {
 
 class VibeExecutor {
   private processing = false;
+  private llmProvider: LLMProvider;
+
+  constructor() {
+    this.llmProvider = createLLMProvider();
+  }
 
   async start(): Promise<void> {
     console.log('VIBE Executor started');
@@ -134,9 +139,9 @@ class VibeExecutor {
             } catch (error: any) {
               storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
             }
+          } else {
+            storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
           }
-        } else {
-          storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
         }
 
       } else if (task.repository_url) {
@@ -423,7 +428,6 @@ class VibeExecutor {
     fallbackFiles: Set<string> = new Set(),
     failureFeedback: string | null = null
   ): Promise<GenerateDiffResult> {
-    const prompt = task.user_prompt;
     const maxRetries = 2;
     let lastValidationError: string | null = null;
     const readmeContext = this.buildReadmeContext(prompt, repoDir);
@@ -473,17 +477,7 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
           userPrompt += `\n\n---\n\nVALIDATION ERROR: ${lastValidationError}\n\nPlease output a valid unified diff starting with "diff --git", including --- and +++ headers and @@ hunk markers. Or output exactly "NO_CHANGES".\n\nExample:\ndiff --git a/example.js b/example.js\n--- a/example.js\n+++ b/example.js\n@@ -1,3 +1,4 @@\n function example() {\n+  console.log('added line');\n   return true;\n }`;
         }
 
-        const response = await openai.chat.completions.create({
-          model: 'gpt-4-turbo-preview',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0,
-          max_tokens: 4000
-        });
-
-        const rawOutput = await llmProvider.generate(systemPrompt, userPrompt, 4000);
+        const rawOutput = await this.llmProvider.generate(systemPrompt, userPrompt, 4000);
         storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
         if (rawOutput.trim() === 'NO_CHANGES') {
