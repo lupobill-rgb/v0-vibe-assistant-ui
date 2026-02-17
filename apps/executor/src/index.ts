@@ -10,6 +10,10 @@ import { createLLMProvider, LLMProvider } from './llm-provider';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 dotenv.config();
 
@@ -19,6 +23,8 @@ const GIT_TERMINAL_PROMPT_DISABLED = "0";
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 const WORKTREES_BASE_DIR = process.env.WORKTREES_BASE_DIR || '/data/worktrees';
 const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
+const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
 
 interface GenerateDiffResult {
   diff: string | null;
@@ -304,6 +310,10 @@ class VibeExecutor {
 
         if (preflightResult.success) {
           storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
+          
+          // Generate preview after successful preflight
+          await this.generatePreview(task, worktreeDir);
+          
           const log = await worktreeGit.log({ from: task.source_branch, to: task.destination_branch });
           const status = await worktreeGit.status();
           if (log.total === 0 && status.isClean()) {
@@ -367,6 +377,10 @@ class VibeExecutor {
 
       if (preflightResult.success) {
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
+        
+        // Generate preview after successful preflight
+        await this.generatePreview(task, worktreeDir);
+        
         await this.createPullRequest(task, mainGit, repoUrl);
         return;
       } else {
@@ -650,6 +664,95 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
     } catch (error: any) {
       storage.updateTaskState(task.task_id, 'failed');
       storage.logEvent(task.task_id, `Error creating PR: ${error.message}`, 'error');
+    }
+  }
+
+  private async generatePreview(task: VibeTask, worktreeDir: string): Promise<void> {
+    try {
+      storage.logEvent(task.task_id, 'Generating static preview...', 'info');
+
+      // Run build command in worktree
+      storage.logEvent(task.task_id, `Running build command: ${BUILD_COMMAND}`, 'info');
+      
+      try {
+        const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
+          cwd: worktreeDir,
+          timeout: 300000, // 5 minutes timeout
+          maxBuffer: 10 * 1024 * 1024 // 10MB
+        });
+
+        if (stdout) storage.logEvent(task.task_id, `Build stdout: ${stdout.slice(0, 500)}`, 'info');
+        if (stderr) storage.logEvent(task.task_id, `Build stderr: ${stderr.slice(0, 500)}`, 'info');
+        
+        storage.logEvent(task.task_id, '✓ Build completed successfully', 'success');
+      } catch (buildError: any) {
+        const errorOutput = (buildError.stdout || '') + (buildError.stderr || '');
+        storage.logEvent(task.task_id, `Build failed: ${errorOutput.slice(0, 1000)}`, 'error');
+        storage.logEvent(task.task_id, 'Preview generation skipped due to build failure', 'warning');
+        return;
+      }
+
+      // Determine build output directory (common patterns)
+      const buildDirs = ['dist', 'build', 'out', '.next', 'public'];
+      let buildOutputDir: string | null = null;
+
+      for (const dir of buildDirs) {
+        const candidatePath = path.join(worktreeDir, dir);
+        if (fs.existsSync(candidatePath)) {
+          const stat = fs.statSync(candidatePath);
+          if (stat.isDirectory()) {
+            buildOutputDir = candidatePath;
+            storage.logEvent(task.task_id, `Found build output directory: ${dir}`, 'info');
+            break;
+          }
+        }
+      }
+
+      if (!buildOutputDir) {
+        storage.logEvent(task.task_id, 'No build output directory found (checked: dist, build, out, .next, public)', 'warning');
+        storage.logEvent(task.task_id, 'Preview generation skipped', 'warning');
+        return;
+      }
+
+      // Create preview directory
+      const previewDir = path.join(PREVIEWS_DIR, task.task_id);
+      if (!fs.existsSync(PREVIEWS_DIR)) {
+        fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+      }
+
+      // Copy build output to preview directory
+      storage.logEvent(task.task_id, `Copying build output to: ${previewDir}`, 'info');
+      
+      if (fs.existsSync(previewDir)) {
+        fs.rmSync(previewDir, { recursive: true, force: true });
+      }
+
+      // Recursive copy
+      const copyRecursive = (src: string, dest: string) => {
+        if (!fs.existsSync(dest)) {
+          fs.mkdirSync(dest, { recursive: true });
+        }
+        const entries = fs.readdirSync(src, { withFileTypes: true });
+        for (const entry of entries) {
+          const srcPath = path.join(src, entry.name);
+          const destPath = path.join(dest, entry.name);
+          if (entry.isDirectory()) {
+            copyRecursive(srcPath, destPath);
+          } else {
+            fs.copyFileSync(srcPath, destPath);
+          }
+        }
+      };
+
+      copyRecursive(buildOutputDir, previewDir);
+
+      // Store preview URL
+      const previewUrl = `/previews/${task.task_id}/index.html`;
+      storage.setPreviewUrl(task.task_id, previewUrl);
+      storage.logEvent(task.task_id, `✓ Preview available at: ${previewUrl}`, 'success');
+
+    } catch (error: any) {
+      storage.logEvent(task.task_id, `Preview generation error: ${error.message}`, 'warning');
     }
   }
 }

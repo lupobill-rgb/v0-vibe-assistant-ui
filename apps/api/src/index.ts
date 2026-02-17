@@ -16,10 +16,16 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
   fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
+}
+
+// Ensure previews directory exists
+if (!fs.existsSync(PREVIEWS_DIR)) {
+  fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
 }
 
 // Startup sanity check: verify git is available
@@ -48,6 +54,9 @@ async function bootstrap() {
   // Note: NestJS has its own body parser for its controllers,
   // but our custom routes added directly to the Express instance need this
   app.use(express.json());
+
+  // Serve static preview files
+  app.use('/previews', express.static(PREVIEWS_DIR));
 
   // POST /projects - Create a new project from template
   app.post('/projects', (req: Request, res: Response) => {
