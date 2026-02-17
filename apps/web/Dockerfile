@@ -1,35 +1,31 @@
-FROM node:20-alpine as builder
-
+# Build stage
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
-COPY apps/web/package.json ./apps/web/
+# Copy workspace manifests
+COPY package*.json ./
+COPY apps/web/package.json ./apps/web/package.json
 
-# Install dependencies
-RUN npm install
-RUN npm install --workspace=apps/web
+# Install dependencies for monorepo + web workspace
+RUN npm ci
+RUN npm ci --workspace=apps/web
 
 # Copy source
-COPY apps/web ./apps/web
+COPY . .
 
-# Build
+# Build Next app
 RUN npm run build --workspace=apps/web
 
-# Production image
-FROM nginx:alpine
+# Runtime stage
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
 
-COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+# Copy only what Next needs
+COPY --from=builder /app/apps/web ./
 
-# Add nginx config for SPA routing
-RUN echo 'server { \
-    listen 80; \
-    location / { \
-        root /usr/share/nginx/html; \
-        try_files $uri $uri/ /index.html; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+# Install prod deps only for web workspace
+RUN npm ci --omit=dev
 
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 3000
+CMD ["npm","start"]
