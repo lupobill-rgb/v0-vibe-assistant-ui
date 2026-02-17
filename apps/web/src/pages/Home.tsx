@@ -9,9 +9,11 @@ import {
   importGithubProject,
   createJob,
   fetchJob,
+  fetchProjectJobs,
   getLogsSSEUrl,
   type LogEvent,
   type Project,
+  type Task,
 } from '../api/client';
 
 type Tab = 'recent' | 'starred';
@@ -31,6 +33,7 @@ function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('recent');
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [projectJobs, setProjectJobs] = useState<Task[]>([]);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // Modal states
@@ -55,6 +58,24 @@ function Home() {
     loadProjects();
   }, []);
 
+  // Load project jobs when selected project changes
+  useEffect(() => {
+    const loadProjectJobs = async () => {
+      if (!selectedProject) {
+        setProjectJobs([]);
+        return;
+      }
+      try {
+        const jobs = await fetchProjectJobs(selectedProject);
+        setProjectJobs(jobs);
+      } catch (error) {
+        console.error('Error loading project jobs:', error);
+        setProjectJobs([]);
+      }
+    };
+    loadProjectJobs();
+  }, [selectedProject]);
+
   // Auto-scroll logs
   useEffect(() => {
     if (logContainerRef.current) {
@@ -74,6 +95,10 @@ function Home() {
           setTaskStatus(data.state);
           setIsRunning(false);
           eventSource.close();
+          // Reload project jobs when task completes
+          if (selectedProject) {
+            fetchProjectJobs(selectedProject).then(setProjectJobs).catch(console.error);
+          }
         } else {
           setLogs((prev) => [...prev, data]);
         }
@@ -90,7 +115,7 @@ function Home() {
     return () => {
       eventSource.close();
     };
-  }, [taskId]);
+  }, [taskId, selectedProject]);
 
   // Poll for task status
   useEffect(() => {
@@ -347,6 +372,48 @@ function Home() {
                 </a>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Job History Section (shown when a project is selected and not running) */}
+      {selectedProject && !isRunning && projectJobs.length > 0 && (
+        <div className="max-w-3xl mx-auto px-6 mb-8">
+          <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+            <div className="px-5 py-3 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-700">Recent Jobs</h3>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {projectJobs.map((job) => (
+                <button
+                  key={job.task_id}
+                  onClick={() => navigate(`/task/${job.task_id}`)}
+                  className="w-full px-5 py-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 truncate mb-1">
+                      {job.user_prompt.length > 60
+                        ? `${job.user_prompt.substring(0, 60)}...`
+                        : job.user_prompt}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(job.initiated_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase whitespace-nowrap ${
+                      job.execution_state === 'completed'
+                        ? 'bg-emerald-500/20 text-emerald-600'
+                        : job.execution_state === 'failed'
+                        ? 'bg-red-500/20 text-red-600'
+                        : 'bg-blue-500/20 text-blue-600'
+                    }`}
+                  >
+                    {job.execution_state.replace(/_/g, ' ')}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

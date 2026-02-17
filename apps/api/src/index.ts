@@ -198,6 +198,25 @@ app.get('/projects/:id', (req: Request, res: Response) => {
   }
 });
 
+// GET /projects/:id/jobs - List jobs for a specific project
+app.get('/projects/:id/jobs', (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const project = storage.getProject(projectId);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    const tasks = storage.listTasksByProject(projectId, limit);
+    res.json(tasks);
+  } catch (error) {
+    console.error('Error listing project tasks:', error);
+    res.status(500).json({ error: 'Failed to list project tasks' });
+  }
+});
+
 // DELETE /projects/:id - Delete a project
 app.delete('/projects/:id', (req: Request, res: Response) => {
   try {

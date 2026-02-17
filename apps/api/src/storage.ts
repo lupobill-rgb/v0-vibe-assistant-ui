@@ -136,6 +136,13 @@ class VibeStorage {
     ORDER BY initiated_at ASC
   `);
 
+  private tasksByProject = vibeDb.prepare(`
+    SELECT * FROM vibe_tasks 
+    WHERE project_id = ? 
+    ORDER BY initiated_at DESC 
+    LIMIT ?
+  `);
+
   private eventInsert = vibeDb.prepare(`
     INSERT INTO vibe_events (task_id, event_message, severity, event_time)
     VALUES (?, ?, ?, ?)
@@ -203,6 +210,10 @@ class VibeStorage {
 
   getQueuedTasks(): VibeTask[] {
     return this.tasksQueued.all() as VibeTask[];
+  }
+
+  listTasksByProject(projectId: string, limit: number = 20): VibeTask[] {
+    return this.tasksByProject.all(projectId, limit) as VibeTask[];
   }
 
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
