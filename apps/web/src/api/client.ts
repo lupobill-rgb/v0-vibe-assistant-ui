@@ -32,6 +32,12 @@ export interface Task {
   base_branch?: string;
   target_branch?: string;
   llm_provider?: string;
+  llm_prompt_tokens?: number;
+  llm_completion_tokens?: number;
+  llm_total_tokens?: number;
+  preflight_seconds?: number;
+  total_job_seconds?: number;
+  files_changed_count?: number;
 }
 
 export interface HealthStatus {

@@ -140,5 +140,21 @@ export function runMigrations(db: Database.Database): void {
     }
   }
 
+  // Usage metrics columns (INTEGER for token counts, REAL for time in seconds)
+  const usageColumns: [string, string, string][] = [
+    ['vibe_tasks', 'llm_prompt_tokens', 'INTEGER'],
+    ['vibe_tasks', 'llm_completion_tokens', 'INTEGER'],
+    ['vibe_tasks', 'llm_total_tokens', 'INTEGER'],
+    ['vibe_tasks', 'preflight_seconds', 'REAL'],
+    ['vibe_tasks', 'total_job_seconds', 'REAL'],
+    ['vibe_tasks', 'files_changed_count', 'INTEGER'],
+  ];
+  for (const [table, col, type] of usageColumns) {
+    if (!columnExists(db, table, col)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+      console.log(`[Migrations] Added ${col} to ${table}`);
+    }
+  }
+
   console.log('[Migrations] All migrations applied');
 }

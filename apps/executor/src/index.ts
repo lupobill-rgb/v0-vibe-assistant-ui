@@ -30,6 +30,11 @@ const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
 interface GenerateDiffResult {
   diff: string | null;
   error: string | null;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  };
 }
 
 class VibeExecutor {
@@ -80,12 +85,17 @@ class VibeExecutor {
   }
 
   private async executeTask(task: VibeTask): Promise<void> {
+    const jobStartTime = Date.now();
     let repoDir: string = '';
     let repoUrl: string | null = null;
     let isProjectMode = false;
     let baseWorkDir: string = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
     let worktreeDir: string = '';
     let mainGit: SimpleGit | null = null;
+    let totalPromptTokens = 0;
+    let totalCompletionTokens = 0;
+    let totalTokens = 0;
+    let totalPreflightSeconds = 0;
 
     try {
       // ── Mode detection ──────────────────────────────────────────────────────
@@ -222,11 +232,55 @@ class VibeExecutor {
       // worktreeDir = repoDir for now (worktree isolation can be added later)
       worktreeDir = repoDir;
 
-      await this.iterationLoop(task, baseWorkDir, repoDir, worktreeDir, mainGit, repoUrl);
+      const usageMetrics = {
+        totalPromptTokens: 0,
+        totalCompletionTokens: 0,
+        totalTokens: 0,
+        totalPreflightSeconds: 0,
+      };
+
+      await this.iterationLoop(task, baseWorkDir, repoDir, worktreeDir, mainGit, repoUrl, usageMetrics);
+
+      // Calculate final job duration and store usage metrics
+      const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
+      
+      // Count files changed by comparing branches
+      let filesChangedCount = 0;
+      try {
+        const diffSummary = await mainGit.diffSummary([task.source_branch, task.destination_branch]);
+        filesChangedCount = diffSummary.files.length;
+      } catch (error: any) {
+        storage.logEvent(task.task_id, `Could not count changed files: ${error.message}`, 'warning');
+      }
+      
+      storage.updateTaskUsageMetrics(task.task_id, {
+        llm_prompt_tokens: usageMetrics.totalPromptTokens,
+        llm_completion_tokens: usageMetrics.totalCompletionTokens,
+        llm_total_tokens: usageMetrics.totalTokens,
+        preflight_seconds: usageMetrics.totalPreflightSeconds,
+        total_job_seconds: totalJobSeconds,
+        files_changed_count: filesChangedCount,
+      });
+      
+      storage.logEvent(
+        task.task_id,
+        `Usage: ${usageMetrics.totalTokens} tokens, ${usageMetrics.totalPreflightSeconds.toFixed(1)}s preflight, ${totalJobSeconds.toFixed(1)}s total, ${filesChangedCount} files`,
+        'info'
+      );
 
     } catch (error: any) {
       storage.updateTaskState(task.task_id, 'failed');
       storage.logEvent(task.task_id, `Fatal error: ${error.message}`, 'error');
+      
+      // Still try to record usage metrics even on failure
+      const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
+      storage.updateTaskUsageMetrics(task.task_id, {
+        llm_prompt_tokens: totalPromptTokens,
+        llm_completion_tokens: totalCompletionTokens,
+        llm_total_tokens: totalTokens,
+        preflight_seconds: totalPreflightSeconds,
+        total_job_seconds: totalJobSeconds,
+      });
     } finally {
       if (!isProjectMode) {
         if (fs.existsSync(baseWorkDir)) {
@@ -254,7 +308,13 @@ class VibeExecutor {
     repoDir: string,
     worktreeDir: string,
     mainGit: SimpleGit,
-    repoUrl: string | null
+    repoUrl: string | null,
+    usageMetrics: {
+      totalPromptTokens: number;
+      totalCompletionTokens: number;
+      totalTokens: number;
+      totalPreflightSeconds: number;
+    }
   ): Promise<void> {
     let consecutiveApplyFailures = 0;
     let consecutiveDiffFailures = 0;
@@ -295,6 +355,13 @@ class VibeExecutor {
         globalFallback, fallbackFiles, failureFeedback
       );
 
+      // Accumulate LLM token usage
+      if (result.usage) {
+        usageMetrics.totalPromptTokens += result.usage.input_tokens;
+        usageMetrics.totalCompletionTokens += result.usage.output_tokens;
+        usageMetrics.totalTokens += result.usage.total_tokens;
+      }
+
       if (!result.diff) {
         consecutiveDiffFailures++;
         storage.logEvent(task.task_id, 'LLM failed to generate valid diff', 'error');
@@ -320,9 +387,12 @@ class VibeExecutor {
         storage.logEvent(task.task_id, 'No changes needed - skipping git apply', 'info');
         storage.updateTaskState(task.task_id, 'running_preflight');
 
+        const preflightStartTime = Date.now();
         const preflightResult = await runPreflightChecks(worktreeDir, (stage, output) => {
           storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
         });
+        const preflightDuration = (Date.now() - preflightStartTime) / 1000;
+        usageMetrics.totalPreflightSeconds += preflightDuration;
 
         if (preflightResult.success) {
           storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
@@ -391,9 +461,12 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'running_preflight');
       storage.logEvent(task.task_id, 'Running preflight checks...', 'info');
 
+      const preflightStartTime = Date.now();
       const preflightResult = await runPreflightChecks(worktreeDir, (stage, output) => {
         storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
       });
+      const preflightDuration = (Date.now() - preflightStartTime) / 1000;
+      usageMetrics.totalPreflightSeconds += preflightDuration;
 
       if (preflightResult.success) {
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
@@ -492,12 +565,13 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
           userPrompt += `\n\n---\n\nVALIDATION ERROR: ${lastValidationError}\n\nPlease output a valid unified diff starting with "diff --git", including --- and +++ headers and @@ hunk markers. Or output exactly "NO_CHANGES".\n\nExample:\ndiff --git a/example.js b/example.js\n--- a/example.js\n+++ b/example.js\n@@ -1,3 +1,4 @@\n function example() {\n+  console.log('added line');\n   return true;\n }`;
         }
 
-        const rawOutput = await this.llmProvider.generate(systemPrompt, userPrompt, 4000);
+        const llmResponse = await this.llmProvider.generate(systemPrompt, userPrompt, 4000);
+        const rawOutput = llmResponse.text;
         storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
         if (rawOutput.trim() === 'NO_CHANGES') {
           storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
-          return { diff: 'NO_CHANGES', error: null };
+          return { diff: 'NO_CHANGES', error: null, usage: llmResponse.usage };
         }
 
         const sanitized = sanitizeUnifiedDiff(rawOutput);
@@ -523,7 +597,7 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
         }
 
         storage.logEvent(taskId, `Valid diff generated (${diff.split('\n').length} lines)`, 'success');
-        return { diff, error: null };
+        return { diff, error: null, usage: llmResponse.usage };
 
       } catch (error: any) {
         storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');

@@ -60,6 +60,12 @@ export interface VibeTask {
   iteration_count: number;
   initiated_at: number;
   last_modified: number;
+  llm_prompt_tokens?: number;
+  llm_completion_tokens?: number;
+  llm_total_tokens?: number;
+  preflight_seconds?: number;
+  total_job_seconds?: number;
+  files_changed_count?: number;
 }
 
 export interface VibeEvent {
@@ -408,6 +414,53 @@ class VibeStorage {
   getNextQueuedTask(): VibeTask | undefined {
     const tasks = vibeDb.prepare("SELECT * FROM vibe_tasks WHERE execution_state = 'queued' ORDER BY initiated_at ASC").all() as VibeTask[];
     return tasks.length > 0 ? tasks[0] : undefined;
+  }
+
+  // Usage metrics update methods
+  updateTaskUsageMetrics(taskId: string, metrics: {
+    llm_prompt_tokens?: number;
+    llm_completion_tokens?: number;
+    llm_total_tokens?: number;
+    preflight_seconds?: number;
+    total_job_seconds?: number;
+    files_changed_count?: number;
+  }): void {
+    const updates: string[] = [];
+    const values: any[] = [];
+    
+    if (metrics.llm_prompt_tokens !== undefined) {
+      updates.push('llm_prompt_tokens = ?');
+      values.push(metrics.llm_prompt_tokens);
+    }
+    if (metrics.llm_completion_tokens !== undefined) {
+      updates.push('llm_completion_tokens = ?');
+      values.push(metrics.llm_completion_tokens);
+    }
+    if (metrics.llm_total_tokens !== undefined) {
+      updates.push('llm_total_tokens = ?');
+      values.push(metrics.llm_total_tokens);
+    }
+    if (metrics.preflight_seconds !== undefined) {
+      updates.push('preflight_seconds = ?');
+      values.push(metrics.preflight_seconds);
+    }
+    if (metrics.total_job_seconds !== undefined) {
+      updates.push('total_job_seconds = ?');
+      values.push(metrics.total_job_seconds);
+    }
+    if (metrics.files_changed_count !== undefined) {
+      updates.push('files_changed_count = ?');
+      values.push(metrics.files_changed_count);
+    }
+    
+    if (updates.length > 0) {
+      updates.push('last_modified = ?');
+      values.push(Date.now());
+      values.push(taskId);
+      
+      const sql = `UPDATE vibe_tasks SET ${updates.join(', ')} WHERE task_id = ?`;
+      vibeDb.prepare(sql).run(...values);
+    }
   }
 }
 

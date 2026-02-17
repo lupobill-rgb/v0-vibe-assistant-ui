@@ -170,6 +170,50 @@ export function TaskView() {
             />
           </div>
 
+          {/* Usage Metrics */}
+          {(taskDetails.llm_total_tokens || taskDetails.total_job_seconds || taskDetails.files_changed_count) && (
+            <div className="glass-card p-5">
+              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wide mb-4">Usage Metrics</h2>
+              <div className="space-y-3">
+                {taskDetails.llm_total_tokens !== undefined && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/40">LLM Tokens</span>
+                    <span className="text-sm text-white/90 font-mono">
+                      {taskDetails.llm_total_tokens.toLocaleString()}
+                      <span className="text-white/50 text-xs ml-1">
+                        ({taskDetails.llm_prompt_tokens?.toLocaleString() || 0} in / {taskDetails.llm_completion_tokens?.toLocaleString() || 0} out)
+                      </span>
+                    </span>
+                  </div>
+                )}
+                {taskDetails.preflight_seconds !== undefined && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/40">Preflight Time</span>
+                    <span className="text-sm text-white/90 font-mono">{taskDetails.preflight_seconds.toFixed(1)}s</span>
+                  </div>
+                )}
+                {taskDetails.total_job_seconds !== undefined && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/40">Total Duration</span>
+                    <span className="text-sm text-white/90 font-mono">{taskDetails.total_job_seconds.toFixed(1)}s</span>
+                  </div>
+                )}
+                {taskDetails.files_changed_count !== undefined && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/40">Files Changed</span>
+                    <span className="text-sm text-white/90 font-mono">{taskDetails.files_changed_count}</span>
+                  </div>
+                )}
+                {taskDetails.iteration_count > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/40">Iterations</span>
+                    <span className="text-sm text-white/90 font-mono">{taskDetails.iteration_count}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Result Actions */}
           {isCompleted && (
             <div className="glass-card p-5 animate-slide-up">
