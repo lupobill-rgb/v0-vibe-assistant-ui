@@ -128,9 +128,9 @@ class VibeExecutor {
             } catch (error: any) {
               storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
             }
+          } else {
+            storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
           }
-        } else {
-          storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
         }
 
       } else if (task.repository_url) {

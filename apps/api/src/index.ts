@@ -302,12 +302,7 @@ app.get('/jobs', (_req: Request, res: Response) => {
 });
 
 // DELETE /projects/:id - Delete a project
-app.delete('/projects/:id', (req: Request, res: Response) => {
-  try {
-    const projectId = req.params.id;
-    const project = storage.getProject(projectId);
-
-  app.get('/workspaces/:id/projects', (req: Request, res: Response) => {
+app.get('/workspaces/:id/projects', (req: Request, res: Response) => {
     try {
       res.json(storage.listProjectsByWorkspace(req.params.id));
     } catch (error: any) {
