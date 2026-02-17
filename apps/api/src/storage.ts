@@ -45,6 +45,7 @@ export interface Project {
   published_url?: string;
   published_at?: number;
   published_job_id?: string;
+  tenant_id?: string;
 }
 
 export interface VibeTask {
@@ -60,6 +61,7 @@ export interface VibeTask {
   iteration_count: number;
   initiated_at: number;
   last_modified: number;
+  tenant_id?: string;
 }
 
 export interface VibeEvent {
@@ -76,13 +78,13 @@ class VibeStorage {
 
   // Project statements
   private projectInsert = vibeDb.prepare(`
-    INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at, tenant_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
   private projectSelectByName = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE name = ?`);
-  private projectsList = vibeDb.prepare(`SELECT * FROM vibe_projects ORDER BY created_at DESC`);
+  private projectsList = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE tenant_id = ? ORDER BY created_at DESC`);
   
   private projectUpdateSync = vibeDb.prepare(`
     UPDATE vibe_projects 
@@ -97,8 +99,8 @@ class VibeStorage {
     INSERT INTO vibe_tasks (
       task_id, user_prompt, project_id, repository_url, source_branch, 
       destination_branch, execution_state, iteration_count, 
-      initiated_at, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      initiated_at, last_modified, tenant_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
@@ -129,13 +131,14 @@ class VibeStorage {
   
   private tasksRecent = vibeDb.prepare(`
     SELECT * FROM vibe_tasks 
+    WHERE tenant_id = ?
     ORDER BY initiated_at DESC 
     LIMIT 100
   `);
 
   private tasksQueued = vibeDb.prepare(`
     SELECT * FROM vibe_tasks 
-    WHERE execution_state = 'queued' 
+    WHERE execution_state = 'queued' AND tenant_id = ?
     ORDER BY initiated_at ASC
   `);
 
@@ -175,7 +178,8 @@ class VibeStorage {
       task.execution_state,
       0, // iteration_count starts at 0
       task.initiated_at,
-      task.last_modified
+      task.last_modified,
+      task.tenant_id || null
     );
   }
 
@@ -207,12 +211,12 @@ class VibeStorage {
     this.taskPreviewUpdate.run(previewUrl, Date.now(), taskId);
   }
 
-  listRecentTasks(): VibeTask[] {
-    return this.tasksRecent.all() as VibeTask[];
+  listRecentTasks(tenantId: string): VibeTask[] {
+    return this.tasksRecent.all(tenantId) as VibeTask[];
   }
 
-  getQueuedTasks(): VibeTask[] {
-    return this.tasksQueued.all() as VibeTask[];
+  getQueuedTasks(tenantId: string): VibeTask[] {
+    return this.tasksQueued.all(tenantId) as VibeTask[];
   }
 
   listTasksByProject(projectId: string, limit: number = 20): VibeTask[] {
@@ -270,7 +274,8 @@ class VibeStorage {
       project.name,
       project.repository_url,
       project.local_path,
-      project.created_at
+      project.created_at,
+      project.tenant_id || null
     );
   }
 
@@ -282,8 +287,8 @@ class VibeStorage {
     return this.projectSelectByName.get(name) as Project | undefined;
   }
 
-  listProjects(): Project[] {
-    return this.projectsList.all() as Project[];
+  listProjects(tenantId: string): Project[] {
+    return this.projectsList.all(tenantId) as Project[];
   }
 
   updateProjectSync(projectId: string): void {
