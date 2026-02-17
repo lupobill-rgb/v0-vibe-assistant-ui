@@ -128,6 +128,9 @@ export function runMigrations(db: Database.Database): void {
     ['vibe_tasks', 'last_diff'],
     ['vibe_tasks', 'preview_url'],
     ['vibe_projects', 'workspace_id'],
+    ['vibe_projects', 'published_url'],
+    ['vibe_projects', 'published_at'],
+    ['vibe_projects', 'published_job_id'],
   ];
   for (const [table, col] of alterations) {
     if (!columnExists(db, table, col)) {

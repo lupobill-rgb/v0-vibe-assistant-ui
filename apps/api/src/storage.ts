@@ -42,6 +42,9 @@ export interface Project {
   local_path: string;
   last_synced?: number;
   created_at: number;
+  published_url?: string;
+  published_at?: number;
+  published_job_id?: string;
 }
 
 export interface VibeTask {
@@ -289,6 +292,14 @@ class VibeStorage {
 
   deleteProject(projectId: string): void {
     this.projectDelete.run(projectId);
+  }
+
+  publishProject(projectId: string, jobId: string, publishedUrl: string): void {
+    vibeDb.prepare(`
+      UPDATE vibe_projects 
+      SET published_url = ?, published_at = ?, published_job_id = ? 
+      WHERE id = ?
+    `).run(publishedUrl, Date.now(), jobId, projectId);
   }
 
   // ── User / Auth methods ──
