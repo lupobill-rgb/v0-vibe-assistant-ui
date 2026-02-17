@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowTopRightOnSquareIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { useJobLogs } from '../hooks/useJobLogs';
 import StatusPipeline from '../components/StatusPipeline';
 import LogEntry from '../components/LogEntry';
@@ -175,6 +175,13 @@ export function TaskView() {
             <div className="glass-card p-5 animate-slide-up">
               <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wide mb-4">Result</h2>
               <div className="space-y-3">
+                <button
+                  onClick={() => navigate(`/diff/${taskDetails.task_id}`)}
+                  className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-white/10 text-white/90 border border-white/20 font-semibold rounded-xl hover:bg-white/15 hover:border-white/30 transition-all"
+                >
+                  <DocumentTextIcon className="w-5 h-5" />
+                  View Diff
+                </button>
                 {taskDetails.pull_request_link && (
                   <a
                     href={taskDetails.pull_request_link}
@@ -212,12 +219,21 @@ export function TaskView() {
               <p className="text-sm text-white/50 mb-4">
                 Check the logs for error details.
               </p>
-              <button
-                onClick={() => navigate('/')}
-                className="w-full px-4 py-2.5 bg-white/5 text-white/70 border border-white/10 rounded-xl font-medium hover:bg-white/10 transition-all"
-              >
-                Try Again
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={() => navigate(`/diff/${taskDetails.task_id}`)}
+                  className="w-full px-4 py-2.5 bg-white/5 text-white/70 border border-white/10 rounded-xl font-medium hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                >
+                  <DocumentTextIcon className="w-5 h-5" />
+                  View Diff
+                </button>
+                <button
+                  onClick={() => navigate('/')}
+                  className="w-full px-4 py-2.5 bg-white/5 text-white/70 border border-white/10 rounded-xl font-medium hover:bg-white/10 transition-all"
+                >
+                  Try Again
+                </button>
+              </div>
             </div>
           )}
         </div>
