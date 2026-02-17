@@ -131,6 +131,8 @@ export function runMigrations(db: Database.Database): void {
     ['vibe_projects', 'published_url'],
     ['vibe_projects', 'published_at'],
     ['vibe_projects', 'published_job_id'],
+    ['vibe_projects', 'tenant_id'],
+    ['vibe_tasks', 'tenant_id'],
   ];
   for (const [table, col] of alterations) {
     if (!columnExists(db, table, col)) {
@@ -140,21 +142,9 @@ export function runMigrations(db: Database.Database): void {
     }
   }
 
-  // Usage metrics columns (INTEGER for token counts, REAL for time in seconds)
-  const usageColumns: [string, string, string][] = [
-    ['vibe_tasks', 'llm_prompt_tokens', 'INTEGER'],
-    ['vibe_tasks', 'llm_completion_tokens', 'INTEGER'],
-    ['vibe_tasks', 'llm_total_tokens', 'INTEGER'],
-    ['vibe_tasks', 'preflight_seconds', 'REAL'],
-    ['vibe_tasks', 'total_job_seconds', 'REAL'],
-    ['vibe_tasks', 'files_changed_count', 'INTEGER'],
-  ];
-  for (const [table, col, type] of usageColumns) {
-    if (!columnExists(db, table, col)) {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
-      console.log(`[Migrations] Added ${col} to ${table}`);
-    }
-  }
+  // Create indexes for tenant_id columns (idempotent via IF NOT EXISTS)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_by_tenant ON vibe_projects(tenant_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_by_tenant ON vibe_tasks(tenant_id)`);
 
   console.log('[Migrations] All migrations applied');
 }
