@@ -68,16 +68,16 @@ export async function runJob(job: Job, log: LogEmitter): Promise<void> {
 
       // 4a. Generate diff
       log.emit('Calling LLM...');
-      const diff = await generateDiff(prompt, context, previousError);
+      const result = await generateDiff(prompt, context, previousError);
 
-      if (diff === 'NO_CHANGES') {
+      if (result.diff === 'NO_CHANGES') {
         log.emit('LLM determined no changes needed.');
         return;
       }
 
       // 4b. Write diff to temp file and apply
       const diffPath = path.join(sandboxDir, '.vibe.patch');
-      await fs.writeFile(diffPath, diff, 'utf8');
+      await fs.writeFile(diffPath, result.diff, 'utf8');
 
       log.emit('Applying diff...');
       try {
