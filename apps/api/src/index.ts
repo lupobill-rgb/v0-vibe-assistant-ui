@@ -11,6 +11,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
+import previewRouter from './routes/preview';
 
 // Load .env from the repository root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -64,6 +65,9 @@ async function bootstrap() {
 
   // Supabase integration routes
   app.use('/api/supabase', supabaseRouter);
+
+  // Preview deployment routes
+  app.use('/api/preview', previewRouter);
 
   // Serve static preview files
   app.use('/previews', express.static(PREVIEWS_DIR));
