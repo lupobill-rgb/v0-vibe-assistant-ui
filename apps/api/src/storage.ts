@@ -21,6 +21,13 @@ const vibeDb = new Database(storePath);
 // Run migrations (creates all tables and applies schema changes)
 runMigrations(vibeDb);
 
+// Boot-time schema guard: ensure repository_url column exists before preparing statements
+const columns = vibeDb.pragma('table_info(vibe_projects)') as { name: string }[];
+if (!columns.some(col => col.name === 'repository_url')) {
+  vibeDb.exec('ALTER TABLE vibe_projects ADD COLUMN repository_url TEXT');
+  console.log('[Migrations] Added missing column vibe_projects.repository_url');
+}
+
 // Lifecycle states as defined in requirements
 export type ExecutionState = 
   | 'queued'
