@@ -9,6 +9,8 @@ import { buildCredentialedUrl } from './git-url';
 import { generateDiff as routerGenerateDiff } from './llm-router';
 import { runQaAgent } from './agents/qa-agent';
 import { runDebugAgent } from './agents/debug-agent';
+import { runUxAgent } from './agents/ux-agent';
+import { runSecurityAgent } from './agents/security-agent';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -823,6 +825,15 @@ class VibeExecutor {
     }
 
     await runQaAgent(task.task_id, worktreeDir);
+
+    await runUxAgent(task.task_id, worktreeDir);
+
+    const securityResult = await runSecurityAgent(task.task_id, worktreeDir);
+    if (securityResult.blocked) {
+      storage.logEvent(task.task_id, '[SECURITY] Job blocked: critical security findings must be resolved', 'error');
+      return false;
+    }
+
     return true;
   }
 
