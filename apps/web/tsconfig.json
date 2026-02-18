@@ -6,7 +6,7 @@
       "esnext"
     ],
     "allowJs": true,
-    "target": "ES6",
+    "target": "ES2020",
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -17,14 +17,12 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["vite/client"],
     "paths": {
       "@/*": [
-        "./*"
+        "./src.old/*"
       ]
     }
   },
@@ -35,8 +33,6 @@
     "node_modules",
     "app",
     "components",
-    "hooks",
-    "lib",
     "src"
   ]
 }
