@@ -1,8 +1,11 @@
-FROM node:20-alpine
-RUN apk add --no-cache git
+FROM node:20-slim
 
 # Install git for repository operations
-RUN apk add --no-cache git openssh
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    openssh-client \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 # Verify git installation: docker compose exec api git --version
 
 WORKDIR /app
