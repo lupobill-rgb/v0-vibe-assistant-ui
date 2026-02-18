@@ -1,15 +1,8 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface User {
-  id: string;
-  email: string;
-  name: string;
-}
+import { authLogin, authRegister, type AuthUser } from '../api/client';
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
@@ -18,7 +11,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function loadStoredUser(): User | null {
+function loadStoredUser(): AuthUser | null {
   try {
     const raw = localStorage.getItem('vibe_user');
     return raw ? JSON.parse(raw) : null;
@@ -28,17 +21,11 @@ function loadStoredUser(): User | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(loadStoredUser);
+  const [user, setUser] = useState<AuthUser | null>(loadStoredUser);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('vibe_token'));
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Login failed');
+    const data = await authLogin(email, password);
     localStorage.setItem('vibe_token', data.token);
     localStorage.setItem('vibe_user', JSON.stringify(data.user));
     setToken(data.token);
@@ -46,13 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (email: string, password: string, name: string) => {
-    const res = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    const data = await authRegister(email, password, name);
     localStorage.setItem('vibe_token', data.token);
     localStorage.setItem('vibe_user', JSON.stringify(data.user));
     setToken(data.token);

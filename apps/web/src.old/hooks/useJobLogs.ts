@@ -1,13 +1,5 @@
 import { useEffect, useState } from 'react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface LogEvent {
-  event_id: number;
-  event_message: string;
-  severity: 'info' | 'error' | 'success' | 'warning';
-  event_time: number;
-}
+import { getLogsSSEUrl, type LogEvent } from '../api/client';
 
 interface UseJobLogsReturn {
   logs: LogEvent[];
@@ -39,12 +31,12 @@ export function useJobLogs(jobId: string | null): UseJobLogsReturn {
       return;
     }
 
-    const eventSource = new EventSource(`${API_URL}/jobs/${jobId}/logs`);
+    const eventSource = new EventSource(getLogsSSEUrl(jobId));
 
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         if (data.type === 'complete') {
           setTaskStatus(data.state);
           setIsComplete(true);

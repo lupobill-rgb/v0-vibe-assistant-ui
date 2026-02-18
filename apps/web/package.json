@@ -9,6 +9,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+<<<<<<< HEAD
     "@hookform/resolvers": "^3.9.1",
     "@vercel/analytics": "1.6.1",
     "@radix-ui/react-accordion": "1.2.12",
@@ -68,5 +69,27 @@
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3"
+=======
+    "@heroicons/react": "^2.2.0",
+    "@supabase/supabase-js": "^2.96.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "lightningcss": "^1.31.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.13.0",
+    "tailwind-merge": "^2.5.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^22",
+    "@types/react": "^18.2.47",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.24",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10"
+>>>>>>> aeeef76cd8fd458ec6d0d9997e4869b5c544507e
   }
 }

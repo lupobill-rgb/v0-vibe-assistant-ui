@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { fetchJobs, fetchProjects } from '../api/client';
 
 interface AnalyticsData {
   totalJobs: number;
@@ -29,42 +28,31 @@ export default function AnalyticsDashboard() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/analytics/overview`);
-        if (res.ok) {
-          setData(await res.json());
-        } else {
-          // Fallback: compute from jobs list
-          const [jobsRes, projRes] = await Promise.all([
-            fetch(`${API_URL}/jobs`),
-            fetch(`${API_URL}/projects`),
-          ]);
-          const jobs = jobsRes.ok ? await jobsRes.json() : [];
-          const projects = projRes.ok ? await projRes.json() : [];
+        const [jobs, projects] = await Promise.all([fetchJobs(), fetchProjects()]);
 
-          const completed = jobs.filter((j: { execution_state: string }) => j.execution_state === 'completed').length;
-          const failed = jobs.filter((j: { execution_state: string }) => j.execution_state === 'failed').length;
-          const totalIter = jobs.reduce((s: number, j: { iteration_count: number }) => s + (j.iteration_count || 0), 0);
+        const completed = jobs.filter((j) => j.execution_state === 'completed').length;
+        const failed = jobs.filter((j) => j.execution_state === 'failed').length;
+        const totalIter = jobs.reduce((s, j) => s + (j.iteration_count || 0), 0);
 
-          // Group jobs by day
-          const byDay = new Map<string, number>();
-          for (const j of jobs) {
-            const d = new Date((j as { initiated_at: number }).initiated_at).toLocaleDateString();
-            byDay.set(d, (byDay.get(d) || 0) + 1);
-          }
-          const recentJobs = Array.from(byDay.entries())
-            .map(([date, count]) => ({ date, count }))
-            .slice(-7);
-
-          setData({
-            totalJobs: jobs.length,
-            completedJobs: completed,
-            failedJobs: failed,
-            successRate: jobs.length > 0 ? Math.round((completed / jobs.length) * 100) : 0,
-            totalProjects: projects.length,
-            avgIterations: jobs.length > 0 ? Math.round((totalIter / jobs.length) * 10) / 10 : 0,
-            recentJobs,
-          });
+        // Group jobs by day
+        const byDay = new Map<string, number>();
+        for (const j of jobs) {
+          const d = new Date(j.initiated_at).toLocaleDateString();
+          byDay.set(d, (byDay.get(d) || 0) + 1);
         }
+        const recentJobs = Array.from(byDay.entries())
+          .map(([date, count]) => ({ date, count }))
+          .slice(-7);
+
+        setData({
+          totalJobs: jobs.length,
+          completedJobs: completed,
+          failedJobs: failed,
+          successRate: jobs.length > 0 ? Math.round((completed / jobs.length) * 100) : 0,
+          totalProjects: projects.length,
+          avgIterations: jobs.length > 0 ? Math.round((totalIter / jobs.length) * 10) / 10 : 0,
+          recentJobs,
+        });
       } catch {
         setData({
           totalJobs: 0, completedJobs: 0, failedJobs: 0, successRate: 0,

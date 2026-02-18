@@ -92,6 +92,31 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 4,
+    name: 'add_supabase_connections',
+    up: `
+      CREATE TABLE IF NOT EXISTS vibe_supabase_connections (
+        project_id TEXT PRIMARY KEY,
+        url TEXT NOT NULL,
+        anon_key TEXT NOT NULL,
+        service_key_enc TEXT NOT NULL,
+        connected_at INTEGER NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
+      );
+    `,
+  },
+  {
+    version: 5,
+    name: 'add_billing',
+    up: `
+      CREATE TABLE IF NOT EXISTS vibe_tenant_budgets (
+        tenant_id TEXT PRIMARY KEY,
+        limit_usd REAL NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
@@ -121,20 +146,35 @@ export function runMigrations(db: Database.Database): void {
   }
 
   // Column-level migrations (SQLite ALTER TABLE doesn't support IF NOT EXISTS)
-  const alterations: [string, string][] = [
-    ['vibe_tasks', 'llm_provider'],
-    ['vibe_tasks', 'llm_model'],
-    ['vibe_tasks', 'user_id'],
-    ['vibe_tasks', 'last_diff'],
-    ['vibe_projects', 'workspace_id'],
+  const alterations: [string, string, string][] = [
+    ['vibe_tasks', 'llm_provider', `TEXT DEFAULT 'openai'`],
+    ['vibe_tasks', 'llm_model', 'TEXT'],
+    ['vibe_tasks', 'user_id', 'TEXT'],
+    ['vibe_tasks', 'last_diff', 'TEXT'],
+    ['vibe_tasks', 'preview_url', 'TEXT'],
+    ['vibe_projects', 'workspace_id', 'TEXT'],
+    ['vibe_projects', 'published_url', 'TEXT'],
+    ['vibe_projects', 'published_at', 'INTEGER'],
+    ['vibe_projects', 'published_job_id', 'TEXT'],
+    ['vibe_projects', 'tenant_id', 'TEXT'],
+    ['vibe_tasks', 'tenant_id', 'TEXT'],
+    ['vibe_tasks', 'llm_prompt_tokens', 'INTEGER'],
+    ['vibe_tasks', 'llm_completion_tokens', 'INTEGER'],
+    ['vibe_tasks', 'llm_total_tokens', 'INTEGER'],
+    ['vibe_tasks', 'preflight_seconds', 'REAL'],
+    ['vibe_tasks', 'total_job_seconds', 'REAL'],
+    ['vibe_tasks', 'files_changed_count', 'INTEGER'],
   ];
-  for (const [table, col] of alterations) {
+  for (const [table, col, colDef] of alterations) {
     if (!columnExists(db, table, col)) {
-      const defaultClause = col === 'llm_provider' ? ` DEFAULT 'openai'` : '';
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT${defaultClause}`);
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${colDef}`);
       console.log(`[Migrations] Added ${col} to ${table}`);
     }
   }
+
+  // Create indexes for tenant_id columns (idempotent via IF NOT EXISTS)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_by_tenant ON vibe_projects(tenant_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_by_tenant ON vibe_tasks(tenant_id)`);
 
   console.log('[Migrations] All migrations applied');
 }

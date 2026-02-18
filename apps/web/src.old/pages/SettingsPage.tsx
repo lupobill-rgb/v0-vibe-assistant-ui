@@ -1,11 +1,5 @@
 import { useState, useEffect } from 'react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface HealthStatus {
-  status: string;
-  timestamp: number;
-}
+import { fetchHealth, type HealthStatus } from '../api/client';
 
 const llmProviders = [
   { id: 'openai', label: 'OpenAI GPT-4', envKey: 'OPENAI_API_KEY' },
@@ -24,12 +18,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     (async () => {
-      try {
-        const res = await fetch(`${API_URL}/health`);
-        if (res.ok) setHealth(await res.json());
-      } catch {
-        // ignore
-      }
+      const status = await fetchHealth();
+      setHealth(status);
     })();
   }, []);
 

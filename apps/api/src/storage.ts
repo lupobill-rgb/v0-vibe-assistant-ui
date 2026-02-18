@@ -42,6 +42,10 @@ export interface Project {
   local_path: string;
   last_synced?: number;
   created_at: number;
+  published_url?: string;
+  published_at?: number;
+  published_job_id?: string;
+  tenant_id?: string;
 }
 
 export interface VibeTask {
@@ -53,9 +57,12 @@ export interface VibeTask {
   destination_branch: string;
   execution_state: ExecutionState;
   pull_request_link?: string;
+  preview_url?: string;
   iteration_count: number;
   initiated_at: number;
   last_modified: number;
+  tenant_id?: string;
+  llm_model?: string;
 }
 
 export interface VibeEvent {
@@ -72,13 +79,13 @@ class VibeStorage {
 
   // Project statements
   private projectInsert = vibeDb.prepare(`
-    INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at, tenant_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
   private projectSelectByName = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE name = ?`);
-  private projectsList = vibeDb.prepare(`SELECT * FROM vibe_projects ORDER BY created_at DESC`);
+  private projectsList = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE tenant_id = ? ORDER BY created_at DESC`);
   
   private projectUpdateSync = vibeDb.prepare(`
     UPDATE vibe_projects 
@@ -91,10 +98,10 @@ class VibeStorage {
   // Task statements - updated to support project_id
   private taskInsert = vibeDb.prepare(`
     INSERT INTO vibe_tasks (
-      task_id, user_prompt, project_id, repository_url, source_branch, 
-      destination_branch, execution_state, iteration_count, 
-      initiated_at, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      task_id, user_prompt, project_id, repository_url, source_branch,
+      destination_branch, execution_state, iteration_count,
+      initiated_at, last_modified, tenant_id, llm_model
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
@@ -116,17 +123,31 @@ class VibeStorage {
     SET pull_request_link = ?, last_modified = ? 
     WHERE task_id = ?
   `);
+
+  private taskPreviewUpdate = vibeDb.prepare(`
+    UPDATE vibe_tasks 
+    SET preview_url = ?, last_modified = ? 
+    WHERE task_id = ?
+  `);
   
   private tasksRecent = vibeDb.prepare(`
     SELECT * FROM vibe_tasks 
+    WHERE tenant_id = ?
     ORDER BY initiated_at DESC 
     LIMIT 100
   `);
 
   private tasksQueued = vibeDb.prepare(`
     SELECT * FROM vibe_tasks 
-    WHERE execution_state = 'queued' 
+    WHERE execution_state = 'queued' AND tenant_id = ?
     ORDER BY initiated_at ASC
+  `);
+
+  private tasksByProject = vibeDb.prepare(`
+    SELECT * FROM vibe_tasks 
+    WHERE project_id = ? 
+    ORDER BY initiated_at DESC 
+    LIMIT ?
   `);
 
   private eventInsert = vibeDb.prepare(`
@@ -158,7 +179,9 @@ class VibeStorage {
       task.execution_state,
       0, // iteration_count starts at 0
       task.initiated_at,
-      task.last_modified
+      task.last_modified,
+      task.tenant_id || null,
+      task.llm_model || 'claude'
     );
   }
 
@@ -186,12 +209,20 @@ class VibeStorage {
     this.taskPrUpdate.run(prUrl, Date.now(), taskId);
   }
 
-  listRecentTasks(): VibeTask[] {
-    return this.tasksRecent.all() as VibeTask[];
+  setPreviewUrl(taskId: string, previewUrl: string): void {
+    this.taskPreviewUpdate.run(previewUrl, Date.now(), taskId);
   }
 
-  getQueuedTasks(): VibeTask[] {
-    return this.tasksQueued.all() as VibeTask[];
+  listRecentTasks(tenantId: string): VibeTask[] {
+    return this.tasksRecent.all(tenantId) as VibeTask[];
+  }
+
+  getQueuedTasks(tenantId: string): VibeTask[] {
+    return this.tasksQueued.all(tenantId) as VibeTask[];
+  }
+
+  listTasksByProject(projectId: string, limit: number = 20): VibeTask[] {
+    return this.tasksByProject.all(projectId, limit) as VibeTask[];
   }
 
   logEvent(taskId: string, message: string, severity: EventSeverity): void {
@@ -245,7 +276,8 @@ class VibeStorage {
       project.name,
       project.repository_url,
       project.local_path,
-      project.created_at
+      project.created_at,
+      project.tenant_id || null
     );
   }
 
@@ -257,8 +289,8 @@ class VibeStorage {
     return this.projectSelectByName.get(name) as Project | undefined;
   }
 
-  listProjects(): Project[] {
-    return this.projectsList.all() as Project[];
+  listProjects(tenantId: string): Project[] {
+    return this.projectsList.all(tenantId) as Project[];
   }
 
   updateProjectSync(projectId: string): void {
@@ -267,6 +299,14 @@ class VibeStorage {
 
   deleteProject(projectId: string): void {
     this.projectDelete.run(projectId);
+  }
+
+  publishProject(projectId: string, jobId: string, publishedUrl: string): void {
+    vibeDb.prepare(`
+      UPDATE vibe_projects 
+      SET published_url = ?, published_at = ?, published_job_id = ? 
+      WHERE id = ?
+    `).run(publishedUrl, Date.now(), jobId, projectId);
   }
 
   // ── User / Auth methods ──
@@ -372,9 +412,155 @@ class VibeStorage {
     return { totalJobs: total, completedJobs: completed, failedJobs: failed, totalProjects: projects, avgIterations: Math.round(avgIter * 10) / 10 };
   }
 
+  // ── Billing ──
+
+  /** Cost per million tokens (USD) keyed by llm_model value. */
+  private static readonly MODEL_RATES: Record<string, { input: number; output: number }> = {
+    claude: { input: 3.0, output: 15.0 },
+    gpt:    { input: 10.0, output: 30.0 },
+  };
+
+  private static costUsd(model: string, promptTokens: number, completionTokens: number): number {
+    const rates = VibeStorage.MODEL_RATES[model] ?? VibeStorage.MODEL_RATES.claude;
+    return (promptTokens / 1_000_000) * rates.input + (completionTokens / 1_000_000) * rates.output;
+  }
+
+  /**
+   * Aggregate billing usage for a tenant, grouped by date + model.
+   * Only returns rows with token data.
+   */
+  getBillingUsage(tenantId: string): {
+    date: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+    job_count: number;
+  }[] {
+    const rows = vibeDb.prepare(`
+      SELECT
+        date(initiated_at / 1000, 'unixepoch') AS date,
+        COALESCE(llm_model, 'claude')           AS model,
+        SUM(COALESCE(llm_prompt_tokens, 0))     AS input_tokens,
+        SUM(COALESCE(llm_completion_tokens, 0)) AS output_tokens,
+        COUNT(*)                                AS job_count
+      FROM vibe_tasks
+      WHERE tenant_id = ?
+        AND (llm_prompt_tokens IS NOT NULL OR llm_completion_tokens IS NOT NULL)
+      GROUP BY date, model
+      ORDER BY date DESC, model
+    `).all(tenantId) as any[];
+
+    return rows.map((r) => ({
+      date: r.date,
+      model: r.model,
+      input_tokens: r.input_tokens,
+      output_tokens: r.output_tokens,
+      cost_usd: VibeStorage.costUsd(r.model, r.input_tokens, r.output_tokens),
+      job_count: r.job_count,
+    }));
+  }
+
+  /**
+   * Return raw per-task billing rows for CSV export. Never crosses tenant boundary.
+   */
+  getBillingExport(tenantId: string): {
+    task_id: string;
+    initiated_at: number;
+    llm_model: string;
+    llm_prompt_tokens: number;
+    llm_completion_tokens: number;
+  }[] {
+    return vibeDb.prepare(`
+      SELECT task_id, initiated_at,
+             COALESCE(llm_model, 'claude')           AS llm_model,
+             COALESCE(llm_prompt_tokens, 0)          AS llm_prompt_tokens,
+             COALESCE(llm_completion_tokens, 0)      AS llm_completion_tokens
+      FROM vibe_tasks
+      WHERE tenant_id = ?
+        AND (llm_prompt_tokens IS NOT NULL OR llm_completion_tokens IS NOT NULL)
+      ORDER BY initiated_at DESC
+    `).all(tenantId) as any[];
+  }
+
+  /** Return total spend (USD) for the tenant across all time. */
+  getTenantSpend(tenantId: string): number {
+    const rows = vibeDb.prepare(`
+      SELECT COALESCE(llm_model, 'claude') AS model,
+             SUM(COALESCE(llm_prompt_tokens, 0))     AS pt,
+             SUM(COALESCE(llm_completion_tokens, 0)) AS ct
+      FROM vibe_tasks
+      WHERE tenant_id = ?
+      GROUP BY model
+    `).all(tenantId) as any[];
+    return rows.reduce((acc, r) => acc + VibeStorage.costUsd(r.model, r.pt, r.ct), 0);
+  }
+
+  /** Get the budget limit for a tenant, or null if none is set. */
+  getTenantBudget(tenantId: string): number | null {
+    const row = vibeDb.prepare('SELECT limit_usd FROM vibe_tenant_budgets WHERE tenant_id = ?').get(tenantId) as any;
+    return row ? row.limit_usd : null;
+  }
+
+  /** Upsert a spend ceiling for a tenant. */
+  setTenantBudget(tenantId: string, limitUsd: number): void {
+    vibeDb.prepare(`
+      INSERT INTO vibe_tenant_budgets (tenant_id, limit_usd, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(tenant_id) DO UPDATE SET limit_usd = excluded.limit_usd, updated_at = excluded.updated_at
+    `).run(tenantId, limitUsd, Date.now());
+  }
+
   getNextQueuedTask(): VibeTask | undefined {
     const tasks = vibeDb.prepare("SELECT * FROM vibe_tasks WHERE execution_state = 'queued' ORDER BY initiated_at ASC").all() as VibeTask[];
     return tasks.length > 0 ? tasks[0] : undefined;
+  }
+
+  // Usage metrics update methods
+  updateTaskUsageMetrics(taskId: string, metrics: {
+    llm_prompt_tokens?: number;
+    llm_completion_tokens?: number;
+    llm_total_tokens?: number;
+    preflight_seconds?: number;
+    total_job_seconds?: number;
+    files_changed_count?: number;
+  }): void {
+    const updates: string[] = [];
+    const values: any[] = [];
+    
+    if (metrics.llm_prompt_tokens !== undefined) {
+      updates.push('llm_prompt_tokens = ?');
+      values.push(metrics.llm_prompt_tokens);
+    }
+    if (metrics.llm_completion_tokens !== undefined) {
+      updates.push('llm_completion_tokens = ?');
+      values.push(metrics.llm_completion_tokens);
+    }
+    if (metrics.llm_total_tokens !== undefined) {
+      updates.push('llm_total_tokens = ?');
+      values.push(metrics.llm_total_tokens);
+    }
+    if (metrics.preflight_seconds !== undefined) {
+      updates.push('preflight_seconds = ?');
+      values.push(metrics.preflight_seconds);
+    }
+    if (metrics.total_job_seconds !== undefined) {
+      updates.push('total_job_seconds = ?');
+      values.push(metrics.total_job_seconds);
+    }
+    if (metrics.files_changed_count !== undefined) {
+      updates.push('files_changed_count = ?');
+      values.push(metrics.files_changed_count);
+    }
+    
+    if (updates.length > 0) {
+      updates.push('last_modified = ?');
+      values.push(Date.now());
+      values.push(taskId);
+      
+      const sql = `UPDATE vibe_tasks SET ${updates.join(', ')} WHERE task_id = ?`;
+      vibeDb.prepare(sql).run(...values);
+    }
   }
 }
 

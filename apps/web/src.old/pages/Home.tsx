@@ -3,24 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRightIcon, PlusIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import ProjectCard from '../components/ProjectCard';
 import LogEntry from '../components/LogEntry';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-interface LogEvent {
-  event_id: number;
-  event_message: string;
-  severity: 'info' | 'error' | 'success' | 'warning';
-  event_time: number;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  repository_url: string;
-  local_path: string;
-  last_synced?: number;
-  created_at: number;
-}
+import {
+  fetchProjects,
+  createProject,
+  importGithubProject,
+  createJob,
+  fetchJob,
+  fetchProjectJobs,
+  getLogsSSEUrl,
+  type LogEvent,
+  type Project,
+  type Task,
+} from '../api/client';
 
 type Tab = 'recent' | 'starred';
 
@@ -39,6 +33,7 @@ function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('recent');
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [projectJobs, setProjectJobs] = useState<Task[]>([]);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // Modal states
@@ -48,22 +43,28 @@ function Home() {
   const [importRepoUrl, setImportRepoUrl] = useState('');
 
   const loadProjects = async () => {
-    try {
-      const response = await fetch(`${API_URL}/projects`);
-      if (!response.ok) throw new Error(`Failed to load projects: ${response.status}`);
-      const data = await response.json();
-      setProjects(data);
-      if (data.length > 0 && !selectedProject) {
-        setSelectedProject(data[0].id);
-      }
-    } catch (error) {
-      console.error('Error loading projects:', error);
-    }
-  };
+    const data = await fetchProjects()
+    setProjects(data)
+    setLoading(false)
+  }
 
+  // Load project jobs when selected project changes
   useEffect(() => {
-    loadProjects();
-  }, []);
+    const loadProjectJobs = async () => {
+      if (!selectedProject) {
+        setProjectJobs([]);
+        return;
+      }
+      try {
+        const jobs = await fetchProjectJobs(selectedProject);
+        setProjectJobs(jobs);
+      } catch (error) {
+        console.error('Error loading project jobs:', error);
+        setProjectJobs([]);
+      }
+    };
+    loadProjectJobs();
+  }, [selectedProject]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -75,7 +76,7 @@ function Home() {
   // Stream logs via SSE
   useEffect(() => {
     if (!taskId) return;
-    const eventSource = new EventSource(`${API_URL}/jobs/${taskId}/logs`);
+    const eventSource = new EventSource(getLogsSSEUrl(taskId));
 
     eventSource.onmessage = (event) => {
       try {
@@ -84,6 +85,10 @@ function Home() {
           setTaskStatus(data.state);
           setIsRunning(false);
           eventSource.close();
+          // Reload project jobs when task completes
+          if (selectedProject) {
+            fetchProjectJobs(selectedProject).then(setProjectJobs).catch(console.error);
+          }
         } else {
           setLogs((prev) => [...prev, data]);
         }
@@ -100,16 +105,14 @@ function Home() {
     return () => {
       eventSource.close();
     };
-  }, [taskId]);
+  }, [taskId, selectedProject]);
 
   // Poll for task status
   useEffect(() => {
     if (!taskId || !isRunning) return;
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${API_URL}/jobs/${taskId}`);
-        if (!response.ok) throw new Error(`Failed to poll task: ${response.status}`);
-        const task = await response.json();
+        const task = await fetchJob(taskId);
         if (task.pull_request_link) {
           setPrUrl(task.pull_request_link);
         }
@@ -127,13 +130,8 @@ function Home() {
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
     try {
-      const response = await fetch(`${API_URL}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newProjectName }),
-      });
-      if (response.ok) {
-        const project = await response.json();
+      const project = await createProject(newProjectName);
+      if (project.id) {
         setNewProjectName('');
         setShowCreateModal(false);
         await loadProjects();
@@ -147,13 +145,8 @@ function Home() {
   const handleImportProject = async () => {
     if (!importRepoUrl.trim()) return;
     try {
-      const response = await fetch(`${API_URL}/projects/import/github`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: importRepoUrl }),
-      });
-      if (response.ok) {
-        const project = await response.json();
+      const project = await importGithubProject(importRepoUrl);
+      if (project.id) {
         setImportRepoUrl('');
         setShowImportModal(false);
         await loadProjects();
@@ -174,24 +167,19 @@ function Home() {
     setTaskStatus('');
 
     try {
-      const response = await fetch(`${API_URL}/jobs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          project_id: selectedProject,
-          base_branch: baseBranch || 'main',
-          target_branch: targetBranch || undefined,
-          llm_provider: localStorage.getItem('vibe_llm_provider') || undefined,
-          llm_model: localStorage.getItem('vibe_llm_model') || undefined,
-        }),
+      const data = await createJob({
+        prompt,
+        project_id: selectedProject,
+        base_branch: baseBranch || 'main',
+        target_branch: targetBranch || undefined,
+        llm_provider: localStorage.getItem('vibe_llm_provider') || undefined,
+        llm_model: localStorage.getItem('vibe_llm_model') || undefined,
       });
 
-      if (!response.ok) {
+      if (!data.task_id) {
         setIsRunning(false);
         return;
       }
-      const data = await response.json();
       setTaskId(data.task_id);
     } catch (error) {
       console.error('Run error:', error);
@@ -220,50 +208,53 @@ function Home() {
 
   return (
     <div>
-      {/* Hero Section */}
-      <div className="max-w-3xl mx-auto px-6 pt-8 pb-8 text-center">
-        <h1 className="text-5xl font-bold mb-4">
-          <span className="bg-gradient-to-r from-vibe-blue via-vibe-purple to-vibe-pink bg-clip-text text-transparent">
-            What do you want to build?
-          </span>
+      {/* Hero Section with Gradient */}
+      <div
+        className="px-6 pt-16 pb-20 text-center"
+        style={{
+          background: 'linear-gradient(180deg, #4F8EFF 0%, #A855F7 50%, #EC4899 100%)',
+        }}
+      >
+        <h1 className="text-4xl font-bold text-white mb-3 tracking-tight" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+          What do you want to build?
         </h1>
-        <p className="text-white/50 text-lg mb-10">
+        <p className="text-white/70 text-base mb-10 max-w-lg mx-auto">
           Describe your changes in natural language. VIBE generates diffs, runs preflight, and opens PRs.
         </p>
 
-        {/* Prompt Input Card */}
-        <div className="glass-card p-2 shadow-glow-lg">
-          <div className="flex items-center gap-2 mb-2 px-2 pt-1">
+        {/* Prompt Input — White Card */}
+        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1">
             <select
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
               disabled={isRunning}
-              className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm text-white/80 outline-none focus:border-vibe-blue/50 transition-colors appearance-none cursor-pointer"
+              className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-600 outline-none focus:border-vibe-blue/50 transition-colors appearance-none cursor-pointer"
             >
-              <option value="" className="bg-gray-900">Select project...</option>
+              <option value="">Select project...</option>
               {projects.map((p) => (
-                <option key={p.id} value={p.id} className="bg-gray-900">
+                <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
             </select>
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-xs text-white/40 hover:text-white/70 transition-colors px-2 py-1"
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors px-2 py-1"
             >
               {showAdvanced ? 'Hide options' : 'Options'}
             </button>
           </div>
 
           {showAdvanced && (
-            <div className="flex gap-2 px-2 mb-2 animate-fade-in">
+            <div className="flex gap-2 px-4 pb-1 animate-fade-in">
               <input
                 type="text"
                 value={baseBranch}
                 onChange={(e) => setBaseBranch(e.target.value)}
                 placeholder="Base branch (main)"
                 disabled={isRunning}
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-vibe-blue/50 transition-colors"
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-vibe-blue/50 transition-colors"
               />
               <input
                 type="text"
@@ -271,7 +262,7 @@ function Home() {
                 onChange={(e) => setTargetBranch(e.target.value)}
                 placeholder="Target branch (auto)"
                 disabled={isRunning}
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-vibe-blue/50 transition-colors"
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-vibe-blue/50 transition-colors"
               />
             </div>
           )}
@@ -288,13 +279,13 @@ function Home() {
                   handleRun();
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-white/30 px-4 py-3 text-base outline-none resize-none"
+              className="w-full bg-transparent text-gray-800 placeholder-gray-400 px-4 py-3 text-base outline-none resize-none"
             />
-            <div className="flex items-center justify-end px-2 pb-2">
+            <div className="flex items-center justify-end px-3 pb-3">
               <button
                 onClick={handleRun}
                 disabled={isRunning || !prompt.trim() || !selectedProject}
-                className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-3xl hover:shadow-glow transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none"
+                className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-full hover:shadow-glow transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none text-sm"
               >
                 {isRunning ? (
                   <>
@@ -318,9 +309,9 @@ function Home() {
 
       {/* Live Logs (visible when running or has logs) */}
       {(logs.length > 0 || isRunning) && (
-        <div className="max-w-3xl mx-auto px-6 mb-8 animate-slide-up">
-          <div className="glass-card overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
+        <div className="max-w-3xl mx-auto px-6 -mt-6 mb-8 relative z-10 animate-slide-up">
+          <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-xl border border-gray-800">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
               <div className="flex items-center gap-3">
                 <h3 className="text-sm font-semibold text-white/80">Live Output</h3>
                 {taskStatus && (
@@ -360,7 +351,7 @@ function Home() {
               ))}
             </div>
             {prUrl && (
-              <div className="px-5 py-3 border-t border-white/10 bg-emerald-500/5">
+              <div className="px-5 py-3 border-t border-gray-800 bg-emerald-500/5">
                 <a
                   href={prUrl}
                   target="_blank"
@@ -375,100 +366,144 @@ function Home() {
         </div>
       )}
 
-      {/* Projects Section */}
-      <div className="max-w-5xl mx-auto px-6 pb-16">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex gap-1 bg-white/5 rounded-xl p-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === tab.id
-                    ? 'bg-white/10 text-white'
-                    : 'text-white/40 hover:text-white/70'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all"
-            >
-              <PlusIcon className="w-4 h-4" />
-              Create
-            </button>
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all"
-            >
-              <ArrowDownTrayIcon className="w-4 h-4" />
-              Import
-            </button>
+      {/* Job History Section (shown when a project is selected and not running) */}
+      {selectedProject && !isRunning && projectJobs.length > 0 && (
+        <div className="max-w-3xl mx-auto px-6 mb-8">
+          <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+            <div className="px-5 py-3 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-700">Recent Jobs</h3>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {projectJobs.map((job) => (
+                <button
+                  key={job.task_id}
+                  onClick={() => navigate(`/task/${job.task_id}`)}
+                  className="w-full px-5 py-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 truncate mb-1">
+                      {job.user_prompt.length > 60
+                        ? `${job.user_prompt.substring(0, 60)}...`
+                        : job.user_prompt}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(job.initiated_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase whitespace-nowrap ${
+                      job.execution_state === 'completed'
+                        ? 'bg-emerald-500/20 text-emerald-600'
+                        : job.execution_state === 'failed'
+                        ? 'bg-red-500/20 text-red-600'
+                        : 'bg-blue-500/20 text-blue-600'
+                    }`}
+                  >
+                    {job.execution_state.replace(/_/g, ' ')}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+      )}
 
-        {filteredProjects.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-white/30 text-lg mb-4">
-              {activeTab === 'starred' ? 'No starred projects yet' : 'No projects yet'}
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-5 py-2.5 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-3xl hover:shadow-glow transition-all"
-            >
-              Create your first project
-            </button>
+      {/* Projects Section — Light Background */}
+      <div className="bg-white px-6 pb-16 pt-10">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-all"
+              >
+                <PlusIcon className="w-4 h-4" />
+                Create
+              </button>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-all"
+              >
+                <ArrowDownTrayIcon className="w-4 h-4" />
+                Import
+              </button>
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredProjects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                id={project.id}
-                name={project.name}
-                lastEdited={
-                  project.last_synced
-                    ? new Date(project.last_synced).toLocaleDateString()
-                    : new Date(project.created_at).toLocaleDateString()
-                }
-                isStarred={starredIds.has(project.id)}
-                repositoryUrl={project.repository_url}
-                onToggleStar={toggleStar}
-                onClick={(id) => {
-                  setSelectedProject(id);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-              />
-            ))}
-          </div>
-        )}
+
+          {filteredProjects.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-gray-400 text-lg mb-4">
+                {activeTab === 'starred' ? 'No starred projects yet' : 'No projects yet'}
+              </p>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="px-5 py-2.5 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-full hover:shadow-glow transition-all"
+              >
+                Create your first project
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredProjects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  id={project.id}
+                  name={project.name}
+                  lastEdited={
+                    project.last_synced
+                      ? new Date(project.last_synced).toLocaleDateString()
+                      : new Date(project.created_at).toLocaleDateString()
+                  }
+                  isStarred={starredIds.has(project.id)}
+                  repositoryUrl={project.repository_url}
+                  onToggleStar={toggleStar}
+                  onClick={(id) => {
+                    setSelectedProject(id);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Create Project Modal */}
       {showCreateModal && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
           onClick={() => setShowCreateModal(false)}
         >
           <div
-            className="glass-card p-8 w-full max-w-md mx-4 animate-slide-up"
+            className="bg-white rounded-2xl p-8 w-full max-w-md mx-4 shadow-2xl animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">Create New Project</h2>
+              <h2 className="text-xl font-bold text-gray-900">Create New Project</h2>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-white/40 hover:text-white transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
             </div>
             <div className="mb-6">
-              <label className="block text-sm font-medium text-white/60 mb-2">
+              <label className="block text-sm font-medium text-gray-500 mb-2">
                 Project Name
               </label>
               <input
@@ -477,20 +512,20 @@ function Home() {
                 onChange={(e) => setNewProjectName(e.target.value)}
                 placeholder="my-awesome-project"
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 outline-none focus:border-vibe-blue/50 transition-colors"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 outline-none focus:border-vibe-blue/50 focus:ring-2 focus:ring-vibe-blue/10 transition-all"
               />
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="flex-1 px-4 py-2.5 bg-white/5 text-white/70 border border-white/10 rounded-3xl font-medium hover:bg-white/10 transition-all"
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-full font-medium hover:bg-gray-200 transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateProject}
                 disabled={!newProjectName.trim()}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-3xl hover:shadow-glow transition-all disabled:opacity-40"
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-full hover:shadow-glow transition-all disabled:opacity-40"
               >
                 Create
               </button>
@@ -502,24 +537,24 @@ function Home() {
       {/* Import Project Modal */}
       {showImportModal && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
           onClick={() => setShowImportModal(false)}
         >
           <div
-            className="glass-card p-8 w-full max-w-md mx-4 animate-slide-up"
+            className="bg-white rounded-2xl p-8 w-full max-w-md mx-4 shadow-2xl animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">Import from GitHub</h2>
+              <h2 className="text-xl font-bold text-gray-900">Import from GitHub</h2>
               <button
                 onClick={() => setShowImportModal(false)}
-                className="text-white/40 hover:text-white transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
             </div>
             <div className="mb-6">
-              <label className="block text-sm font-medium text-white/60 mb-2">
+              <label className="block text-sm font-medium text-gray-500 mb-2">
                 Repository URL
               </label>
               <input
@@ -528,20 +563,20 @@ function Home() {
                 onChange={(e) => setImportRepoUrl(e.target.value)}
                 placeholder="https://github.com/owner/repo"
                 onKeyDown={(e) => e.key === 'Enter' && handleImportProject()}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 outline-none focus:border-vibe-blue/50 transition-colors"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 outline-none focus:border-vibe-blue/50 focus:ring-2 focus:ring-vibe-blue/10 transition-all"
               />
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowImportModal(false)}
-                className="flex-1 px-4 py-2.5 bg-white/5 text-white/70 border border-white/10 rounded-3xl font-medium hover:bg-white/10 transition-all"
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-full font-medium hover:bg-gray-200 transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleImportProject}
                 disabled={!importRepoUrl.trim()}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-3xl hover:shadow-glow transition-all disabled:opacity-40"
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-vibe-blue to-vibe-purple text-white font-semibold rounded-full hover:shadow-glow transition-all disabled:opacity-40"
               >
                 Import
               </button>
@@ -550,7 +585,5 @@ function Home() {
         </div>
       )}
     </div>
-  );
+  )
 }
-
-export default Home;

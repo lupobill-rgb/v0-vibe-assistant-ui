@@ -3,23 +3,38 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
-import { hashPassword, verifyPassword, generateToken, TOKEN_EXPIRY_MS, optionalAuth } from './auth';
+import { hashPassword, verifyPassword, generateToken, TOKEN_EXPIRY_MS, optionalAuth, requireTenantHeader, AuthRequest } from './auth';
 import path from 'path';
 import fs from 'fs';
 import { execSync, execFileSync } from 'child_process';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
+import supabaseRouter from './routes/supabase';
+import previewRouter from './routes/preview';
+import billingRouter from './routes/billing';
 
 // Load .env from the repository root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
+const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
   fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
+}
+
+// Ensure previews directory exists
+if (!fs.existsSync(PREVIEWS_DIR)) {
+  fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+}
+
+// Ensure published directory exists
+if (!fs.existsSync(PUBLISHED_DIR)) {
+  fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
 }
 
 // Startup sanity check: verify git is available
@@ -49,17 +64,39 @@ async function bootstrap() {
   // but our custom routes added directly to the Express instance need this
   app.use(express.json());
 
+  // Supabase integration routes
+  app.use('/api/supabase', supabaseRouter);
+
+  // Preview deployment routes
+  app.use('/api/preview', previewRouter);
+
+  // Billing routes
+  app.use('/api/billing', billingRouter);
+
+  // Serve static preview files
+  app.use('/previews', express.static(PREVIEWS_DIR));
+
+  // Serve static published files
+  app.use('/published', express.static(PUBLISHED_DIR));
+
   // POST /projects - Create a new project from template
-  app.post('/projects', (req: Request, res: Response) => {
+  app.post('/projects', requireTenantHeader(), (req: AuthRequest, res: Response) => {
     try {
       const { name, repository_url, template = 'empty' } = req.body;
+      const tenantId = req.tenantId!;
 
     if (!name) {
       return res.status(400).json({ error: 'Missing required field: name' });
     }
 
     const projectId = uuidv4();
-    const repoDir = path.join(REPOS_BASE_DIR, projectId);
+    const tenantRepoDir = path.join(REPOS_BASE_DIR, tenantId);
+    const repoDir = path.join(tenantRepoDir, projectId);
+    
+    // Create tenant directory if it doesn't exist
+    if (!fs.existsSync(tenantRepoDir)) {
+      fs.mkdirSync(tenantRepoDir, { recursive: true });
+    }
     
     // Create project directory
     fs.mkdirSync(repoDir, { recursive: true });
@@ -85,7 +122,8 @@ async function bootstrap() {
       name,
       repository_url: repository_url || null,
       local_path: repoDir,
-      created_at: Date.now()
+      created_at: Date.now(),
+      tenant_id: tenantId
     });
 
     res.status(201).json({
@@ -102,9 +140,10 @@ async function bootstrap() {
 });
 
 // POST /projects/import/github - Import project from GitHub
-app.post('/projects/import/github', (req: Request, res: Response) => {
+app.post('/projects/import/github', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
     const { repo_url } = req.body;
+    const tenantId = req.tenantId!;
 
     if (!repo_url) {
       return res.status(400).json({ error: 'Missing required field: repo_url' });
@@ -112,7 +151,13 @@ app.post('/projects/import/github', (req: Request, res: Response) => {
 
     // Generate project ID server-side
     const projectId = uuidv4();
-    const repoDir = path.join(REPOS_BASE_DIR, projectId);
+    const tenantRepoDir = path.join(REPOS_BASE_DIR, tenantId);
+    const repoDir = path.join(tenantRepoDir, projectId);
+    
+    // Create tenant directory if it doesn't exist
+    if (!fs.existsSync(tenantRepoDir)) {
+      fs.mkdirSync(tenantRepoDir, { recursive: true });
+    }
     
     // Clone repository
     const githubToken = process.env.GITHUB_TOKEN;
@@ -145,7 +190,8 @@ app.post('/projects/import/github', (req: Request, res: Response) => {
       name: repoName,
       repository_url: repo_url,
       local_path: repoDir,
-      created_at: Date.now()
+      created_at: Date.now(),
+      tenant_id: tenantId
     });
 
     res.status(201).json({
@@ -162,9 +208,10 @@ app.post('/projects/import/github', (req: Request, res: Response) => {
 });
 
 // GET /projects - List all projects
-app.get('/projects', (_req: Request, res: Response) => {
+app.get('/projects', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
-    const projects = storage.listProjects();
+    const tenantId = req.tenantId!;
+    const projects = storage.listProjects(tenantId);
     res.json(projects);
   } catch (error) {
     console.error('Error listing projects:', error);
@@ -173,13 +220,19 @@ app.get('/projects', (_req: Request, res: Response) => {
 });
 
 // GET /projects/:id - Get project details
-app.get('/projects/:id', (req: Request, res: Response) => {
+app.get('/projects/:id', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
     const projectId = req.params.id;
+    const tenantId = req.tenantId!;
     const project = storage.getProject(projectId);
 
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Validate tenant ownership
+    if (project.tenant_id !== tenantId) {
+      return res.status(403).json({ error: 'Access denied: project belongs to different tenant' });
     }
 
     res.json(project);
@@ -189,14 +242,45 @@ app.get('/projects/:id', (req: Request, res: Response) => {
   }
 });
 
-// DELETE /projects/:id - Delete a project
-app.delete('/projects/:id', (req: Request, res: Response) => {
+// GET /projects/:id/jobs - List jobs for a specific project
+app.get('/projects/:id/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
     const projectId = req.params.id;
+    const tenantId = req.tenantId!;
     const project = storage.getProject(projectId);
 
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Validate tenant ownership
+    if (project.tenant_id !== tenantId) {
+      return res.status(403).json({ error: 'Access denied: project belongs to different tenant' });
+    }
+
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    const tasks = storage.listTasksByProject(projectId, limit);
+    res.json(tasks);
+  } catch (error) {
+    console.error('Error listing project tasks:', error);
+    res.status(500).json({ error: 'Failed to list project tasks' });
+  }
+});
+
+// DELETE /projects/:id - Delete a project
+app.delete('/projects/:id', requireTenantHeader(), (req: AuthRequest, res: Response) => {
+  try {
+    const projectId = req.params.id;
+    const tenantId = req.tenantId!;
+    const project = storage.getProject(projectId);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Validate tenant ownership
+    if (project.tenant_id !== tenantId) {
+      return res.status(403).json({ error: 'Access denied: project belongs to different tenant' });
     }
 
     storage.deleteProject(projectId);
@@ -207,10 +291,102 @@ app.delete('/projects/:id', (req: Request, res: Response) => {
   }
 });
 
-// POST /jobs - Create a new VIBE task
-app.post('/jobs', (req: Request, res: Response) => {
+// POST /projects/:id/publish - Publish a job's preview to the project
+app.post('/projects/:id/publish', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
-    const { prompt, project_id, repo_url, base_branch = 'main', target_branch, llm_provider, llm_model } = req.body;
+    const projectId = req.params.id;
+    const tenantId = req.tenantId!;
+    const { job_id } = req.body;
+
+    if (!job_id) {
+      return res.status(400).json({ error: 'Missing required field: job_id' });
+    }
+
+    // Validate project exists
+    const project = storage.getProject(projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Validate tenant ownership
+    if (project.tenant_id !== tenantId) {
+      return res.status(403).json({ error: 'Access denied: project belongs to different tenant' });
+    }
+
+    // Validate job exists and belongs to this project
+    const job = storage.getTask(job_id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.project_id !== projectId) {
+      return res.status(400).json({ error: 'Job does not belong to this project' });
+    }
+
+    // Validate job tenant
+    if (job.tenant_id !== tenantId) {
+      return res.status(403).json({ error: 'Access denied: job belongs to different tenant' });
+    }
+
+    // Check if job has a preview
+    if (!job.preview_url) {
+      return res.status(400).json({ error: 'Job does not have a preview to publish' });
+    }
+
+    // Source: /data/previews/{job_id}
+    const sourceDir = path.join(PREVIEWS_DIR, job_id);
+    if (!fs.existsSync(sourceDir)) {
+      return res.status(404).json({ error: 'Preview files not found' });
+    }
+
+    // Destination: /data/published/{project_id}
+    const destDir = path.join(PUBLISHED_DIR, projectId);
+
+    // Remove existing published version if it exists
+    if (fs.existsSync(destDir)) {
+      fs.rmSync(destDir, { recursive: true, force: true });
+    }
+
+    // Copy preview to published directory
+    const copyRecursive = (src: string, dest: string) => {
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
+      }
+      const entries = fs.readdirSync(src, { withFileTypes: true });
+      for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+          copyRecursive(srcPath, destPath);
+        } else {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+    };
+
+    copyRecursive(sourceDir, destDir);
+
+    // Update project with published URL
+    const publishedUrl = `/published/${projectId}/index.html`;
+    storage.publishProject(projectId, job_id, publishedUrl);
+
+    res.json({
+      message: 'Project published successfully',
+      published_url: publishedUrl,
+      job_id: job_id
+    });
+  } catch (error: any) {
+    console.error('Error publishing project:', error);
+    res.status(500).json({ error: `Failed to publish project: ${error.message}` });
+  }
+});
+
+// POST /jobs - Create a new VIBE task
+app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
+  try {
+    const { prompt, project_id, repo_url, base_branch = 'main', target_branch, llm_provider, llm_model, model } = req.body;
+    const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
+    const tenantId = req.tenantId!;
 
     if (!prompt) {
       return res.status(400).json({ error: 'Missing required field: prompt' });
@@ -224,17 +400,32 @@ app.post('/jobs', (req: Request, res: Response) => {
       });
     }
 
-    // If project_id is provided, validate it exists
+    // If project_id is provided, validate it exists and belongs to tenant
     if (project_id) {
       const project = storage.getProject(project_id);
       if (!project) {
         return res.status(404).json({ error: `Project not found: ${project_id}` });
+      }
+      // Validate tenant ownership
+      if (project.tenant_id !== tenantId) {
+        return res.status(403).json({ error: 'Access denied: project belongs to different tenant' });
       }
     }
 
     // Warn if using legacy mode
     if (repo_url && !project_id) {
       console.warn('[DEPRECATED] Task created with repo_url (legacy Mode B). Use project_id instead.');
+    }
+
+    // Budget enforcement: reject if tenant has exceeded their spend ceiling
+    const budgetLimit = storage.getTenantBudget(tenantId);
+    if (budgetLimit !== null) {
+      const currentSpend = storage.getTenantSpend(tenantId);
+      if (currentSpend >= budgetLimit) {
+        return res.status(402).json({
+          error: `Budget exceeded: $${currentSpend.toFixed(4)} spent of $${budgetLimit.toFixed(2)} limit. Raise your budget via POST /api/billing/budget/${tenantId}.`,
+        });
+      }
     }
 
     const taskId = uuidv4();
@@ -253,7 +444,9 @@ app.post('/jobs', (req: Request, res: Response) => {
       destination_branch: finalTargetBranch,
       execution_state: 'queued',
       initiated_at: now,
-      last_modified: now
+      last_modified: now,
+      tenant_id: tenantId,
+      llm_model: resolvedModel,
     });
 
     if (repo_url) {
@@ -274,13 +467,19 @@ app.post('/jobs', (req: Request, res: Response) => {
 });
 
 // GET /jobs/:id - Get task details
-app.get('/jobs/:id', (req: Request, res: Response) => {
+app.get('/jobs/:id', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
     const taskId = req.params.id;
+    const tenantId = req.tenantId!;
     const task = storage.getTask(taskId);
 
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
+    }
+
+    // Validate tenant ownership
+    if (task.tenant_id !== tenantId) {
+      return res.status(403).json({ error: 'Access denied: job belongs to different tenant' });
     }
 
     res.json(task);
@@ -291,21 +490,16 @@ app.get('/jobs/:id', (req: Request, res: Response) => {
 });
 
 // GET /jobs - List recent tasks
-app.get('/jobs', (_req: Request, res: Response) => {
+app.get('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
-    const tasks = storage.listRecentTasks();
+    const tenantId = req.tenantId!;
+    const tasks = storage.listRecentTasks(tenantId);
     res.json(tasks);
   } catch (error) {
     console.error('Error listing tasks:', error);
     res.status(500).json({ error: 'Failed to list tasks' });
   }
 });
-
-// DELETE /projects/:id - Delete a project
-app.delete('/projects/:id', (req: Request, res: Response) => {
-  try {
-    const projectId = req.params.id;
-    const project = storage.getProject(projectId);
 
   app.get('/workspaces/:id/projects', (req: Request, res: Response) => {
     try {
@@ -328,8 +522,14 @@ app.delete('/projects/:id', (req: Request, res: Response) => {
 
   // ── Diff preview endpoints ──
 
-  app.get('/jobs/:id/diff', (req: Request, res: Response) => {
+  app.get('/jobs/:id/diff', requireTenantHeader(), (req: AuthRequest, res: Response) => {
     try {
+      const tenantId = req.tenantId!;
+      const task = storage.getTask(req.params.id);
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.tenant_id !== tenantId) {
+        return res.status(403).json({ error: 'Access denied: job belongs to different tenant' });
+      }
       const diff = storage.getTaskDiff(req.params.id);
       if (!diff) return res.status(404).json({ error: 'No diff available' });
       res.json({ diff });
@@ -338,10 +538,16 @@ app.delete('/projects/:id', (req: Request, res: Response) => {
     }
   });
 
-  app.post('/jobs/:id/diff/apply', (req: Request, res: Response) => {
+  app.post('/jobs/:id/diff/apply', requireTenantHeader(), (req: AuthRequest, res: Response) => {
     try {
       const { diff } = req.body;
+      const tenantId = req.tenantId!;
       if (!diff) return res.status(400).json({ error: 'diff is required' });
+      const task = storage.getTask(req.params.id);
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.tenant_id !== tenantId) {
+        return res.status(403).json({ error: 'Access denied: job belongs to different tenant' });
+      }
       storage.setTaskDiff(req.params.id, diff);
       res.json({ message: 'Diff updated successfully' });
     } catch (error: any) {
@@ -349,12 +555,32 @@ app.delete('/projects/:id', (req: Request, res: Response) => {
     }
   });
 
+  // ── Preview URL endpoint (for testing) ──
+
+  app.post('/jobs/:id/preview', requireTenantHeader(), (req: AuthRequest, res: Response) => {
+    try {
+      const { preview_url } = req.body;
+      const tenantId = req.tenantId!;
+      if (!preview_url) return res.status(400).json({ error: 'preview_url is required' });
+      const task = storage.getTask(req.params.id);
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.tenant_id !== tenantId) {
+        return res.status(403).json({ error: 'Access denied: job belongs to different tenant' });
+      }
+      storage.setPreviewUrl(req.params.id, preview_url);
+      res.json({ message: 'Preview URL updated successfully' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to set preview URL' });
+    }
+  });
+
   // ── Analytics endpoint ──
 
-  app.get('/analytics/overview', (_req: Request, res: Response) => {
+  app.get('/analytics/overview', requireTenantHeader(), (req: AuthRequest, res: Response) => {
     try {
+      const tenantId = req.tenantId!;
       const overview = storage.getAnalyticsOverview();
-      const tasks = storage.listRecentTasks();
+      const tasks = storage.listRecentTasks(tenantId);
       const successRate = overview.totalJobs > 0
         ? Math.round((overview.completedJobs / overview.totalJobs) * 100)
         : 0;
