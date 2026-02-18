@@ -27,8 +27,9 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
   const git = simpleGit(repoPath);
   let changedFiles: string[] = [];
   try {
-    const diffResult = await git.diff(['HEAD~1', 'HEAD', '--name-only']);
-    changedFiles = diffResult
+    // git.diff() returns a string with file names (one per line)
+    const diffString = await git.diff(['HEAD~1', 'HEAD', '--name-only']);
+    changedFiles = diffString
       .split('\n')
       .map((f: string) => f.trim())
       .filter((f: string) => f.length > 0 && !f.match(/\.(test|spec)\.(ts|js)x?$/));
