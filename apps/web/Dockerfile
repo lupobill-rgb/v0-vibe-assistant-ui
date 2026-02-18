@@ -21,11 +21,13 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copy only what Next needs
-COPY --from=builder /app/apps/web ./
+# Copy built dist and necessary files
+COPY --from=builder /app/apps/web/dist ./dist
+COPY --from=builder /app/apps/web/package.json ./package.json
+COPY --from=builder /app/apps/web/index.html ./index.html
 
-# Install prod deps only for web workspace
-RUN npm ci --omit=dev
+# Install only production dependencies
+RUN npm install --omit=dev
 
 EXPOSE 3000
-CMD ["npm","start"]
+CMD ["npm","run","preview"]
