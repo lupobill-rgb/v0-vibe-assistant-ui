@@ -147,6 +147,7 @@ export function runMigrations(db: Database.Database): void {
 
   // Column-level migrations (SQLite ALTER TABLE doesn't support IF NOT EXISTS)
   const alterations: [string, string, string][] = [
+    ['vibe_projects', 'repository_url', 'TEXT'],
     ['vibe_tasks', 'llm_provider', `TEXT DEFAULT 'openai'`],
     ['vibe_tasks', 'llm_model', 'TEXT'],
     ['vibe_tasks', 'user_id', 'TEXT'],
