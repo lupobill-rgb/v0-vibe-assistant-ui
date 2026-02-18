@@ -7,6 +7,8 @@ import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
 import { generateDiff as routerGenerateDiff } from './llm-router';
+import { runQaAgent } from './agents/qa-agent';
+import { runDebugAgent } from './agents/debug-agent';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -395,10 +397,17 @@ class VibeExecutor {
 
         if (preflightResult.success) {
           storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-          
-          // Generate preview after successful preflight
+
+          const buildPassed = await this.runBuildWithAgents(task, worktreeDir);
+          if (!buildPassed) {
+            storage.updateTaskState(task.task_id, 'failed');
+            storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
+            return;
+          }
+
+          // Generate preview after successful build
           await this.generatePreview(task, worktreeDir);
-          
+
           const log = await worktreeGit.log({ from: task.source_branch, to: task.destination_branch });
           const status = await worktreeGit.status();
           if (log.total === 0 && status.isClean()) {
@@ -469,10 +478,17 @@ class VibeExecutor {
 
       if (preflightResult.success) {
         storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-        
-        // Generate preview after successful preflight
+
+        const buildPassed = await this.runBuildWithAgents(task, worktreeDir);
+        if (!buildPassed) {
+          storage.updateTaskState(task.task_id, 'failed');
+          storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
+          return;
+        }
+
+        // Generate preview after successful build
         await this.generatePreview(task, worktreeDir);
-        
+
         await this.createPullRequest(task, mainGit, repoUrl);
         return;
       } else {
@@ -764,6 +780,50 @@ class VibeExecutor {
       storage.updateTaskState(task.task_id, 'failed');
       storage.logEvent(task.task_id, `Error creating PR: ${error.message}`, 'error');
     }
+  }
+
+  private async runBuild(taskId: string, worktreeDir: string): Promise<{ success: boolean; output: string }> {
+    storage.logEvent(taskId, `Running build: ${BUILD_COMMAND}`, 'info');
+    try {
+      const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
+        cwd: worktreeDir,
+        timeout: 300000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const output = ((stdout || '') + (stderr || '')).slice(0, 2000);
+      storage.logEvent(taskId, '✓ Build succeeded', 'success');
+      return { success: true, output };
+    } catch (err: any) {
+      const output = ((err.stdout || '') + (err.stderr || '')).slice(0, 2000);
+      storage.logEvent(taskId, `Build failed: ${output.slice(0, 200)}`, 'error');
+      return { success: false, output };
+    }
+  }
+
+  private async runBuildWithAgents(task: VibeTask, worktreeDir: string): Promise<boolean> {
+    const MAX_DEBUG_ATTEMPTS = 2;
+
+    let buildResult = await this.runBuild(task.task_id, worktreeDir);
+
+    if (!buildResult.success) {
+      for (let attempt = 1; attempt <= MAX_DEBUG_ATTEMPTS; attempt++) {
+        storage.logEvent(task.task_id, `[DEBUG] Debug attempt ${attempt}/${MAX_DEBUG_ATTEMPTS}`, 'warning');
+        const debugResult = await runDebugAgent(task.task_id, worktreeDir, buildResult.output);
+        if (debugResult.success) {
+          storage.logEvent(task.task_id, `[DEBUG] Build fixed on attempt ${attempt}`, 'success');
+          buildResult = { success: true, output: debugResult.buildOutput };
+          break;
+        }
+        buildResult = { success: false, output: debugResult.buildOutput };
+      }
+    }
+
+    if (!buildResult.success) {
+      return false;
+    }
+
+    await runQaAgent(task.task_id, worktreeDir);
+    return true;
   }
 
   private async generatePreview(task: VibeTask, worktreeDir: string): Promise<void> {
