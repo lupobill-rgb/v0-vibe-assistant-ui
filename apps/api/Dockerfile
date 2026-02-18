@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     openssh-client \
     ca-certificates \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 # Verify git installation: docker compose exec api git --version
 
