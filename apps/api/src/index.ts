@@ -10,6 +10,7 @@ import { execSync, execFileSync } from 'child_process';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
+import supabaseRouter from './routes/supabase';
 
 // Load .env from the repository root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -60,6 +61,9 @@ async function bootstrap() {
   // Note: NestJS has its own body parser for its controllers,
   // but our custom routes added directly to the Express instance need this
   app.use(express.json());
+
+  // Supabase integration routes
+  app.use('/api/supabase', supabaseRouter);
 
   // Serve static preview files
   app.use('/previews', express.static(PREVIEWS_DIR));
