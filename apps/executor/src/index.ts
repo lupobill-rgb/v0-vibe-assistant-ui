@@ -6,7 +6,7 @@ import { extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validate
 import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
-import { createLLMProvider, LLMProvider } from './llm-provider';
+import { generateDiff as routerGenerateDiff } from './llm-router';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -39,10 +39,8 @@ interface GenerateDiffResult {
 
 class VibeExecutor {
   private processing = false;
-  private llmProvider: LLMProvider;
 
   constructor() {
-    this.llmProvider = createLLMProvider();
     this.initializeDirectories();
   }
 
@@ -352,7 +350,8 @@ class VibeExecutor {
 
       const result = await this.generateDiff(
         task.user_prompt, context, task.task_id, worktreeDir,
-        globalFallback, fallbackFiles, failureFeedback
+        globalFallback, fallbackFiles, failureFeedback,
+        (task.llm_model as 'claude' | 'gpt') || 'claude'
       );
 
       // Accumulate LLM token usage
@@ -514,7 +513,8 @@ class VibeExecutor {
     repoDir: string,
     globalFallback: boolean = false,
     fallbackFiles: Set<string> = new Set(),
-    failureFeedback: string | null = null
+    failureFeedback: string | null = null,
+    model: 'claude' | 'gpt' = 'claude'
   ): Promise<GenerateDiffResult> {
     const maxRetries = 2;
     let lastValidationError: string | null = null;
@@ -526,52 +526,38 @@ class VibeExecutor {
       }
 
       try {
-        let systemPrompt = `You are a code modification assistant. You MUST output ONLY a unified diff or the token NO_CHANGES.
-
-STRICT OUTPUT REQUIREMENTS:
-- NO prose, explanations, markdown formatting, or code blocks are allowed
-- Output must start with "diff --git" (for diffs) OR be exactly "NO_CHANGES"
-- Every diff block MUST have "---" and "+++" headers
-- Every diff block MUST have "@@ ... @@" hunk markers
-- The diff must be directly applicable with 'git apply'
-
-ALLOWED OUTPUTS:
-1. A valid unified diff starting with "diff --git a/... b/..."
-2. The single token "NO_CHANGES"
-
-ANY OTHER OUTPUT WILL BE REJECTED.`;
-
+        // Build enriched context: repo files + readme + fallback instructions
+        let enrichedContext = context;
+        if (readmeContext) {
+          enrichedContext += readmeContext;
+          storage.logEvent(taskId, 'Added README-specific context to LLM prompt', 'info');
+        }
         if (globalFallback || fallbackFiles.size > 0) {
           const fallbackInstructions = `\n- Delete all lines of the old file and add all lines of the new file`;
           if (fallbackFiles.size > 0) {
-            systemPrompt += `\n\nFALLBACK MODE for files: ${Array.from(fallbackFiles).join(', ')}\nGenerate diffs that REPLACE THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
+            enrichedContext += `\n\n---\n\nFALLBACK MODE for files: ${Array.from(fallbackFiles).join(', ')}\nGenerate diffs that REPLACE THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
           } else {
-            systemPrompt += `\n\nFALLBACK MODE: Generate diffs that REPLACE THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
+            enrichedContext += `\n\n---\n\nFALLBACK MODE: Generate diffs that REPLACE THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
           }
         }
 
-        let userPrompt = `${context}\n`;
-        if (readmeContext) {
-          userPrompt += readmeContext;
-          storage.logEvent(taskId, 'Added README-specific context to LLM prompt', 'info');
-        }
-        userPrompt += `\n---\n\nUSER REQUEST: ${prompt}\n\nGenerate a unified diff to implement this request. Output ONLY the diff, nothing else.`;
-
+        // Combine all error feedback for this attempt
+        const errorParts: string[] = [];
         if (failureFeedback) {
-          userPrompt += `\n\n---\n\nPATCH FAILURE FEEDBACK:\n${failureFeedback}`;
+          errorParts.push(`PATCH FAILURE FEEDBACK:\n${failureFeedback}`);
         }
-
         if (attempt > 0 && lastValidationError) {
-          userPrompt += `\n\n---\n\nVALIDATION ERROR: ${lastValidationError}\n\nPlease output a valid unified diff starting with "diff --git", including --- and +++ headers and @@ hunk markers. Or output exactly "NO_CHANGES".\n\nExample:\ndiff --git a/example.js b/example.js\n--- a/example.js\n+++ b/example.js\n@@ -1,3 +1,4 @@\n function example() {\n+  console.log('added line');\n   return true;\n }`;
+          errorParts.push(`VALIDATION ERROR: ${lastValidationError}\n\nPlease output a valid unified diff starting with "diff --git", including --- and +++ headers and @@ hunk markers. Or output exactly "NO_CHANGES".\n\nExample:\ndiff --git a/example.js b/example.js\n--- a/example.js\n+++ b/example.js\n@@ -1,3 +1,4 @@\n function example() {\n+  console.log('added line');\n   return true;\n }`);
         }
+        const combinedError = errorParts.length > 0 ? errorParts.join('\n\n---\n\n') : undefined;
 
-        const llmResponse = await this.llmProvider.generate(systemPrompt, userPrompt, 4000);
-        const rawOutput = llmResponse.text;
+        const routerResult = await routerGenerateDiff(prompt, enrichedContext, { model, taskId }, combinedError);
+        const rawOutput = routerResult.diff;
         storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
-        if (rawOutput.trim() === 'NO_CHANGES') {
+        if (rawOutput === 'NO_CHANGES') {
           storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
-          return { diff: 'NO_CHANGES', error: null, usage: llmResponse.usage };
+          return { diff: 'NO_CHANGES', error: null, usage: routerResult.usage };
         }
 
         const sanitized = sanitizeUnifiedDiff(rawOutput);
@@ -597,7 +583,7 @@ ANY OTHER OUTPUT WILL BE REJECTED.`;
         }
 
         storage.logEvent(taskId, `Valid diff generated (${diff.split('\n').length} lines)`, 'success');
-        return { diff, error: null, usage: llmResponse.usage };
+        return { diff, error: null, usage: routerResult.usage };
 
       } catch (error: any) {
         storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');

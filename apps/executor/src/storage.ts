@@ -86,6 +86,7 @@ export interface VibeTask {
   iteration_count: number;
   initiated_at: number;
   last_modified: number;
+  llm_model?: string;
   llm_prompt_tokens?: number;
   llm_completion_tokens?: number;
   llm_total_tokens?: number;

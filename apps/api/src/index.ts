@@ -372,7 +372,8 @@ app.post('/projects/:id/publish', requireTenantHeader(), (req: AuthRequest, res:
 // POST /jobs - Create a new VIBE task
 app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
   try {
-    const { prompt, project_id, repo_url, base_branch = 'main', target_branch, llm_provider, llm_model } = req.body;
+    const { prompt, project_id, repo_url, base_branch = 'main', target_branch, llm_provider, llm_model, model } = req.body;
+    const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
     const tenantId = req.tenantId!;
 
     if (!prompt) {
@@ -421,7 +422,8 @@ app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
       execution_state: 'queued',
       initiated_at: now,
       last_modified: now,
-      tenant_id: tenantId
+      tenant_id: tenantId,
+      llm_model: resolvedModel,
     });
 
     if (repo_url) {

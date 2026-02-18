@@ -62,6 +62,7 @@ export interface VibeTask {
   initiated_at: number;
   last_modified: number;
   tenant_id?: string;
+  llm_model?: string;
 }
 
 export interface VibeEvent {
@@ -97,10 +98,10 @@ class VibeStorage {
   // Task statements - updated to support project_id
   private taskInsert = vibeDb.prepare(`
     INSERT INTO vibe_tasks (
-      task_id, user_prompt, project_id, repository_url, source_branch, 
-      destination_branch, execution_state, iteration_count, 
-      initiated_at, last_modified, tenant_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      task_id, user_prompt, project_id, repository_url, source_branch,
+      destination_branch, execution_state, iteration_count,
+      initiated_at, last_modified, tenant_id, llm_model
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
@@ -179,7 +180,8 @@ class VibeStorage {
       0, // iteration_count starts at 0
       task.initiated_at,
       task.last_modified,
-      task.tenant_id || null
+      task.tenant_id || null,
+      task.llm_model || 'claude'
     );
   }
 
