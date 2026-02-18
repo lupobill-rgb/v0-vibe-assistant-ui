@@ -126,7 +126,13 @@ export function runMigrations(db: Database.Database): void {
     ['vibe_tasks', 'llm_model'],
     ['vibe_tasks', 'user_id'],
     ['vibe_tasks', 'last_diff'],
+    ['vibe_tasks', 'preview_url'],
     ['vibe_projects', 'workspace_id'],
+    ['vibe_projects', 'published_url'],
+    ['vibe_projects', 'published_at'],
+    ['vibe_projects', 'published_job_id'],
+    ['vibe_projects', 'tenant_id'],
+    ['vibe_tasks', 'tenant_id'],
   ];
   for (const [table, col] of alterations) {
     if (!columnExists(db, table, col)) {
@@ -135,6 +141,10 @@ export function runMigrations(db: Database.Database): void {
       console.log(`[Migrations] Added ${col} to ${table}`);
     }
   }
+
+  // Create indexes for tenant_id columns (idempotent via IF NOT EXISTS)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_by_tenant ON vibe_projects(tenant_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_by_tenant ON vibe_tasks(tenant_id)`);
 
   console.log('[Migrations] All migrations applied');
 }

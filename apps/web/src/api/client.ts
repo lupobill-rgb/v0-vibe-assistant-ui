@@ -23,6 +23,7 @@ export interface Task {
   user_prompt: string;
   execution_state: string;
   pull_request_link?: string;
+  preview_url?: string;
   initiated_at: number;
   completed_at?: number;
   iteration_count: number;
@@ -31,6 +32,12 @@ export interface Task {
   base_branch?: string;
   target_branch?: string;
   llm_provider?: string;
+  llm_prompt_tokens?: number;
+  llm_completion_tokens?: number;
+  llm_total_tokens?: number;
+  preflight_seconds?: number;
+  total_job_seconds?: number;
+  files_changed_count?: number;
 }
 
 export interface HealthStatus {
@@ -74,6 +81,12 @@ export async function deleteProject(
   const response = await fetch(`${API_URL}/projects/${id}`, {
     method: 'DELETE',
   });
+  return response.json();
+}
+
+export async function fetchProjectJobs(projectId: string): Promise<Task[]> {
+  const response = await fetch(`${API_URL}/projects/${projectId}/jobs`);
+  if (!response.ok) return [];
   return response.json();
 }
 
