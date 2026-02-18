@@ -89,9 +89,7 @@ export function TaskView() {
     );
   }
 
-  const statusLabel = taskDetails.execution_state.replace(/_/g, ' ').toUpperCase();
-  const isCompleted = taskDetails.execution_state === 'completed';
-  const isFailed = taskDetails.execution_state === 'failed';
+  if (!taskId) return null
 
   return (
     <div className="min-h-screen">
@@ -376,5 +374,5 @@ export function TaskView() {
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -43,20 +43,10 @@ function Home() {
   const [importRepoUrl, setImportRepoUrl] = useState('');
 
   const loadProjects = async () => {
-    try {
-      const data = await fetchProjects();
-      setProjects(data);
-      if (data.length > 0 && !selectedProject) {
-        setSelectedProject(data[0].id);
-      }
-    } catch (error) {
-      console.error('Error loading projects:', error);
-    }
-  };
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
+    const data = await fetchProjects()
+    setProjects(data)
+    setLoading(false)
+  }
 
   // Load project jobs when selected project changes
   useEffect(() => {
@@ -595,7 +585,5 @@ function Home() {
         </div>
       )}
     </div>
-  );
+  )
 }
-
-export default Home;
