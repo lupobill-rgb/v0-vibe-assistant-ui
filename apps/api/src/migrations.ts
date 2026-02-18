@@ -92,6 +92,20 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 4,
+    name: 'add_supabase_connections',
+    up: `
+      CREATE TABLE IF NOT EXISTS vibe_supabase_connections (
+        project_id TEXT PRIMARY KEY,
+        url TEXT NOT NULL,
+        anon_key TEXT NOT NULL,
+        service_key_enc TEXT NOT NULL,
+        connected_at INTEGER NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
+      );
+    `,
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
