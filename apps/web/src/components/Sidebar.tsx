@@ -5,6 +5,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChartBarIcon,
+  CreditCardIcon,
 } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
@@ -18,6 +19,7 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: HomeIcon },
   { id: 'history', label: 'History', icon: ClockIcon },
   { id: 'analytics', label: 'Analytics', icon: ChartBarIcon },
+  { id: 'billing', label: 'Billing', icon: CreditCardIcon },
   { id: 'settings', label: 'Settings', icon: Cog6ToothIcon },
 ];
 

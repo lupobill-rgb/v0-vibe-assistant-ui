@@ -3,6 +3,7 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import Home from './pages/Home';
 import { TaskView } from './pages/TaskView';
+import BillingDashboard from './pages/BillingDashboard';
 
 function App() {
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -38,6 +39,7 @@ function App() {
               No active task. Go to the Dashboard and run a task.
             </div>
           )}
+          {activeSection === 'billing' && <BillingDashboard />}
         </main>
       </div>
     </div>

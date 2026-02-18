@@ -412,6 +412,105 @@ class VibeStorage {
     return { totalJobs: total, completedJobs: completed, failedJobs: failed, totalProjects: projects, avgIterations: Math.round(avgIter * 10) / 10 };
   }
 
+  // ── Billing ──
+
+  /** Cost per million tokens (USD) keyed by llm_model value. */
+  private static readonly MODEL_RATES: Record<string, { input: number; output: number }> = {
+    claude: { input: 3.0, output: 15.0 },
+    gpt:    { input: 10.0, output: 30.0 },
+  };
+
+  private static costUsd(model: string, promptTokens: number, completionTokens: number): number {
+    const rates = VibeStorage.MODEL_RATES[model] ?? VibeStorage.MODEL_RATES.claude;
+    return (promptTokens / 1_000_000) * rates.input + (completionTokens / 1_000_000) * rates.output;
+  }
+
+  /**
+   * Aggregate billing usage for a tenant, grouped by date + model.
+   * Only returns rows with token data.
+   */
+  getBillingUsage(tenantId: string): {
+    date: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+    job_count: number;
+  }[] {
+    const rows = vibeDb.prepare(`
+      SELECT
+        date(initiated_at / 1000, 'unixepoch') AS date,
+        COALESCE(llm_model, 'claude')           AS model,
+        SUM(COALESCE(llm_prompt_tokens, 0))     AS input_tokens,
+        SUM(COALESCE(llm_completion_tokens, 0)) AS output_tokens,
+        COUNT(*)                                AS job_count
+      FROM vibe_tasks
+      WHERE tenant_id = ?
+        AND (llm_prompt_tokens IS NOT NULL OR llm_completion_tokens IS NOT NULL)
+      GROUP BY date, model
+      ORDER BY date DESC, model
+    `).all(tenantId) as any[];
+
+    return rows.map((r) => ({
+      date: r.date,
+      model: r.model,
+      input_tokens: r.input_tokens,
+      output_tokens: r.output_tokens,
+      cost_usd: VibeStorage.costUsd(r.model, r.input_tokens, r.output_tokens),
+      job_count: r.job_count,
+    }));
+  }
+
+  /**
+   * Return raw per-task billing rows for CSV export. Never crosses tenant boundary.
+   */
+  getBillingExport(tenantId: string): {
+    task_id: string;
+    initiated_at: number;
+    llm_model: string;
+    llm_prompt_tokens: number;
+    llm_completion_tokens: number;
+  }[] {
+    return vibeDb.prepare(`
+      SELECT task_id, initiated_at,
+             COALESCE(llm_model, 'claude')           AS llm_model,
+             COALESCE(llm_prompt_tokens, 0)          AS llm_prompt_tokens,
+             COALESCE(llm_completion_tokens, 0)      AS llm_completion_tokens
+      FROM vibe_tasks
+      WHERE tenant_id = ?
+        AND (llm_prompt_tokens IS NOT NULL OR llm_completion_tokens IS NOT NULL)
+      ORDER BY initiated_at DESC
+    `).all(tenantId) as any[];
+  }
+
+  /** Return total spend (USD) for the tenant across all time. */
+  getTenantSpend(tenantId: string): number {
+    const rows = vibeDb.prepare(`
+      SELECT COALESCE(llm_model, 'claude') AS model,
+             SUM(COALESCE(llm_prompt_tokens, 0))     AS pt,
+             SUM(COALESCE(llm_completion_tokens, 0)) AS ct
+      FROM vibe_tasks
+      WHERE tenant_id = ?
+      GROUP BY model
+    `).all(tenantId) as any[];
+    return rows.reduce((acc, r) => acc + VibeStorage.costUsd(r.model, r.pt, r.ct), 0);
+  }
+
+  /** Get the budget limit for a tenant, or null if none is set. */
+  getTenantBudget(tenantId: string): number | null {
+    const row = vibeDb.prepare('SELECT limit_usd FROM vibe_tenant_budgets WHERE tenant_id = ?').get(tenantId) as any;
+    return row ? row.limit_usd : null;
+  }
+
+  /** Upsert a spend ceiling for a tenant. */
+  setTenantBudget(tenantId: string, limitUsd: number): void {
+    vibeDb.prepare(`
+      INSERT INTO vibe_tenant_budgets (tenant_id, limit_usd, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(tenant_id) DO UPDATE SET limit_usd = excluded.limit_usd, updated_at = excluded.updated_at
+    `).run(tenantId, limitUsd, Date.now());
+  }
+
   getNextQueuedTask(): VibeTask | undefined {
     const tasks = vibeDb.prepare("SELECT * FROM vibe_tasks WHERE execution_state = 'queued' ORDER BY initiated_at ASC").all() as VibeTask[];
     return tasks.length > 0 ? tasks[0] : undefined;
