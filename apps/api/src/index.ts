@@ -12,6 +12,7 @@ import { AppModule } from './app.module';
 import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
 import previewRouter from './routes/preview';
+import billingRouter from './routes/billing';
 
 // Load .env from the repository root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -68,6 +69,9 @@ async function bootstrap() {
 
   // Preview deployment routes
   app.use('/api/preview', previewRouter);
+
+  // Billing routes
+  app.use('/api/billing', billingRouter);
 
   // Serve static preview files
   app.use('/previews', express.static(PREVIEWS_DIR));
@@ -411,6 +415,17 @@ app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
     // Warn if using legacy mode
     if (repo_url && !project_id) {
       console.warn('[DEPRECATED] Task created with repo_url (legacy Mode B). Use project_id instead.');
+    }
+
+    // Budget enforcement: reject if tenant has exceeded their spend ceiling
+    const budgetLimit = storage.getTenantBudget(tenantId);
+    if (budgetLimit !== null) {
+      const currentSpend = storage.getTenantSpend(tenantId);
+      if (currentSpend >= budgetLimit) {
+        return res.status(402).json({
+          error: `Budget exceeded: $${currentSpend.toFixed(4)} spent of $${budgetLimit.toFixed(2)} limit. Raise your budget via POST /api/billing/budget/${tenantId}.`,
+        });
+      }
     }
 
     const taskId = uuidv4();
