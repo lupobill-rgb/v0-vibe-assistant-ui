@@ -24,7 +24,6 @@ const migrations: Migration[] = [
         last_synced INTEGER,
         created_at INTEGER NOT NULL,
         tenant_id TEXT,
-        workspace_id TEXT,
         published_url TEXT,
         published_at INTEGER,
         published_job_id TEXT
@@ -41,18 +40,6 @@ const migrations: Migration[] = [
         iteration_count INTEGER DEFAULT 0,
         initiated_at INTEGER NOT NULL,
         last_modified INTEGER NOT NULL,
-        tenant_id TEXT,
-        llm_provider TEXT DEFAULT 'openai',
-        llm_model TEXT,
-        user_id TEXT,
-        last_diff TEXT,
-        preview_url TEXT,
-        llm_prompt_tokens INTEGER,
-        llm_completion_tokens INTEGER,
-        llm_total_tokens INTEGER,
-        preflight_seconds REAL,
-        total_job_seconds REAL,
-        files_changed_count INTEGER,
         FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
       );
       CREATE TABLE IF NOT EXISTS vibe_events (
