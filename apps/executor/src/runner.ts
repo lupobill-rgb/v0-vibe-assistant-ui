@@ -77,7 +77,8 @@ export async function runJob(job: Job, log: LogEmitter): Promise<void> {
 
       // 4b. Write diff to temp file and apply
       const diffPath = path.join(sandboxDir, '.vibe.patch');
-      await fs.writeFile(diffPath, result.diff, 'utf8');
+      const diffContent = typeof result.diff === 'string' ? result.diff : (result.diff as any).content || '';
+      await fs.writeFile(diffPath, diffContent, 'utf8');
 
       log.emit('Applying diff...');
       try {
