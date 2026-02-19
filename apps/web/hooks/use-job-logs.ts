@@ -41,7 +41,10 @@ export function useJobLogs(jobId: string | null): UseJobLogsReturn {
           setIsComplete(true)
           eventSource.close()
         } else {
-          setLogs((prev) => [...prev, data])
+          // Unwrap { log: ... } wrapper from NestJS controller if present,
+          // otherwise use the event data directly
+          const logEntry = data.log ?? data
+          setLogs((prev) => [...prev, logEntry])
         }
       } catch (err) {
         console.error('Error parsing SSE data:', err)
