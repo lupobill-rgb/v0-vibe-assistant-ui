@@ -15,7 +15,9 @@ export class JobsController {
     return fromEvent(emitter, 'log').pipe(
       map((data) => {
         try {
-          return { data: JSON.stringify({ log: JSON.parse(data as string) }) } as MessageEvent;
+          // Pass the event directly — frontend expects raw log events or
+          // { type: 'complete', state } without an extra wrapping layer
+          return { data: JSON.stringify(JSON.parse(data as string)) } as MessageEvent;
         } catch {
           return null;
         }

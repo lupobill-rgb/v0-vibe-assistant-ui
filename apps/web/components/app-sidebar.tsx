@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   Home,
   FolderKanban,
@@ -16,6 +16,7 @@ import {
   CreditCard,
   HelpCircle,
   User,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { createProject } from "@/lib/api"
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
@@ -41,8 +51,67 @@ const bottomItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [newProjectName, setNewProjectName] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  const handleNewProject = async () => {
+    if (!newProjectName.trim() || creating) return
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const result = await createProject(newProjectName.trim())
+      if (result.error) {
+        setCreateError(result.error)
+      } else {
+        setDialogOpen(false)
+        setNewProjectName("")
+        router.refresh()
+      }
+    } catch {
+      setCreateError("Failed to create project. Is the API running?")
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
+    <>
+    <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setNewProjectName(""); setCreateError(null) } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Project</DialogTitle>
+        </DialogHeader>
+        <div className="py-2">
+          <Input
+            placeholder="Project name"
+            value={newProjectName}
+            onChange={(e) => setNewProjectName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleNewProject() }}
+            disabled={creating}
+            autoFocus
+          />
+          {createError && (
+            <p className="text-xs text-red-400 mt-2">{createError}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={creating}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleNewProject}
+            disabled={!newProjectName.trim() || creating}
+            className="bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white border-0"
+          >
+            {creating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
@@ -69,6 +138,7 @@ export function AppSidebar() {
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
+                  onClick={() => setDialogOpen(true)}
                   className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0"
                 >
                   <Plus className="w-4 h-4" />
@@ -77,7 +147,10 @@ export function AppSidebar() {
               <TooltipContent side="right">New Project</TooltipContent>
             </Tooltip>
           ) : (
-            <Button className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0 justify-start gap-2">
+            <Button
+              onClick={() => setDialogOpen(true)}
+              className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0 justify-start gap-2"
+            >
               <Plus className="w-4 h-4" />
               New Project
             </Button>
@@ -206,5 +279,6 @@ export function AppSidebar() {
         </div>
       </aside>
     </TooltipProvider>
+    </>
   )
 }

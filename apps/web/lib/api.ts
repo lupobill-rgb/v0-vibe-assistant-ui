@@ -3,6 +3,12 @@ const API_URL =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) ||
   'http://localhost:3001'
 
+// Tenant ID — identifies the current user/workspace for multi-tenant isolation.
+// For local dev this defaults to 'local'. Override via NEXT_PUBLIC_TENANT_ID.
+export const TENANT_ID =
+  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TENANT_ID) ||
+  'local'
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface LogEvent {
@@ -48,11 +54,29 @@ export interface HealthStatus {
   timestamp: number
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Base headers required by every API call */
+function baseHeaders(extra?: Record<string, string>): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'X-Tenant-Id': TENANT_ID,
+    ...extra,
+  }
+}
+
+/** GET headers (no Content-Type needed) */
+function getHeaders(): Record<string, string> {
+  return { 'X-Tenant-Id': TENANT_ID }
+}
+
 // ── Projects ───────────────────────────────────────────────────────────────
 
 export async function fetchProjects(): Promise<Project[]> {
   try {
-    const response = await fetch(`${API_URL}/projects`)
+    const response = await fetch(`${API_URL}/projects`, {
+      headers: getHeaders(),
+    })
     if (!response.ok) return []
     return response.json()
   } catch {
@@ -65,7 +89,7 @@ export async function createProject(
 ): Promise<{ id?: string; error?: string }> {
   const response = await fetch(`${API_URL}/projects`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: baseHeaders(),
     body: JSON.stringify({ name }),
   })
   return response.json()
@@ -76,7 +100,7 @@ export async function importGithubProject(
 ): Promise<{ id?: string; error?: string }> {
   const response = await fetch(`${API_URL}/projects/import/github`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: baseHeaders(),
     body: JSON.stringify({ repo_url: repoUrl }),
   })
   return response.json()
@@ -85,13 +109,16 @@ export async function importGithubProject(
 export async function deleteProject(id: string): Promise<{ error?: string }> {
   const response = await fetch(`${API_URL}/projects/${id}`, {
     method: 'DELETE',
+    headers: getHeaders(),
   })
   return response.json()
 }
 
 export async function fetchProjectJobs(projectId: string): Promise<Task[]> {
   try {
-    const response = await fetch(`${API_URL}/projects/${projectId}/jobs`)
+    const response = await fetch(`${API_URL}/projects/${projectId}/jobs`, {
+      headers: getHeaders(),
+    })
     if (!response.ok) return []
     return response.json()
   } catch {
@@ -103,7 +130,9 @@ export async function fetchProjectJobs(projectId: string): Promise<Task[]> {
 
 export async function fetchJobs(): Promise<Task[]> {
   try {
-    const response = await fetch(`${API_URL}/jobs`)
+    const response = await fetch(`${API_URL}/jobs`, {
+      headers: getHeaders(),
+    })
     if (!response.ok) return []
     return response.json()
   } catch {
@@ -121,7 +150,7 @@ export async function createJob(params: {
 }): Promise<{ task_id?: string; error?: string }> {
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: baseHeaders(),
     body: JSON.stringify(params),
   })
   return response.json()
@@ -129,7 +158,9 @@ export async function createJob(params: {
 
 export async function fetchJob(taskId: string): Promise<Task | null> {
   try {
-    const response = await fetch(`${API_URL}/jobs/${taskId}`)
+    const response = await fetch(`${API_URL}/jobs/${taskId}`, {
+      headers: getHeaders(),
+    })
     if (!response.ok) return null
     return response.json()
   } catch {
@@ -140,7 +171,8 @@ export async function fetchJob(taskId: string): Promise<Task | null> {
 // ── Logs (SSE) ─────────────────────────────────────────────────────────────
 
 export function getLogsSSEUrl(taskId: string): string {
-  return `${API_URL}/jobs/${taskId}/logs`
+  // Pass tenant ID as query parameter since EventSource cannot send custom headers
+  return `${API_URL}/jobs/${taskId}/logs?tenant_id=${encodeURIComponent(TENANT_ID)}`
 }
 
 export function subscribeToLogs(
@@ -149,7 +181,7 @@ export function subscribeToLogs(
   onComplete: (state: string) => void,
   onError: () => void,
 ): () => void {
-  const eventSource = new EventSource(`${API_URL}/jobs/${taskId}/logs`)
+  const eventSource = new EventSource(getLogsSSEUrl(taskId))
 
   eventSource.onmessage = (event) => {
     try {
@@ -159,7 +191,9 @@ export function subscribeToLogs(
         eventSource.close()
         return
       }
-      onLog(data)
+      // Unwrap { log: ... } format from NestJS controller if present
+      const logEntry = data.log ?? data
+      onLog(logEntry)
     } catch {
       // ignore parse errors
     }
