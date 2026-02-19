@@ -195,7 +195,7 @@ function LeadCaptureForm({ id }: LeadFormProps) {
   };
 
   return (
-    <section id="early-access" className="px-6 py-24">
+    <section id={id ?? 'early-access'} className="px-6 py-24">
       <div className="mx-auto max-w-lg text-center">
         <h2 className="text-3xl font-bold text-white mb-3">Get early access</h2>
         <p className="text-white/40 mb-10">Join the waitlist and be first to try the platform.</p>
