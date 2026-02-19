@@ -22,7 +22,12 @@ const migrations: Migration[] = [
         repository_url TEXT,
         local_path TEXT NOT NULL,
         last_synced INTEGER,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        tenant_id TEXT,
+        workspace_id TEXT,
+        published_url TEXT,
+        published_at INTEGER,
+        published_job_id TEXT
       );
       CREATE TABLE IF NOT EXISTS vibe_tasks (
         task_id TEXT PRIMARY KEY,
@@ -36,6 +41,18 @@ const migrations: Migration[] = [
         iteration_count INTEGER DEFAULT 0,
         initiated_at INTEGER NOT NULL,
         last_modified INTEGER NOT NULL,
+        tenant_id TEXT,
+        llm_provider TEXT DEFAULT 'openai',
+        llm_model TEXT,
+        user_id TEXT,
+        last_diff TEXT,
+        preview_url TEXT,
+        llm_prompt_tokens INTEGER,
+        llm_completion_tokens INTEGER,
+        llm_total_tokens INTEGER,
+        preflight_seconds REAL,
+        total_job_seconds REAL,
+        files_changed_count INTEGER,
         FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
       );
       CREATE TABLE IF NOT EXISTS vibe_events (
@@ -148,6 +165,7 @@ export function runMigrations(db: Database.Database): void {
   // Column-level migrations (SQLite ALTER TABLE doesn't support IF NOT EXISTS)
   const alterations: [string, string, string][] = [
     ['vibe_projects', 'repository_url', 'TEXT'],
+    ['vibe_tasks', 'repository_url', 'TEXT'],
     ['vibe_tasks', 'llm_provider', `TEXT DEFAULT 'openai'`],
     ['vibe_tasks', 'llm_model', 'TEXT'],
     ['vibe_tasks', 'user_id', 'TEXT'],
