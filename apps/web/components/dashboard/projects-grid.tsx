@@ -1,16 +1,16 @@
 ﻿"use client"
 import { useEffect, useState } from "react"
 import { ProjectCard, type Project } from "./project-card"
+import { fetchProjects as apiFetchProjects } from "@/lib/api"
 
 export function ProjectsGrid() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('http://localhost:3001/projects')
-      .then(res => res.json())
+    apiFetchProjects()
       .then(data => {
-        const mapped = data.map((p: any) => ({
+        const mapped = data.map((p) => ({
           id: p.id,
           name: p.name,
           description: p.repository_url || "Local project",

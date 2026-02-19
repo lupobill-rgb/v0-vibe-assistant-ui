@@ -1,12 +1,8 @@
 {
   "compilerOptions": {
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
-    "target": "ES2020",
+    "target": "ES2017",
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -15,24 +11,13 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
+    "jsx": "preserve",
     "incremental": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "types": ["vite/client"],
+    "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": [
-        "./src.old/*"
-      ]
+      "@/*": ["./*"]
     }
   },
-  "include": [
-    "src.old/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "app",
-    "components",
-    "src"
-  ]
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", "src", "src.old", ".next"]
 }
