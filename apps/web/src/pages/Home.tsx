@@ -43,9 +43,9 @@ function Home() {
   const [importRepoUrl, setImportRepoUrl] = useState('');
 
   const loadProjects = async () => {
-    const data = await fetchProjects()
-    setProjects(data)
-  }
+    const data = await fetchProjects();
+    setProjects(data);
+  };
 
   // Load projects on mount
   useEffect(() => {
@@ -589,7 +589,7 @@ function Home() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 export default Home;
