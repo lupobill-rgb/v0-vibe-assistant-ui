@@ -1,8 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon } from "lucide-react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { createJob, fetchProjects, type Project } from "@/lib/api"
 
 const suggestions = [
   { icon: Globe, label: "Build a landing page" },
@@ -12,8 +14,60 @@ const suggestions = [
 ]
 
 export function PromptCard() {
+  const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+
+  useEffect(() => {
+    fetchProjects().then((data) => {
+      setProjects(data)
+      if (data.length > 0) setSelectedProjectId(data[0].id)
+    })
+  }, [])
+
+  const handleSubmit = async () => {
+    if (!prompt.trim() || submitting) return
+    if (!selectedProjectId) {
+      setError("Please select or create a project first")
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      const result = await createJob({
+        prompt: prompt.trim(),
+        project_id: selectedProjectId,
+        base_branch: "main",
+      })
+
+      if (result.error) {
+        setError(result.error)
+        return
+      }
+
+      if (result.task_id) {
+        router.push(`/task/${result.task_id}`)
+      }
+    } catch (err) {
+      setError("Failed to submit job. Is the API running?")
+      console.error(err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
 
   return (
     <div className="px-6 -mt-8 relative z-10">
@@ -24,6 +78,29 @@ export function PromptCard() {
         )}
       >
         <div className="p-6">
+          {/* Project selector */}
+          {projects.length > 0 && (
+            <div className="mb-4">
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="w-full bg-secondary text-foreground text-sm rounded-lg px-3 py-2 border border-border outline-none focus:border-primary/40 transition-colors"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {projects.length === 0 && (
+            <div className="mb-4 text-xs text-muted-foreground bg-secondary/40 rounded-lg px-3 py-2 border border-border">
+              No projects yet — create one below to get started.
+            </div>
+          )}
+
           {/* Text Input */}
           <div className="relative">
             <textarea
@@ -31,11 +108,18 @@ export function PromptCard() {
               onChange={(e) => setPrompt(e.target.value)}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
+              onKeyDown={handleKeyDown}
               placeholder="Describe what you want to build..."
               rows={3}
-              className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed"
+              disabled={submitting}
+              className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed disabled:opacity-60"
             />
           </div>
+
+          {/* Error message */}
+          {error && (
+            <p className="text-xs text-red-400 mt-1 mb-2">{error}</p>
+          )}
 
           {/* Bottom Controls */}
           <div className="flex items-center justify-between pt-3 border-t border-border/50 mt-2">
@@ -46,19 +130,24 @@ export function PromptCard() {
               </button>
               <div className="w-px h-4 bg-border" />
               <span className="text-[10px] text-muted-foreground font-mono">
-                {prompt.length > 0 ? `${prompt.length} chars` : "GPT-4o"}
+                {prompt.length > 0 ? `${prompt.length} chars` : "GPT-4o · ⌘↵ to submit"}
               </span>
             </div>
             <button
-              disabled={!prompt.trim()}
+              onClick={handleSubmit}
+              disabled={!prompt.trim() || submitting || !selectedProjectId}
               className={cn(
                 "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200",
-                prompt.trim()
+                prompt.trim() && selectedProjectId && !submitting
                   ? "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shadow-lg shadow-[#A855F7]/20 hover:opacity-90"
                   : "bg-secondary text-muted-foreground"
               )}
             >
-              <ArrowUp className="w-4 h-4" />
+              {submitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ArrowUp className="w-4 h-4" />
+              )}
             </button>
           </div>
         </div>
@@ -70,7 +159,8 @@ export function PromptCard() {
           <button
             key={s.label}
             onClick={() => setPrompt(s.label)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200"
+            disabled={submitting}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200 disabled:opacity-50"
           >
             <s.icon className="w-3.5 h-3.5" />
             {s.label}
