@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -14,6 +14,11 @@ const suggestions = [
 export function PromptCard() {
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   return (
     <div className="px-6 -mt-8 relative z-10">
@@ -25,17 +30,18 @@ export function PromptCard() {
       >
         <div className="p-6">
           {/* Text Input */}
-          <div className="relative">
-            <textarea
-              suppressHydrationWarning
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              placeholder="Describe what you want to build..."
-              rows={3}
-              className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed"
-            />
+          <div className="relative min-h-[4.5rem]">
+            {mounted && (
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder="Describe what you want to build..."
+                rows={3}
+                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed"
+              />
+            )}
           </div>
 
           {/* Bottom Controls */}
