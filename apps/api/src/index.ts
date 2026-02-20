@@ -103,19 +103,21 @@ async function bootstrap() {
     
     // Initialize git repository
     execSync('git init', { cwd: repoDir });
-    execSync(`git checkout -b main`, { cwd: repoDir });
-    
+
+    // Configure git identity before making any commits
+    execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
+    execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+
     // Create initial README for template
     const readmePath = path.join(repoDir, 'README.md');
     fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
-    
-    // Configure git
-    execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
-    execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
-    
-    // Initial commit
+
+    // Initial commit — this materialises the branch ref so it actually exists
     execSync('git add .', { cwd: repoDir });
     execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
+
+    // Ensure the branch is named 'main' regardless of the git init.defaultBranch setting
+    execSync('git branch -M main', { cwd: repoDir });
 
     storage.createProject({
       id: projectId,
