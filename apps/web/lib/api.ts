@@ -106,6 +106,18 @@ export async function importGithubProject(
   return response.json()
 }
 
+export async function fetchProject(id: string): Promise<Project | null> {
+  try {
+    const response = await fetch(`${API_URL}/projects/${id}`, {
+      headers: getHeaders(),
+    })
+    if (!response.ok) return null
+    return response.json()
+  } catch {
+    return null
+  }
+}
+
 export async function deleteProject(id: string): Promise<{ error?: string }> {
   const response = await fetch(`${API_URL}/projects/${id}`, {
     method: 'DELETE',
