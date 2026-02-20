@@ -13,7 +13,14 @@ const suggestions = [
   { icon: ImageIcon, label: "Generate a portfolio" },
 ]
 
-export function PromptCard() {
+const LLM_STORAGE_KEY = "vibe_llm_provider"
+
+interface PromptCardProps {
+  /** Pre-select a specific project (e.g. when navigating from /projects) */
+  initialProjectId?: string
+}
+
+export function PromptCard({ initialProjectId }: PromptCardProps = {}) {
   const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
@@ -21,13 +28,25 @@ export function PromptCard() {
   const [error, setError] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+  const [llmProvider, setLlmProvider] = useState<string>("openai")
+
+  // Load LLM preference from localStorage (client-only)
+  useEffect(() => {
+    const saved = localStorage.getItem(LLM_STORAGE_KEY)
+    if (saved) setLlmProvider(saved)
+  }, [])
 
   useEffect(() => {
     fetchProjects().then((data) => {
       setProjects(data)
-      if (data.length > 0) setSelectedProjectId(data[0].id)
+      // Honour initialProjectId if provided and valid, otherwise fall back to first project
+      if (initialProjectId && data.some((p) => p.id === initialProjectId)) {
+        setSelectedProjectId(initialProjectId)
+      } else if (data.length > 0) {
+        setSelectedProjectId(data[0].id)
+      }
     })
-  }, [])
+  }, [initialProjectId])
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
@@ -44,6 +63,7 @@ export function PromptCard() {
         prompt: prompt.trim(),
         project_id: selectedProjectId,
         base_branch: "main",
+        llm_provider: llmProvider,
       })
 
       if (result.error) {
@@ -68,6 +88,8 @@ export function PromptCard() {
       handleSubmit()
     }
   }
+
+  const providerLabel = llmProvider === "anthropic" ? "Claude" : "GPT-4o"
 
   return (
     <div className="px-6 -mt-8 relative z-10">
@@ -97,7 +119,11 @@ export function PromptCard() {
 
           {projects.length === 0 && (
             <div className="mb-4 text-xs text-muted-foreground bg-secondary/40 rounded-lg px-3 py-2 border border-border">
-              No projects yet — create one below to get started.
+              No projects yet — create one in{" "}
+              <a href="/projects" className="text-[#4F8EFF] hover:underline">
+                Projects
+              </a>{" "}
+              to get started.
             </div>
           )}
 
@@ -130,7 +156,7 @@ export function PromptCard() {
               </button>
               <div className="w-px h-4 bg-border" />
               <span className="text-[10px] text-muted-foreground font-mono">
-                {prompt.length > 0 ? `${prompt.length} chars` : "GPT-4o · ⌘↵ to submit"}
+                {prompt.length > 0 ? `${prompt.length} chars` : `${providerLabel} · ⌘↵ to submit`}
               </span>
             </div>
             <button

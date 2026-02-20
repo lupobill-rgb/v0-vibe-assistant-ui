@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { fetchJobs, type Task } from "@/lib/api"
@@ -45,13 +46,28 @@ function JobRow({ task }: { task: Task }) {
         >
           {cfg.label}
         </span>
+        {task.pull_request_link && (
+          <a
+            href={task.pull_request_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            PR
+          </a>
+        )}
         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
     </Link>
   )
 }
 
-export default function ChatPage() {
+function ChatContent() {
+  const searchParams = useSearchParams()
+  const initialProjectId = searchParams.get("project") ?? undefined
+
   const [jobs, setJobs] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -69,58 +85,73 @@ export default function ChatPage() {
   }, [])
 
   return (
-    <AppShell>
-      <div className="min-h-screen">
-        {/* Page Header */}
-        <div className="px-6 pt-8 pb-2">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-foreground">Chat</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Submit prompts and track your AI jobs
-              </p>
-            </div>
+    <div className="min-h-screen">
+      {/* Page Header */}
+      <div className="px-6 pt-8 pb-2">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center">
+            <MessageSquare className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">Chat</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Submit prompts and track your AI jobs
+            </p>
           </div>
         </div>
-
-        {/* Prompt Card */}
-        <PromptCard />
-
-        {/* Recent Jobs */}
-        <div className="px-6 py-8">
-          <h2 className="text-base font-semibold text-foreground mb-4">Recent Jobs</h2>
-
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading jobs...
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="text-sm text-red-400 py-4">
-              Failed to load jobs. Is the API running?
-            </div>
-          )}
-
-          {!loading && !error && jobs.length === 0 && (
-            <div className="text-sm text-muted-foreground py-4">
-              No jobs yet. Submit a prompt above to get started.
-            </div>
-          )}
-
-          {!loading && !error && jobs.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {jobs.map((job) => (
-                <JobRow key={job.task_id} task={job} />
-              ))}
-            </div>
-          )}
-        </div>
       </div>
+
+      {/* Prompt Card — pre-selects project from URL param */}
+      <PromptCard initialProjectId={initialProjectId} />
+
+      {/* Recent Jobs */}
+      <div className="px-6 py-8">
+        <h2 className="text-base font-semibold text-foreground mb-4">Recent Jobs</h2>
+
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading jobs...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="text-sm text-red-400 py-4">
+            Failed to load jobs. Is the API running?
+          </div>
+        )}
+
+        {!loading && !error && jobs.length === 0 && (
+          <div className="text-sm text-muted-foreground py-4">
+            No jobs yet. Submit a prompt above to get started.
+          </div>
+        )}
+
+        {!loading && !error && jobs.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {jobs.map((job) => (
+              <JobRow key={job.task_id} task={job} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function ChatPage() {
+  return (
+    <AppShell>
+      <Suspense
+        fallback={
+          <div className="flex items-center gap-2 text-sm text-muted-foreground px-6 py-8">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading...
+          </div>
+        }
+      >
+        <ChatContent />
+      </Suspense>
     </AppShell>
   )
 }

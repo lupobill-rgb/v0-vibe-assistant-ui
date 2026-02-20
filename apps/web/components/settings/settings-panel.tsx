@@ -5,6 +5,8 @@ import { fetchHealth, TENANT_ID, type HealthStatus } from "@/lib/api"
 import { CheckCircle2, XCircle, Loader2, Server, Key, Cpu, Shield } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+const LLM_STORAGE_KEY = "vibe_llm_provider"
+
 interface SettingsSection {
   title: string
   icon: typeof Server
@@ -66,10 +68,28 @@ function FieldRow({ label, value, description, badge }: FieldRowProps) {
   )
 }
 
+type LlmProvider = "openai" | "anthropic"
+
+const LLM_OPTIONS: { value: LlmProvider; label: string; model: string; description: string }[] = [
+  {
+    value: "openai",
+    label: "OpenAI GPT-4",
+    model: "gpt-4 (temperature=0)",
+    description: "Deterministic code generation via OpenAI",
+  },
+  {
+    value: "anthropic",
+    label: "Anthropic Claude",
+    model: "claude-3-5-sonnet",
+    description: "Code generation via Anthropic Claude",
+  },
+]
+
 export function SettingsPanel() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
   const [healthLoading, setHealthLoading] = useState(true)
   const [healthError, setHealthError] = useState(false)
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>("openai")
 
   const apiUrl =
     (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
@@ -87,11 +107,24 @@ export function SettingsPanel() {
       })
   }, [])
 
+  // Load persisted LLM preference
+  useEffect(() => {
+    const saved = localStorage.getItem(LLM_STORAGE_KEY) as LlmProvider | null
+    if (saved === "openai" || saved === "anthropic") setLlmProvider(saved)
+  }, [])
+
+  const handleLlmChange = (provider: LlmProvider) => {
+    setLlmProvider(provider)
+    localStorage.setItem(LLM_STORAGE_KEY, provider)
+  }
+
   const apiStatus = healthLoading
     ? { text: "Checking...", variant: "neutral" as const }
     : health
     ? { text: "Connected", variant: "success" as const }
     : { text: "Unreachable", variant: "error" as const }
+
+  const selectedOption = LLM_OPTIONS.find((o) => o.value === llmProvider) ?? LLM_OPTIONS[0]
 
   return (
     <div className="flex flex-col gap-6">
@@ -132,19 +165,37 @@ export function SettingsPanel() {
 
       {/* LLM Configuration */}
       <Section title="LLM Configuration" icon={Cpu}>
-        <div className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 border border-border/50">
-          LLM settings are configured server-side via environment variables. Contact your
-          administrator to change the model or API keys.
+        {/* Provider selector */}
+        <div>
+          <p className="text-sm font-medium text-foreground mb-1">LLM Provider</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Choose which AI model powers code generation. Your preference is saved locally
+            and sent with each job.
+          </p>
+          <div className="flex gap-2">
+            {LLM_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handleLlmChange(opt.value)}
+                className={cn(
+                  "flex-1 flex flex-col items-start px-4 py-3 rounded-xl border text-left transition-all duration-200",
+                  llmProvider === opt.value
+                    ? "border-[#4F8EFF]/60 bg-[#4F8EFF]/10 text-foreground"
+                    : "border-border bg-secondary/40 text-muted-foreground hover:border-border hover:bg-secondary"
+                )}
+              >
+                <span className="text-sm font-medium">{opt.label}</span>
+                <span className="text-[11px] mt-0.5 font-mono opacity-70">{opt.model}</span>
+              </button>
+            ))}
+          </div>
         </div>
+
         <FieldRow
-          label="Primary Provider"
-          value="OpenAI"
-          description="LLM provider used for code generation"
-        />
-        <FieldRow
-          label="Model"
-          value="GPT-4 (temperature=0)"
-          description="Deterministic output for reliable diff generation"
+          label="Active Model"
+          value={selectedOption.model}
+          description={selectedOption.description}
+          badge={{ text: "User-selected", variant: "success" }}
         />
         <FieldRow
           label="Max Iterations"
