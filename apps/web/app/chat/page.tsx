@@ -4,8 +4,8 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AppShell } from "@/components/app-shell"
 import { PromptCard } from "@/components/dashboard/prompt-card"
-import { fetchJobs, type Task } from "@/lib/api"
-import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink } from "lucide-react"
+import { fetchJobs, fetchProjects, type Task, type Project } from "@/lib/api"
+import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink, FolderOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
@@ -55,6 +55,8 @@ export default function ChatPage() {
   const [jobs, setJobs] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
 
   useEffect(() => {
     fetchJobs()
@@ -66,6 +68,11 @@ export default function ChatPage() {
         setError(true)
         setLoading(false)
       })
+
+    fetchProjects().then((data) => {
+      setProjects(data)
+      if (data.length > 0) setSelectedProjectId(data[0].id)
+    })
   }, [])
 
   return (
@@ -86,8 +93,35 @@ export default function ChatPage() {
           </div>
         </div>
 
+        {/* Project Selector */}
+        <div className="px-6 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-shrink-0">
+              <FolderOpen className="w-4 h-4" />
+              <span>Project</span>
+            </div>
+            {projects.length > 0 ? (
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="flex-1 bg-secondary text-foreground text-sm rounded-lg px-3 py-2 border border-border outline-none focus:border-primary/40 transition-colors"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm text-muted-foreground italic">
+                No projects yet — create one on the Projects page first.
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Prompt Card */}
-        <PromptCard />
+        <PromptCard selectedProjectId={selectedProjectId} />
 
         {/* Recent Jobs */}
         <div className="px-6 py-8">
