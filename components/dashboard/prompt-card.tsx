@@ -27,6 +27,7 @@ export function PromptCard() {
           {/* Text Input */}
           <div className="relative">
             <textarea
+              suppressHydrationWarning
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onFocus={() => setFocused(true)}
