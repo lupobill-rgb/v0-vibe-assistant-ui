@@ -1,19 +1,125 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import Link from "next/link"
 import { AppShell } from "@/components/app-shell"
 import { PromptCard } from "@/components/dashboard/prompt-card"
+import { fetchJobs, type Task } from "@/lib/api"
+import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
+  completed: { label: "Completed", icon: CheckCircle2, color: "text-emerald-400" },
+  failed: { label: "Failed", icon: XCircle, color: "text-red-400" },
+  running: { label: "Running", icon: Loader2, color: "text-[#4F8EFF]" },
+  queued: { label: "Queued", icon: Clock, color: "text-amber-400" },
+}
+
+function JobRow({ task }: { task: Task }) {
+  const cfg = STATE_CONFIG[task.execution_state] ?? STATE_CONFIG["queued"]
+  const Icon = cfg.icon
+  const isRunning = task.execution_state === "running"
+  const date = new Date(task.initiated_at).toLocaleString()
+
+  return (
+    <Link
+      href={`/task/${task.task_id}`}
+      className="flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all duration-200 group"
+    >
+      <Icon
+        className={cn("w-4 h-4 flex-shrink-0", cfg.color, isRunning && "animate-spin")}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-foreground truncate">{task.user_prompt}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{date}</p>
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <span
+          className={cn(
+            "text-[11px] font-medium px-2 py-0.5 rounded-md",
+            task.execution_state === "completed" && "bg-emerald-500/10 text-emerald-400",
+            task.execution_state === "failed" && "bg-red-500/10 text-red-400",
+            task.execution_state === "running" && "bg-[#4F8EFF]/10 text-[#4F8EFF]",
+            task.execution_state === "queued" && "bg-amber-500/10 text-amber-400",
+          )}
+        >
+          {cfg.label}
+        </span>
+        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </Link>
+  )
+}
 
 export default function ChatPage() {
+  const [jobs, setJobs] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    fetchJobs()
+      .then((data) => {
+        setJobs(data.slice(0, 20))
+        setLoading(false)
+      })
+      .catch(() => {
+        setError(true)
+        setLoading(false)
+      })
+  }, [])
+
   return (
     <AppShell>
       <div className="min-h-screen">
-        <div className="px-6 pt-8 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">Chat</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Select a project and describe what you want to build
-          </p>
+        {/* Page Header */}
+        <div className="px-6 pt-8 pb-2">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center">
+              <MessageSquare className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-foreground">Chat</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Submit prompts and track your AI jobs
+              </p>
+            </div>
+          </div>
         </div>
+
+        {/* Prompt Card */}
         <PromptCard />
+
+        {/* Recent Jobs */}
+        <div className="px-6 py-8">
+          <h2 className="text-base font-semibold text-foreground mb-4">Recent Jobs</h2>
+
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading jobs...
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="text-sm text-red-400 py-4">
+              Failed to load jobs. Is the API running?
+            </div>
+          )}
+
+          {!loading && !error && jobs.length === 0 && (
+            <div className="text-sm text-muted-foreground py-4">
+              No jobs yet. Submit a prompt above to get started.
+            </div>
+          )}
+
+          {!loading && !error && jobs.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {jobs.map((job) => (
+                <JobRow key={job.task_id} task={job} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </AppShell>
   )
