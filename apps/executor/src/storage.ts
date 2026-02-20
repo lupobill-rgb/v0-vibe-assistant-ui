@@ -86,6 +86,7 @@ export interface VibeTask {
   iteration_count: number;
   initiated_at: number;
   last_modified: number;
+  tenant_id?: string;
   llm_model?: string;
   llm_prompt_tokens?: number;
   llm_completion_tokens?: number;
@@ -108,7 +109,8 @@ class ExecutorStorage {
     INSERT INTO vibe_tasks (task_id, user_prompt, project_id, repository_url, source_branch, destination_branch, execution_state, iteration_count, initiated_at, last_modified)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  private projectSelect = vibeDb.prepare(`SELECT * FROM projects WHERE id = ?`);
+  private projectSelect = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ?`);
+  private projectSelectByTenant = vibeDb.prepare(`SELECT * FROM vibe_projects WHERE id = ? AND tenant_id = ?`);
   private taskSelect = vibeDb.prepare(`SELECT * FROM vibe_tasks WHERE task_id = ?`);
   
   private taskStateUpdate = vibeDb.prepare(`
@@ -219,7 +221,10 @@ class ExecutorStorage {
     return tasks.length > 0 ? tasks[0] : undefined;
   }
 
-  getProject(projectId: string): Project | undefined {
+  getProject(projectId: string, tenantId?: string): Project | undefined {
+    if (tenantId) {
+      return this.projectSelectByTenant.get(projectId, tenantId) as Project | undefined;
+    }
     return this.projectSelect.get(projectId) as Project | undefined;
   }
 
