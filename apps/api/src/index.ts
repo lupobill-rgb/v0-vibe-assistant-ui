@@ -107,6 +107,7 @@ async function bootstrap() {
     // Configure git identity before making any commits
     execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
     execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+    execSync('git config commit.gpgsign false', { cwd: repoDir });
 
     // Create initial README for template
     const readmePath = path.join(repoDir, 'README.md');
