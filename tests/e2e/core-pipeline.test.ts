@@ -38,12 +38,11 @@ describe('Core Pipeline E2E Test', () => {
     execSync('git init', { cwd: testRepoPath });
     execSync('git config user.name "Test User"', { cwd: testRepoPath });
     execSync('git config user.email "test@example.com"', { cwd: testRepoPath });
-    execSync('git checkout -b main', { cwd: testRepoPath });
-    
+
     // Create a basic TypeScript project structure
     const srcDir = path.join(testRepoPath, 'src');
     fs.mkdirSync(srcDir, { recursive: true });
-    
+
     // Create an initial index.ts file
     const indexPath = path.join(srcDir, 'index.ts');
     fs.writeFileSync(indexPath, `// Initial TypeScript file
@@ -51,7 +50,7 @@ export function main() {
   console.log('Starting application...');
 }
 `);
-    
+
     // Create a package.json
     const packageJsonPath = path.join(testRepoPath, 'package.json');
     fs.writeFileSync(packageJsonPath, JSON.stringify({
@@ -63,14 +62,17 @@ export function main() {
         test: 'echo "No tests specified"'
       }
     }, null, 2));
-    
+
     // Create a README
     const readmePath = path.join(testRepoPath, 'README.md');
     fs.writeFileSync(readmePath, '# Test Repository\n\nThis is a test repository for E2E testing.\n');
-    
-    // Commit initial files
+
+    // Commit initial files, then force-rename branch to 'main'.
+    // This avoids `git checkout -b main` failing on systems where
+    // init.defaultBranch is already 'main' (branch would already exist).
     execSync('git add .', { cwd: testRepoPath });
     execSync('git commit -m "Initial commit"', { cwd: testRepoPath });
+    execSync('git branch -M main', { cwd: testRepoPath });
     
     console.log(`✓ Created test repository at ${testRepoPath}`);
   });
