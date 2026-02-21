@@ -92,6 +92,13 @@ export async function buildAndServePreview(
     }
   });
 
+  // Prevent unhandled 'error' events from crashing the process if npx/serve
+  // is unavailable or the process fails to spawn.
+  serveProc.once('error', (err) => {
+    console.error(`[preview-builder] serve process error for task ${taskId}:`, err.message);
+    activeServers.delete(taskId);
+  });
+
   // Give the server a moment to bind before returning
   await new Promise<void>((resolve) => setTimeout(resolve, 300));
 

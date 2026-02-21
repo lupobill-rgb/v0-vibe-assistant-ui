@@ -305,6 +305,14 @@ class VibeStorage {
   }
 
   deleteProject(projectId: string): void {
+    // Cascade manually: events → tasks → supabase_connections → project
+    const taskIds = (vibeDb.prepare(`SELECT task_id FROM vibe_tasks WHERE project_id = ?`).all(projectId) as { task_id: string }[])
+      .map(r => r.task_id);
+    for (const taskId of taskIds) {
+      vibeDb.prepare(`DELETE FROM vibe_events WHERE task_id = ?`).run(taskId);
+    }
+    vibeDb.prepare(`DELETE FROM vibe_tasks WHERE project_id = ?`).run(projectId);
+    vibeDb.prepare(`DELETE FROM vibe_supabase_connections WHERE project_id = ?`).run(projectId);
     this.projectDelete.run(projectId);
   }
 
