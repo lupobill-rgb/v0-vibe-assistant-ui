@@ -16,7 +16,7 @@ export function ProjectsGrid() {
           description: p.repository_url || "Local project",
           thumbnail: "",
           starred: false,
-          lastEdited: new Date(p.created_at).toLocaleDateString(),
+          lastEdited: new Date(p.created_at ?? 0).toLocaleDateString(),
           status: "active" as const,
         }))
         setProjects(mapped)
