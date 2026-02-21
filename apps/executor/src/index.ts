@@ -7,6 +7,7 @@ import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
 import { generateDiff as routerGenerateDiff } from './llm-router';
+import { generateHtmlPage } from './llm';
 import { runQaAgent } from './agents/qa-agent';
 import { runDebugAgent } from './agents/debug-agent';
 import { runUxAgent } from './agents/ux-agent';
@@ -104,6 +105,17 @@ class VibeExecutor {
       // Re-fetch the task from DB to ensure we have the latest project_id and tenant_id
       const freshTask = storage.getTask(task.task_id) ?? task;
       const projectId = freshTask.project_id ?? task.project_id;
+
+      // ── Website generation shortcut ─────────────────────────────────────────
+      // If the project has no git URL, generate a self-contained HTML page directly.
+      if (projectId) {
+        const tenantIdForCheck = freshTask.tenant_id ?? task.tenant_id;
+        const projectForCheck = storage.getProject(projectId, tenantIdForCheck);
+        if (projectForCheck && !projectForCheck.repository_url) {
+          await this.generateWebsiteForTask(task);
+          return;
+        }
+      }
       const tenantId = freshTask.tenant_id ?? task.tenant_id;
 
       if (projectId) {
@@ -841,6 +853,30 @@ class VibeExecutor {
     }
 
     return true;
+  }
+
+  private async generateWebsiteForTask(task: VibeTask): Promise<void> {
+    try {
+      storage.updateTaskState(task.task_id, 'calling_llm');
+      storage.logEvent(task.task_id, 'Generating website HTML via Claude...', 'info');
+
+      const html = await generateHtmlPage(task.user_prompt);
+
+      const previewDir = path.join(PREVIEWS_DIR, task.task_id);
+      if (!fs.existsSync(PREVIEWS_DIR)) {
+        fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+      }
+      fs.mkdirSync(previewDir, { recursive: true });
+      fs.writeFileSync(path.join(previewDir, 'index.html'), html, 'utf8');
+
+      const previewUrl = `/previews/${task.task_id}/index.html`;
+      storage.setPreviewUrl(task.task_id, previewUrl);
+      storage.updateTaskState(task.task_id, 'completed');
+      storage.logEvent(task.task_id, `✅ Website generated! Preview at: ${previewUrl}`, 'success');
+    } catch (error: any) {
+      storage.updateTaskState(task.task_id, 'failed');
+      storage.logEvent(task.task_id, `❌ Failed to generate website: ${error.message}`, 'error');
+    }
   }
 
   private async generatePreview(task: VibeTask, worktreeDir: string): Promise<void> {

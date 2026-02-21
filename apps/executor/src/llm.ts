@@ -3,13 +3,36 @@ import { ProjectContext } from './context';
 
 const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env
 
-const SYSTEM_PROMPT = `You are a code modification engine. 
+const SYSTEM_PROMPT = `You are a code modification engine.
 Given a user prompt and repository context, output ONLY a valid unified diff (git diff format).
 - Do NOT include any explanation, prose, or markdown code fences.
 - The diff must be directly applicable via: git apply --index
 - Paths in the diff must be relative to the repo root.
 - If creating a new file, use /dev/null as the source path.
 - If no changes are needed, output exactly: NO_CHANGES`;
+
+const HTML_SYSTEM_PROMPT = `You are an expert web developer. Given a description, generate a single self-contained HTML file.
+Requirements:
+- Output ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no code fences, no explanation.
+- All CSS must be embedded in a <style> tag inside <head>.
+- All JavaScript must be embedded in a <script> tag before </body>.
+- No external dependencies — no CDN links, no imports. Use only vanilla HTML/CSS/JS.
+- The page must look polished and modern with a clean design.
+- Use CSS custom properties for colors and a cohesive color palette.`;
+
+export async function generateHtmlPage(prompt: string): Promise<string> {
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 8096,
+    system: HTML_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  return response.content
+    .filter((b) => b.type === 'text')
+    .map((b) => (b as { text: string }).text)
+    .join('');
+}
 
 export interface LLMUsage {
   input_tokens: number;
