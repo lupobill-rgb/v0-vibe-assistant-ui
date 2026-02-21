@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const storePath = process.env.DATABASE_PATH || '/app/data/vibe.db';
+const storePath = process.env.DATABASE_PATH || path.join(__dirname, '../../../data/vibe.db');
 const storeDir = path.dirname(storePath);
 
 if (!fs.existsSync(storeDir)) {

@@ -9,7 +9,7 @@ import { runMigrations } from './migrations';
 const envPath = path.join(__dirname, '../../../.env');
 dotenv.config({ path: envPath });
 
-const storePath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data/vibe.db');
+const storePath = process.env.DATABASE_PATH || path.join(__dirname, '../../../data/vibe.db');
 const storeDir = path.dirname(storePath);
 
 if (!fs.existsSync(storeDir)) {
