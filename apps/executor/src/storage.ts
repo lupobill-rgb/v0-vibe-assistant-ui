@@ -31,10 +31,19 @@ vibeDb.exec(`
     destination_branch TEXT NOT NULL,
     execution_state TEXT NOT NULL,
     pull_request_link TEXT,
+    preview_url TEXT,
+    last_diff TEXT,
+    tenant_id TEXT,
+    llm_model TEXT,
+    llm_prompt_tokens INTEGER,
+    llm_completion_tokens INTEGER,
+    llm_total_tokens INTEGER,
+    preflight_seconds REAL,
+    total_job_seconds REAL,
+    files_changed_count INTEGER,
     iteration_count INTEGER DEFAULT 0,
     initiated_at INTEGER NOT NULL,
-    last_modified INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id)
+    last_modified INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS vibe_events (
@@ -49,6 +58,30 @@ vibeDb.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_by_task ON vibe_events(task_id, event_time);
   CREATE INDEX IF NOT EXISTS idx_tasks_by_project ON vibe_tasks(project_id);
 `);
+
+// Ensure optional columns exist on pre-existing databases (idempotent ALTER TABLE guards)
+{
+  const existingCols = new Set(
+    (vibeDb.pragma('table_info(vibe_tasks)') as { name: string }[]).map((c) => c.name)
+  );
+  const colsToAdd: [string, string][] = [
+    ['preview_url', 'TEXT'],
+    ['last_diff', 'TEXT'],
+    ['tenant_id', 'TEXT'],
+    ['llm_model', 'TEXT'],
+    ['llm_prompt_tokens', 'INTEGER'],
+    ['llm_completion_tokens', 'INTEGER'],
+    ['llm_total_tokens', 'INTEGER'],
+    ['preflight_seconds', 'REAL'],
+    ['total_job_seconds', 'REAL'],
+    ['files_changed_count', 'INTEGER'],
+  ];
+  for (const [col, type] of colsToAdd) {
+    if (!existingCols.has(col)) {
+      vibeDb.exec(`ALTER TABLE vibe_tasks ADD COLUMN ${col} ${type}`);
+    }
+  }
+}
 
 // Lifecycle states as defined in requirements
 export type ExecutionState =

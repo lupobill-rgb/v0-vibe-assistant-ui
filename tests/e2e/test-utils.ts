@@ -6,6 +6,7 @@
 export interface ApiConfig {
   baseUrl: string;
   timeout?: number;
+  tenantId?: string;
 }
 
 /**
@@ -14,10 +15,16 @@ export interface ApiConfig {
 export class TestApiClient {
   private baseUrl: string;
   private timeout: number;
+  private tenantId: string;
 
   constructor(config: ApiConfig) {
     this.baseUrl = config.baseUrl;
     this.timeout = config.timeout || 30000;
+    this.tenantId = config.tenantId || process.env.TENANT_ID || 'local';
+  }
+
+  private baseHeaders(extra?: Record<string, string>): Record<string, string> {
+    return { 'Content-Type': 'application/json', 'X-Tenant-Id': this.tenantId, ...extra };
   }
 
   async get(path: string): Promise<any> {
@@ -28,6 +35,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'GET',
+        headers: { 'X-Tenant-Id': this.tenantId },
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -54,9 +62,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.baseHeaders(),
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -85,6 +91,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'DELETE',
+        headers: { 'X-Tenant-Id': this.tenantId },
         signal: controller.signal,
       });
       clearTimeout(timeoutId);

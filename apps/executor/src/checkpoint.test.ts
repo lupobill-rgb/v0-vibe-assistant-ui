@@ -23,7 +23,10 @@ describe('Checkpoint Tag Creation', () => {
     await git.init();
     await git.addConfig('user.name', 'Test User');
     await git.addConfig('user.email', 'test@example.com');
-    
+    // Disable commit signing so this works in environments with GPG/SSH signing configured
+    await git.addConfig('commit.gpgsign', 'false');
+    await git.addConfig('gpg.format', 'openpgp');
+
     // Create an initial commit
     fs.writeFileSync(path.join(testRepoDir, 'README.md'), '# Test Repo\n');
     await git.add('README.md');

@@ -63,7 +63,10 @@ export function requireAuth(
 
 export function requireTenantHeader() {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    const tenantId = req.headers['x-tenant-id'] as string;
+    // Accept tenant ID from header (standard requests) or query param
+    // (EventSource/SSE cannot send custom headers in browsers)
+    const tenantId = (req.headers['x-tenant-id'] as string) ||
+      (req.query?.tenant_id as string);
     if (!tenantId) {
       return res.status(400).json({ error: 'Missing required header: X-Tenant-Id' });
     }
