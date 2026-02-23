@@ -39,6 +39,7 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
         prompt: prompt.trim(),
         project_id: selectedProjectId,
         base_branch: "main",
+        llm_provider: llmProvider,
       })
 
       if (result.error) {
@@ -63,6 +64,8 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
       handleSubmit()
     }
   }
+
+  const providerLabel = llmProvider === "anthropic" ? "Claude" : "GPT-4o"
 
   return (
     <div className="px-6 -mt-8 relative z-10">
@@ -102,7 +105,7 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
               </button>
               <div className="w-px h-4 bg-border" />
               <span className="text-[10px] text-muted-foreground font-mono">
-                {prompt.length > 0 ? `${prompt.length} chars` : "GPT-4o · ⌘↵ to submit"}
+                {prompt.length > 0 ? `${prompt.length} chars` : `${providerLabel} · ⌘↵ to submit`}
               </span>
             </div>
             <button

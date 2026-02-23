@@ -230,3 +230,37 @@ export async function fetchHealth(): Promise<HealthStatus | null> {
     return null
   }
 }
+
+// ── Billing ────────────────────────────────────────────────────────────────
+
+export interface BillingInfo {
+  plan: string
+  jobs_total: number
+  jobs_completed: number
+  jobs_failed: number
+  jobs_active: number
+  tokens_used: number
+  compute_seconds: number
+  files_changed: number
+}
+
+/** Derives usage stats from the jobs list (no dedicated billing endpoint). */
+export async function fetchBillingInfo(): Promise<BillingInfo | null> {
+  try {
+    const jobs = await fetchJobs()
+    return {
+      plan: 'free',
+      jobs_total: jobs.length,
+      jobs_completed: jobs.filter((j) => j.execution_state === 'completed').length,
+      jobs_failed: jobs.filter((j) => j.execution_state === 'failed').length,
+      jobs_active: jobs.filter((j) =>
+        ['running', 'queued'].includes(j.execution_state)
+      ).length,
+      tokens_used: jobs.reduce((acc, j) => acc + (j.llm_total_tokens ?? 0), 0),
+      compute_seconds: jobs.reduce((acc, j) => acc + (j.total_job_seconds ?? 0), 0),
+      files_changed: jobs.reduce((acc, j) => acc + (j.files_changed_count ?? 0), 0),
+    }
+  } catch {
+    return null
+  }
+}
