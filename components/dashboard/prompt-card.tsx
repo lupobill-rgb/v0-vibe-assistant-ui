@@ -2,16 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowUp, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
+import Link from "next/link"
+import { ArrowUp, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createProject, createJob } from "@/lib/api"
+import { categories, templates, type TemplateCategory } from "@/lib/templates"
 
-const suggestions = [
-  { icon: Globe, label: "Build a landing page for a SaaS product" },
-  { icon: Zap, label: "Create a pricing page with toggle" },
-  { icon: Layers, label: "Design a modern portfolio site" },
-  { icon: ImageIcon, label: "Generate a startup launch page" },
-]
+// Show 2 featured templates per category on the homepage
+const featuredCategories: TemplateCategory[] = ["saas", "startup", "portfolio", "ecommerce"]
 
 export function PromptCard() {
   const router = useRouter()
@@ -20,10 +18,15 @@ export function PromptCard() {
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<TemplateCategory>(featuredCategories[0])
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  const tabTemplates = templates
+    .filter((t) => t.category === activeTab)
+    .slice(0, 3)
 
   async function handleSubmit() {
     if (!prompt.trim() || loading) return
@@ -32,13 +35,8 @@ export function PromptCard() {
     setError(null)
 
     try {
-      // 1. Create project
       const project = await createProject(`landing-${Date.now()}`)
-
-      // 2. Create job with prompt
       const job = await createJob(prompt.trim(), project.id)
-
-      // 3. Redirect to building page
       router.push(`/building/${job.task_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
@@ -121,19 +119,55 @@ export function PromptCard() {
         </div>
       </div>
 
-      {/* Suggestion Chips */}
-      <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-        {suggestions.map((s) => (
-          <button
-            key={s.label}
-            onClick={() => setPrompt(s.label)}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none"
+      {/* Template Suggestions */}
+      <div className="mt-6">
+        {/* Category Tabs */}
+        <div className="flex items-center justify-center gap-2 mb-3">
+          {featuredCategories.map((catId) => {
+            const cat = categories.find((c) => c.id === catId)
+            if (!cat) return null
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveTab(cat.id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+                  activeTab === cat.id
+                    ? "bg-primary/15 text-primary border border-primary/30"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 border border-transparent"
+                )}
+              >
+                <cat.icon className="w-3 h-3" />
+                {cat.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Template Chips */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {tabTemplates.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setPrompt(t.prompt)}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none max-w-xs text-left"
+            >
+              <span className="truncate">{t.name}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Browse all link */}
+        <div className="flex justify-center mt-3">
+          <Link
+            href="/templates"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
           >
-            <s.icon className="w-3.5 h-3.5" />
-            {s.label}
-          </button>
-        ))}
+            Browse all templates
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
       </div>
     </div>
   )
