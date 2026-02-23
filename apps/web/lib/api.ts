@@ -4,10 +4,10 @@ const API_URL =
   'http://localhost:3001'
 
 // Tenant ID — identifies the current user/workspace for multi-tenant isolation.
-// For local dev this defaults to 'local'. Override via NEXT_PUBLIC_TENANT_ID.
+// For local dev this defaults to 'test-tenant'. Override via NEXT_PUBLIC_TENANT_ID.
 export const TENANT_ID =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TENANT_ID) ||
-  'local'
+  'test-tenant'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -86,11 +86,14 @@ export async function fetchProjects(): Promise<Project[]> {
 
 export async function createProject(
   name: string,
+  repositoryUrl?: string,
 ): Promise<{ id?: string; error?: string }> {
+  const body: Record<string, string> = { name }
+  if (repositoryUrl) body.repository_url = repositoryUrl
   const response = await fetch(`${API_URL}/projects`, {
     method: 'POST',
     headers: baseHeaders(),
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   })
   return response.json()
 }
