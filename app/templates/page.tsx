@@ -164,25 +164,12 @@ export default function TemplatesPage() {
                   >
                     {/* Thumbnail area */}
                     <div className="relative h-36 bg-secondary overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary/15 via-transparent to-accent/10" />
-                      <div
-                        className="absolute inset-0 opacity-[0.06]"
-                        style={{
-                          backgroundImage:
-                            "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
-                          backgroundSize: "24px 24px",
-                        }}
+                      <img
+                        src={template.thumbnail}
+                        alt={`${template.name} preview`}
+                        className="absolute inset-0 w-full h-full object-cover"
                       />
-                      {/* Decorative blocks to hint at page layout */}
-                      <div className="absolute inset-4 flex flex-col gap-2">
-                        <div className="h-3 w-2/3 rounded bg-foreground/[0.06]" />
-                        <div className="h-2 w-1/2 rounded bg-foreground/[0.04]" />
-                        <div className="flex-1 flex gap-2 mt-2">
-                          <div className="flex-1 rounded bg-foreground/[0.04]" />
-                          <div className="flex-1 rounded bg-foreground/[0.04]" />
-                          <div className="flex-1 rounded bg-foreground/[0.04]" />
-                        </div>
-                      </div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-card/60 via-transparent to-transparent" />
                       {/* Category badge */}
                       {cat && (
                         <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-background/80 backdrop-blur-sm border border-border/50">

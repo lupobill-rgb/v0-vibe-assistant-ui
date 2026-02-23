@@ -17,6 +17,17 @@ export interface Template {
   prompt: string
   category: TemplateCategory
   tags: string[]
+  thumbnail: string
+}
+
+/** Map each category to its preview image */
+export const categoryThumbnails: Record<TemplateCategory, string> = {
+  saas: "/images/templates/saas.jpg",
+  startup: "/images/templates/startup.jpg",
+  portfolio: "/images/templates/portfolio.jpg",
+  ecommerce: "/images/templates/ecommerce.jpg",
+  agency: "/images/templates/agency.jpg",
+  blog: "/images/templates/blog.jpg",
 }
 
 export type TemplateCategory =
@@ -51,6 +62,7 @@ export const templates: Template[] = [
     prompt: "Build a SaaS pricing page with three tiers (Free, Pro, Enterprise), a monthly/yearly toggle that shows discounts, a feature comparison table, and a highlighted recommended plan. Use a dark theme with a prominent call-to-action.",
     category: "saas",
     tags: ["pricing", "plans", "toggle"],
+    thumbnail: "/images/templates/saas.jpg",
   },
   {
     id: "saas-landing",
@@ -59,6 +71,7 @@ export const templates: Template[] = [
     prompt: "Create a modern SaaS product landing page with an animated hero section featuring a headline and email capture, a bento-grid features section with icons, a testimonials carousel, social proof logos, and a bottom call-to-action block.",
     category: "saas",
     tags: ["landing", "hero", "features"],
+    thumbnail: "/images/templates/saas.jpg",
   },
   {
     id: "saas-dashboard-landing",
@@ -67,6 +80,7 @@ export const templates: Template[] = [
     prompt: "Design a landing page for an analytics dashboard SaaS. Include a hero with a tagline and dashboard screenshot mockup, key metrics highlights, an integrations logo strip, feature cards with icons, and a free trial CTA section.",
     category: "saas",
     tags: ["analytics", "dashboard", "promo"],
+    thumbnail: "/images/templates/saas.jpg",
   },
   // Startup
   {
@@ -76,6 +90,7 @@ export const templates: Template[] = [
     prompt: "Build a startup product launch page with a bold centered headline, a short product description, an email waitlist signup form, a countdown timer to launch date, and social media links at the bottom. Make it feel exciting and modern.",
     category: "startup",
     tags: ["launch", "waitlist", "countdown"],
+    thumbnail: "/images/templates/startup.jpg",
   },
   {
     id: "startup-pitch",
@@ -84,6 +99,7 @@ export const templates: Template[] = [
     prompt: "Create a startup pitch landing page with sections for: problem statement, our solution, how it works (3-step process), team bios with photos, key traction metrics, press logos, and a final CTA to schedule a demo.",
     category: "startup",
     tags: ["pitch", "team", "traction"],
+    thumbnail: "/images/templates/startup.jpg",
   },
   {
     id: "startup-early-access",
@@ -92,6 +108,7 @@ export const templates: Template[] = [
     prompt: "Design an early access landing page for a new AI tool. Include a hero with animated gradient background and tagline, an embedded video/demo placeholder, three key value proposition cards, an early access request form with email input, and a social proof section.",
     category: "startup",
     tags: ["early access", "AI", "teaser"],
+    thumbnail: "/images/templates/startup.jpg",
   },
   // Portfolio
   {
@@ -101,6 +118,7 @@ export const templates: Template[] = [
     prompt: "Build a developer portfolio landing page with a personal intro section featuring name, title and a short bio, a skills/tech stack section with icon badges, a project showcase grid with cards (title, description, tech used, link), and a contact form at the bottom.",
     category: "portfolio",
     tags: ["developer", "projects", "skills"],
+    thumbnail: "/images/templates/portfolio.jpg",
   },
   {
     id: "portfolio-designer",
@@ -109,6 +127,7 @@ export const templates: Template[] = [
     prompt: "Create a creative designer portfolio landing page with a large hero image and name overlay, a masonry grid of project thumbnails, case study preview cards with images and short descriptions, an about section, and a simple contact section.",
     category: "portfolio",
     tags: ["designer", "visual", "case study"],
+    thumbnail: "/images/templates/portfolio.jpg",
   },
   {
     id: "portfolio-freelancer",
@@ -117,6 +136,7 @@ export const templates: Template[] = [
     prompt: "Design a freelancer landing page with a hero headline and sub-headline, a services section with 4 service cards (icon, title, description), client testimonials with star ratings, a skills bar section, and a CTA to book a consultation.",
     category: "portfolio",
     tags: ["freelancer", "services", "booking"],
+    thumbnail: "/images/templates/portfolio.jpg",
   },
   // E-Commerce
   {
@@ -126,6 +146,7 @@ export const templates: Template[] = [
     prompt: "Build an e-commerce product launch page for a premium physical product. Include a full-width hero with product image and tagline, a features section with icons, a product specifications grid, customer reviews with ratings, and a sticky buy button.",
     category: "ecommerce",
     tags: ["product", "reviews", "buy"],
+    thumbnail: "/images/templates/ecommerce.jpg",
   },
   {
     id: "ecommerce-store",
@@ -134,6 +155,7 @@ export const templates: Template[] = [
     prompt: "Create an e-commerce store landing page with a hero banner and sale announcement, featured product cards in a grid (image, title, price, rating), category browsing section, a special offers banner, and a newsletter signup section at the bottom.",
     category: "ecommerce",
     tags: ["store", "products", "newsletter"],
+    thumbnail: "/images/templates/ecommerce.jpg",
   },
   // Agency
   {
@@ -143,6 +165,7 @@ export const templates: Template[] = [
     prompt: "Build a digital agency landing page with an impressive hero section and tagline, a services grid (web design, development, marketing, branding), featured case studies with images, team member cards, client logos, and a contact form section.",
     category: "agency",
     tags: ["services", "case studies", "team"],
+    thumbnail: "/images/templates/agency.jpg",
   },
   {
     id: "agency-marketing",
@@ -151,6 +174,7 @@ export const templates: Template[] = [
     prompt: "Design a marketing agency landing page with a bold hero and stat counters, an 'Our Process' 4-step section, service offerings with pricing hints, client results/case studies with before-after metrics, testimonials, and a free consultation CTA.",
     category: "agency",
     tags: ["marketing", "results", "process"],
+    thumbnail: "/images/templates/agency.jpg",
   },
   // Blog
   {
@@ -160,6 +184,7 @@ export const templates: Template[] = [
     prompt: "Create a blog publication landing page with a featured article hero (large image, title, excerpt), a grid of recent article cards (thumbnail, title, date, category tag), a sidebar with popular posts and category links, and a newsletter subscription section.",
     category: "blog",
     tags: ["articles", "featured", "newsletter"],
+    thumbnail: "/images/templates/blog.jpg",
   },
   {
     id: "blog-personal",
@@ -168,6 +193,7 @@ export const templates: Template[] = [
     prompt: "Build a personal blog landing page with an author intro section (photo, name, short bio), latest blog posts in a clean list format (title, date, reading time, excerpt), tag cloud for categories, and an email subscribe form with a friendly tone.",
     category: "blog",
     tags: ["personal", "posts", "subscribe"],
+    thumbnail: "/images/templates/blog.jpg",
   },
 ]
 
