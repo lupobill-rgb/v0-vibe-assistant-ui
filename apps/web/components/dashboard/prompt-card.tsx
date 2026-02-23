@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createJob, fetchProjects, type Project } from "@/lib/api"
+import { createJob } from "@/lib/api"
 
 const suggestions = [
   { icon: Globe, label: "Build a landing page" },
@@ -13,40 +13,16 @@ const suggestions = [
   { icon: ImageIcon, label: "Generate a portfolio" },
 ]
 
-const LLM_STORAGE_KEY = "vibe_llm_provider"
-
 interface PromptCardProps {
-  /** Pre-select a specific project (e.g. when navigating from /projects) */
-  initialProjectId?: string
+  selectedProjectId: string
 }
 
-export function PromptCard({ initialProjectId }: PromptCardProps = {}) {
+export function PromptCard({ selectedProjectId }: PromptCardProps) {
   const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
-  const [llmProvider, setLlmProvider] = useState<string>("openai")
-
-  // Load LLM preference from localStorage (client-only)
-  useEffect(() => {
-    const saved = localStorage.getItem(LLM_STORAGE_KEY)
-    if (saved) setLlmProvider(saved)
-  }, [])
-
-  useEffect(() => {
-    fetchProjects().then((data) => {
-      setProjects(data)
-      // Honour initialProjectId if provided and valid, otherwise fall back to first project
-      if (initialProjectId && data.some((p) => p.id === initialProjectId)) {
-        setSelectedProjectId(initialProjectId)
-      } else if (data.length > 0) {
-        setSelectedProjectId(data[0].id)
-      }
-    })
-  }, [initialProjectId])
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
@@ -100,33 +76,6 @@ export function PromptCard({ initialProjectId }: PromptCardProps = {}) {
         )}
       >
         <div className="p-6">
-          {/* Project selector */}
-          {projects.length > 0 && (
-            <div className="mb-4">
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="w-full bg-secondary text-foreground text-sm rounded-lg px-3 py-2 border border-border outline-none focus:border-primary/40 transition-colors"
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {projects.length === 0 && (
-            <div className="mb-4 text-xs text-muted-foreground bg-secondary/40 rounded-lg px-3 py-2 border border-border">
-              No projects yet — create one in{" "}
-              <a href="/projects" className="text-[#4F8EFF] hover:underline">
-                Projects
-              </a>{" "}
-              to get started.
-            </div>
-          )}
-
           {/* Text Input */}
           <div className="relative">
             <textarea

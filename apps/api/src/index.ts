@@ -103,19 +103,22 @@ async function bootstrap() {
     
     // Initialize git repository
     execSync('git init', { cwd: repoDir });
-    execSync(`git checkout -b main`, { cwd: repoDir });
-    
+
+    // Configure git identity before making any commits
+    execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
+    execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+    execSync('git config commit.gpgsign false', { cwd: repoDir });
+
     // Create initial README for template
     const readmePath = path.join(repoDir, 'README.md');
     fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
-    
-    // Configure git
-    execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
-    execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
-    
-    // Initial commit
+
+    // Initial commit — this materialises the branch ref so it actually exists
     execSync('git add .', { cwd: repoDir });
     execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
+
+    // Ensure the branch is named 'main' regardless of the git init.defaultBranch setting
+    execSync('git branch -M main', { cwd: repoDir });
 
     storage.createProject({
       id: projectId,
@@ -283,7 +286,12 @@ app.delete('/projects/:id', requireTenantHeader(), (req: AuthRequest, res: Respo
       return res.status(403).json({ error: 'Access denied: project belongs to different tenant' });
     }
 
+    const localPath = project.local_path;
     storage.deleteProject(projectId);
+    // Best-effort cleanup of the on-disk repo directory
+    if (localPath && fs.existsSync(localPath)) {
+      fs.rmSync(localPath, { recursive: true, force: true });
+    }
     res.json({ message: 'Project deleted successfully' });
   } catch (error) {
     console.error('Error deleting project:', error);
@@ -599,6 +607,61 @@ app.get('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to get analytics' });
     }
+  });
+
+  // GET /jobs/:id/logs — SSE stream of log events
+  // Implemented here (not in NestJS controller) so it works with tsx dev mode
+  // where esbuild cannot emit decorator metadata required for NestJS DI.
+  app.get('/jobs/:id/logs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
+    const jobId = req.params.id;
+    const tenantId = req.tenantId!;
+
+    const task = storage.getTask(jobId);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    if (task.tenant_id !== tenantId) {
+      res.status(403).json({ error: 'Access denied: job belongs to different tenant' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (data: unknown) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Replay existing events
+    const existing = storage.getTaskEvents(jobId);
+    let lastEventTime = Date.now();
+    if (existing.length > 0) {
+      existing.forEach(send);
+      lastEventTime = existing[existing.length - 1].event_time;
+    }
+
+    // Poll for new events until terminal state
+    const interval = setInterval(() => {
+      try {
+        const newEvents = storage.getEventsAfter(jobId, lastEventTime);
+        newEvents.forEach(e => { send(e); lastEventTime = e.event_time; });
+
+        const current = storage.getTask(jobId);
+        if (current && (current.execution_state === 'completed' || current.execution_state === 'failed')) {
+          send({ type: 'complete', state: current.execution_state });
+          clearInterval(interval);
+          res.end();
+        }
+      } catch {
+        clearInterval(interval);
+        res.end();
+      }
+    }, 1000);
+
+    req.on('close', () => clearInterval(interval));
   });
 
   // Health check

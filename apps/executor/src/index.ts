@@ -101,19 +101,25 @@ class VibeExecutor {
 
     try {
       // ── Mode detection ──────────────────────────────────────────────────────
-      if (task.project_id) {
+      // Re-fetch the task from DB to ensure we have the latest project_id and tenant_id
+      const freshTask = storage.getTask(task.task_id) ?? task;
+      const projectId = freshTask.project_id ?? task.project_id;
+      const tenantId = freshTask.tenant_id ?? task.tenant_id;
+
+      if (projectId) {
         // OPTION A: Project-centric mode — use cached repo
         isProjectMode = true;
-        const project = storage.getProject(task.project_id);
+        // Use project_id from DB and scope by tenant_id when available
+        const project = storage.getProject(projectId, tenantId);
 
         if (!project) {
-          throw new Error(`Project not found: ${task.project_id}`);
+          throw new Error(`Project not found: ${projectId}`);
         }
 
         repoDir = project.local_path;
         repoUrl = project.repository_url ?? null;
 
-        storage.logEvent(task.task_id, `Using project: ${project.name} (${task.project_id})`, 'info');
+        storage.logEvent(task.task_id, `Using project: ${project.name} (${projectId})`, 'info');
         storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
 
         // Clone if project cache doesn't exist yet
