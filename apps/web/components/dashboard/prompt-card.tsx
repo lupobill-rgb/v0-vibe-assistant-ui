@@ -4,7 +4,11 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createJob } from "@/lib/api"
+import { createProject, createJob } from "@/lib/api"
+
+const REPOSITORY_URL =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_REPOSITORY_URL) ||
+  undefined
 
 const suggestions = [
   { icon: Globe, label: "Build a landing page" },
@@ -13,11 +17,7 @@ const suggestions = [
   { icon: ImageIcon, label: "Generate a portfolio" },
 ]
 
-interface PromptCardProps {
-  selectedProjectId: string
-}
-
-export function PromptCard({ selectedProjectId }: PromptCardProps) {
+export function PromptCard() {
   const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
@@ -26,20 +26,25 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
-    if (!selectedProjectId) {
-      setError("Please select or create a project first")
-      return
-    }
 
     setSubmitting(true)
     setError(null)
 
     try {
+      const project = await createProject(
+        `landing-${Date.now()}`,
+        REPOSITORY_URL,
+      )
+
+      if (project.error || !project.id) {
+        setError(project.error ?? "Failed to create project")
+        return
+      }
+
       const result = await createJob({
         prompt: prompt.trim(),
-        project_id: selectedProjectId,
+        project_id: project.id,
         base_branch: "main",
-        llm_provider: llmProvider,
       })
 
       if (result.error) {
@@ -48,7 +53,7 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
       }
 
       if (result.task_id) {
-        router.push(`/task/${result.task_id}`)
+        router.push(`/building/${result.task_id}`)
       }
     } catch (err) {
       setError("Failed to submit job. Is the API running?")
@@ -64,8 +69,6 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
       handleSubmit()
     }
   }
-
-  const providerLabel = llmProvider === "anthropic" ? "Claude" : "GPT-4o"
 
   return (
     <div className="px-6 -mt-8 relative z-10">
@@ -105,15 +108,15 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
               </button>
               <div className="w-px h-4 bg-border" />
               <span className="text-[10px] text-muted-foreground font-mono">
-                {prompt.length > 0 ? `${prompt.length} chars` : `${providerLabel} · ⌘↵ to submit`}
+                {prompt.length > 0 ? `${prompt.length} chars` : "⌘↵ to submit"}
               </span>
             </div>
             <button
               onClick={handleSubmit}
-              disabled={!prompt.trim() || submitting || !selectedProjectId}
+              disabled={!prompt.trim() || submitting}
               className={cn(
-                "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200",
-                prompt.trim() && selectedProjectId && !submitting
+                "flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all duration-200",
+                prompt.trim() && !submitting
                   ? "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shadow-lg shadow-[#A855F7]/20 hover:opacity-90"
                   : "bg-secondary text-muted-foreground"
               )}
@@ -123,6 +126,7 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
               ) : (
                 <ArrowUp className="w-4 h-4" />
               )}
+              Build Landing Page
             </button>
           </div>
         </div>

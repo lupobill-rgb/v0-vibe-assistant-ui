@@ -90,7 +90,7 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
     }
 
     load()
-    interval = setInterval(load, 3000)
+    interval = setInterval(load, 2000)
 
     return () => clearInterval(interval)
   }, [taskId])
