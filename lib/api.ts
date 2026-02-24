@@ -83,3 +83,47 @@ export async function getProjects(): Promise<Project[]> {
   }
   return res.json()
 }
+
+// ── Generate Diff (Supabase Edge Function) ──────────────────────────
+
+const GENERATE_DIFF_URL =
+  "https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/generate-diff"
+
+const GENERATE_DIFF_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4"
+
+export interface GenerateDiffResponse {
+  diff: string
+  usage: Record<string, unknown>
+}
+
+export async function generateDiff(prompt: string): Promise<GenerateDiffResponse> {
+  const res = await fetch(GENERATE_DIFF_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ prompt, model: "claude" }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Generation failed (${res.status}): ${text}`)
+  }
+
+  return res.json()
+}
+
+/**
+ * Extract HTML content from a unified diff string.
+ * Keeps lines starting with "+" (added lines) but not "+++" (file header).
+ * Strips the leading "+" character from each line.
+ */
+export function extractHtmlFromDiff(diff: string): string {
+  return diff
+    .split("\n")
+    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+    .map((line) => line.slice(1))
+    .join("\n")
+}
