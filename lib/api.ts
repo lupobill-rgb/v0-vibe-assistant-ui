@@ -113,54 +113,122 @@ const SYSTEM_PROMPT =
   "12) Inputs must have focus ring styles. " +
   "Return a complete HTML file, not a diff. Just the raw HTML starting with <!DOCTYPE html>."
 
+/**
+ * Extract a short summary of sections present in the HTML (e.g. "navbar, hero,
+ * features, testimonials, CTA, footer") so we can describe the page without
+ * sending the full HTML to the LLM on refinement requests.
+ */
+function summariseSections(html: string): string {
+  const sectionKeywords = [
+    "navbar", "nav", "header",
+    "hero",
+    "features", "benefits",
+    "testimonials", "reviews", "social-proof",
+    "pricing",
+    "cta", "call-to-action",
+    "faq",
+    "footer",
+    "about",
+    "contact",
+    "stats",
+    "team",
+  ]
+  const lower = html.toLowerCase()
+  const found = sectionKeywords.filter((kw) => lower.includes(kw))
+  return found.length > 0 ? found.join(", ") : "hero, features, testimonials, CTA, footer"
+}
+
+/**
+ * Try to extract a business / site name from the original prompt.
+ */
+function extractBusinessName(prompt: string): string {
+  // Common patterns: "for <Name>", "called <Name>", "<Name> landing page"
+  const patterns = [
+    /(?:for|called|named)\s+["']?([^"'\n,.]+)["']?/i,
+    /^(.+?)\s+(?:landing page|website|site|homepage)/i,
+  ]
+  for (const re of patterns) {
+    const m = prompt.match(re)
+    if (m && m[1] && m[1].trim().length > 1) return m[1].trim()
+  }
+  return "my website"
+}
+
+const GENERATE_TIMEOUT = 120_000 // 2 minutes
+
+async function fetchGeneration(
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch(GENERATE_DIFF_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal,
+  })
+}
+
 export async function generateDiff(
   prompt: string,
   existingHtml?: string,
   refinement?: string,
 ): Promise<GenerateDiffResponse> {
   let fullPrompt = prompt
+
   if (existingHtml && refinement) {
+    const businessName = extractBusinessName(prompt)
+    const sections = summariseSections(existingHtml)
     fullPrompt =
-      `Original request: ${prompt}\n\n` +
-      `Current HTML:\n\`\`\`html\n${existingHtml}\n\`\`\`\n\n` +
-      `Refinement instructions: ${refinement}\n\n` +
-      `Apply the refinement to the current HTML and return the full updated HTML file starting with <!DOCTYPE html>.`
+      `I have a landing page for ${businessName}. ` +
+      `Current sections: ${sections}. ` +
+      `Please regenerate the FULL page with this change: ${refinement}. ` +
+      `Keep the same design system and Tailwind CSS / custom CSS styling. ` +
+      `Return only the complete HTML starting with <!DOCTYPE html>.`
   }
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60000)
+  const body = {
+    prompt: fullPrompt,
+    model: "claude",
+    system: SYSTEM_PROMPT,
+  }
 
-  let res: Response
-  try {
-    res = await fetch(GENERATE_DIFF_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        prompt: fullPrompt,
-        model: "claude",
-        system: SYSTEM_PROMPT,
-      }),
-      signal: controller.signal,
-    })
-  } catch (err) {
-    clearTimeout(timeout)
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("Generation took too long. Try a simpler prompt.")
+  // Attempt up to 2 tries (initial + 1 auto-retry on timeout)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), GENERATE_TIMEOUT)
+
+    let res: Response
+    try {
+      res = await fetchGeneration(body, controller.signal)
+    } catch (err) {
+      clearTimeout(timeout)
+      if (err instanceof DOMException && err.name === "AbortError") {
+        if (attempt === 0) {
+          // First timeout – auto-retry once
+          continue
+        }
+        throw new Error(
+          "Still generating... please wait. The request timed out after retrying. Try a simpler prompt.",
+        )
+      }
+      throw err
     }
-    throw err
+
+    clearTimeout(timeout)
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Generation failed (${res.status}): ${text}`)
+    }
+
+    return res.json()
   }
 
-  clearTimeout(timeout)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Generation failed (${res.status}): ${text}`)
-  }
-
-  return res.json()
+  // Should never reach here, but satisfy TS
+  throw new Error("Generation failed after retries.")
 }
 
 /**

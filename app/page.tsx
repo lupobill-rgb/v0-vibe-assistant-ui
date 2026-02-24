@@ -62,14 +62,14 @@ export default function HomePage() {
       if (!generatedHtml) return
       setIsRefining(true)
       try {
-        const refinementPrompt =
-          "Here is my current website HTML:\n\n" +
-          generatedHtml +
-          "\n\nPlease modify it with this change: " +
-          refinement +
-          "\n\nReturn the complete updated HTML file. Keep all existing sections and styling, only apply the requested change."
-
-        const response = await generateDiff(refinementPrompt)
+        // Pass originalPrompt + existingHtml + refinement so generateDiff
+        // builds a compact prompt describing the page instead of sending
+        // the full HTML to the LLM.
+        const response = await generateDiff(
+          originalPrompt,
+          generatedHtml,
+          refinement,
+        )
         const html = extractHtmlFromDiff(response.diff)
         if (!html.trim()) {
           throw new Error("Refinement produced no HTML. Try different instructions.")
@@ -83,7 +83,7 @@ export default function HomePage() {
         setIsRefining(false)
       }
     },
-    [generatedHtml],
+    [generatedHtml, originalPrompt],
   )
 
   return (
