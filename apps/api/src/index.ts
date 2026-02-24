@@ -23,6 +23,67 @@ const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
 const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
 
+/**
+ * Generate an HTML preview page from a unified diff and save it to disk.
+ * The page renders a syntax-highlighted side-by-side diff view.
+ */
+function generateHtmlPreviewFromDiff(taskId: string, diff: string): string {
+  const previewDir = path.join(PREVIEWS_DIR, taskId);
+  if (!fs.existsSync(previewDir)) {
+    fs.mkdirSync(previewDir, { recursive: true });
+  }
+
+  // Escape HTML entities in the diff text
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Build coloured diff lines
+  const lines = diff.split('\n').map((line) => {
+    if (line.startsWith('+++') || line.startsWith('---')) {
+      return `<span class="diff-meta">${esc(line)}</span>`;
+    }
+    if (line.startsWith('@@')) {
+      return `<span class="diff-hunk">${esc(line)}</span>`;
+    }
+    if (line.startsWith('+')) {
+      return `<span class="diff-add">${esc(line)}</span>`;
+    }
+    if (line.startsWith('-')) {
+      return `<span class="diff-del">${esc(line)}</span>`;
+    }
+    return `<span>${esc(line)}</span>`;
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VIBE Diff Preview — ${esc(taskId.slice(0, 8))}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f0f23;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;padding:2rem}
+  h1{font-size:1.25rem;margin-bottom:1rem;color:#8B5CF6}
+  .meta{color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem}
+  pre{background:#1a1035;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:1rem;overflow-x:auto;font-size:.85rem;line-height:1.6}
+  .diff-meta{color:#60a5fa;font-weight:600}
+  .diff-hunk{color:#c084fc}
+  .diff-add{color:#4ade80;background:rgba(74,222,128,.08)}
+  .diff-del{color:#f87171;background:rgba(248,113,113,.08)}
+</style>
+</head>
+<body>
+<h1>Diff Preview</h1>
+<p class="meta">Task ${esc(taskId)}</p>
+<pre>${lines.join('\n')}</pre>
+</body>
+</html>`;
+
+  const filePath = path.join(previewDir, 'index.html');
+  fs.writeFileSync(filePath, html, 'utf-8');
+  return `/previews/${taskId}/index.html`;
+}
+
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
   fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
@@ -487,6 +548,11 @@ app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
           llm_total_tokens: result.usage.total_tokens,
           total_job_seconds: Math.round((Date.now() - jobStart) / 1000),
         });
+
+        // Generate HTML preview from the diff
+        const previewUrl = generateHtmlPreviewFromDiff(taskId, result.diff);
+        storage.setPreviewUrl(taskId, previewUrl);
+        storage.logEvent(taskId, `Preview generated at ${previewUrl}`, 'info');
 
         storage.updateTaskState(taskId, 'completed');
         storage.logEvent(taskId, 'Job completed successfully', 'success');
