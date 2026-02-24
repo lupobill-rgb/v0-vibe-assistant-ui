@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import {
   Download,
   RotateCcw,
@@ -12,9 +12,11 @@ import {
   Loader2,
   History,
   Check,
+  FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import type { MultiPageSite } from "@/lib/api"
 
 type Viewport = "desktop" | "tablet" | "mobile"
 
@@ -25,7 +27,7 @@ const viewportConfig: Record<Viewport, { width: string; icon: typeof Monitor; la
 }
 
 interface PreviewPanelProps {
-  html: string
+  site: MultiPageSite
   onReset: () => void
   onRegenerate?: () => void
   onRefine?: (refinement: string) => void
@@ -34,7 +36,7 @@ interface PreviewPanelProps {
 }
 
 export function PreviewPanel({
-  html,
+  site,
   onReset,
   onRegenerate,
   onRefine,
@@ -43,17 +45,80 @@ export function PreviewPanel({
 }: PreviewPanelProps) {
   const [viewport, setViewport] = useState<Viewport>("desktop")
   const [refinement, setRefinement] = useState("")
+  const [activePage, setActivePage] = useState<string>(site.pageOrder[0] || "index")
+  const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  const blobUrl = useCallback(() => {
-    const blob = new Blob([html], { type: "text/html" })
-    return URL.createObjectURL(blob)
-  }, [html])
+  // Reset active page when site changes
+  useEffect(() => {
+    if (site.pageOrder.length > 0 && !site.pages[activePage]) {
+      setActivePage(site.pageOrder[0])
+    }
+  }, [site, activePage])
 
-  const handleDownload = () => {
-    const url = blobUrl()
+  const currentHtml = site.pages[activePage] || ""
+
+  // Inject a script into the HTML that intercepts link clicks to other pages
+  const getInjectedHtml = useCallback(
+    (html: string) => {
+      const pageNames = site.pageOrder
+      const interceptScript = `
+<script>
+document.addEventListener('click', function(e) {
+  var link = e.target.closest('a');
+  if (!link) return;
+  var href = link.getAttribute('href');
+  if (!href) return;
+  var pages = ${JSON.stringify(pageNames.map((p) => p + ".html"))};
+  var match = pages.find(function(p) { return href === p || href === './' + p || href.endsWith('/' + p); });
+  if (match) {
+    e.preventDefault();
+    var pageName = match.replace('.html', '');
+    window.parent.postMessage({ type: 'navigate', page: pageName }, '*');
+  }
+});
+</script>`
+      // Insert before </body> if it exists, otherwise append
+      if (html.includes("</body>")) {
+        return html.replace("</body>", interceptScript + "\n</body>")
+      }
+      return html + interceptScript
+    },
+    [site.pageOrder],
+  )
+
+  // Listen for navigation messages from the iframe
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type === "navigate" && typeof e.data.page === "string") {
+        const targetPage = e.data.page
+        if (site.pages[targetPage]) {
+          setActivePage(targetPage)
+        }
+      }
+    }
+    window.addEventListener("message", handleMessage)
+    return () => window.removeEventListener("message", handleMessage)
+  }, [site.pages])
+
+  const blobUrl = useCallback(
+    (html: string) => {
+      const blob = new Blob([getInjectedHtml(html)], { type: "text/html" })
+      return URL.createObjectURL(blob)
+    },
+    [getInjectedHtml],
+  )
+
+  const handleDownloadZip = async () => {
+    const JSZip = (await import("jszip")).default
+    const zip = new JSZip()
+    for (const [pageName, html] of Object.entries(site.pages)) {
+      zip.file(`${pageName}.html`, html)
+    }
+    const blob = await zip.generateAsync({ type: "blob" })
+    const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "generated-site.html"
+    a.download = "website.zip"
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -61,7 +126,7 @@ export function PreviewPanel({
   }
 
   const handleOpenTab = () => {
-    const url = blobUrl()
+    const url = blobUrl(currentHtml)
     window.open(url, "_blank")
   }
 
@@ -80,14 +145,17 @@ export function PreviewPanel({
   }
 
   const currentViewport = viewportConfig[viewport]
+  const isMultiPage = site.pageOrder.length > 1
+
+  const displayName = (name: string) => {
+    return name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, " ")
+  }
 
   return (
     <div className="flex flex-col h-full bg-card border-l border-border">
       {/* Panel header with viewport toggles */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0">
-        <span className="text-sm font-semibold text-card-foreground">
-          Live Preview
-        </span>
+        <span className="text-sm font-semibold text-card-foreground">Live Preview</span>
 
         {/* Viewport toggles */}
         <div className="flex items-center gap-0.5 bg-secondary/60 rounded-lg p-0.5">
@@ -103,7 +171,7 @@ export function PreviewPanel({
                   "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all duration-200",
                   viewport === vp
                     ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -136,19 +204,41 @@ export function PreviewPanel({
         </div>
       </div>
 
+      {/* Page tabs (only if multi-page) */}
+      {isMultiPage && (
+        <div className="flex items-center gap-1 px-4 h-10 border-b border-border flex-shrink-0 overflow-x-auto">
+          {site.pageOrder.map((pageName) => (
+            <button
+              key={pageName}
+              onClick={() => setActivePage(pageName)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 whitespace-nowrap",
+                activePage === pageName
+                  ? "bg-primary/10 text-primary border border-primary/30"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 border border-transparent",
+              )}
+            >
+              <FileText className="w-3 h-3" />
+              {displayName(pageName)}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Iframe with responsive viewport */}
       <div className="flex-1 relative bg-secondary/30 overflow-hidden flex items-start justify-center">
         <iframe
-          srcDoc={html}
+          ref={iframeRef}
+          srcDoc={getInjectedHtml(currentHtml)}
           className={cn(
             "h-full border-0 bg-foreground/5 transition-all duration-300",
-            viewport !== "desktop" && "shadow-xl rounded-lg mt-4 border border-border"
+            viewport !== "desktop" && "shadow-xl rounded-lg mt-4 border border-border",
           )}
           style={{
             width: currentViewport.width,
             maxWidth: "100%",
           }}
-          title="Generated website preview"
+          title={`Generated website preview - ${displayName(activePage)}`}
           sandbox="allow-scripts"
         />
       </div>
@@ -164,10 +254,7 @@ export function PreviewPanel({
           </div>
           <div className="flex flex-col gap-1.5 max-h-28 overflow-y-auto">
             {refinementHistory.map((item, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-2 text-xs text-muted-foreground"
-              >
+              <div key={index} className="flex items-start gap-2 text-xs text-muted-foreground">
                 <Check className="w-3 h-3 mt-0.5 text-primary flex-shrink-0" />
                 <span className="leading-relaxed">{item}</span>
               </div>
@@ -195,14 +282,10 @@ export function PreviewPanel({
               "flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200",
               refinement.trim() && !isRefining
                 ? "bg-primary text-primary-foreground hover:opacity-90"
-                : "bg-secondary text-muted-foreground"
+                : "bg-secondary text-muted-foreground",
             )}
           >
-            {isRefining ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            {isRefining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
       </div>
@@ -212,9 +295,11 @@ export function PreviewPanel({
         <span className="text-xs text-muted-foreground">
           {isRefining
             ? "Applying refinement..."
-            : refinementHistory.length > 0
-              ? `${refinementHistory.length} refinement${refinementHistory.length === 1 ? "" : "s"} applied`
-              : "Generated HTML ready"}
+            : isMultiPage
+              ? `${site.pageOrder.length} pages generated`
+              : refinementHistory.length > 0
+                ? `${refinementHistory.length} refinement${refinementHistory.length === 1 ? "" : "s"} applied`
+                : "Generated HTML ready"}
         </span>
         <div className="flex items-center gap-2">
           <Button
@@ -228,10 +313,10 @@ export function PreviewPanel({
           <Button
             size="sm"
             className="gap-2 bg-primary text-primary-foreground hover:opacity-90"
-            onClick={handleDownload}
+            onClick={handleDownloadZip}
           >
             <Download className="w-3.5 h-3.5" />
-            Download HTML
+            {isMultiPage ? "Download ZIP" : "Download HTML"}
           </Button>
         </div>
       </div>

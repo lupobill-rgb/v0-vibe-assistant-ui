@@ -6,84 +6,104 @@ import { AppShell } from "@/components/app-shell"
 import { HeroSection } from "@/components/dashboard/hero-section"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { PreviewPanel } from "@/components/dashboard/preview-panel"
-import { generateDiff, extractHtmlFromDiff } from "@/lib/api"
+import { generateMultiPageSite, type MultiPageSite } from "@/lib/api"
 import { toast } from "sonner"
 
 type ViewState = "idle" | "loading" | "preview"
 
 export default function HomePage() {
   const [viewState, setViewState] = useState<ViewState>("idle")
-  const [generatedHtml, setGeneratedHtml] = useState<string>("")
+  const [generatedSite, setGeneratedSite] = useState<MultiPageSite | null>(null)
   const [originalPrompt, setOriginalPrompt] = useState<string>("")
   const [isRefining, setIsRefining] = useState(false)
   const [refinementHistory, setRefinementHistory] = useState<string[]>([])
+  const [progressMessage, setProgressMessage] = useState<string>("")
 
   const handleGenerating = () => {
     setViewState("loading")
   }
 
-  const handleGenerated = (html: string, prompt: string) => {
-    setGeneratedHtml(html)
+  const handleGenerated = (site: MultiPageSite, prompt: string) => {
+    setGeneratedSite(site)
     setOriginalPrompt(prompt)
     setViewState("preview")
+    setProgressMessage("")
   }
 
   const handleError = () => {
     setViewState("idle")
+    setProgressMessage("")
   }
 
   const handleReset = () => {
     setViewState("idle")
-    setGeneratedHtml("")
+    setGeneratedSite(null)
     setOriginalPrompt("")
     setRefinementHistory([])
+    setProgressMessage("")
   }
 
   const handleRegenerate = useCallback(async () => {
     if (!originalPrompt) return
     setViewState("loading")
+    setProgressMessage("Regenerating...")
     try {
-      const response = await generateDiff(originalPrompt)
-      const html = extractHtmlFromDiff(response.diff)
-      if (!html.trim()) {
+      const site = await generateMultiPageSite(
+        originalPrompt,
+        (progress) => {
+          setProgressMessage(
+            `Generating page ${progress.index + 1} of ${progress.total}: ${progress.pageName.charAt(0).toUpperCase() + progress.pageName.slice(1)}...`,
+          )
+        },
+      )
+      const hasContent = Object.values(site.pages).some((html) => html.trim())
+      if (!hasContent) {
         throw new Error("No HTML content was generated. Try a more specific prompt.")
       }
-      setGeneratedHtml(html)
+      setGeneratedSite(site)
+      setRefinementHistory([])
       setViewState("preview")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong."
       toast.error("Regeneration failed", { description: message })
-      setViewState("preview") // stay on preview so user doesn't lose current HTML
+      setViewState("preview")
+    } finally {
+      setProgressMessage("")
     }
   }, [originalPrompt])
 
   const handleRefine = useCallback(
     async (refinement: string) => {
-      if (!generatedHtml) return
+      if (!generatedSite) return
       setIsRefining(true)
       try {
-        const refinementPrompt =
-          "Here is my current website HTML:\n\n" +
-          generatedHtml +
-          "\n\nPlease modify it with this change: " +
-          refinement +
-          "\n\nReturn the complete updated HTML file. Keep all existing sections and styling, only apply the requested change."
-
-        const response = await generateDiff(refinementPrompt)
-        const html = extractHtmlFromDiff(response.diff)
-        if (!html.trim()) {
+        // Re-generate all pages with the refinement applied
+        const site = await generateMultiPageSite(
+          originalPrompt +
+            "\n\nAdditional refinement: " +
+            refinement +
+            "\n\nKeep all existing sections and styling, only apply the requested change.",
+          (progress) => {
+            setProgressMessage(
+              `Refining page ${progress.index + 1} of ${progress.total}: ${progress.pageName.charAt(0).toUpperCase() + progress.pageName.slice(1)}...`,
+            )
+          },
+        )
+        const hasContent = Object.values(site.pages).some((html) => html.trim())
+        if (!hasContent) {
           throw new Error("Refinement produced no HTML. Try different instructions.")
         }
-        setGeneratedHtml(html)
+        setGeneratedSite(site)
         setRefinementHistory((prev) => [...prev, refinement])
       } catch (err) {
         const message = err instanceof Error ? err.message : "Something went wrong."
         toast.error("Refinement failed", { description: message })
       } finally {
         setIsRefining(false)
+        setProgressMessage("")
       }
     },
-    [generatedHtml],
+    [generatedSite, originalPrompt],
   )
 
   return (
@@ -103,6 +123,7 @@ export default function HomePage() {
               onGenerating={handleGenerating}
               onGenerated={handleGenerated}
               onError={handleError}
+              onProgress={setProgressMessage}
               loading={viewState === "loading"}
             />
           </div>
@@ -120,25 +141,34 @@ export default function HomePage() {
               </div>
               <div className="text-center">
                 <h3 className="text-sm font-semibold text-foreground mb-1">
-                  Generating your website...
+                  {progressMessage || "Generating your website..."}
                 </h3>
                 <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
-                  Our AI is crafting your landing page. This usually takes 15-30 seconds.
+                  Our AI is crafting your multi-page website. This may take a minute for multiple pages.
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                <div
+                  className="w-2 h-2 rounded-full bg-primary animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <div
+                  className="w-2 h-2 rounded-full bg-primary animate-bounce"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <div
+                  className="w-2 h-2 rounded-full bg-primary animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
               </div>
             </div>
           </div>
         )}
 
-        {viewState === "preview" && generatedHtml && (
+        {viewState === "preview" && generatedSite && (
           <div className="flex-1 min-w-0">
             <PreviewPanel
-              html={generatedHtml}
+              site={generatedSite}
               onReset={handleReset}
               onRegenerate={handleRegenerate}
               onRefine={handleRefine}

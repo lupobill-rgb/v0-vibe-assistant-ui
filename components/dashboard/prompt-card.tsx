@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { ArrowUp, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { generateDiff, extractHtmlFromDiff } from "@/lib/api"
+import { generateMultiPageSite, type MultiPageSite } from "@/lib/api"
 import { categories, templates, type TemplateCategory } from "@/lib/templates"
 import { toast } from "sonner"
 
@@ -13,12 +13,13 @@ const featuredCategories: TemplateCategory[] = ["saas", "startup", "portfolio", 
 
 interface PromptCardProps {
   onGenerating?: () => void
-  onGenerated?: (html: string, prompt: string) => void
+  onGenerated?: (site: MultiPageSite, prompt: string) => void
   onError?: () => void
+  onProgress?: (message: string) => void
   loading?: boolean
 }
 
-export function PromptCard({ onGenerating, onGenerated, onError, loading: externalLoading }: PromptCardProps) {
+export function PromptCard({ onGenerating, onGenerated, onError, onProgress, loading: externalLoading }: PromptCardProps) {
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -26,26 +27,8 @@ export function PromptCard({ onGenerating, onGenerated, onError, loading: extern
   const [activeTab, setActiveTab] = useState<TemplateCategory>(featuredCategories[0])
   const [progressMessage, setProgressMessage] = useState("")
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const startTimeRef = useRef<number>(0)
 
   const isLoading = loading || externalLoading
-
-  const getProgressMessage = useCallback((elapsedMs: number) => {
-    const seconds = elapsedMs / 1000
-    if (seconds < 5) return "Analyzing your prompt..."
-    if (seconds < 15) return "Generating your website..."
-    if (seconds < 25) return "Adding finishing touches..."
-    return "Almost there, polishing the design..."
-  }, [])
-
-  const startProgress = useCallback(() => {
-    startTimeRef.current = Date.now()
-    setProgressMessage(getProgressMessage(0))
-    progressTimerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current
-      setProgressMessage(getProgressMessage(elapsed))
-    }, 1000)
-  }, [getProgressMessage])
 
   const stopProgress = useCallback(() => {
     if (progressTimerRef.current) {
@@ -68,18 +51,32 @@ export function PromptCard({ onGenerating, onGenerated, onError, loading: extern
     if (!prompt.trim() || isLoading) return
 
     setLoading(true)
-    startProgress()
+    setProgressMessage("Planning pages...")
     onGenerating?.()
 
     try {
-      const response = await generateDiff(prompt.trim())
-      const html = extractHtmlFromDiff(response.diff)
+      const site = await generateMultiPageSite(
+        prompt.trim(),
+        (progress) => {
+          const msg = `Generating page ${progress.index + 1} of ${progress.total}: ${progress.pageName.charAt(0).toUpperCase() + progress.pageName.slice(1)}...`
+          setProgressMessage(msg)
+          onProgress?.(msg)
+        },
+        (progress) => {
+          const done = progress.index + 1
+          const msg = `Completed ${done} of ${progress.total} pages...`
+          setProgressMessage(msg)
+          onProgress?.(msg)
+        },
+      )
 
-      if (!html.trim()) {
+      // Validate we have at least one page with content
+      const hasContent = Object.values(site.pages).some((html) => html.trim())
+      if (!hasContent) {
         throw new Error("No HTML content was generated. Try a more specific prompt.")
       }
 
-      onGenerated?.(html, prompt.trim())
+      onGenerated?.(site, prompt.trim())
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong. Please try again."
       toast.error("Generation failed", { description: message })

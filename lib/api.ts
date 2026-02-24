@@ -163,6 +163,92 @@ export async function generateDiff(
   return res.json()
 }
 
+// ── Multi-Page Site Generation ──────────────────────────────────────
+
+export interface MultiPageSite {
+  pages: Record<string, string> // pageName -> html
+  pageOrder: string[] // preserve order
+}
+
+export interface PageProgress {
+  pageName: string
+  index: number
+  total: number
+}
+
+/**
+ * Generate a multi-page website.
+ * 1. Ask the LLM for a JSON array of page names.
+ * 2. Generate each page in parallel with consistent navigation.
+ * 3. Return all pages as a { pages, pageOrder } object.
+ */
+export async function generateMultiPageSite(
+  prompt: string,
+  onPageStart?: (progress: PageProgress) => void,
+  onPageDone?: (progress: PageProgress) => void,
+): Promise<MultiPageSite> {
+  // Step 1: Get the list of page names
+  const planPrompt =
+    `Based on this request, list ONLY the page names needed as a JSON array. ` +
+    `Example: ["index", "about", "pricing", "contact"]. Maximum 5 pages. ` +
+    `Return ONLY the JSON array, nothing else.\n\nRequest: ${prompt}`
+
+  const planResponse = await generateDiff(planPrompt)
+  const planText = planResponse.diff.trim()
+
+  // Parse JSON array from the response (may be wrapped in markdown code fences)
+  let pageNames: string[]
+  try {
+    const jsonMatch = planText.match(/\[[\s\S]*?\]/)
+    if (!jsonMatch) throw new Error("No JSON array found")
+    pageNames = JSON.parse(jsonMatch[0])
+    if (!Array.isArray(pageNames) || pageNames.length === 0) {
+      throw new Error("Empty array")
+    }
+  } catch {
+    // Fallback: single-page site
+    pageNames = ["index"]
+  }
+
+  // Cap at 5 pages
+  pageNames = pageNames.slice(0, 5).map((n) => n.toLowerCase().replace(/\s+/g, "-"))
+
+  // Ensure "index" is always first
+  if (!pageNames.includes("index")) {
+    pageNames.unshift("index")
+  }
+
+  const total = pageNames.length
+  const navLinks = pageNames.map((p) => `${p}.html`).join(", ")
+
+  // Step 2: Generate all pages in parallel
+  const pagePromises = pageNames.map(async (pageName, index) => {
+    onPageStart?.({ pageName, index, total })
+
+    const pagePrompt =
+      `Generate the ${pageName} page for: ${prompt}. ` +
+      `Use consistent navbar on every page with links to: ${navLinks}. ` +
+      `Use the same color scheme, fonts, and design system across all pages. ` +
+      `Current page (${pageName}.html) should be highlighted/active in the navbar. ` +
+      `Return ONLY the raw HTML.`
+
+    const response = await generateDiff(pagePrompt)
+    const html = extractHtmlFromDiff(response.diff)
+
+    onPageDone?.({ pageName, index, total })
+    return { pageName, html }
+  })
+
+  const results = await Promise.all(pagePromises)
+
+  const pages: Record<string, string> = {}
+  for (const { pageName, html } of results) {
+    pages[pageName] = html
+  }
+
+  return { pages, pageOrder: pageNames }
+}
+
 /**
  * Extract HTML content from either raw HTML or a unified diff string.
  * - If the response starts with "<!DOCTYPE" or "<html", treat it as raw HTML.
