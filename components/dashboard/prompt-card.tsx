@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { ArrowUp, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -24,12 +24,41 @@ export function PromptCard({ onGenerating, onGenerated, onError, loading: extern
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<TemplateCategory>(featuredCategories[0])
+  const [progressMessage, setProgressMessage] = useState("")
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startTimeRef = useRef<number>(0)
 
   const isLoading = loading || externalLoading
 
+  const getProgressMessage = useCallback((elapsedMs: number) => {
+    const seconds = elapsedMs / 1000
+    if (seconds < 5) return "Analyzing your prompt..."
+    if (seconds < 15) return "Generating your website..."
+    if (seconds < 25) return "Adding finishing touches..."
+    return "Almost there, polishing the design..."
+  }, [])
+
+  const startProgress = useCallback(() => {
+    startTimeRef.current = Date.now()
+    setProgressMessage(getProgressMessage(0))
+    progressTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current
+      setProgressMessage(getProgressMessage(elapsed))
+    }, 1000)
+  }, [getProgressMessage])
+
+  const stopProgress = useCallback(() => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current)
+      progressTimerRef.current = null
+    }
+    setProgressMessage("")
+  }, [])
+
   useEffect(() => {
     setMounted(true)
-  }, [])
+    return () => stopProgress()
+  }, [stopProgress])
 
   const tabTemplates = templates
     .filter((t) => t.category === activeTab)
@@ -39,6 +68,7 @@ export function PromptCard({ onGenerating, onGenerated, onError, loading: extern
     if (!prompt.trim() || isLoading) return
 
     setLoading(true)
+    startProgress()
     onGenerating?.()
 
     try {
@@ -55,6 +85,7 @@ export function PromptCard({ onGenerating, onGenerated, onError, loading: extern
       toast.error("Generation failed", { description: message })
       onError?.()
     } finally {
+      stopProgress()
       setLoading(false)
     }
   }
@@ -112,7 +143,7 @@ export function PromptCard({ onGenerating, onGenerated, onError, loading: extern
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm font-medium">Generating...</span>
+                  <span className="text-sm font-medium">{progressMessage || "Generating..."}</span>
                 </>
               ) : prompt.trim() ? (
                 <>
