@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, Check, FolderKanban, Clock, FileText, ArrowRight } from "lucide-react"
 import Link from "next/link"
@@ -29,6 +29,20 @@ function makeTimestamp() {
 }
 
 export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <AppShell>
+        <div className="flex flex-1 items-center justify-center min-h-0 h-full">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      </AppShell>
+    }>
+      <HomePageContent />
+    </Suspense>
+  )
+}
+
+function HomePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
