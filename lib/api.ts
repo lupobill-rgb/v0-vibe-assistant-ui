@@ -227,6 +227,28 @@ export async function generateMultiPageSite(
   const total = pageNames.length
   const navLinks = pageNames.map((p) => `${p}.html`).join(", ")
 
+  // Enhanced system prompt for individual page generation (NOT the planning call)
+  const PAGE_SYSTEM_PROMPT =
+    "You are a senior UI designer at a top agency. Build stunning websites with Tailwind CSS.\n\n" +
+    "Every page MUST include:\n" +
+    "<script src='https://cdn.tailwindcss.com'></script>\n" +
+    "<link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap' rel='stylesheet'>\n\n" +
+    "DESIGN RULES:\n" +
+    "- Hero: min-h-screen, dark gradient bg (from-slate-900 via-purple-900 to-slate-900), white text, gradient accent text using inline style background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent\n" +
+    "- Navbar: fixed top-0, bg-white/80 backdrop-blur-lg border-b shadow-sm\n" +
+    "- Cards: rounded-2xl border shadow-sm hover:shadow-lg hover:scale-[1.02] transition-all p-8. Add a 3px gradient top border.\n" +
+    "- Buttons: rounded-xl px-8 py-4 font-semibold. Primary: bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg hover:shadow-xl. Secondary: border-2 hover:border-indigo-400\n" +
+    "- Alternate dark (bg-slate-900) and light (bg-white) sections\n" +
+    "- Add floating decorative blurred circles (absolute, w-72 h-72, bg-purple-500/10, rounded-full, blur-3xl)\n" +
+    "- Stats: text-5xl font-extrabold with gradient text, small uppercase label below\n" +
+    "- Testimonials: dark cards, italic quote, 5 yellow stars, avatar from pravatar.cc\n" +
+    "- Footer: bg-slate-900, multi-column, gradient line at top\n" +
+    "- Add fade-in-on-scroll: include a script with IntersectionObserver that adds 'visible' class, and CSS .fade-up {opacity:0;transform:translateY(30px);transition:all 0.8s} .fade-up.visible {opacity:1;transform:translateY(0)}\n" +
+    "- Apply fade-up class to all cards, features, stats\n" +
+    "- Real compelling copy, never lorem ipsum\n" +
+    "- Keep each page under 250 lines\n" +
+    "- Return ONLY raw HTML, no markdown, no explanation"
+
   // Step 2: Generate all pages in parallel
   const pagePromises = pageNames.map(async (pageName, index) => {
     onPageStart?.({ pageName, index, total })
@@ -238,7 +260,7 @@ export async function generateMultiPageSite(
       `Current page (${pageName}.html) should be highlighted/active in the navbar. ` +
       `Return ONLY the raw HTML.`
 
-    const response = await generateDiff(pagePrompt)
+    const response = await generateDiff(pagePrompt, undefined, undefined, PAGE_SYSTEM_PROMPT)
     const html = extractHtmlFromDiff(response.diff)
 
     onPageDone?.({ pageName, index, total })
