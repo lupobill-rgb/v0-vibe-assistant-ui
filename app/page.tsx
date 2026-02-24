@@ -16,6 +16,7 @@ export default function HomePage() {
   const [generatedHtml, setGeneratedHtml] = useState<string>("")
   const [originalPrompt, setOriginalPrompt] = useState<string>("")
   const [isRefining, setIsRefining] = useState(false)
+  const [refinementHistory, setRefinementHistory] = useState<string[]>([])
 
   const handleGenerating = () => {
     setViewState("loading")
@@ -35,6 +36,7 @@ export default function HomePage() {
     setViewState("idle")
     setGeneratedHtml("")
     setOriginalPrompt("")
+    setRefinementHistory([])
   }
 
   const handleRegenerate = useCallback(async () => {
@@ -57,15 +59,23 @@ export default function HomePage() {
 
   const handleRefine = useCallback(
     async (refinement: string) => {
-      if (!originalPrompt || !generatedHtml) return
+      if (!generatedHtml) return
       setIsRefining(true)
       try {
-        const response = await generateDiff(originalPrompt, generatedHtml, refinement)
+        const refinementPrompt =
+          "Here is my current website HTML:\n\n" +
+          generatedHtml +
+          "\n\nPlease modify it with this change: " +
+          refinement +
+          "\n\nReturn the complete updated HTML file. Keep all existing sections and styling, only apply the requested change."
+
+        const response = await generateDiff(refinementPrompt)
         const html = extractHtmlFromDiff(response.diff)
         if (!html.trim()) {
           throw new Error("Refinement produced no HTML. Try different instructions.")
         }
         setGeneratedHtml(html)
+        setRefinementHistory((prev) => [...prev, refinement])
       } catch (err) {
         const message = err instanceof Error ? err.message : "Something went wrong."
         toast.error("Refinement failed", { description: message })
@@ -73,7 +83,7 @@ export default function HomePage() {
         setIsRefining(false)
       }
     },
-    [originalPrompt, generatedHtml],
+    [generatedHtml],
   )
 
   return (
@@ -133,6 +143,7 @@ export default function HomePage() {
               onRegenerate={handleRegenerate}
               onRefine={handleRefine}
               isRefining={isRefining}
+              refinementHistory={refinementHistory}
             />
           </div>
         )}
