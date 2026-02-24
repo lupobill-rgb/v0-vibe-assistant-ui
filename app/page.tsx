@@ -1,24 +1,29 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { Loader2 } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { HeroSection } from "@/components/dashboard/hero-section"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { PreviewPanel } from "@/components/dashboard/preview-panel"
+import { generateDiff, extractHtmlFromDiff } from "@/lib/api"
+import { toast } from "sonner"
 
 type ViewState = "idle" | "loading" | "preview"
 
 export default function HomePage() {
   const [viewState, setViewState] = useState<ViewState>("idle")
   const [generatedHtml, setGeneratedHtml] = useState<string>("")
+  const [originalPrompt, setOriginalPrompt] = useState<string>("")
+  const [isRefining, setIsRefining] = useState(false)
 
   const handleGenerating = () => {
     setViewState("loading")
   }
 
-  const handleGenerated = (html: string) => {
+  const handleGenerated = (html: string, prompt: string) => {
     setGeneratedHtml(html)
+    setOriginalPrompt(prompt)
     setViewState("preview")
   }
 
@@ -29,7 +34,47 @@ export default function HomePage() {
   const handleReset = () => {
     setViewState("idle")
     setGeneratedHtml("")
+    setOriginalPrompt("")
   }
+
+  const handleRegenerate = useCallback(async () => {
+    if (!originalPrompt) return
+    setViewState("loading")
+    try {
+      const response = await generateDiff(originalPrompt)
+      const html = extractHtmlFromDiff(response.diff)
+      if (!html.trim()) {
+        throw new Error("No HTML content was generated. Try a more specific prompt.")
+      }
+      setGeneratedHtml(html)
+      setViewState("preview")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong."
+      toast.error("Regeneration failed", { description: message })
+      setViewState("preview") // stay on preview so user doesn't lose current HTML
+    }
+  }, [originalPrompt])
+
+  const handleRefine = useCallback(
+    async (refinement: string) => {
+      if (!originalPrompt || !generatedHtml) return
+      setIsRefining(true)
+      try {
+        const response = await generateDiff(originalPrompt, generatedHtml, refinement)
+        const html = extractHtmlFromDiff(response.diff)
+        if (!html.trim()) {
+          throw new Error("Refinement produced no HTML. Try different instructions.")
+        }
+        setGeneratedHtml(html)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Something went wrong."
+        toast.error("Refinement failed", { description: message })
+      } finally {
+        setIsRefining(false)
+      }
+    },
+    [originalPrompt, generatedHtml],
+  )
 
   return (
     <AppShell>
@@ -71,7 +116,6 @@ export default function HomePage() {
                   Our AI is crafting your landing page. This usually takes 15-30 seconds.
                 </p>
               </div>
-              {/* Animated dots */}
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
                 <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -83,7 +127,13 @@ export default function HomePage() {
 
         {viewState === "preview" && generatedHtml && (
           <div className="flex-1 min-w-0">
-            <PreviewPanel html={generatedHtml} onReset={handleReset} />
+            <PreviewPanel
+              html={generatedHtml}
+              onReset={handleReset}
+              onRegenerate={handleRegenerate}
+              onRefine={handleRefine}
+              isRefining={isRefining}
+            />
           </div>
         )}
       </div>

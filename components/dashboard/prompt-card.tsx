@@ -13,7 +13,7 @@ const featuredCategories: TemplateCategory[] = ["saas", "startup", "portfolio", 
 
 interface PromptCardProps {
   onGenerating?: () => void
-  onGenerated?: (html: string) => void
+  onGenerated?: (html: string, prompt: string) => void
   onError?: () => void
   loading?: boolean
 }
@@ -49,7 +49,7 @@ export function PromptCard({ onGenerating, onGenerated, onError, loading: extern
         throw new Error("No HTML content was generated. Try a more specific prompt.")
       }
 
-      onGenerated?.(html)
+      onGenerated?.(html, prompt.trim())
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong. Please try again."
       toast.error("Generation failed", { description: message })
