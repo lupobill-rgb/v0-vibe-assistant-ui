@@ -97,7 +97,36 @@ export interface GenerateDiffResponse {
   usage: Record<string, unknown>
 }
 
-export async function generateDiff(prompt: string): Promise<GenerateDiffResponse> {
+const SYSTEM_PROMPT =
+  "You are a world-class web designer building production-ready websites. CRITICAL RULES: " +
+  "1) Use Google Fonts (Inter for body, Space Grotesk for headings) via <link> tag. " +
+  "2) Use CSS custom properties for a cohesive color scheme. " +
+  "3) Every section needs generous padding (80px+ vertical). " +
+  "4) Use subtle animations (CSS @keyframes for fade-in on scroll using IntersectionObserver in a <script> tag). " +
+  "5) Hero section must have a gradient or image background with overlay text. " +
+  "6) Buttons must have hover transforms (scale + shadow). " +
+  "7) Include at least 5 sections: hero, features/benefits, social proof/testimonials, pricing or CTA, footer. " +
+  "8) Use real compelling copy, never lorem ipsum. " +
+  "9) All images use picsum.photos or solid CSS gradients. " +
+  "10) Mobile responsive with @media queries. " +
+  "11) Add smooth scroll behavior. " +
+  "12) Inputs must have focus ring styles. " +
+  "Return a complete HTML file, not a diff. Just the raw HTML starting with <!DOCTYPE html>."
+
+export async function generateDiff(
+  prompt: string,
+  existingHtml?: string,
+  refinement?: string,
+): Promise<GenerateDiffResponse> {
+  let fullPrompt = prompt
+  if (existingHtml && refinement) {
+    fullPrompt =
+      `Original request: ${prompt}\n\n` +
+      `Current HTML:\n\`\`\`html\n${existingHtml}\n\`\`\`\n\n` +
+      `Refinement instructions: ${refinement}\n\n` +
+      `Apply the refinement to the current HTML and return the full updated HTML file starting with <!DOCTYPE html>.`
+  }
+
   const res = await fetch(GENERATE_DIFF_URL, {
     method: "POST",
     headers: {
@@ -105,10 +134,9 @@ export async function generateDiff(prompt: string): Promise<GenerateDiffResponse
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      prompt,
+      prompt: fullPrompt,
       model: "claude",
-      system:
-        "You are an expert web developer. Generate a COMPLETE, modern, beautiful HTML page. Always include: <!DOCTYPE html>, <html>, <head> with <meta viewport>, <title>, and a <style> tag with embedded CSS (use modern CSS with flexbox/grid, nice typography, gradients, shadows, rounded corners). Make it fully responsive and visually polished. Use a professional color scheme. Do NOT use Tailwind CDN or external stylesheets - embed all CSS inline in a <style> tag. Return ONLY a unified diff creating index.html with the complete file.",
+      system: SYSTEM_PROMPT,
     }),
   })
 
@@ -121,22 +149,37 @@ export async function generateDiff(prompt: string): Promise<GenerateDiffResponse
 }
 
 /**
- * Extract HTML content from a unified diff string.
- * Keeps lines starting with "+" (added lines) but not "+++" (file header).
- * Strips the leading "+" character from each line.
+ * Extract HTML content from either raw HTML or a unified diff string.
+ * - If the response starts with "<!DOCTYPE" or "<html", treat it as raw HTML.
+ * - If it starts with "diff --git", extract added lines from the diff.
  * Deduplicates content if the same HTML appears twice (a common LLM artifact).
  */
-export function extractHtmlFromDiff(diff: string): string {
-  const html = diff
+export function extractHtmlFromDiff(input: string): string {
+  const trimmed = input.trim()
+  const lower = trimmed.toLowerCase()
+
+  // Raw HTML mode: response is already a complete HTML file
+  if (lower.startsWith("<!doctype") || lower.startsWith("<html")) {
+    return deduplicateHtml(trimmed)
+  }
+
+  // Diff mode: extract added lines
+  const html = trimmed
     .split("\n")
     .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
     .map((line) => line.slice(1))
     .join("\n")
     .trim()
 
-  // Deduplicate: if the HTML contains itself repeated, keep only the first copy.
-  // We detect this by looking for a second <!DOCTYPE or <html tag after the first.
+  return deduplicateHtml(html)
+}
+
+/**
+ * If the HTML contains itself repeated, keep only the first copy.
+ */
+function deduplicateHtml(html: string): string {
   const lower = html.toLowerCase()
+
   const firstDoctype = lower.indexOf("<!doctype")
   const secondDoctype = lower.indexOf("<!doctype", firstDoctype + 1)
   if (secondDoctype !== -1) {
