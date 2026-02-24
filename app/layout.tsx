@@ -7,8 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'VIBE - AI Coding Assistant',
-  description: 'Build software faster with your AI coding assistant',
+  title: 'VIBE - AI Landing Page Builder',
+  description: 'Describe your landing page idea and let VIBE build it for you in minutes',
 }
 
 export const viewport: Viewport = {

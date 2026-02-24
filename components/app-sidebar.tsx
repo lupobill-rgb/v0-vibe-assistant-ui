@@ -16,6 +16,7 @@ import {
   CreditCard,
   HelpCircle,
   User,
+  LayoutTemplate,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,7 @@ import {
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
+  { icon: LayoutTemplate, label: "Templates", href: "/templates" },
   { icon: FolderKanban, label: "Projects", href: "/projects" },
   { icon: MessageSquare, label: "Chat", href: "/chat" },
   { icon: Settings, label: "Settings", href: "/settings" },

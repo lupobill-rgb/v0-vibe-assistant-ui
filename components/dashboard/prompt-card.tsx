@@ -1,24 +1,55 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon } from "lucide-react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { ArrowUp, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { createProject, createJob } from "@/lib/api"
+import { categories, templates, type TemplateCategory } from "@/lib/templates"
 
-const suggestions = [
-  { icon: Globe, label: "Build a landing page" },
-  { icon: Zap, label: "Create a REST API" },
-  { icon: Layers, label: "Design a dashboard" },
-  { icon: ImageIcon, label: "Generate a portfolio" },
-]
+// Show 2 featured templates per category on the homepage
+const featuredCategories: TemplateCategory[] = ["saas", "startup", "portfolio", "ecommerce"]
 
 export function PromptCard() {
+  const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<TemplateCategory>(featuredCategories[0])
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  const tabTemplates = templates
+    .filter((t) => t.category === activeTab)
+    .slice(0, 3)
+
+  async function handleSubmit() {
+    if (!prompt.trim() || loading) return
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const project = await createProject(`landing-${Date.now()}`)
+      const job = await createJob(prompt.trim(), project.id)
+      router.push(`/building/${job.task_id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
+      setLoading(false)
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
 
   return (
     <div className="px-6 -mt-8 relative z-10">
@@ -37,52 +68,106 @@ export function PromptCard() {
                 onChange={(e) => setPrompt(e.target.value)}
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
-                placeholder="Describe what you want to build..."
+                onKeyDown={handleKeyDown}
+                placeholder="Describe your landing page idea..."
                 rows={3}
-                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed"
+                disabled={loading}
+                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed disabled:opacity-50"
               />
             )}
           </div>
 
+          {/* Error */}
+          {error && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive-foreground text-xs">
+              {error}
+            </div>
+          )}
+
           {/* Bottom Controls */}
           <div className="flex items-center justify-between pt-3 border-t border-border/50 mt-2">
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                <Paperclip className="w-3.5 h-3.5" />
-                Attach
-              </button>
-              <div className="w-px h-4 bg-border" />
               <span className="text-[10px] text-muted-foreground font-mono">
-                {prompt.length > 0 ? `${prompt.length} chars` : "GPT-4o"}
+                {prompt.length > 0 ? `${prompt.length} chars` : "Cmd+Enter to submit"}
               </span>
             </div>
             <button
-              disabled={!prompt.trim()}
+              onClick={handleSubmit}
+              disabled={!prompt.trim() || loading}
               className={cn(
-                "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200",
-                prompt.trim()
-                  ? "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shadow-lg shadow-[#A855F7]/20 hover:opacity-90"
-                  : "bg-secondary text-muted-foreground"
+                "flex items-center justify-center gap-2 h-9 rounded-xl transition-all duration-200",
+                prompt.trim() && !loading
+                  ? "bg-primary text-primary-foreground px-4 shadow-lg shadow-primary/20 hover:opacity-90"
+                  : "bg-secondary text-muted-foreground w-9"
               )}
             >
-              <ArrowUp className="w-4 h-4" />
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm font-medium">Building...</span>
+                </>
+              ) : prompt.trim() ? (
+                <>
+                  <ArrowUp className="w-4 h-4" />
+                  <span className="text-sm font-medium">Build Landing Page</span>
+                </>
+              ) : (
+                <ArrowUp className="w-4 h-4" />
+              )}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Suggestion Chips */}
-      <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-        {suggestions.map((s) => (
-          <button
-            key={s.label}
-            onClick={() => setPrompt(s.label)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200"
+      {/* Template Suggestions */}
+      <div className="mt-6">
+        {/* Category Tabs */}
+        <div className="flex items-center justify-center gap-2 mb-3">
+          {featuredCategories.map((catId) => {
+            const cat = categories.find((c) => c.id === catId)
+            if (!cat) return null
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveTab(cat.id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+                  activeTab === cat.id
+                    ? "bg-primary/15 text-primary border border-primary/30"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 border border-transparent"
+                )}
+              >
+                <cat.icon className="w-3 h-3" />
+                {cat.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Template Chips */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {tabTemplates.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setPrompt(t.prompt)}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none max-w-xs text-left"
+            >
+              <span className="truncate">{t.name}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Browse all link */}
+        <div className="flex justify-center mt-3">
+          <Link
+            href="/templates"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
           >
-            <s.icon className="w-3.5 h-3.5" />
-            {s.label}
-          </button>
-        ))}
+            Browse all templates
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
       </div>
     </div>
   )

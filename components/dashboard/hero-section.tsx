@@ -28,7 +28,7 @@ export function HeroSection() {
           What do you want to build?
         </h1>
         <p className="text-white/70 text-base md:text-lg max-w-lg mx-auto leading-relaxed">
-          Describe your idea and let VIBE turn it into a working application in minutes.
+          Describe your landing page idea and let VIBE turn it into a live site in minutes.
         </p>
       </div>
     </div>
