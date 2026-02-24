@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
 import { hashPassword, verifyPassword, generateToken, TOKEN_EXPIRY_MS, optionalAuth, requireTenantHeader, AuthRequest } from './auth';
+import { generateDiff } from './edge-function';
 import path from 'path';
 import fs from 'fs';
 import { execSync, execFileSync } from 'child_process';
@@ -457,17 +458,47 @@ app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
       llm_model: resolvedModel,
     });
 
-    if (repo_url) {
-      storage.logEvent(taskId, 'Task created (legacy Mode B with repo_url)', 'warning');
-    } else {
-      storage.logEvent(taskId, 'Task created and queued for execution', 'info');
-    }
+    storage.logEvent(taskId, 'Task created — calling Edge Function for diff generation', 'info');
 
+    // Return immediately so the frontend gets the task_id
     res.status(201).json({
       task_id: taskId,
       status: 'queued',
       message: 'Task created successfully'
     });
+
+    // Process the job asynchronously via the Supabase Edge Function
+    (async () => {
+      const jobStart = Date.now();
+      try {
+        storage.updateTaskState(taskId, 'calling_llm');
+        storage.logEvent(taskId, `Calling Edge Function (model=${resolvedModel})`, 'info');
+
+        const result = await generateDiff(prompt, undefined, resolvedModel);
+
+        // Store the generated diff
+        storage.setTaskDiff(taskId, result.diff);
+        storage.logEvent(taskId, `Diff generated (${result.usage.total_tokens} tokens)`, 'info');
+
+        // Record usage metrics
+        storage.updateTaskUsageMetrics(taskId, {
+          llm_prompt_tokens: result.usage.input_tokens,
+          llm_completion_tokens: result.usage.output_tokens,
+          llm_total_tokens: result.usage.total_tokens,
+          total_job_seconds: Math.round((Date.now() - jobStart) / 1000),
+        });
+
+        storage.updateTaskState(taskId, 'completed');
+        storage.logEvent(taskId, 'Job completed successfully', 'success');
+      } catch (err: any) {
+        console.error(`[Job ${taskId}] Edge Function error:`, err);
+        storage.logEvent(taskId, `Edge Function error: ${err.message}`, 'error');
+        storage.updateTaskUsageMetrics(taskId, {
+          total_job_seconds: Math.round((Date.now() - jobStart) / 1000),
+        });
+        storage.updateTaskState(taskId, 'failed');
+      }
+    })();
   } catch (error) {
     console.error('Error creating task:', error);
     res.status(500).json({ error: 'Failed to create task' });
