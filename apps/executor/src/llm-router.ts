@@ -1,21 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
 import { storage } from './storage';
 
-const SYSTEM_PROMPT = `You are a code modification assistant. You MUST output ONLY a unified diff or the token NO_CHANGES.
-
-STRICT OUTPUT REQUIREMENTS:
-- NO prose, explanations, markdown formatting, or code blocks are allowed
-- Output must start with "diff --git" (for diffs) OR be exactly "NO_CHANGES"
-- Every diff block MUST have "---" and "+++" headers
-- Every diff block MUST have "@@ ... @@" hunk markers
-- The diff must be directly applicable with 'git apply'
-
-ALLOWED OUTPUTS:
-1. A valid unified diff starting with "diff --git a/... b/..."
-2. The single token "NO_CHANGES"
-
-ANY OTHER OUTPUT WILL BE REJECTED.`;
+const EDGE_FUNCTION_URL =
+  process.env.SUPABASE_EDGE_FUNCTION_URL ||
+  'https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/generate-diff';
 
 export interface RouterDiffResult {
   diff: string;
@@ -34,64 +21,54 @@ export async function generateDiff(
 ): Promise<RouterDiffResult> {
   const startTime = Date.now();
 
-  let userMessage = `${context}\n\n---\n\nUSER REQUEST: ${prompt}\n\nGenerate a unified diff to implement this request. Output ONLY the diff, nothing else.`;
+  // Build the full prompt, appending previous error context when retrying
+  let fullPrompt = prompt;
   if (previousError) {
-    userMessage += `\n\n---\n\n${previousError}`;
+    fullPrompt += `\n\n---\n\nPREVIOUS ERROR (please fix and regenerate the diff):\n${previousError}`;
   }
 
-  let text: string;
-  let usage: { input_tokens: number; output_tokens: number; total_tokens: number };
-  let modelName: string;
+  // Map executor model names to edge function model names
+  const edgeModel: 'claude' | 'openai' = options.model === 'gpt' ? 'openai' : 'claude';
 
-  if (options.model === 'claude') {
-    modelName = 'claude-sonnet-4-5-20250929';
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
-    }
-    const client = new Anthropic({ apiKey });
-    const response = await client.messages.create({
-      model: modelName,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    });
-    text = response.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { type: 'text'; text: string }).text)
-      .join('');
-    usage = {
-      input_tokens: response.usage.input_tokens,
-      output_tokens: response.usage.output_tokens,
-      total_tokens: response.usage.input_tokens + response.usage.output_tokens,
-    };
-  } else {
-    modelName = 'gpt-4-turbo-preview';
-    const client = new OpenAI();
-    const response = await client.chat.completions.create({
-      model: modelName,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-      temperature: 0,
-      max_tokens: 4096,
-    });
-    text = response.choices[0]?.message?.content || '';
-    const u = response.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-    usage = {
-      input_tokens: u.prompt_tokens,
-      output_tokens: u.completion_tokens,
-      total_tokens: u.total_tokens,
-    };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  const anonKey = process.env.SUPABASE_ANON_KEY;
+  if (anonKey) {
+    headers['Authorization'] = `Bearer ${anonKey}`;
+    headers['apikey'] = anonKey;
   }
+
+  const response = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      prompt: fullPrompt,
+      context,
+      model: edgeModel,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(
+      `Edge function error (HTTP ${response.status}): ${errorBody}`
+    );
+  }
+
+  const result = (await response.json()) as {
+    diff: string;
+    usage: { input_tokens: number; output_tokens: number; total_tokens: number };
+  };
 
   const latencyMs = Date.now() - startTime;
+  const modelLabel = options.model === 'claude' ? 'claude (via edge fn)' : 'gpt (via edge fn)';
   storage.logEvent(
     options.taskId,
-    `LLM call complete: model=${modelName} input_tokens=${usage.input_tokens} output_tokens=${usage.output_tokens} latency=${latencyMs}ms`,
+    `LLM call complete: model=${modelLabel} input_tokens=${result.usage.input_tokens} output_tokens=${result.usage.output_tokens} latency=${latencyMs}ms`,
     'info'
   );
 
-  return { diff: text.trim(), usage };
+  return { diff: result.diff, usage: result.usage };
 }
