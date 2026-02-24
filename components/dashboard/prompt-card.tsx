@@ -17,9 +17,11 @@ interface PromptCardProps {
   onError?: () => void
   onProgress?: (message: string) => void
   loading?: boolean
+  prefillPrompt?: string
+  onPrefillConsumed?: () => void
 }
 
-export function PromptCard({ onGenerating, onGenerated, onError, onProgress, loading: externalLoading }: PromptCardProps) {
+export function PromptCard({ onGenerating, onGenerated, onError, onProgress, loading: externalLoading, prefillPrompt, onPrefillConsumed }: PromptCardProps) {
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -42,6 +44,14 @@ export function PromptCard({ onGenerating, onGenerated, onError, onProgress, loa
     setMounted(true)
     return () => stopProgress()
   }, [stopProgress])
+
+  // Handle prefill from chat assistant
+  useEffect(() => {
+    if (prefillPrompt) {
+      setPrompt(prefillPrompt)
+      onPrefillConsumed?.()
+    }
+  }, [prefillPrompt, onPrefillConsumed])
 
   const tabTemplates = templates
     .filter((t) => t.category === activeTab)

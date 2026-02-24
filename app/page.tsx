@@ -61,6 +61,7 @@ function HomePageContent() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [recentProjects, setRecentProjects] = useState<SavedProject[]>([])
   const [isEditingName, setIsEditingName] = useState(false)
+  const [prefillPrompt, setPrefillPrompt] = useState<string | undefined>(undefined)
 
   // Load recent projects on mount
   useEffect(() => {
@@ -88,7 +89,15 @@ function HomePageContent() {
         ])
       }
     }
-  }, [searchParams])
+
+    // Handle prefill from chat assistant "Use as prompt" button
+    const prefill = searchParams.get("prefill")
+    if (prefill) {
+      setPrefillPrompt(decodeURIComponent(prefill))
+      // Clean up the URL
+      router.replace("/", { scroll: false })
+    }
+  }, [searchParams, router])
 
   // Auto-save helper
   const autoSave = useCallback(
@@ -328,6 +337,8 @@ function HomePageContent() {
                 onError={handleError}
                 onProgress={handleBuildProgress}
                 loading={false}
+                prefillPrompt={prefillPrompt}
+                onPrefillConsumed={() => setPrefillPrompt(undefined)}
               />
 
               {/* Recent Projects Section */}
