@@ -1,24 +1,31 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowUp, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject, createJob } from "@/lib/api"
+import { generateDiff, extractHtmlFromDiff } from "@/lib/api"
 import { categories, templates, type TemplateCategory } from "@/lib/templates"
+import { toast } from "sonner"
 
 // Show 2 featured templates per category on the homepage
 const featuredCategories: TemplateCategory[] = ["saas", "startup", "portfolio", "ecommerce"]
 
-export function PromptCard() {
-  const router = useRouter()
+interface PromptCardProps {
+  onGenerating?: () => void
+  onGenerated?: (html: string) => void
+  onError?: () => void
+  loading?: boolean
+}
+
+export function PromptCard({ onGenerating, onGenerated, onError, loading: externalLoading }: PromptCardProps) {
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TemplateCategory>(featuredCategories[0])
+
+  const isLoading = loading || externalLoading
 
   useEffect(() => {
     setMounted(true)
@@ -29,17 +36,25 @@ export function PromptCard() {
     .slice(0, 3)
 
   async function handleSubmit() {
-    if (!prompt.trim() || loading) return
+    if (!prompt.trim() || isLoading) return
 
     setLoading(true)
-    setError(null)
+    onGenerating?.()
 
     try {
-      const project = await createProject(`landing-${Date.now()}`)
-      const job = await createJob(prompt.trim(), project.id)
-      router.push(`/building/${job.task_id}`)
+      const response = await generateDiff(prompt.trim())
+      const html = extractHtmlFromDiff(response.diff)
+
+      if (!html.trim()) {
+        throw new Error("No HTML content was generated. Try a more specific prompt.")
+      }
+
+      onGenerated?.(html)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
+      const message = err instanceof Error ? err.message : "Something went wrong. Please try again."
+      toast.error("Generation failed", { description: message })
+      onError?.()
+    } finally {
       setLoading(false)
     }
   }
@@ -47,7 +62,7 @@ export function PromptCard() {
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
-      handleSubmit()
+      if (!isLoading) handleSubmit()
     }
   }
 
@@ -71,18 +86,11 @@ export function PromptCard() {
                 onKeyDown={handleKeyDown}
                 placeholder="Describe your landing page idea..."
                 rows={3}
-                disabled={loading}
+                disabled={isLoading}
                 className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed disabled:opacity-50"
               />
             )}
           </div>
-
-          {/* Error */}
-          {error && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive-foreground text-xs">
-              {error}
-            </div>
-          )}
 
           {/* Bottom Controls */}
           <div className="flex items-center justify-between pt-3 border-t border-border/50 mt-2">
@@ -93,23 +101,23 @@ export function PromptCard() {
             </div>
             <button
               onClick={handleSubmit}
-              disabled={!prompt.trim() || loading}
+              disabled={!prompt.trim() || isLoading}
               className={cn(
                 "flex items-center justify-center gap-2 h-9 rounded-xl transition-all duration-200",
-                prompt.trim() && !loading
+                prompt.trim() && !isLoading
                   ? "bg-primary text-primary-foreground px-4 shadow-lg shadow-primary/20 hover:opacity-90"
                   : "bg-secondary text-muted-foreground w-9"
               )}
             >
-              {loading ? (
+              {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm font-medium">Building...</span>
+                  <span className="text-sm font-medium">Generating...</span>
                 </>
               ) : prompt.trim() ? (
                 <>
                   <ArrowUp className="w-4 h-4" />
-                  <span className="text-sm font-medium">Build Landing Page</span>
+                  <span className="text-sm font-medium">Start Building</span>
                 </>
               ) : (
                 <ArrowUp className="w-4 h-4" />
@@ -150,7 +158,7 @@ export function PromptCard() {
             <button
               key={t.id}
               onClick={() => setPrompt(t.prompt)}
-              disabled={loading}
+              disabled={isLoading}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none max-w-xs text-left"
             >
               <span className="truncate">{t.name}</span>
