@@ -117,6 +117,7 @@ export async function generateDiff(
   prompt: string,
   existingHtml?: string,
   refinement?: string,
+  systemOverride?: string,
 ): Promise<GenerateDiffResponse> {
   let fullPrompt = prompt
   if (existingHtml && refinement) {
@@ -141,7 +142,7 @@ export async function generateDiff(
       body: JSON.stringify({
         prompt: fullPrompt,
         model: "claude",
-        system: SYSTEM_PROMPT,
+        system: systemOverride || SYSTEM_PROMPT,
       }),
       signal: controller.signal,
     })
@@ -193,7 +194,12 @@ export async function generateMultiPageSite(
     `Example: ["index", "about", "pricing", "contact"]. Maximum 5 pages. ` +
     `Return ONLY the JSON array, nothing else.\n\nRequest: ${prompt}`
 
-  const planResponse = await generateDiff(planPrompt)
+  const planSystemPrompt =
+    "You are a helpful assistant. Return ONLY a JSON array of page names needed for this website. " +
+    'Example: ["index", "pricing", "about", "contact"]. Maximum 5 pages. ' +
+    "Return ONLY the raw JSON array, no explanation, no markdown."
+
+  const planResponse = await generateDiff(planPrompt, undefined, undefined, planSystemPrompt)
   const planText = planResponse.diff.trim()
 
   // Parse JSON array from the response (may be wrapped in markdown code fences)
