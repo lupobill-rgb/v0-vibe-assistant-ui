@@ -10,6 +10,8 @@ import {
   Smartphone,
   Send,
   Loader2,
+  History,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -28,6 +30,7 @@ interface PreviewPanelProps {
   onRegenerate?: () => void
   onRefine?: (refinement: string) => void
   isRefining?: boolean
+  refinementHistory?: string[]
 }
 
 export function PreviewPanel({
@@ -36,6 +39,7 @@ export function PreviewPanel({
   onRegenerate,
   onRefine,
   isRefining = false,
+  refinementHistory = [],
 }: PreviewPanelProps) {
   const [viewport, setViewport] = useState<Viewport>("desktop")
   const [refinement, setRefinement] = useState("")
@@ -149,6 +153,29 @@ export function PreviewPanel({
         />
       </div>
 
+      {/* Refinement history */}
+      {refinementHistory.length > 0 && (
+        <div className="px-4 pt-3 pb-1 border-t border-border flex-shrink-0">
+          <div className="flex items-center gap-1.5 mb-2">
+            <History className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">
+              Refinements ({refinementHistory.length})
+            </span>
+          </div>
+          <div className="flex flex-col gap-1.5 max-h-28 overflow-y-auto">
+            {refinementHistory.map((item, index) => (
+              <div
+                key={index}
+                className="flex items-start gap-2 text-xs text-muted-foreground"
+              >
+                <Check className="w-3 h-3 mt-0.5 text-primary flex-shrink-0" />
+                <span className="leading-relaxed">{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Refinement input */}
       <div className="px-4 py-3 border-t border-border flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -157,7 +184,7 @@ export function PreviewPanel({
             value={refinement}
             onChange={(e) => setRefinement(e.target.value)}
             onKeyDown={handleRefineKeyDown}
-            placeholder="Refine your design..."
+            placeholder={isRefining ? "Applying refinement..." : "Refine your design..."}
             disabled={isRefining}
             className="flex-1 h-9 px-3 rounded-lg bg-secondary/60 border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors disabled:opacity-50"
           />
@@ -183,7 +210,11 @@ export function PreviewPanel({
       {/* Footer with download */}
       <div className="flex items-center justify-between px-4 h-12 border-t border-border flex-shrink-0">
         <span className="text-xs text-muted-foreground">
-          {isRefining ? "Applying refinement..." : "Generated HTML ready"}
+          {isRefining
+            ? "Applying refinement..."
+            : refinementHistory.length > 0
+              ? `${refinementHistory.length} refinement${refinementHistory.length === 1 ? "" : "s"} applied`
+              : "Generated HTML ready"}
         </span>
         <div className="flex items-center gap-2">
           <Button
