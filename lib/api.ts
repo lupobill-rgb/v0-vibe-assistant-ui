@@ -104,7 +104,12 @@ export async function generateDiff(prompt: string): Promise<GenerateDiffResponse
       Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt, model: "claude" }),
+    body: JSON.stringify({
+      prompt,
+      model: "claude",
+      system:
+        "You are an expert web developer. Generate a COMPLETE, modern, beautiful HTML page. Always include: <!DOCTYPE html>, <html>, <head> with <meta viewport>, <title>, and a <style> tag with embedded CSS (use modern CSS with flexbox/grid, nice typography, gradients, shadows, rounded corners). Make it fully responsive and visually polished. Use a professional color scheme. Do NOT use Tailwind CDN or external stylesheets - embed all CSS inline in a <style> tag. Return ONLY a unified diff creating index.html with the complete file.",
+    }),
   })
 
   if (!res.ok) {
@@ -119,11 +124,30 @@ export async function generateDiff(prompt: string): Promise<GenerateDiffResponse
  * Extract HTML content from a unified diff string.
  * Keeps lines starting with "+" (added lines) but not "+++" (file header).
  * Strips the leading "+" character from each line.
+ * Deduplicates content if the same HTML appears twice (a common LLM artifact).
  */
 export function extractHtmlFromDiff(diff: string): string {
-  return diff
+  const html = diff
     .split("\n")
     .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
     .map((line) => line.slice(1))
     .join("\n")
+    .trim()
+
+  // Deduplicate: if the HTML contains itself repeated, keep only the first copy.
+  // We detect this by looking for a second <!DOCTYPE or <html tag after the first.
+  const lower = html.toLowerCase()
+  const firstDoctype = lower.indexOf("<!doctype")
+  const secondDoctype = lower.indexOf("<!doctype", firstDoctype + 1)
+  if (secondDoctype !== -1) {
+    return html.slice(0, secondDoctype).trim()
+  }
+
+  const firstHtml = lower.indexOf("<html")
+  const secondHtml = lower.indexOf("<html", firstHtml + 1)
+  if (secondHtml !== -1) {
+    return html.slice(0, secondHtml).trim()
+  }
+
+  return html
 }

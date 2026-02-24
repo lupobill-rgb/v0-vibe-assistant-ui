@@ -77,7 +77,7 @@ export function PreviewPanel({ html, onReset }: PreviewPanelProps) {
           srcDoc={srcDoc}
           className="absolute inset-0 w-full h-full border-0 bg-foreground/5"
           title="Generated website preview"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts"
         />
       </div>
 
