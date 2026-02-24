@@ -528,41 +528,46 @@ app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
       message: 'Task created successfully'
     });
 
-    // Process the job asynchronously via the Supabase Edge Function
+    // Fire-and-forget: process the job asynchronously
     (async () => {
-      const jobStart = Date.now();
       try {
         storage.updateTaskState(taskId, 'calling_llm');
-        storage.logEvent(taskId, `Calling Edge Function (model=${resolvedModel})`, 'info');
+        storage.logEvent(taskId, 'Calling Edge Function...', 'info');
 
-        const result = await generateDiff(prompt, undefined, resolvedModel);
+        const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
+        const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-        // Store the generated diff
-        storage.setTaskDiff(taskId, result.diff);
-        storage.logEvent(taskId, `Diff generated (${result.usage.total_tokens} tokens)`, 'info');
+        if (!supabaseKey) {
+          throw new Error('SUPABASE_ANON_KEY not configured');
+        }
 
-        // Record usage metrics
-        storage.updateTaskUsageMetrics(taskId, {
-          llm_prompt_tokens: result.usage.input_tokens,
-          llm_completion_tokens: result.usage.output_tokens,
-          llm_total_tokens: result.usage.total_tokens,
-          total_job_seconds: Math.round((Date.now() - jobStart) / 1000),
+        const response = await fetch(`${supabaseUrl}/functions/v1/generate-diff`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt,
+            model: resolvedModel,
+          }),
         });
 
-        // Generate HTML preview from the diff
-        const previewUrl = generateHtmlPreviewFromDiff(taskId, result.diff);
-        storage.setPreviewUrl(taskId, previewUrl);
-        storage.logEvent(taskId, `Preview generated at ${previewUrl}`, 'info');
+        const data = await response.json();
 
+        if (!response.ok) {
+          throw new Error(data.error || 'Edge Function call failed');
+        }
+
+        storage.setTaskDiff(taskId, data.diff);
+        storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
         storage.updateTaskState(taskId, 'completed');
-        storage.logEvent(taskId, 'Job completed successfully', 'success');
+        storage.logEvent(taskId, 'Job completed successfully', 'info');
+
       } catch (err: any) {
-        console.error(`[Job ${taskId}] Edge Function error:`, err);
-        storage.logEvent(taskId, `Edge Function error: ${err.message}`, 'error');
-        storage.updateTaskUsageMetrics(taskId, {
-          total_job_seconds: Math.round((Date.now() - jobStart) / 1000),
-        });
+        console.error(`Job ${taskId} failed:`, err.message);
         storage.updateTaskState(taskId, 'failed');
+        storage.logEvent(taskId, `Job failed: ${err.message}`, 'error');
       }
     })();
   } catch (error) {
