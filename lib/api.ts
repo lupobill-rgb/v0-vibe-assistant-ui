@@ -127,18 +127,33 @@ export async function generateDiff(
       `Apply the refinement to the current HTML and return the full updated HTML file starting with <!DOCTYPE html>.`
   }
 
-  const res = await fetch(GENERATE_DIFF_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      prompt: fullPrompt,
-      model: "claude",
-      system: SYSTEM_PROMPT,
-    }),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+
+  let res: Response
+  try {
+    res = await fetch(GENERATE_DIFF_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt: fullPrompt,
+        model: "claude",
+        system: SYSTEM_PROMPT,
+      }),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    clearTimeout(timeout)
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Generation took too long. Try a simpler prompt.")
+    }
+    throw err
+  }
+
+  clearTimeout(timeout)
 
   if (!res.ok) {
     const text = await res.text()
