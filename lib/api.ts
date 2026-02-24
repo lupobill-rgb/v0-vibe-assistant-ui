@@ -113,19 +113,47 @@ const SYSTEM_PROMPT =
   "12) Inputs must have focus ring styles. " +
   "Return a complete HTML file, not a diff. Just the raw HTML starting with <!DOCTYPE html>."
 
-export async function generateDiff(prompt: string): Promise<GenerateDiffResponse> {
-  const res = await fetch(GENERATE_DIFF_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      prompt,
-      model: "claude",
-      system: SYSTEM_PROMPT,
-    }),
-  })
+export async function generateDiff(
+  prompt: string,
+  existingHtml?: string,
+  refinement?: string,
+): Promise<GenerateDiffResponse> {
+  let fullPrompt = prompt
+  if (existingHtml && refinement) {
+    fullPrompt =
+      `Original request: ${prompt}\n\n` +
+      `Current HTML:\n\`\`\`html\n${existingHtml}\n\`\`\`\n\n` +
+      `Refinement instructions: ${refinement}\n\n` +
+      `Apply the refinement to the current HTML and return the full updated HTML file starting with <!DOCTYPE html>.`
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+
+  let res: Response
+  try {
+    res = await fetch(GENERATE_DIFF_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${GENERATE_DIFF_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt: fullPrompt,
+        model: "claude",
+        system: SYSTEM_PROMPT,
+      }),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    clearTimeout(timeout)
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Generation took too long. Try a simpler prompt.")
+    }
+    throw err
+  }
+
+  clearTimeout(timeout)
 
   if (!res.ok) {
     const text = await res.text()
