@@ -1,7 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ProjectContext } from './context';
 
-const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env
+const apiKey = process.env.ANTHROPIC_API_KEY;
+if (!apiKey) {
+  throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+}
+const client = new Anthropic({ apiKey });
 
 const SYSTEM_PROMPT = `You are a code modification engine.
 Given a user prompt and repository context, output ONLY a valid unified diff (git diff format).

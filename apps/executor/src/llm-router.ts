@@ -45,7 +45,11 @@ export async function generateDiff(
 
   if (options.model === 'claude') {
     modelName = 'claude-sonnet-4-5-20250929';
-    const client = new Anthropic();
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+    }
+    const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
       model: modelName,
       max_tokens: 4096,
