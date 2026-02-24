@@ -54,6 +54,11 @@ export function PromptCard({ onGenerating, onGenerated, onError, onProgress, loa
     setProgressMessage("Planning pages...")
     onGenerating?.()
 
+    // Emit a planning progress message after a short delay
+    setTimeout(() => {
+      onProgress?.("Planning site structure...")
+    }, 2000)
+
     try {
       const site = await generateMultiPageSite(
         prompt.trim(),
