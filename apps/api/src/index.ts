@@ -560,6 +560,17 @@ app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
         }
 
         storage.setTaskDiff(taskId, data.diff);
+
+        // Extract HTML content from diff and save as preview
+        const lines = data.diff.split('\n');
+        const htmlLines = lines.filter((l: string) => l.startsWith('+')).map((l: string) => l.substring(1)).filter((l: string) => !l.startsWith('++'));
+        const html = htmlLines.join('\n');
+        const previewDir = path.join('/data/previews', taskId);
+        fs.mkdirSync(previewDir, { recursive: true });
+        fs.writeFileSync(path.join(previewDir, 'index.html'), html);
+        storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
+        storage.logEvent(taskId, 'Preview generated', 'info');
+
         storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
         storage.updateTaskState(taskId, 'completed');
         storage.logEvent(taskId, 'Job completed successfully', 'info');
