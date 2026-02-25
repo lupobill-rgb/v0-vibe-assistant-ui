@@ -217,3 +217,11 @@ function ChatContent() {
     </AppShell>
   )
 }
+
+export default function ChatPage() {
+  return (
+    <Suspense>
+      <ChatContent />
+    </Suspense>
+  )
+}

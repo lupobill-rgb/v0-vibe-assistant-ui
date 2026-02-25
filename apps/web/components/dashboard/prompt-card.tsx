@@ -18,7 +18,7 @@ const suggestions = [
   { icon: ImageIcon, label: "Generate a portfolio" },
 ]
 
-export function PromptCard() {
+export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
