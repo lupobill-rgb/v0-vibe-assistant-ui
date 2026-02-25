@@ -278,29 +278,74 @@ export async function generateMultiPageSite(
 }
 
 /**
- * Extract HTML content from either raw HTML or a unified diff string.
- * - If the response starts with "<!DOCTYPE" or "<html", treat it as raw HTML.
- * - If it starts with "diff --git", extract added lines from the diff.
- * Deduplicates content if the same HTML appears twice (a common LLM artifact).
+ * Extract HTML content from a variety of LLM response formats.
+ *
+ * Tried in order (first match wins):
+ * 1. Raw HTML – response starts with <!DOCTYPE or <html
+ * 2. Markdown fenced code block – ```html … ``` or ``` … ```
+ * 3. Text before the HTML – find first <!DOCTYPE or <html occurrence
+ * 4. Unified diff with + prefixed lines
+ *
+ * After extraction the result is trimmed and deduplicated.
  */
 export function extractHtmlFromDiff(input: string): string {
   const trimmed = input.trim()
   const lower = trimmed.toLowerCase()
 
-  // Raw HTML mode: response is already a complete HTML file
+  // Debug: log the first 200 chars of the raw response so we can inspect in the browser console
+  console.log(
+    "[v0] extractHtmlFromDiff raw input (first 200 chars):",
+    trimmed.slice(0, 200),
+  )
+
+  // 1. Raw HTML – response starts directly with the HTML document
   if (lower.startsWith("<!doctype") || lower.startsWith("<html")) {
     return deduplicateHtml(trimmed)
   }
 
-  // Diff mode: extract added lines
-  const html = trimmed
-    .split("\n")
+  // 2. Markdown fenced code block – ```html\n…\n``` or ```\n…\n```
+  const codeBlockMatch = trimmed.match(/```(?:html)?\s*\n([\s\S]*?)```/)
+  if (codeBlockMatch) {
+    const inner = codeBlockMatch[1].trim()
+    const innerLower = inner.toLowerCase()
+    if (innerLower.startsWith("<!doctype") || innerLower.startsWith("<html")) {
+      return deduplicateHtml(inner)
+    }
+  }
+
+  // 3. Text before HTML – find the first <!DOCTYPE or <html tag anywhere in the response
+  const doctypeIdx = lower.indexOf("<!doctype")
+  const htmlTagIdx = lower.indexOf("<html")
+  const startIdx =
+    doctypeIdx !== -1 && htmlTagIdx !== -1
+      ? Math.min(doctypeIdx, htmlTagIdx)
+      : doctypeIdx !== -1
+        ? doctypeIdx
+        : htmlTagIdx
+
+  if (startIdx !== -1) {
+    return deduplicateHtml(trimmed.slice(startIdx).trim())
+  }
+
+  // 4. Unified diff mode – extract added lines (lines starting with + but not +++)
+  const diffLines = trimmed.split("\n")
+  const addedLines = diffLines
     .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
     .map((line) => line.slice(1))
-    .join("\n")
-    .trim()
 
-  return deduplicateHtml(html)
+  if (addedLines.length > 0) {
+    const joined = addedLines.join("\n").trim()
+    if (joined.length > 0) {
+      return deduplicateHtml(joined)
+    }
+  }
+
+  // 5. Nothing worked – return the trimmed input as-is so the caller can decide
+  console.warn(
+    "[v0] extractHtmlFromDiff: could not detect HTML in response. Full input:",
+    trimmed.slice(0, 500),
+  )
+  return trimmed
 }
 
 /**
