@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import path from 'path';
+import fs from 'fs';
 import { ProjectContext } from './context';
 
 // ── Provider types & config ───────────────────────────────────────────
@@ -43,7 +44,7 @@ function calculateCost(provider: ModelProvider, inputTokens: number, outputToken
 
 // ── Environment ───────────────────────────────────────────────────────
 
-const DEFAULT_PROVIDER: ModelProvider =
+export const DEFAULT_PROVIDER: ModelProvider =
   (process.env.DEFAULT_LLM_PROVIDER as ModelProvider) || 'anthropic';
 
 const JOB_BUDGET_LIMIT = parseFloat(process.env.JOB_BUDGET_LIMIT_USD || '5');
@@ -74,6 +75,10 @@ function getOpenAIClient(): OpenAI {
 // ── Metering persistence ──────────────────────────────────────────────
 
 const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../../../data/vibe.db');
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
 const meteringDb = new Database(dbPath);
 
 meteringDb.exec(`
