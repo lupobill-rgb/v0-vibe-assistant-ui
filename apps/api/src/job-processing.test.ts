@@ -5,11 +5,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, ChildProcess } from 'node:child_process';
 
+// This integration test requires a running Supabase instance.
+const SKIP = !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY;
+
 const TEST_PREVIEWS_DIR = `/tmp/vibe-test-previews-${Date.now()}`;
 const TEST_REPOS_DIR = `/tmp/vibe-test-repos-${Date.now()}`;
 const TEST_PUBLISHED_DIR = `/tmp/vibe-test-published-${Date.now()}`;
-const TEST_DB_PATH = `/tmp/vibe-test-${Date.now()}.db`;
-const TEST_TENANT = 'test-tenant-job';
 const API_PORT = 3099;
 
 // ── Mock Edge Function server ───────────────────────────────────────────────
@@ -60,7 +61,6 @@ function httpRequest(
       path: urlPath,
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': TEST_TENANT,
       },
     };
     const req = http.request(opts, (res) => {
@@ -96,7 +96,7 @@ async function waitForTerminal(taskId: string, timeoutMs = 20000): Promise<any> 
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe('POST /jobs — async job processing + preview generation', () => {
+describe('POST /jobs — async job processing + preview generation', { skip: SKIP ? 'SUPABASE_URL / SUPABASE_SERVICE_KEY not set' : false }, () => {
   let apiProc: ChildProcess;
   let projectId: string;
 
@@ -110,19 +110,16 @@ describe('POST /jobs — async job processing + preview generation', () => {
     fs.mkdirSync(TEST_PUBLISHED_DIR, { recursive: true });
 
     // 3. Start API server via npx tsx from the api directory
-    //    (so tsconfig.json with experimentalDecorators is picked up)
     const apiDir = path.resolve(__dirname, '..');
     apiProc = spawn('npx', ['tsx', 'src/index.ts'], {
       cwd: apiDir,
       env: {
         ...process.env,
         API_PORT: String(API_PORT),
-        DATABASE_PATH: TEST_DB_PATH,
         PREVIEWS_DIR: TEST_PREVIEWS_DIR,
         REPOS_BASE_DIR: TEST_REPOS_DIR,
         PUBLISHED_DIR: TEST_PUBLISHED_DIR,
-        SUPABASE_ANON_KEY: 'test-mock-key',
-        SUPABASE_URL: `http://127.0.0.1:${mockEdgePort}`,
+        SUPABASE_EDGE_FUNCTION_URL: `http://127.0.0.1:${mockEdgePort}`,
         NODE_ENV: 'test',
       },
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -147,9 +144,24 @@ describe('POST /jobs — async job processing + preview generation', () => {
       throw new Error(`API server failed to start within 20s. Output:\n${serverOutput}`);
     }
 
-    // 5. Create a test project
+    // 5. Create org → team → project hierarchy
+    const orgRes = await httpRequest('POST', '/orgs', {
+      name: 'job-test-org',
+      slug: `jto-${Date.now()}`,
+    });
+    assert.strictEqual(orgRes.status, 201,
+      `Expected 201 for org creation, got ${orgRes.status}: ${JSON.stringify(orgRes.body)}`);
+
+    const teamRes = await httpRequest('POST', `/orgs/${orgRes.body.id}/teams`, {
+      name: 'job-test-team',
+      slug: `jtt-${Date.now()}`,
+    });
+    assert.strictEqual(teamRes.status, 201,
+      `Expected 201 for team creation, got ${teamRes.status}: ${JSON.stringify(teamRes.body)}`);
+
     const projRes = await httpRequest('POST', '/projects', {
       name: `test-proj-${Date.now()}`,
+      team_id: teamRes.body.id,
     });
     assert.strictEqual(projRes.status, 201,
       `Expected 201 for project creation, got ${projRes.status}: ${JSON.stringify(projRes.body)}`);
@@ -163,7 +175,6 @@ describe('POST /jobs — async job processing + preview generation', () => {
     try { fs.rmSync(TEST_PREVIEWS_DIR, { recursive: true, force: true }); } catch {}
     try { fs.rmSync(TEST_REPOS_DIR, { recursive: true, force: true }); } catch {}
     try { fs.rmSync(TEST_PUBLISHED_DIR, { recursive: true, force: true }); } catch {}
-    try { fs.unlinkSync(TEST_DB_PATH); } catch {}
   });
 
   it('returns 201 immediately with task_id and queued status', async () => {

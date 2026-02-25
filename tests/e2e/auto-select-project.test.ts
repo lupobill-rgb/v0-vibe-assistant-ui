@@ -7,26 +7,20 @@ import assert from 'node:assert';
  * Proves that when ChatPage loads, the first project returned by
  * GET /projects is automatically selected as the default.
  *
- * The fix (apps/web/app/chat/page.tsx lines 104-107):
- *   fetchProjects().then((data) => {
- *     setProjects(data)
- *     if (data.length > 0) setSelectedProjectId(data[0].id)
- *   })
- *
  * This test validates both sides of the contract:
  *   1. GET /projects returns a stable, ordered list with IDs
  *   2. The auto-select logic correctly picks data[0].id
  */
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001';
-const TENANT_ID = process.env.TENANT_ID || 'local';
 
 function headers() {
-  return { 'Content-Type': 'application/json', 'X-Tenant-Id': TENANT_ID };
+  return { 'Content-Type': 'application/json' };
 }
 
 describe('ChatPage auto-select first project', () => {
   const createdIds: string[] = [];
+  let teamId: string;
 
   before(async () => {
     // Health-check: skip the suite fast if the API is not running
@@ -35,6 +29,22 @@ describe('ChatPage auto-select first project', () => {
       console.log('⚠  API not reachable — skipping auto-select tests');
       process.exit(0);
     }
+
+    // Create org → team hierarchy for project creation
+    const orgRes = await fetch(`${API_BASE_URL}/orgs`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ name: `auto-sel-org-${Date.now()}`, slug: `aso-${Date.now()}` }),
+    });
+    const org = await orgRes.json() as { id: string };
+
+    const teamRes = await fetch(`${API_BASE_URL}/orgs/${org.id}/teams`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ name: `auto-sel-team-${Date.now()}`, slug: `ast-${Date.now()}` }),
+    });
+    const team = await teamRes.json() as { id: string };
+    teamId = team.id;
   });
 
   after(async () => {
@@ -72,7 +82,7 @@ describe('ChatPage auto-select first project', () => {
       const res = await fetch(`${API_BASE_URL}/projects`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, team_id: teamId }),
       });
       assert.ok(res.ok, `Failed to create project "${name}"`);
       const data = await res.json() as { id: string };

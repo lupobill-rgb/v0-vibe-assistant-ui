@@ -5,7 +5,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { TestApiClient } from './test-utils';
+import { TestApiClient, createTestHierarchy } from './test-utils';
 import fs from 'fs';
 import path from 'path';
 
@@ -19,9 +19,13 @@ describe('Publish API', () => {
   let testJobId: string;
 
   before(async () => {
+    // Create org → team hierarchy
+    const { teamId } = await createTestHierarchy(client);
+
     // Create a test project
     const projectResponse = await client.post('/projects', {
       name: `test-publish-${Date.now()}`,
+      team_id: teamId,
       template: 'empty'
     });
     testProjectId = projectResponse.id;
@@ -42,12 +46,6 @@ describe('Publish API', () => {
       path.join(previewDir, 'index.html'),
       '<html><body><h1>Test Preview</h1></body></html>'
     );
-
-    // Update job with preview URL (simulate completed job)
-    // This would normally be done by the executor
-    const storage = require('../../apps/api/src/storage').storage;
-    storage.setPreviewUrl(testJobId, `/previews/${testJobId}/index.html`);
-    storage.updateTaskState(testJobId, 'completed');
   });
 
   after(async () => {
@@ -56,17 +54,21 @@ describe('Publish API', () => {
       if (testProjectId) {
         await client.delete(`/projects/${testProjectId}`);
       }
-      
+
       // Clean up test preview directory
-      const previewDir = path.join(PREVIEWS_DIR, testJobId);
-      if (fs.existsSync(previewDir)) {
-        fs.rmSync(previewDir, { recursive: true, force: true });
+      if (testJobId) {
+        const previewDir = path.join(PREVIEWS_DIR, testJobId);
+        if (fs.existsSync(previewDir)) {
+          fs.rmSync(previewDir, { recursive: true, force: true });
+        }
       }
 
       // Clean up test published directory
-      const publishedDir = path.join(PUBLISHED_DIR, testProjectId);
-      if (fs.existsSync(publishedDir)) {
-        fs.rmSync(publishedDir, { recursive: true, force: true });
+      if (testProjectId) {
+        const publishedDir = path.join(PUBLISHED_DIR, testProjectId);
+        if (fs.existsSync(publishedDir)) {
+          fs.rmSync(publishedDir, { recursive: true, force: true });
+        }
       }
     } catch (error) {
       console.error('Cleanup error:', error);
