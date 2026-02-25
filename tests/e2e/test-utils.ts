@@ -20,6 +20,10 @@ export class TestApiClient {
     this.timeout = config.timeout || 30000;
   }
 
+  private baseHeaders(extra?: Record<string, string>): Record<string, string> {
+    return { 'Content-Type': 'application/json', ...extra };
+  }
+
   async get(path: string): Promise<any> {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
@@ -28,6 +32,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'GET',
+        headers: this.baseHeaders(),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -54,9 +59,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.baseHeaders(),
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -85,6 +88,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'DELETE',
+        headers: this.baseHeaders(),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -187,8 +191,6 @@ export async function collectSSE(
                   if (onParseError) {
                     onParseError(line, parseError);
                   }
-                  // In test environments, parse errors may indicate bugs in SSE implementation
-                  // but we continue collecting other logs
                 }
               }
             }
@@ -211,6 +213,22 @@ export async function collectSSE(
         }
       });
   });
+}
+
+/**
+ * Create an org → team hierarchy and return the team ID.
+ * Useful for E2E tests that need to create projects.
+ */
+export async function createTestHierarchy(client: TestApiClient): Promise<{ orgId: string; teamId: string }> {
+  const org = await client.post('/orgs', {
+    name: `e2e-org-${Date.now()}`,
+    slug: `e2e-org-${Date.now()}`,
+  });
+  const team = await client.post(`/orgs/${org.id}/teams`, {
+    name: `e2e-team-${Date.now()}`,
+    slug: `e2e-team-${Date.now()}`,
+  });
+  return { orgId: org.id, teamId: team.id };
 }
 
 /**

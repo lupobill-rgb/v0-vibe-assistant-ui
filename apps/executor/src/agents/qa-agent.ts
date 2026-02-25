@@ -103,7 +103,7 @@ Requirements:
     storage.logEvent(taskId, `[QA] Failed to apply test diff: ${err.message}`, 'warning');
     return { success: true, testOutput: `Failed to apply test diff: ${err.message}` };
   } finally {
-    if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath);
+    try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
   }
 
   // Run npm test and capture pass/fail + output

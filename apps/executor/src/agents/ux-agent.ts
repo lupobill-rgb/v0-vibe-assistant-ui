@@ -1,9 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import Anthropic from '@anthropic-ai/sdk';
 import simpleGit from 'simple-git';
 import { storage } from '../storage';
-import { generateDiff } from '../llm-router';
+import { generateDiff, callEdgeFunction } from '../llm-router';
 import { buildContext, formatContext } from '../context-builder';
 import {
   sanitizeUnifiedDiff,
@@ -34,20 +33,16 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
   const contextResult = await buildContext(repoPath, 'UX review: responsive breakpoints, empty states, loading states, consistent spacing');
   const context = formatContext(contextResult.files);
 
-  // Structured JSON check via direct Anthropic call (not diff-only llm-router)
+  // Structured JSON check via Edge Function
   let report: { passed: string[]; failed: string[] };
   try {
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 1024,
+    const data = await callEdgeFunction({
+      prompt: context,
+      model: 'claude',
       system: UX_CHECK_SYSTEM,
-      messages: [{ role: 'user', content: context }],
+      max_tokens: 1024,
     });
-    const text = response.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { type: 'text'; text: string }).text)
-      .join('');
+    const text = data.diff || '';
     report = JSON.parse(text);
     if (!Array.isArray(report.passed) || !Array.isArray(report.failed)) {
       throw new Error('Unexpected JSON shape from LLM');
@@ -111,7 +106,7 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
     } catch (err: any) {
       storage.logEvent(taskId, `[UX] Failed to apply fix diff: ${err.message}`, 'warning');
     } finally {
-      if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath);
+      try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
     }
   } catch (err: any) {
     storage.logEvent(taskId, `[UX] Fix LLM call failed: ${err.message}`, 'error');

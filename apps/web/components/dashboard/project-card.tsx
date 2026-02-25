@@ -87,12 +87,16 @@ export function ProjectCard({ project }: { project: Project }) {
             }}
           />
 
-          {/* Hover overlay */}
-          <div
-            className={cn(
-              "absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200",
-              hovering ? "opacity-100" : "opacity-0"
-            )}
+        {/* Hover overlay */}
+        <div
+          className={cn(
+            "absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200",
+            hovering ? "opacity-100" : "opacity-0"
+          )}
+        >
+          <Link
+            href={`/projects/${project.id}`}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-sm font-medium text-white hover:bg-white/25 transition-colors"
           >
             <Link
               href={`/projects/${project.id}`}

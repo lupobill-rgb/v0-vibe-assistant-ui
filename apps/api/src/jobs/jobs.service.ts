@@ -12,47 +12,47 @@ export class JobsService {
    */
   getLogStream(jobId: string): Observable<any> {
     return new Observable((observer: Observer<any>) => {
-      let lastEventTime = Date.now(); // Start from current time if no existing events
+      let lastEventTime = new Date().toISOString();
       let pollInterval: NodeJS.Timeout;
-      
+
       // Send existing logs immediately
-      const existingEvents = storage.getTaskEvents(jobId);
-      if (existingEvents.length > 0) {
-        existingEvents.forEach(event => {
-          observer.next(event);
-        });
-        // Update lastEventTime to the most recent event
-        lastEventTime = existingEvents[existingEvents.length - 1].event_time;
-      }
-
-      // Poll for new logs
-      pollInterval = setInterval(() => {
-        try {
-          const newEvents = storage.getEventsAfter(jobId, lastEventTime);
-          
-          newEvents.forEach(event => {
+      (async () => {
+        const existingEvents = await storage.getTaskEvents(jobId);
+        if (existingEvents.length > 0) {
+          existingEvents.forEach(event => {
             observer.next(event);
-            lastEventTime = event.event_time;
           });
+          lastEventTime = existingEvents[existingEvents.length - 1].event_time;
+        }
 
-          // Check if task is in terminal state
-          const task = storage.getTask(jobId);
-          if (task && (task.execution_state === 'completed' || task.execution_state === 'failed')) {
-            // Send completion event
-            observer.next({ type: 'complete', state: task.execution_state });
-            observer.complete();
+        // Poll for new logs
+        pollInterval = setInterval(async () => {
+          try {
+            const newEvents = await storage.getEventsAfter(jobId, lastEventTime);
+
+            newEvents.forEach(event => {
+              observer.next(event);
+              lastEventTime = event.event_time;
+            });
+
+            // Check if task is in terminal state
+            const task = await storage.getTask(jobId);
+            if (task && (task.execution_state === 'completed' || task.execution_state === 'failed')) {
+              observer.next({ type: 'complete', state: task.execution_state });
+              observer.complete();
+              clearInterval(pollInterval);
+            }
+          } catch (error) {
+            console.error(`Error polling logs for job ${jobId}:`, error);
+            observer.error(error);
             clearInterval(pollInterval);
           }
-        } catch (error) {
-          console.error(`Error polling logs for job ${jobId}:`, error);
-          observer.error(error);
-          clearInterval(pollInterval);
-        }
-      }, 1000);
+        }, 1000);
+      })();
 
       // Cleanup on unsubscribe
       return () => {
-        clearInterval(pollInterval);
+        if (pollInterval) clearInterval(pollInterval);
       };
     });
   }
@@ -61,17 +61,15 @@ export class JobsService {
    * Get or create an EventEmitter for a specific job
    */
   getLogEmitter(jobId: string): LogEmitter {
-    // Return existing emitter if it exists
     const existingEmitter = this.logEmitters.get(jobId);
     if (existingEmitter) {
       return existingEmitter;
     }
-    
-    // Create new emitter and start polling
+
     const emitter = new LogEmitter();
     this.logEmitters.set(jobId, emitter);
     this.startLogPolling(jobId, emitter);
-    
+
     return emitter;
   }
 
@@ -79,31 +77,31 @@ export class JobsService {
    * Start polling for logs and emit them to the EventEmitter
    */
   private startLogPolling(jobId: string, emitter: LogEmitter): void {
-    let lastEventTime = Date.now();
-    
-    // Send existing logs immediately
-    const existingEvents = storage.getTaskEvents(jobId);
-    if (existingEvents.length > 0) {
-      existingEvents.forEach(event => {
-        emitter.emit(JSON.stringify(event));
-      });
-      lastEventTime = existingEvents[existingEvents.length - 1].event_time;
-    }
+    let lastEventTime = new Date().toISOString();
+
+    // Send existing logs immediately (async)
+    (async () => {
+      const existingEvents = await storage.getTaskEvents(jobId);
+      if (existingEvents.length > 0) {
+        existingEvents.forEach(event => {
+          emitter.emit(JSON.stringify(event));
+        });
+        lastEventTime = existingEvents[existingEvents.length - 1].event_time;
+      }
+    })();
 
     // Poll for new logs
-    const pollInterval = setInterval(() => {
+    const pollInterval = setInterval(async () => {
       try {
-        const newEvents = storage.getEventsAfter(jobId, lastEventTime);
-        
+        const newEvents = await storage.getEventsAfter(jobId, lastEventTime);
+
         newEvents.forEach(event => {
           emitter.emit(JSON.stringify(event));
           lastEventTime = event.event_time;
         });
 
-        // Check if task is in terminal state
-        const task = storage.getTask(jobId);
+        const task = await storage.getTask(jobId);
         if (task && (task.execution_state === 'completed' || task.execution_state === 'failed')) {
-          // Send completion event
           emitter.emit(JSON.stringify({ type: 'complete', state: task.execution_state }));
           this.cleanupJob(jobId, pollInterval);
         }
@@ -112,8 +110,7 @@ export class JobsService {
         this.cleanupJob(jobId, pollInterval);
       }
     }, 1000);
-    
-    // Store the interval ID for proper cleanup
+
     this.pollIntervals.set(jobId, pollInterval);
   }
 
@@ -123,8 +120,7 @@ export class JobsService {
   private cleanupJob(jobId: string, pollInterval: NodeJS.Timeout): void {
     clearInterval(pollInterval);
     this.pollIntervals.delete(jobId);
-    
-    // Cleanup emitter after 60 seconds
+
     setTimeout(() => {
       this.logEmitters.delete(jobId);
     }, 60000);

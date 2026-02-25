@@ -2,14 +2,10 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 
-process.env['DATABASE_PATH'] = `/tmp/billing_http_${process.pid}.db`;
+// These tests require a running Supabase instance.
+// They will be skipped if SUPABASE_URL / SUPABASE_SERVICE_KEY are not set.
 
-import { runMigrations } from './src/migrations';
-import vibeDb, { storage } from './src/storage';
-import { extractTenantFromJwt } from './src/middleware/tenant';
-import express from 'express';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
+const SKIP = !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY;
 
 /** Make a base64url-encoded JWT with the given payload (no real signing). */
 function fakeJwt(payload: Record<string, unknown>): string {
@@ -42,111 +38,75 @@ function request(
   });
 }
 
-// ── Setup ─────────────────────────────────────────────────────────────────────
+describe('Billing HTTP — routes', { skip: SKIP ? 'SUPABASE_URL / SUPABASE_SERVICE_KEY not set' : false }, () => {
+  let server: http.Server;
+  let orgId: string;
+  let otherOrgId: string;
 
-runMigrations(vibeDb);
+  before(async () => {
+    const { storage } = await import('./src/storage');
+    const express = (await import('express')).default;
+    const billingRouter = (await import('./src/routes/billing')).default;
 
-const TENANT_A = 'tenant-alpha';
-const TENANT_B = 'tenant-beta';
+    // Seed hierarchy: org → team → project → job
+    const org = await storage.createOrganization({ name: 'http-billing-org', slug: `hbo-${Date.now()}` });
+    orgId = org.id;
 
-// Seed a task with tokens for TENANT_A
-vibeDb.prepare(`
-  INSERT OR IGNORE INTO vibe_tasks
-    (task_id, user_prompt, source_branch, destination_branch,
-     execution_state, iteration_count, initiated_at, last_modified,
-     tenant_id, llm_model, llm_prompt_tokens, llm_completion_tokens, llm_total_tokens)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-`).run('http-task-1','add feature','main','vibe/x','completed',1,
-       Date.now(),Date.now(), TENANT_A,'gpt',2000,1000,3000);
+    const otherOrg = await storage.createOrganization({ name: 'http-billing-other', slug: `hbo2-${Date.now()}` });
+    otherOrgId = otherOrg.id;
 
-// Boot a minimal express app with just the billing router
-import billingRouter from './src/routes/billing';
+    const team = await storage.createTeam({ org_id: orgId, name: 'http-team', slug: `ht-${Date.now()}` });
+    const project = await storage.createProject({
+      name: `http-proj-${Date.now()}`,
+      team_id: team.id,
+      local_path: '/tmp/http-billing-test',
+    });
 
-const app = express();
-app.use(express.json());
-app.use('/api/billing', billingRouter);
+    // Seed a completed job with token usage
+    const taskId = `http-task-${Date.now()}`;
+    await storage.createTask({
+      task_id: taskId,
+      user_prompt: 'add feature',
+      project_id: project.id,
+      source_branch: 'main',
+      destination_branch: 'vibe/x',
+      execution_state: 'completed',
+      initiated_at: new Date().toISOString(),
+      last_modified: new Date().toISOString(),
+      llm_model: 'gpt',
+    });
+    await storage.updateTaskUsageMetrics(taskId, {
+      llm_prompt_tokens: 2000,
+      llm_completion_tokens: 1000,
+      llm_total_tokens: 3000,
+    });
 
-let server: http.Server;
+    // Boot a minimal express app with just the billing router
+    const app = express();
+    app.use(express.json());
+    app.use('/api/billing', billingRouter);
 
-describe('Billing HTTP — middleware + routes', () => {
-
-  before(() => new Promise<void>(res => { server = app.listen(0, res); }));
-  after(()  => new Promise<void>(res => server.close(() => res())));
-
-  // ── JWT middleware tests ────────────────────────────────────────────────
-
-  it('returns 401 with no auth header and no X-Tenant-Id', async () => {
-    const r = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`);
-    assert.equal(r.status, 401);
+    await new Promise<void>(res => { server = app.listen(0, res); });
   });
 
-  it('returns 401 with malformed Bearer token', async () => {
-    const r = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`, {
-      headers: { Authorization: 'Bearer notajwt' },
-    });
-    assert.equal(r.status, 401);
+  after(async () => {
+    if (server) await new Promise<void>(res => server.close(() => res()));
+    // Cleanup test data
+    try {
+      const mod = await import('./src/supabase/client');
+      const sb = mod.getPlatformSupabaseClient();
+      if (orgId) await sb.from('organizations').delete().eq('id', orgId);
+      if (otherOrgId) await sb.from('organizations').delete().eq('id', otherOrgId);
+    } catch { /* best effort */ }
   });
 
-  it('accepts X-Tenant-Id header as fallback when no JWT', async () => {
-    const r = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`, {
-      headers: { 'X-Tenant-Id': TENANT_A },
-    });
-    assert.equal(r.status, 200);
-  });
+  // ── Route tests (billing router no longer has auth middleware — that's in index.ts) ──
 
-  it('accepts JWT with tenant_id claim', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_A, iat: 1 });
-    const r = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
-    });
-    assert.equal(r.status, 200);
-  });
-
-  it('accepts JWT with sub claim as tenantId', async () => {
-    const jwt = fakeJwt({ sub: TENANT_A });
-    const r = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
-    });
-    assert.equal(r.status, 200);
-  });
-
-  // ── Cross-tenant 403 tests ──────────────────────────────────────────────
-
-  it('GET /usage rejects with 403 when JWT tenant ≠ URL tenant', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_B }); // authenticated as B
-    const r = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`, { // asking for A
-      headers: { Authorization: `Bearer ${jwt}` },
-    });
-    assert.equal(r.status, 403);
-  });
-
-  it('GET /export rejects with 403 cross-tenant', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_B });
-    const r = await request(server, 'GET', `/api/billing/export/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
-    });
-    assert.equal(r.status, 403);
-  });
-
-  it('POST /budget rejects with 403 cross-tenant', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_B });
-    const r = await request(server, 'POST', `/api/billing/budget/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
-      body: { limitUSD: 100 },
-    });
-    assert.equal(r.status, 403);
-  });
-
-  // ── Correct-tenant usage ────────────────────────────────────────────────
-
-  it('GET /usage/:tenantId returns correct aggregated data', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_A });
-    const r = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
-    });
+  it('GET /usage/:orgId returns correct aggregated data', async () => {
+    const r = await request(server, 'GET', `/api/billing/usage/${orgId}`);
     assert.equal(r.status, 200);
     const body = r.body as any;
-    assert.equal(body.tenantId, TENANT_A);
+    assert.equal(body.orgId, orgId);
     assert.ok(Array.isArray(body.rows));
     const row = body.rows.find((x: any) => x.model === 'gpt');
     assert.ok(row, 'gpt row present');
@@ -156,20 +116,25 @@ describe('Billing HTTP — middleware + routes', () => {
     assert.ok(Math.abs(row.cost_usd - 0.05) < 1e-9, `cost=${row.cost_usd}`);
   });
 
-  it('GET /export/:tenantId returns CSV content-type', async () => {
+  it('GET /usage/:orgId returns empty for unrelated org', async () => {
+    const r = await request(server, 'GET', `/api/billing/usage/${otherOrgId}`);
+    assert.equal(r.status, 200);
+    const body = r.body as any;
+    assert.equal(body.rows.length, 0);
+  });
+
+  it('GET /export/:orgId returns CSV content-type', async () => {
     return new Promise<void>((resolve, reject) => {
       const addr = server.address() as { port: number };
-      const jwt = fakeJwt({ tenant_id: TENANT_A });
       const req = http.request({
         hostname: 'localhost', port: addr.port,
-        method: 'GET', path: `/api/billing/export/${TENANT_A}`,
-        headers: { Authorization: `Bearer ${jwt}` },
+        method: 'GET', path: `/api/billing/export/${orgId}`,
       }, (res) => {
         assert.ok(res.headers['content-type']?.includes('text/csv'), `content-type=${res.headers['content-type']}`);
         let csv = '';
         res.on('data', c => csv += c);
         res.on('end', () => {
-          assert.ok(csv.startsWith('date,model,input_tokens'), `csv starts=${csv.slice(0,50)}`);
+          assert.ok(csv.startsWith('date,model,input_tokens'), `csv starts=${csv.slice(0, 50)}`);
           assert.ok(csv.includes('gpt'), 'csv contains gpt row');
           assert.equal(res.statusCode, 200);
           resolve();
@@ -180,33 +145,25 @@ describe('Billing HTTP — middleware + routes', () => {
     });
   });
 
-  it('POST /budget/:tenantId sets ceiling and GET /usage reflects it', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_A });
-    const set = await request(server, 'POST', `/api/billing/budget/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
+  it('POST /budget/:orgId sets ceiling and GET /usage reflects it', async () => {
+    const set = await request(server, 'POST', `/api/billing/budget/${orgId}`, {
       body: { limitUSD: 99.99 },
     });
     assert.equal(set.status, 200);
 
-    const get = await request(server, 'GET', `/api/billing/usage/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
-    });
+    const get = await request(server, 'GET', `/api/billing/usage/${orgId}`);
     assert.equal((get.body as any).budgetLimit, 99.99);
   });
 
   it('POST /budget rejects non-numeric limitUSD with 400', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_A });
-    const r = await request(server, 'POST', `/api/billing/budget/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
+    const r = await request(server, 'POST', `/api/billing/budget/${orgId}`, {
       body: { limitUSD: 'not-a-number' },
     });
     assert.equal(r.status, 400);
   });
 
   it('POST /budget rejects negative limitUSD with 400', async () => {
-    const jwt = fakeJwt({ tenant_id: TENANT_A });
-    const r = await request(server, 'POST', `/api/billing/budget/${TENANT_A}`, {
-      headers: { Authorization: `Bearer ${jwt}` },
+    const r = await request(server, 'POST', `/api/billing/budget/${orgId}`, {
       body: { limitUSD: -5 },
     });
     assert.equal(r.status, 400);
