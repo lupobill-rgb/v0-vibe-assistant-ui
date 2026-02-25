@@ -274,7 +274,7 @@ class VibeStorage {
     const insert: Record<string, unknown> = {
       name: project.name,
       team_id: project.team_id,
-      repository_url: project.repository_url || null,
+      repository_url: project.repository_url ?? null,
       local_path: project.local_path,
     };
     if (project.id) insert.id = project.id;
@@ -319,14 +319,18 @@ class VibeStorage {
   }
 
   async listProjectsByOrg(orgId: string): Promise<Project[]> {
-    // Join through teams to get all projects for an org
+    // Join through teams to filter by org; strip the nested teams data from result
     const { data, error } = await this.sb
       .from('projects')
       .select('*, teams!inner(org_id)')
       .eq('teams.org_id', orgId)
       .order('created_at', { ascending: false });
     if (error) throw new Error(`Failed to list projects by org: ${error.message}`);
-    return (data || []) as Project[];
+    // Strip the nested `teams` join data before returning
+    return (data || []).map((row: any) => {
+      const { teams: _teams, ...project } = row;
+      return project as Project;
+    });
   }
 
   async updateProjectSync(projectId: string): Promise<void> {
@@ -401,17 +405,14 @@ class VibeStorage {
       .eq('id', taskId);
     if (error) throw new Error(`Failed to update task state: ${error.message}`);
 
-    // Clean up EventEmitter for terminal states if no active listeners
+    // Schedule EventEmitter cleanup for terminal states (delay to let SSE clients drain)
     if (newState === 'completed' || newState === 'failed') {
-      const emitter = this.logEmitters.get(taskId);
-      if (emitter && emitter.listenerCount('log') === 0) {
-        this.removeLogEmitter(taskId);
-      }
+      setTimeout(() => this.removeLogEmitter(taskId), 30_000);
     }
   }
 
   async incrementIteration(taskId: string): Promise<void> {
-    // Supabase doesn't support increment directly; read-then-write
+    // Read-then-write; safe because only one executor processes a task at a time
     const { data, error: readErr } = await this.sb
       .from('jobs')
       .select('iteration_count')
@@ -419,10 +420,11 @@ class VibeStorage {
       .single();
     if (readErr) throw new Error(`Failed to read iteration count: ${readErr.message}`);
 
+    const current = (data as { iteration_count: number }).iteration_count || 0;
     const { error } = await this.sb
       .from('jobs')
       .update({
-        iteration_count: ((data as any).iteration_count || 0) + 1,
+        iteration_count: current + 1,
         last_modified: new Date().toISOString(),
       })
       .eq('id', taskId);
@@ -463,10 +465,14 @@ class VibeStorage {
   }
 
   async listRecentTasksByOrg(orgId: string): Promise<VibeTask[]> {
+    // Two-query approach: nested PostgREST joins are unreliable for filtering
+    const projectIds = await this.getProjectIdsForOrg(orgId);
+    if (projectIds.length === 0) return [];
+
     const { data, error } = await this.sb
       .from('jobs')
-      .select('*, projects!inner(team_id, teams!inner(org_id))')
-      .eq('projects.teams.org_id', orgId)
+      .select('*')
+      .in('project_id', projectIds)
       .order('initiated_at', { ascending: false })
       .limit(100);
     if (error) throw new Error(`Failed to list recent tasks by org: ${error.message}`);
@@ -520,15 +526,16 @@ class VibeStorage {
       });
     if (error) throw new Error(`Failed to log event: ${error.message}`);
 
-    // Emit the event in real-time to any listeners
+    // Emit the event in real-time to any listeners (matches VibeEvent shape)
     const emitter = this.logEmitters.get(taskId);
     if (emitter) {
       emitter.emit('log', {
+        event_id: 0,
         task_id: taskId,
         event_message: message,
         severity,
         event_time: now,
-      });
+      } satisfies VibeEvent);
     }
   }
 
@@ -592,7 +599,7 @@ class VibeStorage {
       .eq('id', taskId)
       .single();
     if (error) return undefined;
-    return (data as any)?.last_diff || undefined;
+    return (data as { last_diff: string | null })?.last_diff ?? undefined;
   }
 
   // ── Analytics ──
@@ -605,13 +612,7 @@ class VibeStorage {
     avgIterations: number;
   }> {
     // Get all project IDs for this org
-    const { data: projects, error: projErr } = await this.sb
-      .from('projects')
-      .select('id, teams!inner(org_id)')
-      .eq('teams.org_id', orgId);
-    if (projErr) throw new Error(`Failed to get analytics: ${projErr.message}`);
-
-    const projectIds = (projects || []).map((p: any) => p.id);
+    const projectIds = await this.getProjectIdsForOrg(orgId);
     if (projectIds.length === 0) {
       return { totalJobs: 0, completedJobs: 0, failedJobs: 0, totalProjects: 0, avgIterations: 0 };
     }
@@ -622,12 +623,13 @@ class VibeStorage {
       .in('project_id', projectIds);
     if (jobErr) throw new Error(`Failed to get analytics: ${jobErr.message}`);
 
-    const allJobs = jobs || [];
+    type StatsRow = { execution_state: string; iteration_count: number };
+    const allJobs = (jobs || []) as StatsRow[];
     const totalJobs = allJobs.length;
-    const completedJobs = allJobs.filter((j: any) => j.execution_state === 'completed').length;
-    const failedJobs = allJobs.filter((j: any) => j.execution_state === 'failed').length;
+    const completedJobs = allJobs.filter((j) => j.execution_state === 'completed').length;
+    const failedJobs = allJobs.filter((j) => j.execution_state === 'failed').length;
     const avgIterations = totalJobs > 0
-      ? Math.round((allJobs.reduce((sum: number, j: any) => sum + (j.iteration_count || 0), 0) / totalJobs) * 10) / 10
+      ? Math.round((allJobs.reduce((sum, j) => sum + (j.iteration_count || 0), 0) / totalJobs) * 10) / 10
       : 0;
 
     return {
@@ -660,12 +662,7 @@ class VibeStorage {
     job_count: number;
   }[]> {
     // Get all project IDs for this org
-    const { data: projects } = await this.sb
-      .from('projects')
-      .select('id, teams!inner(org_id)')
-      .eq('teams.org_id', orgId);
-
-    const projectIds = (projects || []).map((p: any) => p.id);
+    const projectIds = await this.getProjectIdsForOrg(orgId);
     if (projectIds.length === 0) return [];
 
     const { data: jobs, error } = await this.sb
@@ -677,7 +674,8 @@ class VibeStorage {
 
     // Group by date + model
     const groups = new Map<string, { input_tokens: number; output_tokens: number; job_count: number }>();
-    for (const job of (jobs || []) as any[]) {
+    type BillingRow = { initiated_at: string; llm_model: string | null; llm_prompt_tokens: number | null; llm_completion_tokens: number | null };
+    for (const job of (jobs || []) as BillingRow[]) {
       const date = job.initiated_at.split('T')[0];
       const model = job.llm_model || 'claude';
       const key = `${date}|${model}`;
@@ -708,12 +706,7 @@ class VibeStorage {
     llm_prompt_tokens: number;
     llm_completion_tokens: number;
   }[]> {
-    const { data: projects } = await this.sb
-      .from('projects')
-      .select('id, teams!inner(org_id)')
-      .eq('teams.org_id', orgId);
-
-    const projectIds = (projects || []).map((p: any) => p.id);
+    const projectIds = await this.getProjectIdsForOrg(orgId);
     if (projectIds.length === 0) return [];
 
     const { data, error } = await this.sb
@@ -724,7 +717,8 @@ class VibeStorage {
       .order('initiated_at', { ascending: false });
     if (error) throw new Error(`Failed to get billing export: ${error.message}`);
 
-    return (data || []).map((row: any) => ({
+    type ExportRow = { id: string; initiated_at: string; llm_model: string | null; llm_prompt_tokens: number | null; llm_completion_tokens: number | null };
+    return (data || []).map((row: ExportRow) => ({
       task_id: row.id,
       initiated_at: row.initiated_at,
       llm_model: row.llm_model || 'claude',
@@ -745,7 +739,7 @@ class VibeStorage {
       .eq('org_id', orgId)
       .single();
     if (error) return null;
-    return (data as any)?.limit_usd ?? null;
+    return (data as { limit_usd: number })?.limit_usd ?? null;
   }
 
   async setTenantBudget(orgId: string, limitUsd: number): Promise<void> {
@@ -801,7 +795,13 @@ class VibeStorage {
       .eq('project_id', projectId)
       .single();
     if (error) return undefined;
-    return data as any;
+    return data as {
+      project_id: string;
+      url: string;
+      anon_key: string;
+      service_key_enc: string;
+      connected_at: string;
+    };
   }
 
   async upsertSupabaseConnection(
@@ -825,17 +825,26 @@ class VibeStorage {
     if (error) throw new Error(`Failed to upsert Supabase connection: ${error.message}`);
   }
 
-  // ── Helper: resolve org from team via project ──
+  // ── Helpers ──
 
-  async getOrgForProject(projectId: string): Promise<Organization | undefined> {
+  private async getProjectIdsForOrg(orgId: string): Promise<string[]> {
     const { data, error } = await this.sb
       .from('projects')
-      .select('teams(org_id, organizations(*))')
-      .eq('id', projectId)
-      .single();
-    if (error) return undefined;
-    const org = (data as any)?.teams?.organizations;
-    return org || undefined;
+      .select('id, teams!inner(org_id)')
+      .eq('teams.org_id', orgId);
+    if (error) throw new Error(`Failed to get project IDs for org: ${error.message}`);
+    return (data || []).map((p: Record<string, unknown>) => p.id as string);
+  }
+
+  async getOrgForProject(projectId: string): Promise<Organization | undefined> {
+    // Two-step: project → team → org (avoids double-nested PostgREST join)
+    const project = await this.getProject(projectId);
+    if (!project) return undefined;
+
+    const team = await this.getTeam(project.team_id);
+    if (!team) return undefined;
+
+    return this.getOrganization(team.org_id);
   }
 }
 

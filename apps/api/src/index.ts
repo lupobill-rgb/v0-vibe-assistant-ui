@@ -2,9 +2,7 @@ import { Request, Response } from 'express';
 import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-import { storage, VibeEvent } from './storage';
-import { hashPassword, verifyPassword, generateToken, TOKEN_EXPIRY_MS, optionalAuth, requireTenantHeader, AuthRequest } from './auth';
-import { generateDiff } from './edge-function';
+import { storage } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { execSync, execFileSync } from 'child_process';
@@ -22,67 +20,6 @@ const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
 const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
-
-/**
- * Generate an HTML preview page from a unified diff and save it to disk.
- * The page renders a syntax-highlighted side-by-side diff view.
- */
-function generateHtmlPreviewFromDiff(taskId: string, diff: string): string {
-  const previewDir = path.join(PREVIEWS_DIR, taskId);
-  if (!fs.existsSync(previewDir)) {
-    fs.mkdirSync(previewDir, { recursive: true });
-  }
-
-  // Escape HTML entities in the diff text
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-  // Build coloured diff lines
-  const lines = diff.split('\n').map((line) => {
-    if (line.startsWith('+++') || line.startsWith('---')) {
-      return `<span class="diff-meta">${esc(line)}</span>`;
-    }
-    if (line.startsWith('@@')) {
-      return `<span class="diff-hunk">${esc(line)}</span>`;
-    }
-    if (line.startsWith('+')) {
-      return `<span class="diff-add">${esc(line)}</span>`;
-    }
-    if (line.startsWith('-')) {
-      return `<span class="diff-del">${esc(line)}</span>`;
-    }
-    return `<span>${esc(line)}</span>`;
-  });
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>VIBE Diff Preview — ${esc(taskId.slice(0, 8))}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0f0f23;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;padding:2rem}
-  h1{font-size:1.25rem;margin-bottom:1rem;color:#8B5CF6}
-  .meta{color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem}
-  pre{background:#1a1035;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:1rem;overflow-x:auto;font-size:.85rem;line-height:1.6}
-  .diff-meta{color:#60a5fa;font-weight:600}
-  .diff-hunk{color:#c084fc}
-  .diff-add{color:#4ade80;background:rgba(74,222,128,.08)}
-  .diff-del{color:#f87171;background:rgba(248,113,113,.08)}
-</style>
-</head>
-<body>
-<h1>Diff Preview</h1>
-<p class="meta">Task ${esc(taskId)}</p>
-<pre>${lines.join('\n')}</pre>
-</body>
-</html>`;
-
-  const filePath = path.join(previewDir, 'index.html');
-  fs.writeFileSync(filePath, html, 'utf-8');
-  return `/previews/${taskId}/index.html`;
-}
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -672,53 +609,66 @@ async function bootstrap() {
 
   // GET /jobs/:id/logs — SSE stream of log events
   app.get('/jobs/:id/logs', async (req: Request, res: Response) => {
-    const jobId = req.params.id;
+    try {
+      const jobId = req.params.id;
 
-    const task = await storage.getTask(jobId);
-    if (!task) {
-      res.status(404).json({ error: 'Task not found' });
-      return;
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-
-    const send = (data: unknown) => {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
-
-    // Replay existing events
-    const existing = await storage.getTaskEvents(jobId);
-    let lastEventTime = new Date().toISOString();
-    if (existing.length > 0) {
-      existing.forEach(send);
-      lastEventTime = existing[existing.length - 1].event_time;
-    }
-
-    // Poll for new events until terminal state
-    const interval = setInterval(async () => {
-      try {
-        const newEvents = await storage.getEventsAfter(jobId, lastEventTime);
-        newEvents.forEach((e) => {
-          send(e);
-          lastEventTime = e.event_time;
-        });
-
-        const current = await storage.getTask(jobId);
-        if (current && (current.execution_state === 'completed' || current.execution_state === 'failed')) {
-          send({ type: 'complete', state: current.execution_state });
-          clearInterval(interval);
-          res.end();
-        }
-      } catch {
-        clearInterval(interval);
-        res.end();
+      const task = await storage.getTask(jobId);
+      if (!task) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
       }
-    }, 1000);
 
-    req.on('close', () => clearInterval(interval));
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      let closed = false;
+
+      const send = (data: unknown) => {
+        if (closed) return;
+        try {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        } catch { /* client already disconnected */ }
+      };
+
+      // Replay existing events
+      const existing = await storage.getTaskEvents(jobId);
+      let lastEventTime = new Date().toISOString();
+      if (existing.length > 0) {
+        existing.forEach(send);
+        lastEventTime = existing[existing.length - 1].event_time;
+      }
+
+      // Poll for new events until terminal state
+      const interval = setInterval(async () => {
+        if (closed) { clearInterval(interval); return; }
+        try {
+          const newEvents = await storage.getEventsAfter(jobId, lastEventTime);
+          newEvents.forEach((e) => {
+            send(e);
+            lastEventTime = e.event_time;
+          });
+
+          const current = await storage.getTask(jobId);
+          if (current && (current.execution_state === 'completed' || current.execution_state === 'failed')) {
+            send({ type: 'complete', state: current.execution_state });
+            clearInterval(interval);
+            if (!closed) { closed = true; res.end(); }
+          }
+        } catch {
+          clearInterval(interval);
+          if (!closed) { closed = true; res.end(); }
+        }
+      }, 1000);
+
+      req.on('close', () => { closed = true; clearInterval(interval); });
+    } catch (error) {
+      console.error('Error setting up log stream:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to stream logs' });
+      }
+    }
   });
 
   // Health check

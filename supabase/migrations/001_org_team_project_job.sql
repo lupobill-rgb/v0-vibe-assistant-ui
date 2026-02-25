@@ -126,6 +126,30 @@ CREATE TABLE IF NOT EXISTS tenant_budgets (
 );
 
 -- ============================================================================
+-- Deferred foreign keys (circular references resolved after both tables exist)
+-- ============================================================================
+ALTER TABLE projects
+  ADD CONSTRAINT fk_projects_published_job
+  FOREIGN KEY (published_job_id) REFERENCES jobs(id)
+  ON DELETE SET NULL;
+
+-- ============================================================================
+-- Auto-update last_modified on jobs
+-- ============================================================================
+CREATE OR REPLACE FUNCTION update_last_modified()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.last_modified = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_jobs_last_modified
+  BEFORE UPDATE ON jobs
+  FOR EACH ROW
+  EXECUTE FUNCTION update_last_modified();
+
+-- ============================================================================
 -- Row Level Security
 -- ============================================================================
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
