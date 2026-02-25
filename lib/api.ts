@@ -97,21 +97,86 @@ export interface GenerateDiffResponse {
   usage: Record<string, unknown>
 }
 
-const SYSTEM_PROMPT =
-  "You are a world-class web designer building production-ready websites. CRITICAL RULES: " +
-  "1) Use Google Fonts (Inter for body, Space Grotesk for headings) via <link> tag. " +
-  "2) Use CSS custom properties for a cohesive color scheme. " +
-  "3) Every section needs generous padding (80px+ vertical). " +
-  "4) Use subtle animations (CSS @keyframes for fade-in on scroll using IntersectionObserver in a <script> tag). " +
-  "5) Hero section must have a gradient or image background with overlay text. " +
-  "6) Buttons must have hover transforms (scale + shadow). " +
-  "7) Include at least 5 sections: hero, features/benefits, social proof/testimonials, pricing or CTA, footer. " +
-  "8) Use real compelling copy, never lorem ipsum. " +
-  "9) All images use picsum.photos or solid CSS gradients. " +
-  "10) Mobile responsive with @media queries. " +
-  "11) Add smooth scroll behavior. " +
-  "12) Inputs must have focus ring styles. " +
-  "Return a complete HTML file, not a diff. Just the raw HTML starting with <!DOCTYPE html>."
+// ── Project-type detection & specialised system prompts ─────────────
+
+export type ProjectType = "landing" | "website" | "dashboard"
+
+/**
+ * Detect the project type from the user's prompt (and optionally a template id).
+ *
+ * - "dashboard" – prompt mentions dashboard / analytics / metrics / KPI
+ * - "website"   – prompt mentions multiple pages or is clearly a multi-page site
+ * - "landing"   – everything else (default)
+ */
+export function detectProjectType(prompt: string, templateId?: string): ProjectType {
+  const lower = prompt.toLowerCase()
+
+  // Dashboard signals
+  if (
+    /\b(dashboard|analytics|metrics|kpi|admin\s*panel|data\s*visualization)\b/.test(lower) ||
+    (templateId && templateId.includes("dashboard"))
+  ) {
+    return "dashboard"
+  }
+
+  // Multi-page / website signals
+  if (
+    /\b(multi[- ]?page|multiple\s*pages|website\s*with\s*(pages|sections)|about\s*(page|us)|contact\s*page|pricing\s*page)\b/.test(
+      lower,
+    ) ||
+    (templateId && templateId.includes("website"))
+  ) {
+    return "website"
+  }
+
+  return "landing"
+}
+
+const LANDING_SYSTEM_PROMPT =
+  "You are an elite conversion-focused web designer. Build a high-converting landing page with Tailwind CSS.\n" +
+  "Include: <script src='https://cdn.tailwindcss.com'></script> and Google Fonts Inter + Space Grotesk.\n" +
+  "REQUIRED SECTIONS: sticky navbar, full-screen hero with gradient bg (from-slate-900 via-purple-900 to-slate-900) and white text, trust logos bar, 3-4 feature cards with icons, social proof/testimonials, stats section, email capture CTA, footer.\n" +
+  "DESIGN: gradient text on headlines, glass morphism navbar, cards with hover:shadow-lg hover:scale-[1.02], buttons with shadow-lg shadow-indigo-500/25, floating decorative blur circles, fade-in animations with IntersectionObserver.\n" +
+  "Real compelling copy. Never lorem ipsum. Under 250 lines. Return ONLY raw HTML."
+
+function getWebsiteSystemPrompt(pageLinks: string): string {
+  return (
+    "You are an elite web designer building a multi-page site with Tailwind CSS.\n" +
+    "Include: <script src='https://cdn.tailwindcss.com'></script> and Google Fonts Inter + Space Grotesk.\n" +
+    `CRITICAL: This is one page of a multi-page site. Use consistent navbar with links to: ${pageLinks}. Highlight the current page in the nav. Use consistent color scheme and footer across all pages.\n` +
+    "DESIGN: Same as a high-end landing page but adapt sections per page type – About pages get team/mission sections, Pricing gets tiered cards, Contact gets a form with map placeholder.\n" +
+    "Real compelling copy. Under 250 lines per page. Return ONLY raw HTML."
+  )
+}
+
+const DASHBOARD_SYSTEM_PROMPT =
+  "You are an elite dashboard designer. Build an interactive analytics dashboard.\n" +
+  "Include: <script src='https://cdn.tailwindcss.com'></script>, <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>, and Google Fonts Inter.\n" +
+  "LAYOUT: Dark theme (bg-slate-950). Sidebar nav (w-64 bg-slate-900) with logo and menu items. Top bar with search and user avatar. Main content area with grid layout.\n" +
+  "REQUIRED: 4 KPI stat cards at top (with trend arrows and percentages), 2 large charts (one line/area chart, one bar chart) using Chart.js with custom colors matching the dark theme, a data table with alternating row colors and hover states, filter dropdowns.\n" +
+  "CHARTS: Use Chart.js with these colors: ['#6366f1','#8b5cf6','#a855f7','#c084fc','#818cf8']. Dark grid lines. Tooltips enabled. Responsive.\n" +
+  "DATA: Generate realistic sample data embedded as JavaScript const arrays. If CSV data is provided, use that data instead.\n" +
+  "INTERACTIVITY: Chart tooltips, table row hover, sidebar toggle, responsive.\n" +
+  "Under 300 lines. Return ONLY raw HTML."
+
+/**
+ * Return the correct system prompt for a given project type.
+ * For "website" pass in the page links string to embed in the prompt.
+ */
+export function getSystemPrompt(projectType: ProjectType, pageLinks?: string): string {
+  switch (projectType) {
+    case "dashboard":
+      return DASHBOARD_SYSTEM_PROMPT
+    case "website":
+      return getWebsiteSystemPrompt(pageLinks || "index.html")
+    case "landing":
+    default:
+      return LANDING_SYSTEM_PROMPT
+  }
+}
+
+// Legacy constant kept for any direct imports (now points to the default landing prompt)
+const SYSTEM_PROMPT = LANDING_SYSTEM_PROMPT
 
 export async function generateDiff(
   prompt: string,
@@ -187,7 +252,10 @@ export async function generateMultiPageSite(
   prompt: string,
   onPageStart?: (progress: PageProgress) => void,
   onPageDone?: (progress: PageProgress) => void,
+  projectType?: ProjectType,
 ): Promise<MultiPageSite> {
+  // Auto-detect project type from the prompt if not explicitly provided
+  const detectedType = projectType || detectProjectType(prompt)
   // Step 1: Get the list of page names
   const planPrompt =
     `Based on this request, list ONLY the page names needed as a JSON array. ` +
@@ -227,27 +295,8 @@ export async function generateMultiPageSite(
   const total = pageNames.length
   const navLinks = pageNames.map((p) => `${p}.html`).join(", ")
 
-  // Enhanced system prompt for individual page generation (NOT the planning call)
-  const PAGE_SYSTEM_PROMPT =
-    "You are a senior UI designer at a top agency. Build stunning websites with Tailwind CSS.\n\n" +
-    "Every page MUST include:\n" +
-    "<script src='https://cdn.tailwindcss.com'></script>\n" +
-    "<link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap' rel='stylesheet'>\n\n" +
-    "DESIGN RULES:\n" +
-    "- Hero: min-h-screen, dark gradient bg (from-slate-900 via-purple-900 to-slate-900), white text, gradient accent text using inline style background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent\n" +
-    "- Navbar: fixed top-0, bg-white/80 backdrop-blur-lg border-b shadow-sm\n" +
-    "- Cards: rounded-2xl border shadow-sm hover:shadow-lg hover:scale-[1.02] transition-all p-8. Add a 3px gradient top border.\n" +
-    "- Buttons: rounded-xl px-8 py-4 font-semibold. Primary: bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg hover:shadow-xl. Secondary: border-2 hover:border-indigo-400\n" +
-    "- Alternate dark (bg-slate-900) and light (bg-white) sections\n" +
-    "- Add floating decorative blurred circles (absolute, w-72 h-72, bg-purple-500/10, rounded-full, blur-3xl)\n" +
-    "- Stats: text-5xl font-extrabold with gradient text, small uppercase label below\n" +
-    "- Testimonials: dark cards, italic quote, 5 yellow stars, avatar from pravatar.cc\n" +
-    "- Footer: bg-slate-900, multi-column, gradient line at top\n" +
-    "- Add fade-in-on-scroll: include a script with IntersectionObserver that adds 'visible' class, and CSS .fade-up {opacity:0;transform:translateY(30px);transition:all 0.8s} .fade-up.visible {opacity:1;transform:translateY(0)}\n" +
-    "- Apply fade-up class to all cards, features, stats\n" +
-    "- Real compelling copy, never lorem ipsum\n" +
-    "- Keep each page under 250 lines\n" +
-    "- Return ONLY raw HTML, no markdown, no explanation"
+  // Build the correct system prompt based on project type
+  const PAGE_SYSTEM_PROMPT = getSystemPrompt(detectedType, navLinks)
 
   // Step 2: Generate all pages in parallel
   const pagePromises = pageNames.map(async (pageName, index) => {
