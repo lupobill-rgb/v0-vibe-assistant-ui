@@ -102,30 +102,27 @@ export interface GenerateDiffResponse {
 export type ProjectType = "landing" | "website" | "dashboard"
 
 /**
- * Detect the project type from the user's prompt (and optionally a template id).
+ * Detect the project type from the user's prompt and an optional selected template.
  *
- * - "dashboard" – prompt mentions dashboard / analytics / metrics / KPI
- * - "website"   – prompt mentions multiple pages or is clearly a multi-page site
+ * - "dashboard" – prompt or template contains dashboard / analytics / metrics / KPI / reporting / charts
+ * - "website"   – prompt mentions multiple pages
  * - "landing"   – everything else (default)
  */
-export function detectProjectType(prompt: string, templateId?: string): ProjectType {
+export function detectProjectType(
+  prompt: string,
+  selectedTemplate?: string,
+): ProjectType {
   const lower = prompt.toLowerCase()
+  const templateLower = selectedTemplate?.toLowerCase() ?? ""
 
   // Dashboard signals
-  if (
-    /\b(dashboard|analytics|metrics|kpi|admin\s*panel|data\s*visualization)\b/.test(lower) ||
-    (templateId && templateId.includes("dashboard"))
-  ) {
+  const dashboardKeywords = /\b(dashboard|analytics|metrics|kpi|reporting|charts)\b/
+  if (dashboardKeywords.test(lower) || dashboardKeywords.test(templateLower)) {
     return "dashboard"
   }
 
-  // Multi-page / website signals
-  if (
-    /\b(multi[- ]?page|multiple\s*pages|website\s*with\s*(pages|sections)|about\s*(page|us)|contact\s*page|pricing\s*page)\b/.test(
-      lower,
-    ) ||
-    (templateId && templateId.includes("website"))
-  ) {
+  // Website signals – prompt mentions multiple pages
+  if (/\bmultiple\s+pages\b/.test(lower)) {
     return "website"
   }
 
