@@ -15,7 +15,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { TestApiClient, collectSSE } from './test-utils';
+import { TestApiClient, collectSSE, createTestHierarchy } from './test-utils';
 
 // Configuration
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001';
@@ -31,10 +31,15 @@ describe('E2E: Full Pipeline', () => {
   });
 
   it('prompt → PR in under 3 minutes', { timeout: TEST_TIMEOUT }, async () => {
+    // Step 0: Create org → team hierarchy
+    console.log('Creating org/team hierarchy...');
+    const { teamId } = await createTestHierarchy(api);
+
     // Step 1: Create a project
     console.log('Creating test project...');
     const project = await api.post('/projects', {
       name: `e2e-test-${Date.now()}`,
+      team_id: teamId,
       template: 'empty'
     });
 

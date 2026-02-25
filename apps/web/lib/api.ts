@@ -4,10 +4,10 @@ const API_URL =
   'http://localhost:3001'
 
 // Tenant ID — identifies the current user/workspace for multi-tenant isolation.
-// For local dev this defaults to 'local'. Override via NEXT_PUBLIC_TENANT_ID.
+// For local dev this defaults to 'test-tenant'. Override via NEXT_PUBLIC_TENANT_ID.
 export const TENANT_ID =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TENANT_ID) ||
-  'local'
+  'test-tenant'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -86,11 +86,14 @@ export async function fetchProjects(): Promise<Project[]> {
 
 export async function createProject(
   name: string,
+  repositoryUrl?: string,
 ): Promise<{ id?: string; error?: string }> {
+  const body: Record<string, string> = { name }
+  if (repositoryUrl) body.repository_url = repositoryUrl
   const response = await fetch(`${API_URL}/projects`, {
     method: 'POST',
     headers: baseHeaders(),
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   })
   return response.json()
 }
@@ -231,226 +234,144 @@ export async function fetchHealth(): Promise<HealthStatus | null> {
   }
 }
 
-// ── Site Generation Types ─────────────────────────────────────────────────
+// ── Project Type Detection ─────────────────────────────────────────────────
 
-export interface PageProgress {
-  pageName: string
-  index: number
-  total: number
+const DASHBOARD_KEYWORDS = [
+  'dashboard',
+  'analytics',
+  'metrics',
+  'kpi',
+  'chart',
+  'graphs',
+  'reporting',
+  'statistics',
+]
+
+export type ProjectType = 'dashboard' | 'website' | 'landing'
+
+/** Detect project type from prompt keywords. */
+export function detectProjectType(prompt: string): ProjectType {
+  const lower = prompt.toLowerCase()
+  if (DASHBOARD_KEYWORDS.some((kw) => lower.includes(kw))) return 'dashboard'
+  if (/multi.?page|website|blog|portfolio|several pages/i.test(prompt)) return 'website'
+  return 'landing'
 }
 
-export interface MultiPageSite {
-  pages: Record<string, string>
-  pageOrder: string[]
+// ── Site Generation (Supabase Edge Function) ──────────────────────────────
+
+const GENERATE_URL =
+  'https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/generate-diff'
+
+export interface GeneratedPage {
+  name: string
+  html: string
 }
 
-// ── Dashboard Generation ──────────────────────────────────────────────────
+const DASHBOARD_SYSTEM_PROMPT = `You are VIBE, an AI dashboard builder.
+Return ONLY a complete, self-contained HTML page (no markdown fences, no explanation).
+Requirements:
+- Include <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> in the head
+- Use a dark theme (background: #0f172a, text: #e2e8f0, cards: #1e293b)
+- Layout: fixed sidebar navigation on the left (240px wide, dark), main content area on the right
+- Top row of KPI cards (4 cards) showing key metrics with icons and trend indicators
+- At least 2 Chart.js charts (e.g., line chart + bar chart or doughnut) rendered in <canvas> elements
+- Responsive design using CSS grid/flexbox
+- All CSS inline in a <style> tag, all JS in a <script> tag at the end of the body
+- Initialize charts with realistic sample data in a DOMContentLoaded listener`
 
-const DASHBOARD_SYSTEM_PROMPT = `You are an expert HTML dashboard generator.
-Given a user description, generate a single, complete, self-contained HTML file that implements the described dashboard.
-
-REQUIREMENTS:
-- Output a COMPLETE HTML document with <!DOCTYPE html>, <html>, <head>, and <body> tags.
-- Include all CSS inline within a <style> tag in the <head>.
-- Include all JavaScript inline within a <script> tag before </body>.
-- Use a modern, clean design with a dark theme background (#1a1a2e or similar).
-- Use CSS Grid or Flexbox for layout.
-- Include responsive breakpoints for mobile and tablet.
-- Use placeholder/sample data to populate charts and metrics.
-- Include Chart.js via inline script for charts — do NOT reference external CDN libraries.
-- Include sidebar navigation, KPI cards, charts, and a data table.
-- The dashboard must look complete and professional with realistic sample data.
-- Do NOT use any external resources, CDNs, or imports — everything must be self-contained.
-
-OUTPUT FORMAT:
-Output ONLY the raw HTML. No markdown fences, no explanations, no diff format.
-Start with <!DOCTYPE html> and end with </html>.`
-
-// ── Internal Generation Helpers ───────────────────────────────────────────
-
-async function generateDiff(
+/**
+ * Generate a single-page dashboard via the Supabase edge function.
+ * Returns an array with exactly one GeneratedPage.
+ */
+export async function generateDashboard(
   prompt: string,
-  context?: string,
-  options?: unknown,
-  systemPrompt?: string,
-): Promise<{ diff: string }> {
-  const response = await fetch(`${API_URL}/api/generate`, {
+): Promise<GeneratedPage[]> {
+  const res = await fetch(GENERATE_URL, {
     method: 'POST',
-    headers: baseHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      prompt,
-      context: context ?? undefined,
-      options: options ?? undefined,
-      system_prompt: systemPrompt ?? undefined,
+      prompt: `${DASHBOARD_SYSTEM_PROMPT}\n\nUser request: ${prompt}`,
+      model: 'claude',
     }),
   })
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Generation failed' }))
-    throw new Error(err.error || `Generate request failed with status ${response.status}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error ?? 'Dashboard generation failed')
   }
 
-  return response.json()
+  const data: { diff: string } = await res.json()
+  // The LLM returns raw HTML (not a diff) thanks to our system prompt
+  return [{ name: 'Dashboard', html: data.diff }]
 }
 
-function extractHtmlFromDiff(diff: string): string {
-  const trimmed = diff.trim()
-
-  // If the response is already raw HTML, return as-is
-  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html') || trimmed.startsWith('<HTML')) {
-    return trimmed
-  }
-
-  // Try to extract HTML from markdown code fences
-  const fenceMatch = trimmed.match(/```(?:html)?\s*\n([\s\S]*?)```/)
-  if (fenceMatch) {
-    return fenceMatch[1].trim()
-  }
-
-  // Try to extract from a unified diff (new file content after +++ lines)
-  const lines = trimmed.split('\n')
-  const htmlLines: string[] = []
-  let inDiff = false
-
-  for (const line of lines) {
-    if (line.startsWith('+++') || line.startsWith('@@')) {
-      inDiff = true
-      continue
-    }
-    if (line.startsWith('---') || line.startsWith('diff --git')) {
-      continue
-    }
-    if (inDiff && line.startsWith('+')) {
-      htmlLines.push(line.slice(1))
-    } else if (inDiff && !line.startsWith('-') && !line.startsWith('\\')) {
-      htmlLines.push(line)
-    }
-  }
-
-  if (htmlLines.length > 0) {
-    return htmlLines.join('\n').trim()
-  }
-
-  // Fallback: return the raw content
-  return trimmed
-}
-
-function detectProjectType(prompt: string): string {
-  const lower = prompt.toLowerCase()
-
-  const dashboardKeywords = [
-    'dashboard', 'analytics dashboard', 'admin panel', 'admin dashboard',
-    'metrics dashboard', 'monitoring dashboard', 'kpi', 'data dashboard',
-    'reporting dashboard', 'stats dashboard',
-  ]
-  for (const keyword of dashboardKeywords) {
-    if (lower.includes(keyword)) return 'dashboard'
-  }
-
-  const landingKeywords = [
-    'landing page', 'homepage', 'marketing page', 'sales page',
-    'hero section', 'coming soon', 'waitlist',
-  ]
-  for (const keyword of landingKeywords) {
-    if (lower.includes(keyword)) return 'landing'
-  }
-
-  const portfolioKeywords = ['portfolio', 'personal site', 'resume site', 'cv site']
-  for (const keyword of portfolioKeywords) {
-    if (lower.includes(keyword)) return 'portfolio'
-  }
-
-  const blogKeywords = ['blog', 'articles', 'news site', 'magazine']
-  for (const keyword of blogKeywords) {
-    if (lower.includes(keyword)) return 'blog'
-  }
-
-  const ecomKeywords = ['e-commerce', 'ecommerce', 'shop', 'store', 'product page', 'checkout']
-  for (const keyword of ecomKeywords) {
-    if (lower.includes(keyword)) return 'ecommerce'
-  }
-
-  return 'generic'
-}
-
-// ── Single-page Dashboard Generation ────────────────────────────────────
-async function generateDashboard(
-  prompt: string,
-  onPageStart?: (progress: PageProgress) => void,
-  onPageDone?: (progress: PageProgress) => void,
-): Promise<MultiPageSite> {
-  onPageStart?.({ pageName: "dashboard", index: 0, total: 1 })
-  const dashboardPrompt =
-    `Build a complete, interactive analytics dashboard for: ${prompt}\n\n` +
-    `Include sidebar navigation, KPI cards, Chart.js charts, and a data table. ` +
-    `Use realistic sample data. Return ONLY raw HTML.`
-  const response = await generateDiff(
-    dashboardPrompt,
-    undefined,
-    undefined,
-    DASHBOARD_SYSTEM_PROMPT,
-  )
-  const html = extractHtmlFromDiff(response.diff)
-  if (!html.trim()) {
-    throw new Error("Dashboard generation produced no HTML. Try a more specific prompt.")
-  }
-  onPageDone?.({ pageName: "dashboard", index: 0, total: 1 })
-  return {
-    pages: { dashboard: html },
-    pageOrder: ["dashboard"],
-  }
-}
-
-// ── Multi-Page Site Generation ────────────────────────────────────────────
-
-function getPageNamesForType(projectType: string): string[] {
-  switch (projectType) {
-    case 'landing':
-      return ['home', 'features', 'pricing', 'contact']
-    case 'portfolio':
-      return ['home', 'projects', 'about', 'contact']
-    case 'blog':
-      return ['home', 'articles', 'about']
-    case 'ecommerce':
-      return ['home', 'products', 'cart', 'checkout']
-    case 'dashboard':
-      return ['dashboard']
-    default:
-      return ['home', 'about', 'contact']
-  }
-}
-
+/**
+ * Generate a multi-page website via the Supabase edge function.
+ * Makes one call per page and returns an array of GeneratedPage objects.
+ */
 export async function generateMultiPageSite(
   prompt: string,
-  projectType?: string,
-  onPageStart?: (progress: PageProgress) => void,
-  onPageDone?: (progress: PageProgress) => void,
-): Promise<MultiPageSite> {
-  const detectedType = projectType || detectProjectType(prompt)
-  // Dashboard: skip multi-page planning, generate single page directly
-  if (detectedType === "dashboard") {
-    return generateDashboard(prompt, onPageStart, onPageDone)
+): Promise<GeneratedPage[]> {
+  const pages = [
+    { name: 'Home', instruction: 'Create the main landing / home page.' },
+    { name: 'About', instruction: 'Create an About page with a team or mission section.' },
+    { name: 'Contact', instruction: 'Create a Contact page with a form.' },
+  ]
+
+  const results = await Promise.all(
+    pages.map(async (page) => {
+      const res = await fetch(GENERATE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `You are VIBE, an AI website builder. Return ONLY a complete, self-contained HTML page (no markdown fences, no explanation). Use a modern dark theme with clean typography.\n\nSite brief: ${prompt}\nPage: ${page.name} — ${page.instruction}`,
+          model: 'claude',
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { error?: string }).error ?? `Failed to generate ${page.name}`)
+      }
+
+      const data: { diff: string } = await res.json()
+      return { name: page.name, html: data.diff }
+    }),
+  )
+
+  return results
+}
+
+// ── Billing ────────────────────────────────────────────────────────────────
+
+export interface BillingInfo {
+  plan: string
+  jobs_total: number
+  jobs_completed: number
+  jobs_failed: number
+  jobs_active: number
+  tokens_used: number
+  compute_seconds: number
+  files_changed: number
+}
+
+/** Derives usage stats from the jobs list (no dedicated billing endpoint). */
+export async function fetchBillingInfo(): Promise<BillingInfo | null> {
+  try {
+    const jobs = await fetchJobs()
+    return {
+      plan: 'free',
+      jobs_total: jobs.length,
+      jobs_completed: jobs.filter((j) => j.execution_state === 'completed').length,
+      jobs_failed: jobs.filter((j) => j.execution_state === 'failed').length,
+      jobs_active: jobs.filter((j) =>
+        ['running', 'queued'].includes(j.execution_state)
+      ).length,
+      tokens_used: jobs.reduce((acc, j) => acc + (j.llm_total_tokens ?? 0), 0),
+      compute_seconds: jobs.reduce((acc, j) => acc + (j.total_job_seconds ?? 0), 0),
+      files_changed: jobs.reduce((acc, j) => acc + (j.files_changed_count ?? 0), 0),
+    }
+  } catch {
+    return null
   }
-
-  const pages: Record<string, string> = {}
-  const pageOrder: string[] = []
-  const pageNames = getPageNamesForType(detectedType)
-
-  for (let i = 0; i < pageNames.length; i++) {
-    const pageName = pageNames[i]
-    const progress: PageProgress = { pageName, index: i, total: pageNames.length }
-
-    onPageStart?.(progress)
-
-    const pagePrompt = `Generate the "${pageName}" page for: ${prompt}\nReturn ONLY raw HTML.`
-    const response = await generateDiff(pagePrompt)
-    const html = extractHtmlFromDiff(response.diff)
-
-    pages[pageName] = html
-    pageOrder.push(pageName)
-
-    onPageDone?.(progress)
-  }
-
-  return { pages, pageOrder }
 }

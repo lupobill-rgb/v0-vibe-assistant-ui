@@ -87,7 +87,7 @@ Rules:
     storage.logEvent(taskId, `[DEBUG] Failed to apply fix diff: ${err.message}`, 'error');
     return { success: false, buildOutput: `Failed to apply fix: ${err.message}` };
   } finally {
-    if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath);
+    try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
   }
 
   // Re-run build to verify fix

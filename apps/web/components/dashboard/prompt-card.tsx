@@ -1,10 +1,15 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createJob } from "@/lib/api"
+import {
+  detectProjectType,
+  generateDashboard,
+  generateMultiPageSite,
+  type GeneratedPage,
+} from "@/lib/api"
+import { PreviewPanel } from "@/components/dashboard/preview-panel"
 
 const suggestions = [
   { icon: Globe, label: "Build a landing page" },
@@ -13,44 +18,34 @@ const suggestions = [
   { icon: ImageIcon, label: "Generate a portfolio" },
 ]
 
-interface PromptCardProps {
-  selectedProjectId: string
-}
-
-export function PromptCard({ selectedProjectId }: PromptCardProps) {
-  const router = useRouter()
+export function PromptCard() {
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [generatedPages, setGeneratedPages] = useState<GeneratedPage[]>([])
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
-    if (!selectedProjectId) {
-      setError("Please select or create a project first")
-      return
-    }
 
     setSubmitting(true)
     setError(null)
+    setGeneratedPages([])
 
     try {
-      const result = await createJob({
-        prompt: prompt.trim(),
-        project_id: selectedProjectId,
-        base_branch: "main",
-      })
+      const projectType = detectProjectType(prompt.trim())
 
-      if (result.error) {
-        setError(result.error)
+      if (projectType === "dashboard") {
+        const pages = await generateDashboard(prompt.trim())
+        setGeneratedPages(pages)
         return
       }
 
-      if (result.task_id) {
-        router.push(`/task/${result.task_id}`)
-      }
+      // For website / landing types, use multi-page generation
+      const pages = await generateMultiPageSite(prompt.trim())
+      setGeneratedPages(pages)
     } catch (err) {
-      setError("Failed to submit job. Is the API running?")
+      setError(err instanceof Error ? err.message : "Generation failed")
       console.error(err)
     } finally {
       setSubmitting(false)
@@ -102,15 +97,15 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
               </button>
               <div className="w-px h-4 bg-border" />
               <span className="text-[10px] text-muted-foreground font-mono">
-                {prompt.length > 0 ? `${prompt.length} chars` : "GPT-4o · ⌘↵ to submit"}
+                {prompt.length > 0 ? `${prompt.length} chars` : "⌘↵ to submit"}
               </span>
             </div>
             <button
               onClick={handleSubmit}
-              disabled={!prompt.trim() || submitting || !selectedProjectId}
+              disabled={!prompt.trim() || submitting}
               className={cn(
-                "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200",
-                prompt.trim() && selectedProjectId && !submitting
+                "flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all duration-200",
+                prompt.trim() && !submitting
                   ? "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shadow-lg shadow-[#A855F7]/20 hover:opacity-90"
                   : "bg-secondary text-muted-foreground"
               )}
@@ -120,6 +115,7 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
               ) : (
                 <ArrowUp className="w-4 h-4" />
               )}
+              Build Landing Page
             </button>
           </div>
         </div>
@@ -139,6 +135,9 @@ export function PromptCard({ selectedProjectId }: PromptCardProps) {
           </button>
         ))}
       </div>
+
+      {/* Generated preview */}
+      {generatedPages.length > 0 && <PreviewPanel pages={generatedPages} />}
     </div>
   )
 }
