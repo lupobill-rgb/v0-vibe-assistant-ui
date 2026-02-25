@@ -1,14 +1,15 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject, createJob } from "@/lib/api"
-
-const REPOSITORY_URL =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_REPOSITORY_URL) ||
-  undefined
+import {
+  detectProjectType,
+  generateDashboard,
+  generateMultiPageSite,
+  type GeneratedPage,
+} from "@/lib/api"
+import { PreviewPanel } from "@/components/dashboard/preview-panel"
 
 const suggestions = [
   { icon: Globe, label: "Build a landing page" },
@@ -18,45 +19,33 @@ const suggestions = [
 ]
 
 export function PromptCard() {
-  const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [generatedPages, setGeneratedPages] = useState<GeneratedPage[]>([])
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
 
     setSubmitting(true)
     setError(null)
+    setGeneratedPages([])
 
     try {
-      const project = await createProject(
-        `landing-${Date.now()}`,
-        REPOSITORY_URL,
-      )
+      const projectType = detectProjectType(prompt.trim())
 
-      if (project.error || !project.id) {
-        setError(project.error ?? "Failed to create project")
+      if (projectType === "dashboard") {
+        const pages = await generateDashboard(prompt.trim())
+        setGeneratedPages(pages)
         return
       }
 
-      const result = await createJob({
-        prompt: prompt.trim(),
-        project_id: project.id,
-        base_branch: "main",
-      })
-
-      if (result.error) {
-        setError(result.error)
-        return
-      }
-
-      if (result.task_id) {
-        router.push(`/building/${result.task_id}`)
-      }
+      // For website / landing types, use multi-page generation
+      const pages = await generateMultiPageSite(prompt.trim())
+      setGeneratedPages(pages)
     } catch (err) {
-      setError("Failed to submit job. Is the API running?")
+      setError(err instanceof Error ? err.message : "Generation failed")
       console.error(err)
     } finally {
       setSubmitting(false)
@@ -146,6 +135,9 @@ export function PromptCard() {
           </button>
         ))}
       </div>
+
+      {/* Generated preview */}
+      {generatedPages.length > 0 && <PreviewPanel pages={generatedPages} />}
     </div>
   )
 }

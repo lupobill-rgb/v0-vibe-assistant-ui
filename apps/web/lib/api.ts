@@ -234,6 +234,114 @@ export async function fetchHealth(): Promise<HealthStatus | null> {
   }
 }
 
+// ── Project Type Detection ─────────────────────────────────────────────────
+
+const DASHBOARD_KEYWORDS = [
+  'dashboard',
+  'analytics',
+  'metrics',
+  'kpi',
+  'chart',
+  'graphs',
+  'reporting',
+  'statistics',
+]
+
+export type ProjectType = 'dashboard' | 'website' | 'landing'
+
+/** Detect project type from prompt keywords. */
+export function detectProjectType(prompt: string): ProjectType {
+  const lower = prompt.toLowerCase()
+  if (DASHBOARD_KEYWORDS.some((kw) => lower.includes(kw))) return 'dashboard'
+  if (/multi.?page|website|blog|portfolio|several pages/i.test(prompt)) return 'website'
+  return 'landing'
+}
+
+// ── Site Generation (Supabase Edge Function) ──────────────────────────────
+
+const GENERATE_URL =
+  'https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/generate-diff'
+
+export interface GeneratedPage {
+  name: string
+  html: string
+}
+
+const DASHBOARD_SYSTEM_PROMPT = `You are VIBE, an AI dashboard builder.
+Return ONLY a complete, self-contained HTML page (no markdown fences, no explanation).
+Requirements:
+- Include <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> in the head
+- Use a dark theme (background: #0f172a, text: #e2e8f0, cards: #1e293b)
+- Layout: fixed sidebar navigation on the left (240px wide, dark), main content area on the right
+- Top row of KPI cards (4 cards) showing key metrics with icons and trend indicators
+- At least 2 Chart.js charts (e.g., line chart + bar chart or doughnut) rendered in <canvas> elements
+- Responsive design using CSS grid/flexbox
+- All CSS inline in a <style> tag, all JS in a <script> tag at the end of the body
+- Initialize charts with realistic sample data in a DOMContentLoaded listener`
+
+/**
+ * Generate a single-page dashboard via the Supabase edge function.
+ * Returns an array with exactly one GeneratedPage.
+ */
+export async function generateDashboard(
+  prompt: string,
+): Promise<GeneratedPage[]> {
+  const res = await fetch(GENERATE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: `${DASHBOARD_SYSTEM_PROMPT}\n\nUser request: ${prompt}`,
+      model: 'claude',
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error ?? 'Dashboard generation failed')
+  }
+
+  const data: { diff: string } = await res.json()
+  // The LLM returns raw HTML (not a diff) thanks to our system prompt
+  return [{ name: 'Dashboard', html: data.diff }]
+}
+
+/**
+ * Generate a multi-page website via the Supabase edge function.
+ * Makes one call per page and returns an array of GeneratedPage objects.
+ */
+export async function generateMultiPageSite(
+  prompt: string,
+): Promise<GeneratedPage[]> {
+  const pages = [
+    { name: 'Home', instruction: 'Create the main landing / home page.' },
+    { name: 'About', instruction: 'Create an About page with a team or mission section.' },
+    { name: 'Contact', instruction: 'Create a Contact page with a form.' },
+  ]
+
+  const results = await Promise.all(
+    pages.map(async (page) => {
+      const res = await fetch(GENERATE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `You are VIBE, an AI website builder. Return ONLY a complete, self-contained HTML page (no markdown fences, no explanation). Use a modern dark theme with clean typography.\n\nSite brief: ${prompt}\nPage: ${page.name} — ${page.instruction}`,
+          model: 'claude',
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { error?: string }).error ?? `Failed to generate ${page.name}`)
+      }
+
+      const data: { diff: string } = await res.json()
+      return { name: page.name, html: data.diff }
+    }),
+  )
+
+  return results
+}
+
 // ── Billing ────────────────────────────────────────────────────────────────
 
 export interface BillingInfo {
