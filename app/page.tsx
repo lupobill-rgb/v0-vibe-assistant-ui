@@ -9,7 +9,7 @@ import { HeroSection } from "@/components/dashboard/hero-section"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { PreviewPanel } from "@/components/dashboard/preview-panel"
 import { BuildLog, type BuildStep } from "@/components/dashboard/build-log"
-import { generateMultiPageSite, type MultiPageSite } from "@/lib/api"
+import { generateMultiPageSite, detectProjectType, type MultiPageSite } from "@/lib/api"
 import {
   saveProject,
   updateProject,
@@ -221,6 +221,8 @@ function HomePageContent() {
     setProgressMessage("Regenerating...")
     addStep("Analyzing your prompt...")
 
+    const detectedType = detectProjectType(originalPrompt)
+
     setTimeout(() => {
       addStep("Planning site structure...")
     }, 1500)
@@ -232,6 +234,8 @@ function HomePageContent() {
           const msg = `Generating page ${progress.index + 1} of ${progress.total}: ${progress.pageName.charAt(0).toUpperCase() + progress.pageName.slice(1)}...`
           handleBuildProgress(msg)
         },
+        undefined,
+        detectedType,
       )
       const hasContent = Object.values(site.pages).some((html) => html.trim())
       if (!hasContent) {
@@ -263,6 +267,7 @@ function HomePageContent() {
     async (refinement: string) => {
       if (!generatedSite) return
       setIsRefining(true)
+      const detectedType = detectProjectType(originalPrompt)
       try {
         const site = await generateMultiPageSite(
           originalPrompt +
@@ -274,6 +279,8 @@ function HomePageContent() {
               `Refining page ${progress.index + 1} of ${progress.total}: ${progress.pageName.charAt(0).toUpperCase() + progress.pageName.slice(1)}...`,
             )
           },
+          undefined,
+          detectedType,
         )
         const hasContent = Object.values(site.pages).some((html) => html.trim())
         if (!hasContent) {

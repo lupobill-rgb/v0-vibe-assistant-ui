@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { ArrowUp, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { generateMultiPageSite, type MultiPageSite } from "@/lib/api"
+import { generateMultiPageSite, detectProjectType, type MultiPageSite, type ProjectType } from "@/lib/api"
 import { categories, templates, type TemplateCategory } from "@/lib/templates"
 import { toast } from "sonner"
 
@@ -60,6 +60,7 @@ export function PromptCard({ onGenerating, onGenerated, onError, onProgress, loa
     }, 2000)
 
     try {
+      const detectedType = detectProjectType(prompt.trim())
       const site = await generateMultiPageSite(
         prompt.trim(),
         (progress) => {
@@ -73,6 +74,7 @@ export function PromptCard({ onGenerating, onGenerated, onError, onProgress, loa
           setProgressMessage(msg)
           onProgress?.(msg)
         },
+        detectedType,
       )
 
       // Validate we have at least one page with content
