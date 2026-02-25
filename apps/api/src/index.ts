@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import { storage, VibeEvent } from './storage';
 import { hashPassword, verifyPassword, generateToken, TOKEN_EXPIRY_MS, optionalAuth, requireTenantHeader, AuthRequest } from './auth';
+import { generateDiff } from './edge-function';
 import path from 'path';
 import fs from 'fs';
 import { execSync, execFileSync } from 'child_process';
@@ -21,6 +22,67 @@ const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
 const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
+
+/**
+ * Generate an HTML preview page from a unified diff and save it to disk.
+ * The page renders a syntax-highlighted side-by-side diff view.
+ */
+function generateHtmlPreviewFromDiff(taskId: string, diff: string): string {
+  const previewDir = path.join(PREVIEWS_DIR, taskId);
+  if (!fs.existsSync(previewDir)) {
+    fs.mkdirSync(previewDir, { recursive: true });
+  }
+
+  // Escape HTML entities in the diff text
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Build coloured diff lines
+  const lines = diff.split('\n').map((line) => {
+    if (line.startsWith('+++') || line.startsWith('---')) {
+      return `<span class="diff-meta">${esc(line)}</span>`;
+    }
+    if (line.startsWith('@@')) {
+      return `<span class="diff-hunk">${esc(line)}</span>`;
+    }
+    if (line.startsWith('+')) {
+      return `<span class="diff-add">${esc(line)}</span>`;
+    }
+    if (line.startsWith('-')) {
+      return `<span class="diff-del">${esc(line)}</span>`;
+    }
+    return `<span>${esc(line)}</span>`;
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VIBE Diff Preview — ${esc(taskId.slice(0, 8))}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f0f23;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;padding:2rem}
+  h1{font-size:1.25rem;margin-bottom:1rem;color:#8B5CF6}
+  .meta{color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem}
+  pre{background:#1a1035;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:1rem;overflow-x:auto;font-size:.85rem;line-height:1.6}
+  .diff-meta{color:#60a5fa;font-weight:600}
+  .diff-hunk{color:#c084fc}
+  .diff-add{color:#4ade80;background:rgba(74,222,128,.08)}
+  .diff-del{color:#f87171;background:rgba(248,113,113,.08)}
+</style>
+</head>
+<body>
+<h1>Diff Preview</h1>
+<p class="meta">Task ${esc(taskId)}</p>
+<pre>${lines.join('\n')}</pre>
+</body>
+</html>`;
+
+  const filePath = path.join(previewDir, 'index.html');
+  fs.writeFileSync(filePath, html, 'utf-8');
+  return `/previews/${taskId}/index.html`;
+}
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -103,19 +165,22 @@ async function bootstrap() {
     
     // Initialize git repository
     execSync('git init', { cwd: repoDir });
-    execSync(`git checkout -b main`, { cwd: repoDir });
-    
+
+    // Configure git identity before making any commits
+    execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
+    execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+    execSync('git config commit.gpgsign false', { cwd: repoDir });
+
     // Create initial README for template
     const readmePath = path.join(repoDir, 'README.md');
     fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
-    
-    // Configure git
-    execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
-    execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
-    
-    // Initial commit
+
+    // Initial commit — this materialises the branch ref so it actually exists
     execSync('git add .', { cwd: repoDir });
     execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
+
+    // Ensure the branch is named 'main' regardless of the git init.defaultBranch setting
+    execSync('git branch -M main', { cwd: repoDir });
 
     storage.createProject({
       id: projectId,
@@ -283,7 +348,12 @@ app.delete('/projects/:id', requireTenantHeader(), (req: AuthRequest, res: Respo
       return res.status(403).json({ error: 'Access denied: project belongs to different tenant' });
     }
 
+    const localPath = project.local_path;
     storage.deleteProject(projectId);
+    // Best-effort cleanup of the on-disk repo directory
+    if (localPath && fs.existsSync(localPath)) {
+      fs.rmSync(localPath, { recursive: true, force: true });
+    }
     res.json({ message: 'Project deleted successfully' });
   } catch (error) {
     console.error('Error deleting project:', error);
@@ -449,17 +519,68 @@ app.post('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
       llm_model: resolvedModel,
     });
 
-    if (repo_url) {
-      storage.logEvent(taskId, 'Task created (legacy Mode B with repo_url)', 'warning');
-    } else {
-      storage.logEvent(taskId, 'Task created and queued for execution', 'info');
-    }
+    storage.logEvent(taskId, 'Task created — calling Edge Function for diff generation', 'info');
 
+    // Return immediately so the frontend gets the task_id
     res.status(201).json({
       task_id: taskId,
       status: 'queued',
       message: 'Task created successfully'
     });
+
+    // Fire-and-forget: process the job asynchronously
+    (async () => {
+      try {
+        storage.updateTaskState(taskId, 'calling_llm');
+        storage.logEvent(taskId, 'Calling Edge Function...', 'info');
+
+        const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
+        const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+        if (!supabaseKey) {
+          throw new Error('SUPABASE_ANON_KEY not configured');
+        }
+
+        const response = await fetch(`${supabaseUrl}/functions/v1/generate-diff`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt,
+            model: resolvedModel,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Edge Function call failed');
+        }
+
+        storage.setTaskDiff(taskId, data.diff);
+
+        // Extract HTML content from diff and save as preview
+        const lines = data.diff.split('\n');
+        const htmlLines = lines.filter((l: string) => l.startsWith('+')).map((l: string) => l.substring(1)).filter((l: string) => !l.startsWith('++'));
+        const html = htmlLines.join('\n');
+        const previewDir = path.join('/data/previews', taskId);
+        fs.mkdirSync(previewDir, { recursive: true });
+        fs.writeFileSync(path.join(previewDir, 'index.html'), html);
+        storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
+        storage.logEvent(taskId, 'Preview generated', 'info');
+
+        storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
+        storage.updateTaskState(taskId, 'completed');
+        storage.logEvent(taskId, 'Job completed successfully', 'info');
+
+      } catch (err: any) {
+        console.error(`Job ${taskId} failed:`, err.message);
+        storage.updateTaskState(taskId, 'failed');
+        storage.logEvent(taskId, `Job failed: ${err.message}`, 'error');
+      }
+    })();
   } catch (error) {
     console.error('Error creating task:', error);
     res.status(500).json({ error: 'Failed to create task' });
@@ -599,6 +720,61 @@ app.get('/jobs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to get analytics' });
     }
+  });
+
+  // GET /jobs/:id/logs — SSE stream of log events
+  // Implemented here (not in NestJS controller) so it works with tsx dev mode
+  // where esbuild cannot emit decorator metadata required for NestJS DI.
+  app.get('/jobs/:id/logs', requireTenantHeader(), (req: AuthRequest, res: Response) => {
+    const jobId = req.params.id;
+    const tenantId = req.tenantId!;
+
+    const task = storage.getTask(jobId);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    if (task.tenant_id !== tenantId) {
+      res.status(403).json({ error: 'Access denied: job belongs to different tenant' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (data: unknown) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Replay existing events
+    const existing = storage.getTaskEvents(jobId);
+    let lastEventTime = Date.now();
+    if (existing.length > 0) {
+      existing.forEach(send);
+      lastEventTime = existing[existing.length - 1].event_time;
+    }
+
+    // Poll for new events until terminal state
+    const interval = setInterval(() => {
+      try {
+        const newEvents = storage.getEventsAfter(jobId, lastEventTime);
+        newEvents.forEach(e => { send(e); lastEventTime = e.event_time; });
+
+        const current = storage.getTask(jobId);
+        if (current && (current.execution_state === 'completed' || current.execution_state === 'failed')) {
+          send({ type: 'complete', state: current.execution_state });
+          clearInterval(interval);
+          res.end();
+        }
+      } catch {
+        clearInterval(interval);
+        res.end();
+      }
+    }, 1000);
+
+    req.on('close', () => clearInterval(interval));
   });
 
   // Health check

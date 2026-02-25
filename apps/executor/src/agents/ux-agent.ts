@@ -106,7 +106,7 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
     } catch (err: any) {
       storage.logEvent(taskId, `[UX] Failed to apply fix diff: ${err.message}`, 'warning');
     } finally {
-      if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath);
+      try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
     }
   } catch (err: any) {
     storage.logEvent(taskId, `[UX] Fix LLM call failed: ${err.message}`, 'error');

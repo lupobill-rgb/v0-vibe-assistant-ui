@@ -24,10 +24,7 @@ services:
       retries: 5
       start_period: 10s
 
-  # executor: DISABLED — LLM calls now routed through Supabase Edge Function.
-  # The executor's task-processing logic runs in-process within the API service.
-  # To re-enable, uncomment the block below.
-  #
+  # executor service disabled — LLM calls moved to Supabase Edge Functions
   # executor:
   #   build:
   #     context: .
@@ -35,8 +32,7 @@ services:
   #   environment:
   #     - NODE_ENV=production
   #     - DATABASE_PATH=/app/data/vibe.db
-  #     - SUPABASE_URL=${SUPABASE_URL}
-  #     - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
   #     - GITHUB_TOKEN=${GITHUB_TOKEN}
   #     - EXECUTOR_POLL_INTERVAL=${EXECUTOR_POLL_INTERVAL:-5000}
   #     - MAX_ITERATIONS=${MAX_ITERATIONS:-6}

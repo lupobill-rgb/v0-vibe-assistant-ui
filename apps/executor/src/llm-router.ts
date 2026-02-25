@@ -1,8 +1,8 @@
 import { storage } from './storage';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
-const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-diff`;
+const EDGE_FUNCTION_URL =
+  process.env.SUPABASE_EDGE_FUNCTION_URL ||
+  'https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/generate-diff';
 
 export interface RouterDiffResult {
   diff: string;
@@ -66,47 +66,54 @@ export async function generateDiff(
 ): Promise<RouterDiffResult> {
   const startTime = Date.now();
 
-  if (!SUPABASE_ANON_KEY) {
-    throw new Error('SUPABASE_ANON_KEY is not set. Cannot call generate-diff Edge Function.');
+  // Build the full prompt, appending previous error context when retrying
+  let fullPrompt = prompt;
+  if (previousError) {
+    fullPrompt += `\n\n---\n\nPREVIOUS ERROR (please fix and regenerate the diff):\n${previousError}`;
+  }
+
+  // Map executor model names to edge function model names
+  const edgeModel: 'claude' | 'openai' = options.model === 'gpt' ? 'openai' : 'claude';
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  const anonKey = process.env.SUPABASE_ANON_KEY;
+  if (anonKey) {
+    headers['Authorization'] = `Bearer ${anonKey}`;
+    headers['apikey'] = anonKey;
   }
 
   const response = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-    },
+    headers,
     body: JSON.stringify({
-      prompt,
+      prompt: fullPrompt,
       context,
-      model: options.model,
-      mode: 'diff',
-      previousError,
-      max_tokens: 4096,
+      model: edgeModel,
     }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Edge Function error (${response.status}): ${errorText}`);
+    const errorBody = await response.text();
+    throw new Error(
+      `Edge function error (HTTP ${response.status}): ${errorBody}`
+    );
   }
 
-  const data = await response.json();
-
-  if (data.error) {
-    throw new Error(`Edge Function returned error: ${data.error}`);
-  }
-
-  const text: string = data.diff || '';
-  const usage = data.usage || { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
-  const modelUsed = data.model || options.model;
+  const result = (await response.json()) as {
+    diff: string;
+    usage: { input_tokens: number; output_tokens: number; total_tokens: number };
+  };
 
   const latencyMs = Date.now() - startTime;
+  const modelLabel = options.model === 'claude' ? 'claude (via edge fn)' : 'gpt (via edge fn)';
   storage.logEvent(
     options.taskId,
-    `LLM call complete: model=${modelUsed} input_tokens=${usage.input_tokens} output_tokens=${usage.output_tokens} latency=${latencyMs}ms (via Edge Function)`,
+    `LLM call complete: model=${modelLabel} input_tokens=${result.usage.input_tokens} output_tokens=${result.usage.output_tokens} latency=${latencyMs}ms`,
     'info'
   );
 
-  return { diff: text.trim(), usage };
+  return { diff: result.diff, usage: result.usage };
 }

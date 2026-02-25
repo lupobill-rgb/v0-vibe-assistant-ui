@@ -4,10 +4,10 @@ const API_URL =
   'http://localhost:3001'
 
 // Tenant ID — identifies the current user/workspace for multi-tenant isolation.
-// For local dev this defaults to 'local'. Override via NEXT_PUBLIC_TENANT_ID.
+// For local dev this defaults to 'test-tenant'. Override via NEXT_PUBLIC_TENANT_ID.
 export const TENANT_ID =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TENANT_ID) ||
-  'local'
+  'test-tenant'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -86,11 +86,14 @@ export async function fetchProjects(): Promise<Project[]> {
 
 export async function createProject(
   name: string,
+  repositoryUrl?: string,
 ): Promise<{ id?: string; error?: string }> {
+  const body: Record<string, string> = { name }
+  if (repositoryUrl) body.repository_url = repositoryUrl
   const response = await fetch(`${API_URL}/projects`, {
     method: 'POST',
     headers: baseHeaders(),
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   })
   return response.json()
 }
@@ -226,6 +229,40 @@ export async function fetchHealth(): Promise<HealthStatus | null> {
     const response = await fetch(`${API_URL}/health`)
     if (!response.ok) return null
     return response.json()
+  } catch {
+    return null
+  }
+}
+
+// ── Billing ────────────────────────────────────────────────────────────────
+
+export interface BillingInfo {
+  plan: string
+  jobs_total: number
+  jobs_completed: number
+  jobs_failed: number
+  jobs_active: number
+  tokens_used: number
+  compute_seconds: number
+  files_changed: number
+}
+
+/** Derives usage stats from the jobs list (no dedicated billing endpoint). */
+export async function fetchBillingInfo(): Promise<BillingInfo | null> {
+  try {
+    const jobs = await fetchJobs()
+    return {
+      plan: 'free',
+      jobs_total: jobs.length,
+      jobs_completed: jobs.filter((j) => j.execution_state === 'completed').length,
+      jobs_failed: jobs.filter((j) => j.execution_state === 'failed').length,
+      jobs_active: jobs.filter((j) =>
+        ['running', 'queued'].includes(j.execution_state)
+      ).length,
+      tokens_used: jobs.reduce((acc, j) => acc + (j.llm_total_tokens ?? 0), 0),
+      compute_seconds: jobs.reduce((acc, j) => acc + (j.total_job_seconds ?? 0), 0),
+      files_changed: jobs.reduce((acc, j) => acc + (j.files_changed_count ?? 0), 0),
+    }
   } catch {
     return null
   }

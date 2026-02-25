@@ -1,9 +1,9 @@
 /**
  * llm-router test suite
  *
- * Uses CJS Module._load interception (compatible with tsx --test) to stub out
- * @anthropic-ai/sdk, openai, and ./storage before requiring the module under
- * test.  No external packages need to be installed.
+ * Stubs the global fetch and ./storage before requiring the module under test.
+ * Validates that generateDiff calls the Supabase Edge Function correctly and
+ * returns the expected diff + usage metrics.
  */
 
 import { describe, it, before, after } from 'node:test';
@@ -11,37 +11,42 @@ import assert from 'node:assert';
 import Module from 'module';
 
 // ── Spy containers ────────────────────────────────────────────────────────────
-const anthropicCalls: any[] = [];
-const openaiCalls: any[]    = [];
+const fetchCalls: Array<{ url: string; init: any }> = [];
 const logEventCalls: Array<[string, string, string]> = [];
 
-// ── Stub factories ────────────────────────────────────────────────────────────
-class MockAnthropic {
-  messages = {
-    create: async (params: any) => {
-      anthropicCalls.push(params);
-      return {
-        content: [{ type: 'text', text: 'diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new' }],
-        usage: { input_tokens: 10, output_tokens: 5 },
-      };
-    },
+// ── Mock fetch response factory ───────────────────────────────────────────────
+function makeFetchResponse(body: object, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
   };
 }
 
-class MockOpenAI {
-  chat = {
-    completions: {
-      create: async (params: any) => {
-        openaiCalls.push(params);
-        return {
-          choices: [{ message: { content: 'diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new' } }],
-          usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 },
-        };
-      },
-    },
-  };
-}
+const CLAUDE_RESPONSE = {
+  diff: 'diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new',
+  usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+};
 
+const OPENAI_RESPONSE = {
+  diff: 'diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new',
+  usage: { input_tokens: 20, output_tokens: 8, total_tokens: 28 },
+};
+
+// ── Stub global fetch ─────────────────────────────────────────────────────────
+const originalFetch = globalThis.fetch;
+
+(globalThis as any).fetch = async (url: string, init: any) => {
+  fetchCalls.push({ url, init });
+  const body = JSON.parse(init.body);
+  if (body.model === 'openai') {
+    return makeFetchResponse(OPENAI_RESPONSE);
+  }
+  return makeFetchResponse(CLAUDE_RESPONSE);
+};
+
+// ── Mock storage ──────────────────────────────────────────────────────────────
 const mockStorage = {
   logEvent: (taskId: string, message: string, severity: string) => {
     logEventCalls.push([taskId, message, severity]);
@@ -51,9 +56,6 @@ const mockStorage = {
 // ── Intercept require() before the module is first loaded ─────────────────────
 const originalLoad = (Module as any)._load.bind(Module);
 (Module as any)._load = function (request: string, parent: any, isMain: boolean) {
-  // __esModule: true prevents tsx's __importDefault from double-wrapping the default export
-  if (request === '@anthropic-ai/sdk') return { __esModule: true, default: MockAnthropic };
-  if (request === 'openai')            return { __esModule: true, default: MockOpenAI };
   if (request === './storage' || request === './storage.js')
     return { storage: mockStorage };
   return originalLoad(request, parent, isMain);
@@ -68,13 +70,13 @@ const { generateDiff } = require('./llm-router');
 // ── Restore after the suite ───────────────────────────────────────────────────
 after(() => {
   (Module as any)._load = originalLoad;
+  globalThis.fetch = originalFetch;
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function reset() {
-  anthropicCalls.length = 0;
-  openaiCalls.length    = 0;
-  logEventCalls.length  = 0;
+  fetchCalls.length = 0;
+  logEventCalls.length = 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,20 +87,22 @@ describe('llm-router: module shape', () => {
   });
 });
 
-describe('llm-router: claude routing', () => {
+describe('llm-router: edge function call (claude)', () => {
   before(reset);
 
-  it('calls Anthropic SDK with claude-sonnet-4-5-20250929', async () => {
+  it('calls fetch with POST to the edge function URL', async () => {
     reset();
     await generateDiff('add a log line', 'repo context', { model: 'claude', taskId: 't1' });
-    assert.strictEqual(anthropicCalls.length, 1, 'Anthropic.messages.create called once');
-    assert.strictEqual(anthropicCalls[0].model, 'claude-sonnet-4-5-20250929');
+    assert.strictEqual(fetchCalls.length, 1, 'fetch called once');
+    assert.ok(fetchCalls[0].url.includes('generate-diff'), 'URL targets generate-diff');
+    assert.strictEqual(fetchCalls[0].init.method, 'POST');
   });
 
-  it('does NOT call OpenAI when model is claude', async () => {
+  it('sends model as "claude" in the request body', async () => {
     reset();
     await generateDiff('task', 'ctx', { model: 'claude', taskId: 't2' });
-    assert.strictEqual(openaiCalls.length, 0, 'OpenAI must not be called');
+    const body = JSON.parse(fetchCalls[0].init.body);
+    assert.strictEqual(body.model, 'claude');
   });
 
   it('returns diff text and correct usage tokens', async () => {
@@ -111,18 +115,12 @@ describe('llm-router: claude routing', () => {
   });
 });
 
-describe('llm-router: gpt routing', () => {
-  it('calls OpenAI SDK with gpt-4-turbo-preview', async () => {
+describe('llm-router: edge function call (gpt)', () => {
+  it('maps model "gpt" to "openai" in the request body', async () => {
     reset();
     await generateDiff('add types', 'ctx', { model: 'gpt', taskId: 't4' });
-    assert.strictEqual(openaiCalls.length, 1, 'OpenAI.chat.completions.create called once');
-    assert.strictEqual(openaiCalls[0].model, 'gpt-4-turbo-preview');
-  });
-
-  it('does NOT call Anthropic when model is gpt', async () => {
-    reset();
-    await generateDiff('task', 'ctx', { model: 'gpt', taskId: 't5' });
-    assert.strictEqual(anthropicCalls.length, 0, 'Anthropic must not be called');
+    const body = JSON.parse(fetchCalls[0].init.body);
+    assert.strictEqual(body.model, 'openai');
   });
 
   it('returns diff text and correct usage tokens', async () => {
@@ -133,15 +131,6 @@ describe('llm-router: gpt routing', () => {
     assert.strictEqual(result.usage.output_tokens, 8);
     assert.strictEqual(result.usage.total_tokens, 28);
   });
-
-  it('sends system prompt as role=system and user content as role=user', async () => {
-    reset();
-    await generateDiff('task', 'ctx', { model: 'gpt', taskId: 't7' });
-    const msgs: any[] = openaiCalls[0].messages;
-    assert.strictEqual(msgs[0].role, 'system');
-    assert.ok((msgs[0].content as string).includes('unified diff'), 'system prompt contains "unified diff"');
-    assert.strictEqual(msgs[1].role, 'user');
-  });
 });
 
 describe('llm-router: storage.logEvent', () => {
@@ -150,7 +139,7 @@ describe('llm-router: storage.logEvent', () => {
     await generateDiff('fix', 'ctx', { model: 'claude', taskId: 'log-c' });
     const entry = logEventCalls.find(([tid]) => tid === 'log-c');
     assert.ok(entry, 'logEvent called for task log-c');
-    assert.match(entry![1], /claude-sonnet-4-5-20250929/);
+    assert.match(entry![1], /claude/);
     assert.match(entry![1], /input_tokens=10/);
     assert.match(entry![1], /output_tokens=5/);
     assert.match(entry![1], /latency=\d+ms/);
@@ -162,7 +151,7 @@ describe('llm-router: storage.logEvent', () => {
     await generateDiff('fix', 'ctx', { model: 'gpt', taskId: 'log-g' });
     const entry = logEventCalls.find(([tid]) => tid === 'log-g');
     assert.ok(entry, 'logEvent called for task log-g');
-    assert.match(entry![1], /gpt-4-turbo-preview/);
+    assert.match(entry![1], /gpt/);
     assert.match(entry![1], /input_tokens=20/);
     assert.match(entry![1], /output_tokens=8/);
     assert.match(entry![1], /latency=\d+ms/);
@@ -170,26 +159,47 @@ describe('llm-router: storage.logEvent', () => {
   });
 });
 
-describe('llm-router: user message construction', () => {
-  it('includes context and prompt in the user message', async () => {
+describe('llm-router: request body construction', () => {
+  it('includes prompt and context in the request body', async () => {
     reset();
     await generateDiff('add a button', 'MY REPO CONTEXT', { model: 'claude', taskId: 'msg-1' });
-    const userContent: string = anthropicCalls[0].messages[0].content;
-    assert.ok(userContent.includes('MY REPO CONTEXT'), 'context in user message');
-    assert.ok(userContent.includes('add a button'), 'prompt in user message');
+    const body = JSON.parse(fetchCalls[0].init.body);
+    assert.ok(body.prompt.includes('add a button'), 'prompt in request body');
+    assert.strictEqual(body.context, 'MY REPO CONTEXT', 'context in request body');
   });
 
-  it('appends previousError when provided', async () => {
+  it('appends previousError to prompt when provided', async () => {
     reset();
     await generateDiff('fix', 'ctx', { model: 'claude', taskId: 'msg-2' }, 'HUNK MISMATCH ERROR');
-    const userContent: string = anthropicCalls[0].messages[0].content;
-    assert.ok(userContent.includes('HUNK MISMATCH ERROR'), 'previousError injected');
+    const body = JSON.parse(fetchCalls[0].init.body);
+    assert.ok(body.prompt.includes('HUNK MISMATCH ERROR'), 'previousError in prompt');
+    assert.ok(body.prompt.includes('fix'), 'original prompt still present');
   });
 
   it('does not add error section when previousError is absent', async () => {
     reset();
     await generateDiff('fix', 'ctx', { model: 'claude', taskId: 'msg-3' });
-    const userContent: string = anthropicCalls[0].messages[0].content;
-    assert.ok(!userContent.includes('HUNK MISMATCH ERROR'), 'no error section in user message');
+    const body = JSON.parse(fetchCalls[0].init.body);
+    assert.ok(!body.prompt.includes('PREVIOUS ERROR'), 'no error section in prompt');
+  });
+});
+
+describe('llm-router: auth headers', () => {
+  it('includes Authorization header when SUPABASE_ANON_KEY is set', async () => {
+    const originalEnv = process.env.SUPABASE_ANON_KEY;
+    process.env.SUPABASE_ANON_KEY = 'test-anon-key-123';
+    try {
+      reset();
+      await generateDiff('fix', 'ctx', { model: 'claude', taskId: 'auth-1' });
+      const headers = fetchCalls[0].init.headers;
+      assert.strictEqual(headers['Authorization'], 'Bearer test-anon-key-123');
+      assert.strictEqual(headers['apikey'], 'test-anon-key-123');
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.SUPABASE_ANON_KEY;
+      } else {
+        process.env.SUPABASE_ANON_KEY = originalEnv;
+      }
+    }
   });
 });
