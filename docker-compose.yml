@@ -9,6 +9,11 @@ services:
       - NODE_ENV=production
       - DATABASE_PATH=/data/vibe.db
       - API_PORT=3001
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - EXECUTOR_POLL_INTERVAL=${EXECUTOR_POLL_INTERVAL:-5000}
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-6}
     volumes:
       - ./data:/data
     restart: unless-stopped
