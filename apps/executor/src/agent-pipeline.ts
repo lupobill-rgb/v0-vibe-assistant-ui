@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import simpleGit from 'simple-git';
+import Anthropic from '@anthropic-ai/sdk';
 import { storage } from './storage';
 import { generateDiff } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
@@ -14,24 +15,25 @@ const execAsync = promisify(exec);
 export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security';
 
 export interface AgentResult {
-  agent: AgentType;
-  status: 'passed' | 'failed' | 'needs_fix';
-  output: string;
-  diffs?: string[];
-  errors?: string[];
-  duration_ms: number;
+  agent: AgentType; status: 'passed' | 'failed' | 'needs_fix'; output: string;
+  diffs?: string[]; errors?: string[]; duration_ms: number;
 }
-
 export interface PipelineState {
-  job_id: string;
-  current_agent: AgentType;
-  results: AgentResult[];
+  job_id: string; current_agent: AgentType; results: AgentResult[];
   plan?: { tasks: string[]; files: string[]; acceptance_criteria: string[] };
-  retry_count: number;
-  max_retries: number;
+  retry_count: number; max_retries: number;
 }
 
 export interface RouterConfig { model: 'claude' | 'gpt' }
+
+/** Raw LLM call without the diff-only system prompt — used by planner for JSON output. */
+async function callLLM(system: string, userMsg: string, taskId: string): Promise<string> {
+  const res = await new Anthropic().messages.create({
+    model: 'claude-sonnet-4-5-20250929', max_tokens: 4096, system, messages: [{ role: 'user', content: userMsg }],
+  });
+  storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
+  return res.content.filter((b) => b.type === 'text').map((b) => (b as any).text).join('').trim();
+}
 
 async function callAgent(
   name: AgentType, taskId: string, fn: () => Promise<Omit<AgentResult, 'agent' | 'duration_ms'>>,
@@ -39,7 +41,7 @@ async function callAgent(
   storage.logEvent(taskId, `[PIPELINE] Starting ${name} agent`, 'info');
   const start = Date.now();
   const partial = await fn();
-  const result: AgentResult = { agent: name, duration_ms: Date.now() - start, ...partial };
+  const result: AgentResult = { ...partial, agent: name, duration_ms: Date.now() - start };
   storage.logEvent(taskId, `[PIPELINE] ${name} finished: ${result.status} (${result.duration_ms}ms)`,
     result.status === 'failed' ? 'error' : 'info');
   return result;
@@ -52,7 +54,7 @@ async function applyDiffToRepo(diff: string, repoPath: string): Promise<{ ok: bo
   const v = validateUnifiedDiffEnhanced(extracted);
   if (!v.ok) return { ok: false, error: v.errors.join('; ') };
   const a = validateDiffApplicability(extracted, repoPath);
-  if (!a.valid) return { ok: false, error: a.error };
+  if (!a.valid) return { ok: false, error: a.error || 'Diff not applicable' };
   const patchPath = path.join(repoPath, '.vibe-pipeline.patch');
   try {
     fs.writeFileSync(patchPath, extracted, 'utf-8');
@@ -86,14 +88,13 @@ export async function runPipeline(
 
   storage.updateTaskState(jobId, 'building_context'); // PLANNER
   const planResult = await callAgent('planner', jobId, async () => {
-    const planPrompt = `Analyze this request and return ONLY a JSON object (no markdown):\n` +
-      `{"tasks":["..."],"files":["..."],"acceptance_criteria":["..."]}\n\nRequest: ${prompt}`;
-    const res = await generateDiff(planPrompt, context, { model: config.model, taskId: jobId });
+    const msg = `${context}\n\n---\nAnalyze this request and return ONLY a JSON object with keys: tasks (string[]), files (string[]), acceptance_criteria (string[]). No markdown.\n\nRequest: ${prompt}`;
+    const raw = await callLLM('You are a planning assistant. Return ONLY valid JSON, no markdown.', msg, jobId);
     try {
-      state.plan = JSON.parse(res.diff);
+      state.plan = JSON.parse(raw);
       return { status: 'passed', output: `Plan: ${state.plan!.tasks.length} tasks, ${state.plan!.files.length} files` };
     } catch {
-      return { status: 'failed', output: 'Invalid JSON plan', errors: [res.diff.slice(0, 500)] };
+      return { status: 'failed', output: 'Invalid JSON plan', errors: [raw.slice(0, 500)] };
     }
   });
   state.results.push(planResult);
@@ -110,7 +111,7 @@ export async function runPipeline(
       const res = await generateDiff(task, formatContext(ctxResult.files), { model: config.model, taskId: jobId });
       if (!res.diff || res.diff === 'NO_CHANGES') continue;
       const apply = await applyDiffToRepo(res.diff, worktreeDir);
-      if (!apply.ok) return { status: 'needs_fix' as const, output: `Apply failed: ${task}`, diffs, errors: [apply.error!] };
+      if (!apply.ok) return { status: 'needs_fix' as const, output: `Apply failed: ${task}`, diffs, errors: [apply.error || 'Unknown'] };
       diffs.push(res.diff);
       const build = await runCmd(BUILD(), worktreeDir);
       if (!build.ok) return { status: 'needs_fix' as const, output: `Build failed after: ${task}`, diffs, errors: [build.output] };
@@ -166,8 +167,7 @@ export async function runPipeline(
   return state;
 }
 
-// Debug retry loop — resumes from the failing agent, not from scratch
-async function runDebugLoop(
+async function runDebugLoop( // resumes from the failing agent, not from scratch
   state: PipelineState, failedAgent: AgentType, errorLog: string,
   worktreeDir: string, config: RouterConfig,
 ): Promise<boolean> {
