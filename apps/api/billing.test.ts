@@ -1,30 +1,80 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-process.env['DATABASE_PATH'] = `/tmp/billing_test_${process.pid}.db`;
+// These tests require a running Supabase instance.
+// They will be skipped if SUPABASE_URL / SUPABASE_SERVICE_KEY are not set.
 
-import { runMigrations } from './src/migrations';
-import vibeDb, { storage } from './src/storage';
+const SKIP = !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY;
 
-runMigrations(vibeDb);
+describe('Billing storage — org-scoped isolation', { skip: SKIP ? 'SUPABASE_URL / SUPABASE_SERVICE_KEY not set' : false }, () => {
+  // Lazy-load so the module doesn't throw when env vars are missing
+  let storage: typeof import('./src/storage').storage;
+  let orgId: string;
+  let otherOrgId: string;
+  let teamId: string;
+  let projectId: string;
 
-const TENANT = 'tenant-abc';
-const OTHER  = 'tenant-xyz';
+  before(async () => {
+    const mod = await import('./src/storage');
+    storage = mod.storage;
 
-vibeDb.prepare(`
-  INSERT OR IGNORE INTO vibe_tasks
-    (task_id, user_prompt, source_branch, destination_branch,
-     execution_state, iteration_count, initiated_at, last_modified,
-     tenant_id, llm_model, llm_prompt_tokens, llm_completion_tokens, llm_total_tokens)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-`).run('task-1','fix bug','main','vibe/1','completed',1,
-       Date.now(),Date.now(), TENANT,'claude',1000,500,1500);
+    // Seed hierarchy: org → team → project
+    const org = await storage.createOrganization({ name: 'billing-test-org', slug: `bt-${Date.now()}` });
+    orgId = org.id;
 
-describe('Billing storage — tenant isolation', () => {
+    const otherOrg = await storage.createOrganization({ name: 'billing-other-org', slug: `bo-${Date.now()}` });
+    otherOrgId = otherOrg.id;
 
-  it('getBillingUsage scopes to TENANT and computes cost correctly', () => {
-    const rows = storage.getBillingUsage(TENANT);
-    assert.ok(rows.length > 0, 'expected rows for TENANT');
+    const team = await storage.createTeam({ org_id: orgId, name: 'billing-team', slug: `bteam-${Date.now()}` });
+    teamId = team.id;
+
+    const project = await storage.createProject({
+      name: `billing-proj-${Date.now()}`,
+      team_id: teamId,
+      local_path: '/tmp/billing-test',
+    });
+    projectId = project.id;
+
+    // Seed a completed job with token usage
+    await storage.createTask({
+      task_id: `billing-task-${Date.now()}`,
+      user_prompt: 'fix bug',
+      project_id: projectId,
+      source_branch: 'main',
+      destination_branch: 'vibe/1',
+      execution_state: 'completed',
+      initiated_at: new Date().toISOString(),
+      last_modified: new Date().toISOString(),
+      llm_model: 'claude',
+    });
+
+    // Get the task ID back and update usage metrics
+    const tasks = await storage.listRecentTasks(10);
+    const task = tasks.find(t => t.project_id === projectId);
+    if (task) {
+      await storage.updateTaskUsageMetrics(task.task_id, {
+        llm_prompt_tokens: 1000,
+        llm_completion_tokens: 500,
+        llm_total_tokens: 1500,
+      });
+    }
+  });
+
+  after(async () => {
+    // Cleanup: delete the test orgs (cascades to teams → projects → jobs)
+    if (storage) {
+      try {
+        const mod = await import('./src/supabase/client');
+        const sb = mod.getPlatformSupabaseClient();
+        await sb.from('organizations').delete().eq('id', orgId);
+        await sb.from('organizations').delete().eq('id', otherOrgId);
+      } catch { /* best effort */ }
+    }
+  });
+
+  it('getBillingUsage scopes to org and computes cost correctly', async () => {
+    const rows = await storage.getBillingUsage(orgId);
+    assert.ok(rows.length > 0, 'expected rows for org');
     const row = rows.find(r => r.model === 'claude')!;
     assert.ok(row, 'claude model row present');
     assert.equal(row.input_tokens, 1000);
@@ -34,46 +84,52 @@ describe('Billing storage — tenant isolation', () => {
     assert.equal(row.job_count, 1);
   });
 
-  it('getBillingUsage returns no rows for OTHER tenant (no bleed)', () => {
-    assert.equal(storage.getBillingUsage(OTHER).length, 0);
+  it('getBillingUsage returns no rows for other org (no bleed)', async () => {
+    const rows = await storage.getBillingUsage(otherOrgId);
+    assert.equal(rows.length, 0);
   });
 
-  it('getBillingExport returns per-task rows only for TENANT', () => {
-    const rows = storage.getBillingExport(TENANT);
+  it('getBillingExport returns per-task rows only for org', async () => {
+    const rows = await storage.getBillingExport(orgId);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].task_id, 'task-1');
     assert.equal(rows[0].llm_prompt_tokens, 1000);
     assert.equal(rows[0].llm_completion_tokens, 500);
   });
 
-  it('getBillingExport is empty for OTHER tenant', () => {
-    assert.equal(storage.getBillingExport(OTHER).length, 0);
+  it('getBillingExport is empty for other org', async () => {
+    const rows = await storage.getBillingExport(otherOrgId);
+    assert.equal(rows.length, 0);
   });
 
-  it('getTenantSpend matches expected cost for TENANT', () => {
-    const spend = storage.getTenantSpend(TENANT);
+  it('getTenantSpend matches expected cost for org', async () => {
+    const spend = await storage.getTenantSpend(orgId);
     assert.ok(Math.abs(spend - 0.0105) < 1e-9, `spend=${spend}`);
   });
 
-  it('getTenantSpend is 0 for OTHER tenant', () => {
-    assert.equal(storage.getTenantSpend(OTHER), 0);
+  it('getTenantSpend is 0 for other org', async () => {
+    const spend = await storage.getTenantSpend(otherOrgId);
+    assert.equal(spend, 0);
   });
 
-  it('getTenantBudget returns null when no budget set', () => {
-    assert.equal(storage.getTenantBudget(TENANT), null);
+  it('getTenantBudget returns null when no budget set', async () => {
+    const budget = await storage.getTenantBudget(orgId);
+    assert.equal(budget, null);
   });
 
-  it('setTenantBudget persists and getTenantBudget retrieves it', () => {
-    storage.setTenantBudget(TENANT, 25.00);
-    assert.equal(storage.getTenantBudget(TENANT), 25.00);
+  it('setTenantBudget persists and getTenantBudget retrieves it', async () => {
+    await storage.setTenantBudget(orgId, 25.00);
+    const budget = await storage.getTenantBudget(orgId);
+    assert.equal(budget, 25.00);
   });
 
-  it('setTenantBudget upserts — second call updates existing ceiling', () => {
-    storage.setTenantBudget(TENANT, 50.00);
-    assert.equal(storage.getTenantBudget(TENANT), 50.00);
+  it('setTenantBudget upserts — second call updates existing ceiling', async () => {
+    await storage.setTenantBudget(orgId, 50.00);
+    const budget = await storage.getTenantBudget(orgId);
+    assert.equal(budget, 50.00);
   });
 
-  it('budget for OTHER tenant is unaffected by TENANT upsert', () => {
-    assert.equal(storage.getTenantBudget(OTHER), null);
+  it('budget for other org is unaffected by org upsert', async () => {
+    const budget = await storage.getTenantBudget(otherOrgId);
+    assert.equal(budget, null);
   });
 });

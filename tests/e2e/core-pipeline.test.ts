@@ -9,23 +9,24 @@ import { execSync } from 'child_process';
  * Core Pipeline E2E Test
  *
  * Tests the complete VIBE pipeline:
- * 1. Create project pointing at a small local test repo
+ * 1. Create org → team → project pointing at a small local test repo
  * 2. Submit a prompt: "add a hello world function to src/index.ts"
  * 3. Subscribe to SSE logs in browser at /jobs/:id/logs
  */
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001';
-const TENANT_ID = process.env.TENANT_ID || 'local';
 const TEST_REPOS_DIR = path.join(os.tmpdir(), 'vibe-e2e-test-repos');
 const TEST_PROJECT_NAME = `e2e-test-project-${Date.now()}`;
 
 /** Headers required by every API call */
-function apiHeaders(extra?: Record<string, string>): Record<string, string> {
-  return { 'Content-Type': 'application/json', 'X-Tenant-Id': TENANT_ID, ...extra };
+function apiHeaders(): Record<string, string> {
+  return { 'Content-Type': 'application/json' };
 }
 
 describe('Core Pipeline E2E Test', () => {
   let testRepoPath: string;
+  let orgId: string;
+  let teamId: string;
   let projectId: string;
   let jobId: string;
 
@@ -81,11 +82,32 @@ export function main() {
     }
   });
 
-  it('Step 1: Create project pointing at a small local test repo', async () => {
+  it('Step 1: Create org → team → project with a local test repo', async () => {
+    // Create org
+    const orgRes = await fetch(`${API_BASE_URL}/orgs`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ name: `e2e-org-${Date.now()}`, slug: `e2e-org-${Date.now()}` }),
+    });
+    assert.strictEqual(orgRes.status, 201, 'Org creation should return 201');
+    const orgData = await orgRes.json() as { id: string };
+    orgId = orgData.id;
+
+    // Create team
+    const teamRes = await fetch(`${API_BASE_URL}/orgs/${orgId}/teams`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ name: `e2e-team-${Date.now()}`, slug: `e2e-team-${Date.now()}` }),
+    });
+    assert.strictEqual(teamRes.status, 201, 'Team creation should return 201');
+    const teamData = await teamRes.json() as { id: string };
+    teamId = teamData.id;
+
+    // Create project
     const response = await fetch(`${API_BASE_URL}/projects`, {
       method: 'POST',
       headers: apiHeaders(),
-      body: JSON.stringify({ name: TEST_PROJECT_NAME, template: 'empty' }),
+      body: JSON.stringify({ name: TEST_PROJECT_NAME, team_id: teamId, template: 'empty' }),
     });
 
     assert.strictEqual(response.status, 201, 'Project creation should return 201');
@@ -137,8 +159,7 @@ export function main() {
   it('Step 3: Subscribe to SSE logs at /jobs/:id/logs', async () => {
     assert.ok(jobId, 'Job ID should be set from previous test');
 
-    // Pass tenant ID as query param — EventSource cannot send custom headers
-    const sseUrl = `${API_BASE_URL}/jobs/${jobId}/logs?tenant_id=${encodeURIComponent(TENANT_ID)}`;
+    const sseUrl = `${API_BASE_URL}/jobs/${jobId}/logs`;
     console.log(`✓ SSE endpoint: ${sseUrl}`);
 
     return new Promise<void>((resolve, reject) => {

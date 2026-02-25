@@ -34,9 +34,9 @@ export async function generateDiff(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `Edge Function returned ${res.status}` }));
+    const err = await res.json().catch(() => ({ error: `Edge Function returned ${res.status}` })) as { error?: string };
     throw new Error(err.error || "Edge Function call failed");
   }
 
-  return res.json(); // { diff, usage }
+  return res.json() as Promise<DiffResult>;
 }

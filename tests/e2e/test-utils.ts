@@ -6,7 +6,6 @@
 export interface ApiConfig {
   baseUrl: string;
   timeout?: number;
-  tenantId?: string;
 }
 
 /**
@@ -15,16 +14,14 @@ export interface ApiConfig {
 export class TestApiClient {
   private baseUrl: string;
   private timeout: number;
-  private tenantId: string;
 
   constructor(config: ApiConfig) {
     this.baseUrl = config.baseUrl;
     this.timeout = config.timeout || 30000;
-    this.tenantId = config.tenantId || process.env.TENANT_ID || 'local';
   }
 
   private baseHeaders(extra?: Record<string, string>): Record<string, string> {
-    return { 'Content-Type': 'application/json', 'X-Tenant-Id': this.tenantId, ...extra };
+    return { 'Content-Type': 'application/json', ...extra };
   }
 
   async get(path: string): Promise<any> {
@@ -35,7 +32,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'GET',
-        headers: { 'X-Tenant-Id': this.tenantId },
+        headers: this.baseHeaders(),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -91,7 +88,7 @@ export class TestApiClient {
     try {
       const response = await fetch(url, {
         method: 'DELETE',
-        headers: { 'X-Tenant-Id': this.tenantId },
+        headers: this.baseHeaders(),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -194,8 +191,6 @@ export async function collectSSE(
                   if (onParseError) {
                     onParseError(line, parseError);
                   }
-                  // In test environments, parse errors may indicate bugs in SSE implementation
-                  // but we continue collecting other logs
                 }
               }
             }
@@ -218,6 +213,22 @@ export async function collectSSE(
         }
       });
   });
+}
+
+/**
+ * Create an org → team hierarchy and return the team ID.
+ * Useful for E2E tests that need to create projects.
+ */
+export async function createTestHierarchy(client: TestApiClient): Promise<{ orgId: string; teamId: string }> {
+  const org = await client.post('/orgs', {
+    name: `e2e-org-${Date.now()}`,
+    slug: `e2e-org-${Date.now()}`,
+  });
+  const team = await client.post(`/orgs/${org.id}/teams`, {
+    name: `e2e-team-${Date.now()}`,
+    slug: `e2e-team-${Date.now()}`,
+  });
+  return { orgId: org.id, teamId: team.id };
 }
 
 /**

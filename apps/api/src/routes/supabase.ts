@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import vibeDb from '../storage';
+import { storage } from '../storage';
 import { createSupabaseAdminClient } from '../supabase/client';
-import { requireTenantHeader, AuthRequest } from '../auth';
 
 const router = Router();
 
@@ -31,51 +30,9 @@ function decrypt(stored: string): string {
   return decipher.update(encHex, 'hex', 'utf8') + decipher.final('utf8');
 }
 
-// ── DB helpers ──────────────────────────────────────────────────────────────
-
-interface SupabaseConnection {
-  project_id: string;
-  url: string;
-  anon_key: string;
-  service_key_enc: string;
-  connected_at: number;
-}
-
-function getConnection(projectId: string): SupabaseConnection | undefined {
-  return vibeDb
-    .prepare('SELECT * FROM vibe_supabase_connections WHERE project_id = ?')
-    .get(projectId) as SupabaseConnection | undefined;
-}
-
-function upsertConnection(
-  projectId: string,
-  url: string,
-  anonKey: string,
-  serviceKeyEnc: string,
-): void {
-  vibeDb
-    .prepare(
-      `INSERT INTO vibe_supabase_connections (project_id, url, anon_key, service_key_enc, connected_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(project_id) DO UPDATE SET
-         url = excluded.url,
-         anon_key = excluded.anon_key,
-         service_key_enc = excluded.service_key_enc,
-         connected_at = excluded.connected_at`,
-    )
-    .run(projectId, url, anonKey, serviceKeyEnc, Date.now());
-}
-
-function buildAdminClient(projectId: string) {
-  const conn = getConnection(projectId);
-  if (!conn) return null;
-  const serviceKey = decrypt(conn.service_key_enc);
-  return createSupabaseAdminClient(conn.url, serviceKey);
-}
-
 // ── POST /api/supabase/connect ──────────────────────────────────────────────
 
-router.post('/connect', requireTenantHeader(), async (req: AuthRequest, res: Response) => {
+router.post('/connect', async (req: Request, res: Response) => {
   const { projectId, url, anonKey, serviceKey } = req.body as {
     projectId?: string;
     url?: string;
@@ -101,23 +58,22 @@ router.post('/connect', requireTenantHeader(), async (req: AuthRequest, res: Res
   // Validate credentials by performing a lightweight Supabase API call
   try {
     const client = createSupabaseAdminClient(url, serviceKey);
-    // list_buckets is a cheap admin call that verifies service-role access
     await client.storage.listBuckets();
   } catch {
     return res.status(422).json({ error: 'Could not connect to Supabase: invalid URL or service key' });
   }
 
   const serviceKeyEnc = encrypt(serviceKey);
-  upsertConnection(projectId, url, anonKey, serviceKeyEnc);
+  await storage.upsertSupabaseConnection(projectId, url, anonKey, serviceKeyEnc);
 
   res.json({ ok: true, projectId, url });
 });
 
 // ── GET /api/supabase/status/:projectId ────────────────────────────────────
 
-router.get('/status/:projectId', requireTenantHeader(), async (req: AuthRequest, res: Response) => {
+router.get('/status/:projectId', async (req: Request, res: Response) => {
   const { projectId } = req.params;
-  const conn = getConnection(projectId);
+  const conn = await storage.getSupabaseConnection(projectId);
 
   if (!conn) {
     return res.json({ connected: false, projectId });
@@ -135,23 +91,24 @@ router.get('/status/:projectId', requireTenantHeader(), async (req: AuthRequest,
 
 // ── POST /api/supabase/migrate ──────────────────────────────────────────────
 
-router.post('/migrate', requireTenantHeader(), async (req: AuthRequest, res: Response) => {
+router.post('/migrate', async (req: Request, res: Response) => {
   const { projectId, sql } = req.body as { projectId?: string; sql?: string };
 
   if (!projectId || !sql) {
     return res.status(400).json({ error: 'projectId and sql are required' });
   }
 
-  const client = buildAdminClient(projectId);
-  if (!client) {
+  const conn = await storage.getSupabaseConnection(projectId);
+  if (!conn) {
     return res.status(404).json({ error: 'No Supabase connection found for this project' });
   }
+
+  const serviceKey = decrypt(conn.service_key_enc);
+  const client = createSupabaseAdminClient(conn.url, serviceKey);
 
   const { error } = await client.rpc('exec_sql', { query: sql }).single();
   if (error) {
     // Attempt direct REST SQL execution via pg endpoint
-    const conn = getConnection(projectId)!;
-    const serviceKey = decrypt(conn.service_key_enc);
     const pgUrl = conn.url.replace(/\/?$/, '') + '/rest/v1/rpc/exec_sql';
     try {
       const resp = await fetch(pgUrl, {
@@ -185,7 +142,7 @@ interface ColumnDef {
   default?: string;
 }
 
-router.post('/add-table', requireTenantHeader(), async (req: AuthRequest, res: Response) => {
+router.post('/add-table', async (req: Request, res: Response) => {
   const { projectId, tableName, columns } = req.body as {
     projectId?: string;
     tableName?: string;
@@ -210,7 +167,7 @@ router.post('/add-table', requireTenantHeader(), async (req: AuthRequest, res: R
     }
   }
 
-  const conn = getConnection(projectId);
+  const conn = await storage.getSupabaseConnection(projectId);
   if (!conn) {
     return res.status(404).json({ error: 'No Supabase connection found for this project' });
   }
@@ -224,7 +181,6 @@ router.post('/add-table', requireTenantHeader(), async (req: AuthRequest, res: R
     })
     .join(',\n  ');
 
-  // Migration SQL: create table + enable RLS + default deny-all policy
   const migrationSql = `
 CREATE TABLE IF NOT EXISTS "${tableName}" (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -244,7 +200,6 @@ END$$;
 `.trim();
 
   const serviceKey = decrypt(conn.service_key_enc);
-  // Execute via Supabase SQL API (pg endpoint)
   const sqlEndpoint = conn.url.replace(/\/?$/, '') + '/rest/v1/rpc/exec_sql';
   try {
     const resp = await fetch(sqlEndpoint, {
