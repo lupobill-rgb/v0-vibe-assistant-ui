@@ -40,9 +40,8 @@ export default function TaskPage({ params }: TaskPageProps) {
   }, [id])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar />
-      <div className="flex-1 flex overflow-hidden">
+    <AppShell>
+      <div className="flex-1 flex overflow-hidden h-full">
         {/* Left Panel: Pipeline Tracker */}
         <div className="w-[340px] flex-shrink-0">
           <PipelineTracker taskId={id} />
@@ -76,6 +75,6 @@ export default function TaskPage({ params }: TaskPageProps) {
           )}
         </div>
       </div>
-    </div>
+    </AppShell>
   )
 }

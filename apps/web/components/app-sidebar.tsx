@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   Home,
   FolderKanban,
@@ -16,7 +16,6 @@ import {
   CreditCard,
   HelpCircle,
   User,
-  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -26,15 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { createProject } from "@/lib/api"
+import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
@@ -51,67 +42,18 @@ const bottomItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
-  const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [newProjectName, setNewProjectName] = useState("")
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
 
-  const handleNewProject = async () => {
-    if (!newProjectName.trim() || creating) return
-    setCreating(true)
-    setCreateError(null)
-    try {
-      const result = await createProject(newProjectName.trim())
-      if (result.error) {
-        setCreateError(result.error)
-      } else {
-        setDialogOpen(false)
-        setNewProjectName("")
-        router.refresh()
-      }
-    } catch {
-      setCreateError("Failed to create project. Is the API running?")
-    } finally {
-      setCreating(false)
-    }
+  const openSearch = () => {
+    window.dispatchEvent(new Event("open-command-palette"))
   }
 
   return (
     <>
-    <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setNewProjectName(""); setCreateError(null) } }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New Project</DialogTitle>
-        </DialogHeader>
-        <div className="py-2">
-          <Input
-            placeholder="Project name"
-            value={newProjectName}
-            onChange={(e) => setNewProjectName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleNewProject() }}
-            disabled={creating}
-            autoFocus
-          />
-          {createError && (
-            <p className="text-xs text-red-400 mt-2">{createError}</p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={creating}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleNewProject}
-            disabled={!newProjectName.trim() || creating}
-            className="bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white border-0"
-          >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Create
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <CreateProjectDialog
+      open={dialogOpen}
+      onOpenChange={setDialogOpen}
+    />
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
@@ -158,16 +100,32 @@ export function AppSidebar() {
         </div>
 
         {/* Search */}
-        {!collapsed && (
-          <div className="px-3 pb-2 flex-shrink-0">
-            <button className="flex items-center gap-2 w-full h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-sm hover:bg-sidebar-accent/80 transition-colors">
+        <div className="px-3 pb-2 flex-shrink-0">
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={openSearch}
+                  className="flex items-center justify-center w-full h-9 rounded-lg bg-sidebar-accent text-muted-foreground hover:bg-sidebar-accent/80 transition-colors"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Search</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              onClick={openSearch}
+              className="flex items-center gap-2 w-full h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-sm hover:bg-sidebar-accent/80 transition-colors"
+            >
               <Search className="w-4 h-4" />
               <span>Search...</span>
               <kbd className="ml-auto text-[10px] bg-sidebar-border px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-                {"/"}</kbd>
+                /
+              </kbd>
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Main Nav */}
         <nav className="flex-1 px-3 py-2 flex flex-col gap-1 overflow-y-auto">
