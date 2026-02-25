@@ -278,79 +278,72 @@ export async function generateMultiPageSite(
 }
 
 /**
- * Extract HTML content from an LLM response that may be:
- *   1. Raw HTML starting with <!DOCTYPE html>
- *   2. HTML wrapped in ```html ... ``` code blocks
- *   3. HTML wrapped in ``` ... ``` code blocks (no language tag)
- *   4. Text/explanation before the actual HTML
- *   5. A unified diff with + prefixed lines
+ * Extract HTML content from a variety of LLM response formats.
  *
- * The function is intentionally forgiving – it tries every strategy before
- * giving up so that minor formatting differences from the model never cause
- * a "No HTML content was generated" error.
+ * Tried in order (first match wins):
+ * 1. Raw HTML – response starts with <!DOCTYPE or <html
+ * 2. Markdown fenced code block – ```html … ``` or ``` … ```
+ * 3. Text before the HTML – find first <!DOCTYPE or <html occurrence
+ * 4. Unified diff with + prefixed lines
+ *
+ * After extraction the result is trimmed and deduplicated.
  */
 export function extractHtmlFromDiff(input: string): string {
   const trimmed = input.trim()
   const lower = trimmed.toLowerCase()
 
-  // Debug: log the first 200 chars so we can inspect in the browser console
+  // Debug: log the first 200 chars of the raw response so we can inspect in the browser console
   console.log(
-    "[extractHtmlFromDiff] raw response (first 200 chars):",
+    "[v0] extractHtmlFromDiff raw input (first 200 chars):",
     trimmed.slice(0, 200),
   )
 
-  // ── 1. Raw HTML: response starts directly with the HTML ────────────
+  // 1. Raw HTML – response starts directly with the HTML document
   if (lower.startsWith("<!doctype") || lower.startsWith("<html")) {
     return deduplicateHtml(trimmed)
   }
 
-  // ── 2 & 3. HTML wrapped in markdown code fences ────────────────────
-  //   Handles ```html ... ```, ```HTML ... ```, and plain ``` ... ```
-  const codeFenceRegex = /```(?:html|HTML)?\s*\n([\s\S]*?)```/
-  const fenceMatch = trimmed.match(codeFenceRegex)
-  if (fenceMatch) {
-    const inner = fenceMatch[1].trim()
+  // 2. Markdown fenced code block – ```html\n…\n``` or ```\n…\n```
+  const codeBlockMatch = trimmed.match(/```(?:html)?\s*\n([\s\S]*?)```/)
+  if (codeBlockMatch) {
+    const inner = codeBlockMatch[1].trim()
     const innerLower = inner.toLowerCase()
     if (innerLower.startsWith("<!doctype") || innerLower.startsWith("<html")) {
       return deduplicateHtml(inner)
     }
   }
 
-  // ── 4. Text/explanation before the HTML ────────────────────────────
-  //   Find the first occurrence of <!DOCTYPE or <html and use from there
+  // 3. Text before HTML – find the first <!DOCTYPE or <html tag anywhere in the response
   const doctypeIdx = lower.indexOf("<!doctype")
   const htmlTagIdx = lower.indexOf("<html")
-  const firstHtmlIdx =
+  const startIdx =
     doctypeIdx !== -1 && htmlTagIdx !== -1
       ? Math.min(doctypeIdx, htmlTagIdx)
       : doctypeIdx !== -1
         ? doctypeIdx
         : htmlTagIdx
 
-  if (firstHtmlIdx !== -1) {
-    let extracted = trimmed.slice(firstHtmlIdx).trim()
-    // If code-fence closing ``` appears after the HTML, strip it
-    if (extracted.endsWith("```")) {
-      extracted = extracted.slice(0, -3).trim()
-    }
-    return deduplicateHtml(extracted)
+  if (startIdx !== -1) {
+    return deduplicateHtml(trimmed.slice(startIdx).trim())
   }
 
-  // ── 5. Unified diff with + prefixed lines ──────────────────────────
-  const diffLines = trimmed
-    .split("\n")
+  // 4. Unified diff mode – extract added lines (lines starting with + but not +++)
+  const diffLines = trimmed.split("\n")
+  const addedLines = diffLines
     .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
     .map((line) => line.slice(1))
-    .join("\n")
-    .trim()
 
-  if (diffLines.length > 0) {
-    return deduplicateHtml(diffLines)
+  if (addedLines.length > 0) {
+    const joined = addedLines.join("\n").trim()
+    if (joined.length > 0) {
+      return deduplicateHtml(joined)
+    }
   }
 
-  // ── 6. Nothing worked – return trimmed input as-is (last resort) ───
+  // 5. Nothing worked – return the trimmed input as-is so the caller can decide
   console.warn(
-    "[extractHtmlFromDiff] Could not detect HTML structure. Returning raw input.",
+    "[v0] extractHtmlFromDiff: could not detect HTML in response. Full input:",
+    trimmed.slice(0, 500),
   )
   return trimmed
 }
