@@ -1,0 +1,7 @@
+node_modules
+apps/web/node_modules
+apps/web/.next
+apps/web/dist
+apps/web/src.old
+apps/api/node_modules
+apps/executor/node_modules
