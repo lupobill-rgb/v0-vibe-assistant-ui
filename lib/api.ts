@@ -278,29 +278,81 @@ export async function generateMultiPageSite(
 }
 
 /**
- * Extract HTML content from either raw HTML or a unified diff string.
- * - If the response starts with "<!DOCTYPE" or "<html", treat it as raw HTML.
- * - If it starts with "diff --git", extract added lines from the diff.
- * Deduplicates content if the same HTML appears twice (a common LLM artifact).
+ * Extract HTML content from an LLM response that may be:
+ *   1. Raw HTML starting with <!DOCTYPE html>
+ *   2. HTML wrapped in ```html ... ``` code blocks
+ *   3. HTML wrapped in ``` ... ``` code blocks (no language tag)
+ *   4. Text/explanation before the actual HTML
+ *   5. A unified diff with + prefixed lines
+ *
+ * The function is intentionally forgiving – it tries every strategy before
+ * giving up so that minor formatting differences from the model never cause
+ * a "No HTML content was generated" error.
  */
 export function extractHtmlFromDiff(input: string): string {
   const trimmed = input.trim()
   const lower = trimmed.toLowerCase()
 
-  // Raw HTML mode: response is already a complete HTML file
+  // Debug: log the first 200 chars so we can inspect in the browser console
+  console.log(
+    "[extractHtmlFromDiff] raw response (first 200 chars):",
+    trimmed.slice(0, 200),
+  )
+
+  // ── 1. Raw HTML: response starts directly with the HTML ────────────
   if (lower.startsWith("<!doctype") || lower.startsWith("<html")) {
     return deduplicateHtml(trimmed)
   }
 
-  // Diff mode: extract added lines
-  const html = trimmed
+  // ── 2 & 3. HTML wrapped in markdown code fences ────────────────────
+  //   Handles ```html ... ```, ```HTML ... ```, and plain ``` ... ```
+  const codeFenceRegex = /```(?:html|HTML)?\s*\n([\s\S]*?)```/
+  const fenceMatch = trimmed.match(codeFenceRegex)
+  if (fenceMatch) {
+    const inner = fenceMatch[1].trim()
+    const innerLower = inner.toLowerCase()
+    if (innerLower.startsWith("<!doctype") || innerLower.startsWith("<html")) {
+      return deduplicateHtml(inner)
+    }
+  }
+
+  // ── 4. Text/explanation before the HTML ────────────────────────────
+  //   Find the first occurrence of <!DOCTYPE or <html and use from there
+  const doctypeIdx = lower.indexOf("<!doctype")
+  const htmlTagIdx = lower.indexOf("<html")
+  const firstHtmlIdx =
+    doctypeIdx !== -1 && htmlTagIdx !== -1
+      ? Math.min(doctypeIdx, htmlTagIdx)
+      : doctypeIdx !== -1
+        ? doctypeIdx
+        : htmlTagIdx
+
+  if (firstHtmlIdx !== -1) {
+    let extracted = trimmed.slice(firstHtmlIdx).trim()
+    // If code-fence closing ``` appears after the HTML, strip it
+    if (extracted.endsWith("```")) {
+      extracted = extracted.slice(0, -3).trim()
+    }
+    return deduplicateHtml(extracted)
+  }
+
+  // ── 5. Unified diff with + prefixed lines ──────────────────────────
+  const diffLines = trimmed
     .split("\n")
     .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
     .map((line) => line.slice(1))
     .join("\n")
     .trim()
 
-  return deduplicateHtml(html)
+  if (diffLines.length > 0) {
+    return deduplicateHtml(diffLines)
+  }
+
+  // ── 6. Nothing worked – return trimmed input as-is (last resort) ───
+  console.warn(
+    "[extractHtmlFromDiff] Could not detect HTML structure. Returning raw input.",
+  )
+  return trimmed
 }
 
 /**
