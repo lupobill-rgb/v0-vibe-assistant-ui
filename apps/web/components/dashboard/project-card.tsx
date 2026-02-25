@@ -98,13 +98,9 @@ export function ProjectCard({ project }: { project: Project }) {
             href={`/projects/${project.id}`}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-sm font-medium text-white hover:bg-white/25 transition-colors"
           >
-            <Link
-              href={`/projects/${project.id}`}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-sm font-medium text-white hover:bg-white/25 transition-colors"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Open Project
-            </Link>
+            <ExternalLink className="w-3.5 h-3.5" />
+            Open Project
+          </Link>
           </div>
 
           {/* Star Button */}

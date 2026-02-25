@@ -108,6 +108,7 @@ function ChatContent() {
   }, [])
 
   return (
+    <AppShell>
     <div className="min-h-screen">
       {/* Page Header */}
       <div className="px-6 pt-8 pb-2">
@@ -212,6 +213,7 @@ function ChatContent() {
         onOpenChange={setImportDialogOpen}
         onImported={(id) => refreshProjects(id)}
       />
+    </div>
     </AppShell>
   )
 }
