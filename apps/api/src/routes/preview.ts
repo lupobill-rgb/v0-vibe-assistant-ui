@@ -1,8 +1,7 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import net from 'net';
-import { requireTenantHeader, AuthRequest } from '../auth';
 import { storage } from '../storage';
 
 const router = Router();
@@ -27,7 +26,7 @@ function findFreePort(min = 4000, max = 4999): Promise<number> {
   return new Promise((resolve, reject) => {
     const tryPort = (port: number) => {
       if (port > max) {
-        return reject(new Error('No free port available in range 4000–4999'));
+        return reject(new Error('No free port available in range 4000-4999'));
       }
       const server = net.createServer();
       server.once('error', () => tryPort(port + 1));
@@ -51,15 +50,11 @@ function killPreview(projectId: string): void {
 
 // ── POST /api/preview/:projectId ─────────────────────────────────────────────
 
-router.post('/:projectId', requireTenantHeader(), async (req: AuthRequest, res: Response) => {
+router.post('/:projectId', async (req: Request, res: Response) => {
   const { projectId } = req.params;
-  const tenantId = req.tenantId!;
 
-  const project = storage.getProject(projectId);
+  const project = await storage.getProject(projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
-  if (project.tenant_id !== tenantId) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
 
   // Kill any existing preview for this project
   killPreview(projectId);
@@ -91,7 +86,7 @@ router.post('/:projectId', requireTenantHeader(), async (req: AuthRequest, res: 
 
   buildProc.once('exit', (code) => {
     const current = previews.get(projectId);
-    if (!current) return; // already killed
+    if (!current) return;
 
     if (code !== 0) {
       current.status = 'error';
@@ -100,7 +95,6 @@ router.post('/:projectId', requireTenantHeader(), async (req: AuthRequest, res: 
       return;
     }
 
-    // Serve dist/ via npx serve
     const serveProc = spawn(
       'npx',
       ['serve', distDir, '--listen', String(port), '--no-clipboard', '--single'],
@@ -134,15 +128,11 @@ router.post('/:projectId', requireTenantHeader(), async (req: AuthRequest, res: 
 
 // ── GET /api/preview/:projectId/status ───────────────────────────────────────
 
-router.get('/:projectId/status', requireTenantHeader(), (req: AuthRequest, res: Response) => {
+router.get('/:projectId/status', async (req: Request, res: Response) => {
   const { projectId } = req.params;
-  const tenantId = req.tenantId!;
 
-  const project = storage.getProject(projectId);
+  const project = await storage.getProject(projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
-  if (project.tenant_id !== tenantId) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
 
   const entry = previews.get(projectId);
   if (!entry) {
@@ -159,15 +149,11 @@ router.get('/:projectId/status', requireTenantHeader(), (req: AuthRequest, res: 
 
 // ── DELETE /api/preview/:projectId ───────────────────────────────────────────
 
-router.delete('/:projectId', requireTenantHeader(), (req: AuthRequest, res: Response) => {
+router.delete('/:projectId', async (req: Request, res: Response) => {
   const { projectId } = req.params;
-  const tenantId = req.tenantId!;
 
-  const project = storage.getProject(projectId);
+  const project = await storage.getProject(projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
-  if (project.tenant_id !== tenantId) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
 
   killPreview(projectId);
   res.json({ projectId, message: 'Preview stopped' });
