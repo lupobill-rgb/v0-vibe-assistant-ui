@@ -44,10 +44,12 @@ function calculateCost(provider: ModelProvider, inputTokens: number, outputToken
 
 // ── Environment ───────────────────────────────────────────────────────
 
+const _envProvider = process.env.DEFAULT_LLM_PROVIDER;
 export const DEFAULT_PROVIDER: ModelProvider =
-  (process.env.DEFAULT_LLM_PROVIDER as ModelProvider) || 'anthropic';
+  _envProvider === 'openai' || _envProvider === 'anthropic' ? _envProvider : 'anthropic';
 
-const JOB_BUDGET_LIMIT = parseFloat(process.env.JOB_BUDGET_LIMIT_USD || '5');
+const _parsedBudget = parseFloat(process.env.JOB_BUDGET_LIMIT_USD || '5');
+const JOB_BUDGET_LIMIT = Number.isFinite(_parsedBudget) && _parsedBudget > 0 ? _parsedBudget : 5;
 
 // ── Lazy-initialized SDK clients ──────────────────────────────────────
 
@@ -80,6 +82,8 @@ if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 const meteringDb = new Database(dbPath);
+meteringDb.pragma('journal_mode = WAL');
+meteringDb.pragma('busy_timeout = 5000');
 
 meteringDb.exec(`
   CREATE TABLE IF NOT EXISTS metering_calls (
@@ -93,7 +97,8 @@ meteringDb.exec(`
     cost_estimate REAL NOT NULL,
     latency_ms INTEGER NOT NULL,
     timestamp INTEGER NOT NULL
-  )
+  );
+  CREATE INDEX IF NOT EXISTS idx_metering_job_id ON metering_calls(job_id);
 `);
 
 const meteringInsert = meteringDb.prepare(
@@ -155,6 +160,7 @@ export async function callLLM(
     const res = await client.messages.create({
       model: config.model,
       max_tokens: config.maxTokens,
+      temperature: config.temperature,
       system: context,
       messages: [{ role: 'user', content: prompt }],
     });
