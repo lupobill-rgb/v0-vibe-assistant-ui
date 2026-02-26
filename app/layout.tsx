@@ -1,15 +1,11 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
-import { Toaster } from 'sonner'
 import './globals.css'
-
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+import { ThemeProvider } from '@/components/theme-provider'
+import { CommandPalette } from '@/components/command-palette'
 
 export const metadata: Metadata = {
-  title: 'VIBE - AI Landing Page Builder',
-  description: 'Describe your landing page idea and let VIBE build it for you in minutes',
+  title: 'VIBE - AI Coding Assistant',
+  description: 'Build software faster with your AI coding assistant',
 }
 
 export const viewport: Viewport = {
@@ -22,11 +18,17 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="font-sans antialiased" suppressHydrationWarning>
-        {children}
-        <Toaster theme="dark" position="bottom-right" richColors />
-        <Analytics />
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <CommandPalette />
+        </ThemeProvider>
       </body>
     </html>
   )
