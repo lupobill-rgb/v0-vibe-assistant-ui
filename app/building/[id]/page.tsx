@@ -17,7 +17,7 @@ import {
   GitPullRequest,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getJob, type Job } from "@/lib/api"
+import { fetchJob, type Job } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 
 type LogEntry = {
@@ -108,7 +108,7 @@ export default function BuildingPage() {
 
   const pollJob = useCallback(async () => {
     try {
-      const data = await getJob(taskId)
+      const data = await fetchJob(taskId)
       setJob(data)
 
       if (data.logs && data.logs.length > 0) {
