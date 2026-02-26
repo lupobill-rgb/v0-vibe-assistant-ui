@@ -202,10 +202,21 @@ export async function generateHtmlPage(prompt: string): Promise<string> {
     messages: [{ role: 'user', content: prompt }],
   });
 
-  return response.content
+  let html = response.content
     .filter((b) => b.type === 'text')
     .map((b) => (b as { text: string }).text)
     .join('');
+  // Strip markdown code fences if LLM wrapped output
+  html = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+  // If LLM returned a unified diff instead of raw HTML, extract the added lines
+  if (!html.trimStart().startsWith('<!DOCTYPE') && html.includes('+<!DOCTYPE')) {
+    html = html
+      .split('\n')
+      .filter((line: string) => line.startsWith('+') && !line.startsWith('+++'))
+      .map((line: string) => line.slice(1))
+      .join('\n');
+  }
+  return html;
 }
 
 export interface LLMUsage {
