@@ -4,6 +4,8 @@ const EDGE_FUNCTION_URL =
   process.env.SUPABASE_EDGE_FUNCTION_URL ||
   'https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/generate-diff';
 
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
 export interface RouterDiffResult {
   diff: string;
   usage: {
@@ -46,7 +48,7 @@ export async function callEdgeFunction(params: {
     throw new Error(`Edge Function error (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as { diff?: string; usage?: { input_tokens: number; output_tokens: number; total_tokens: number }; model?: string; error?: string };
   if (data.error) {
     throw new Error(`Edge Function returned error: ${data.error}`);
   }
