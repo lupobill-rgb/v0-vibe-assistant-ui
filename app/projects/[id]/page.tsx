@@ -1,13 +1,12 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { use, useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import {
-  fetchProject,
-  fetchProjectJobs,
   createJob,
+  TENANT_ID,
   type Project,
   type Task,
 } from "@/lib/api"
@@ -21,7 +20,15 @@ import {
   Hourglass,
   GitPullRequest,
   ExternalLink,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+
+const API_URL =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
+  "http://localhost:3001"
 
 interface ProjectPageProps {
   params: Promise<{ id: string }>
@@ -41,29 +48,90 @@ function getStatusLabel(state: string) {
   return "Running"
 }
 
+function ProjectDetailSkeleton() {
+  return (
+    <div className="p-6 max-w-3xl">
+      <Skeleton className="h-4 w-24 mb-6" />
+      <div className="mb-8">
+        <Skeleton className="h-8 w-64 mb-2" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+      <div className="bg-card rounded-2xl border border-border p-5 mb-8">
+        <Skeleton className="h-4 w-20 mb-3" />
+        <Skeleton className="h-24 w-full mb-3" />
+        <Skeleton className="h-9 w-24 ml-auto" />
+      </div>
+      <div>
+        <Skeleton className="h-4 w-24 mb-3" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 w-full mb-2 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ProjectPage({ params }: ProjectPageProps) {
   const { id } = use(params)
   const router = useRouter()
 
   const [project, setProject] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
+  const [projectError, setProjectError] = useState<string | null>(null)
   const [jobs, setJobs] = useState<Task[]>([])
   const [jobsLoading, setJobsLoading] = useState(true)
+  const [jobsError, setJobsError] = useState<string | null>(null)
 
   const [prompt, setPrompt] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchProject(id).then((data) => {
+  const loadProject = useCallback(async () => {
+    setProjectLoading(true)
+    setProjectError(null)
+    try {
+      const response = await fetch(`${API_URL}/projects/${id}`, {
+        headers: { "X-Tenant-Id": TENANT_ID },
+      })
+      if (!response.ok) {
+        if (response.status === 404) {
+          setProject(null)
+          setProjectError("Project not found.")
+        } else {
+          throw new Error(`API returned ${response.status}`)
+        }
+        return
+      }
+      const data: Project = await response.json()
       setProject(data)
+    } catch {
+      setProjectError("Failed to load project. Is the API running?")
+    } finally {
       setProjectLoading(false)
-    })
-    fetchProjectJobs(id).then((data) => {
-      setJobs(data)
-      setJobsLoading(false)
-    })
+    }
   }, [id])
+
+  const loadJobs = useCallback(async () => {
+    setJobsLoading(true)
+    setJobsError(null)
+    try {
+      const response = await fetch(`${API_URL}/projects/${id}/jobs`, {
+        headers: { "X-Tenant-Id": TENANT_ID },
+      })
+      if (!response.ok) throw new Error(`API returned ${response.status}`)
+      const data: Task[] = await response.json()
+      setJobs(data)
+    } catch {
+      setJobsError("Failed to load jobs.")
+    } finally {
+      setJobsLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    loadProject()
+    loadJobs()
+  }, [loadProject, loadJobs])
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
@@ -94,13 +162,41 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     }
   }
 
+  // Loading state
   if (projectLoading) {
     return (
       <AppShell>
+        <ProjectDetailSkeleton />
+      </AppShell>
+    )
+  }
+
+  // Error state
+  if (projectError && !project) {
+    return (
+      <AppShell>
         <div className="p-6">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading project...
+          <Link
+            href="/projects"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            All Projects
+          </Link>
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center mb-4">
+              <AlertCircle className="w-6 h-6 text-red-400" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground mb-1">
+              Unable to load project
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+              {projectError}
+            </p>
+            <Button variant="outline" size="sm" onClick={loadProject} className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              Retry
+            </Button>
           </div>
         </div>
       </AppShell>
@@ -191,11 +287,29 @@ export default function ProjectPage({ params }: ProjectPageProps) {
 
         {/* Job history */}
         <div>
-          <h2 className="text-sm font-medium text-foreground mb-3">Recent Jobs</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-foreground">Recent Jobs</h2>
+            {jobsError && (
+              <Button variant="ghost" size="sm" onClick={loadJobs} className="gap-1.5 h-7 text-xs">
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </Button>
+            )}
+          </div>
           {jobsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading jobs...
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-xl" />
+              ))}
+            </div>
+          ) : jobsError ? (
+            <div className="flex flex-col items-center py-8 text-center">
+              <AlertCircle className="w-5 h-5 text-red-400 mb-2" />
+              <p className="text-sm text-muted-foreground mb-3">{jobsError}</p>
+              <Button variant="outline" size="sm" onClick={loadJobs} className="gap-2">
+                <RefreshCw className="w-4 h-4" />
+                Retry
+              </Button>
             </div>
           ) : jobs.length === 0 ? (
             <p className="text-sm text-muted-foreground">

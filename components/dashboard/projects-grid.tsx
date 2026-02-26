@@ -1,92 +1,142 @@
 "use client"
 
-import { ProjectCard, type Project } from "./project-card"
+import { useEffect, useState, useCallback } from "react"
+import Link from "next/link"
+import { ProjectCard } from "./project-card"
+import { type Project, TENANT_ID } from "@/lib/api"
+import { Skeleton } from "@/components/ui/skeleton"
+import { FolderPlus, RefreshCw, AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
-const mockProjects: Project[] = [
-  {
-    id: "1",
-    name: "E-commerce Platform",
-    description: "Full-stack Next.js store with Stripe integration",
-    thumbnail: "",
-    starred: true,
-    lastEdited: "2 hours ago",
-    status: "active",
-  },
-  {
-    id: "2",
-    name: "SaaS Dashboard",
-    description: "Admin panel with analytics and user management",
-    thumbnail: "",
-    starred: false,
-    lastEdited: "5 hours ago",
-    status: "deployed",
-  },
-  {
-    id: "3",
-    name: "AI Chat App",
-    description: "Real-time chat application with AI responses",
-    thumbnail: "",
-    starred: true,
-    lastEdited: "1 day ago",
-    status: "active",
-  },
-  {
-    id: "4",
-    name: "Portfolio Site",
-    description: "Personal portfolio with blog and project showcase",
-    thumbnail: "",
-    starred: false,
-    lastEdited: "2 days ago",
-    status: "deployed",
-  },
-  {
-    id: "5",
-    name: "Task Manager",
-    description: "Kanban board with drag-and-drop and real-time sync",
-    thumbnail: "",
-    starred: false,
-    lastEdited: "3 days ago",
-    status: "draft",
-  },
-  {
-    id: "6",
-    name: "Weather App",
-    description: "Location-based weather with 7-day forecast",
-    thumbnail: "",
-    starred: false,
-    lastEdited: "1 week ago",
-    status: "draft",
-  },
-]
+const API_URL =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
+  "http://localhost:3001"
+
+function ProjectCardSkeleton() {
+  return (
+    <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <Skeleton className="aspect-[16/10] w-full" />
+      <div className="p-4">
+        <Skeleton className="h-4 w-3/4 mb-2" />
+        <Skeleton className="h-3 w-full mb-3" />
+        <Skeleton className="h-3 w-1/3" />
+      </div>
+    </div>
+  )
+}
 
 export function ProjectsGrid() {
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadProjects = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch(`${API_URL}/projects`, {
+        headers: { "X-Tenant-Id": TENANT_ID },
+      })
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`)
+      }
+      const data: Project[] = await response.json()
+      setProjects(data)
+    } catch {
+      setError("Failed to load projects. Is the API running?")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadProjects()
+  }, [loadProjects])
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="px-6 py-8">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Your Projects</h2>
+            <Skeleton className="h-4 w-24 mt-1" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <ProjectCardSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="px-6 py-8">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center mb-4">
+            <AlertCircle className="w-6 h-6 text-red-400" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-1">
+            Unable to load projects
+          </h3>
+          <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+            {error}
+          </p>
+          <Button variant="outline" size="sm" onClick={loadProjects} className="gap-2">
+            <RefreshCw className="w-4 h-4" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Empty state
+  if (projects.length === 0) {
+    return (
+      <div className="px-6 py-8">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#4F8EFF]/20 to-[#A855F7]/20 flex items-center justify-center mb-4">
+            <FolderPlus className="w-6 h-6 text-[#4F8EFF]" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-1">
+            No projects yet
+          </h3>
+          <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+            Create your first project to get started. Describe what you want to
+            build and VIBE will generate the code for you.
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white hover:opacity-90 transition-opacity"
+          >
+            <FolderPlus className="w-4 h-4" />
+            Create your first project
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  // Projects list
   return (
     <div className="px-6 py-8">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            Your Projects
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground">Your Projects</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {mockProjects.length} projects total
+            {projects.length} project{projects.length !== 1 ? "s" : ""} total
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
-            All
-          </button>
-          <button className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-            Starred
-          </button>
-          <button className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-            Recent
-          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {mockProjects.map((project) => (
-          <ProjectCard key={project.id} project={project} />
+        {projects.map((project) => (
+          <ProjectCard key={project.id} project={project} onDeleted={loadProjects} />
         ))}
       </div>
     </div>
