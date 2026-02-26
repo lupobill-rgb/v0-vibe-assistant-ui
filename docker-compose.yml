@@ -11,6 +11,7 @@ services:
       - API_PORT=3001
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - EXECUTOR_POLL_INTERVAL=${EXECUTOR_POLL_INTERVAL:-5000}
       - MAX_ITERATIONS=${MAX_ITERATIONS:-6}
@@ -24,28 +25,30 @@ services:
       retries: 5
       start_period: 10s
 
-  # executor service disabled — LLM calls moved to Supabase Edge Functions
-  # executor:
-  #   build:
-  #     context: .
-  #     dockerfile: apps/executor/Dockerfile
-  #   environment:
-  #     - NODE_ENV=production
-  #     - DATABASE_PATH=/app/data/vibe.db
-  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
-  #     - GITHUB_TOKEN=${GITHUB_TOKEN}
-  #     - EXECUTOR_POLL_INTERVAL=${EXECUTOR_POLL_INTERVAL:-5000}
-  #     - MAX_ITERATIONS=${MAX_ITERATIONS:-6}
-  #     - MAX_CONTEXT_SIZE=${MAX_CONTEXT_SIZE:-50000}
-  #     - MAX_DIFF_SIZE=${MAX_DIFF_SIZE:-5000}
-  #     - PREFLIGHT_TIMEOUT=${PREFLIGHT_TIMEOUT:-300000}
-  #     - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-VIBE Bot}
-  #     - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-vibe@example.com}
-  #   volumes:
-  #     - ./data:/app/data
-  #   depends_on:
-  #     api:
-  #       condition: service_healthy
+  executor:
+    build:
+      context: .
+      dockerfile: apps/executor/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/vibe.db
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - EXECUTOR_POLL_INTERVAL=${EXECUTOR_POLL_INTERVAL:-5000}
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-6}
+      - MAX_CONTEXT_SIZE=${MAX_CONTEXT_SIZE:-50000}
+      - MAX_DIFF_SIZE=${MAX_DIFF_SIZE:-5000}
+      - PREFLIGHT_TIMEOUT=${PREFLIGHT_TIMEOUT:-300000}
+      - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-VIBE Bot}
+      - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-vibe@example.com}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
 
   web:
     build:

@@ -1,10 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import path from 'path';
-import fs from 'fs';
 import { ProjectContext } from './context';
+import { getSupabaseClient } from './supabase-client';
 
 // ── Provider types & config ───────────────────────────────────────────
 
@@ -27,7 +25,7 @@ export interface MeteringRecord {
   output_tokens: number;
   cost_estimate: number;
   latency_ms: number;
-  timestamp: number;
+  timestamp: string;
 }
 
 // ── Cost rates (USD per 1M tokens) ────────────────────────────────────
@@ -74,52 +72,38 @@ function getOpenAIClient(): OpenAI {
   return _openai;
 }
 
-// ── Metering persistence ──────────────────────────────────────────────
+// ── Metering persistence (Supabase) ──────────────────────────────────
 
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../../../data/vibe.db');
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-const meteringDb = new Database(dbPath);
-meteringDb.pragma('journal_mode = WAL');
-meteringDb.pragma('busy_timeout = 5000');
-
-meteringDb.exec(`
-  CREATE TABLE IF NOT EXISTS metering_calls (
-    call_id TEXT PRIMARY KEY,
-    job_id TEXT NOT NULL,
-    team_id TEXT NOT NULL,
-    model TEXT NOT NULL,
-    provider TEXT NOT NULL,
-    input_tokens INTEGER NOT NULL,
-    output_tokens INTEGER NOT NULL,
-    cost_estimate REAL NOT NULL,
-    latency_ms INTEGER NOT NULL,
-    timestamp INTEGER NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_metering_job_id ON metering_calls(job_id);
-`);
-
-const meteringInsert = meteringDb.prepare(
-  `INSERT INTO metering_calls (call_id, job_id, team_id, model, provider, input_tokens, output_tokens, cost_estimate, latency_ms, timestamp)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-);
-
-const jobSpendStmt = meteringDb.prepare(
-  `SELECT COALESCE(SUM(cost_estimate), 0) as total FROM metering_calls WHERE job_id = ?`
-);
-
-export function recordMetering(record: MeteringRecord): void {
-  meteringInsert.run(
-    record.call_id, record.job_id, record.team_id, record.model,
-    record.provider, record.input_tokens, record.output_tokens,
-    record.cost_estimate, record.latency_ms, record.timestamp
-  );
+export async function recordMetering(record: MeteringRecord): Promise<void> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from('metering_calls').insert({
+    call_id: record.call_id,
+    job_id: record.job_id,
+    team_id: record.team_id,
+    model: record.model,
+    provider: record.provider,
+    input_tokens: record.input_tokens,
+    output_tokens: record.output_tokens,
+    cost_estimate: record.cost_estimate,
+    latency_ms: record.latency_ms,
+    timestamp: record.timestamp,
+  });
+  if (error) {
+    console.error('Metering insert failed:', error.message);
+  }
 }
 
-export function getJobSpend(jobId: string): number {
-  return (jobSpendStmt.get(jobId) as { total: number }).total;
+export async function getJobSpend(jobId: string): Promise<number> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('metering_calls')
+    .select('cost_estimate')
+    .eq('job_id', jobId);
+  if (error) {
+    console.error('Metering spend query failed:', error.message);
+    return 0;
+  }
+  return (data || []).reduce((sum, row) => sum + (row.cost_estimate || 0), 0);
 }
 
 // ── Unified LLM Router ───────────────────────────────────────────────
@@ -131,7 +115,7 @@ export async function callLLM(
   jobId: string,
   teamId: string
 ): Promise<{ content: string; metering: MeteringRecord }> {
-  const currentSpend = getJobSpend(jobId);
+  const currentSpend = await getJobSpend(jobId);
   if (currentSpend >= JOB_BUDGET_LIMIT) {
     throw new Error(`Job ${jobId} budget exceeded: $${currentSpend.toFixed(4)} >= $${JOB_BUDGET_LIMIT}`);
   }
@@ -183,9 +167,9 @@ export async function callLLM(
     output_tokens: outputTokens,
     cost_estimate: calculateCost(config.provider, inputTokens, outputTokens),
     latency_ms: latencyMs,
-    timestamp: Date.now(),
+    timestamp: new Date().toISOString(),
   };
-  recordMetering(metering);
+  await recordMetering(metering);
 
   return { content, metering };
 }

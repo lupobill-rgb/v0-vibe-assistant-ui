@@ -23,7 +23,8 @@ export async function callEdgeFunction(params: {
   system?: string;
   max_tokens?: number;
 }): Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number }; model: string }> {
-  if (!SUPABASE_ANON_KEY) {
+  const anonKey = process.env.SUPABASE_ANON_KEY;
+  if (!anonKey) {
     throw new Error('SUPABASE_ANON_KEY is not set. Cannot call generate-diff Edge Function.');
   }
 
@@ -31,7 +32,7 @@ export async function callEdgeFunction(params: {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Authorization': `Bearer ${anonKey}`,
     },
     body: JSON.stringify({
       prompt: params.prompt,
@@ -46,7 +47,7 @@ export async function callEdgeFunction(params: {
     throw new Error(`Edge Function error (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as { diff?: string; usage?: { input_tokens: number; output_tokens: number; total_tokens: number }; model?: string; error?: string };
   if (data.error) {
     throw new Error(`Edge Function returned error: ${data.error}`);
   }
@@ -58,23 +59,18 @@ export async function callEdgeFunction(params: {
   };
 }
 
-export async function generateDiff(
-  prompt: string,
+function flipModel(model: 'claude' | 'gpt'): 'claude' | 'gpt' {
+  return model === 'claude' ? 'gpt' : 'claude';
+}
+
+async function callEdgeDiff(
+  fullPrompt: string,
   context: string,
-  options: { model: 'claude' | 'gpt'; taskId: string },
-  previousError?: string
-): Promise<RouterDiffResult> {
-  const startTime = Date.now();
-
-  // Build the full prompt, appending previous error context when retrying
-  let fullPrompt = prompt;
-  if (previousError) {
-    fullPrompt += `\n\n---\n\nPREVIOUS ERROR (please fix and regenerate the diff):\n${previousError}`;
-  }
-
-  // Map executor model names to edge function model names
-  const edgeModel: 'claude' | 'openai' = options.model === 'gpt' ? 'openai' : 'claude';
-
+  model: 'claude' | 'gpt'
+): Promise<{
+  diff: string;
+  usage: { input_tokens: number; output_tokens: number; total_tokens: number };
+}> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -91,7 +87,7 @@ export async function generateDiff(
     body: JSON.stringify({
       prompt: fullPrompt,
       context,
-      model: edgeModel,
+      model,
     }),
   });
 
@@ -107,11 +103,54 @@ export async function generateDiff(
     usage: { input_tokens: number; output_tokens: number; total_tokens: number };
   };
 
+  return { diff: result.diff, usage: result.usage };
+}
+
+export async function generateDiff(
+  prompt: string,
+  context: string,
+  options: { model: 'claude' | 'gpt'; taskId: string },
+  previousError?: string
+): Promise<RouterDiffResult> {
+  const startTime = Date.now();
+
+  // Build the full prompt, appending previous error context when retrying
+  let fullPrompt = prompt;
+  if (previousError) {
+    fullPrompt += `\n\n---\n\nPREVIOUS ERROR (please fix and regenerate the diff):\n${previousError}`;
+  }
+
+  let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
+  let usedModel = options.model;
+
+  try {
+    result = await callEdgeDiff(fullPrompt, context, options.model);
+  } catch (primaryErr) {
+    // Primary model failed — try the other provider
+    const fallbackModel = flipModel(options.model);
+    storage.logEvent(
+      options.taskId,
+      `LLM primary model "${options.model}" failed: ${(primaryErr as Error).message}. Falling back to "${fallbackModel}".`,
+      'warning'
+    );
+
+    try {
+      result = await callEdgeDiff(fullPrompt, context, fallbackModel);
+      usedModel = fallbackModel;
+    } catch (fallbackErr) {
+      // Both providers failed
+      throw new Error(
+        `Both LLM providers failed. ${options.model}: ${(primaryErr as Error).message} | ${fallbackModel}: ${(fallbackErr as Error).message}`
+      );
+    }
+  }
+
   const latencyMs = Date.now() - startTime;
-  const modelLabel = options.model === 'claude' ? 'claude (via edge fn)' : 'gpt (via edge fn)';
+  const modelLabel = usedModel === 'claude' ? 'claude (via edge fn)' : 'gpt (via edge fn)';
+  const fallbackNote = usedModel !== options.model ? ` (fallback from ${options.model})` : '';
   storage.logEvent(
     options.taskId,
-    `LLM call complete: model=${modelLabel} input_tokens=${result.usage.input_tokens} output_tokens=${result.usage.output_tokens} latency=${latencyMs}ms`,
+    `LLM call complete: model=${modelLabel}${fallbackNote} input_tokens=${result.usage.input_tokens} output_tokens=${result.usage.output_tokens} latency=${latencyMs}ms`,
     'info'
   );
 

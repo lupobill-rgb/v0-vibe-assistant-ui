@@ -45,6 +45,29 @@ try {
   console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
 }
 
+// ── Default team for local development ──
+// When team_id is not provided, auto-provision a default org + team so the
+// frontend works without explicit multi-tenant setup.
+const DEFAULT_ORG_SLUG = 'default-org';
+const DEFAULT_TEAM_SLUG = 'default-team';
+
+async function getOrCreateDefaultTeam(): Promise<{ org_id: string; team_id: string }> {
+  // Try to find existing default org
+  let org = await storage.getOrganizationBySlug(DEFAULT_ORG_SLUG);
+  if (!org) {
+    org = await storage.createOrganization({ name: 'Default Organization', slug: DEFAULT_ORG_SLUG });
+  }
+
+  // Try to find existing default team under this org
+  const teams = await storage.listTeams(org.id);
+  let team = teams.find(t => t.slug === DEFAULT_TEAM_SLUG);
+  if (!team) {
+    team = await storage.createTeam({ org_id: org.id, name: 'Default Team', slug: DEFAULT_TEAM_SLUG });
+  }
+
+  return { org_id: org.id, team_id: team.id };
+}
+
 // Bootstrap NestJS and add Express routes
 async function bootstrap() {
   // Create NestJS application with body parser
@@ -164,16 +187,20 @@ async function bootstrap() {
 
   // ── Project routes ──
 
-  // POST /projects - Create a new project (now requires team_id)
+  // POST /projects - Create a new project (team_id optional — falls back to default team)
   app.post('/projects', async (req: Request, res: Response) => {
     try {
-      const { name, team_id, repository_url, template = 'empty' } = req.body;
+      const { name, team_id: rawTeamId, repository_url, template = 'empty' } = req.body;
 
       if (!name) {
         return res.status(400).json({ error: 'Missing required field: name' });
       }
+
+      // Resolve team_id: use provided value or fall back to auto-provisioned default
+      let team_id = rawTeamId;
       if (!team_id) {
-        return res.status(400).json({ error: 'Missing required field: team_id' });
+        const defaults = await getOrCreateDefaultTeam();
+        team_id = defaults.team_id;
       }
 
       // Validate team exists
@@ -224,13 +251,17 @@ async function bootstrap() {
   // POST /projects/import/github - Import project from GitHub
   app.post('/projects/import/github', async (req: Request, res: Response) => {
     try {
-      const { repo_url, team_id } = req.body;
+      const { repo_url, team_id: rawTeamId } = req.body;
 
       if (!repo_url) {
         return res.status(400).json({ error: 'Missing required field: repo_url' });
       }
+
+      // Resolve team_id: use provided value or fall back to auto-provisioned default
+      let team_id = rawTeamId;
       if (!team_id) {
-        return res.status(400).json({ error: 'Missing required field: team_id' });
+        const defaults = await getOrCreateDefaultTeam();
+        team_id = defaults.team_id;
       }
 
       const team = await storage.getTeam(team_id);
@@ -276,7 +307,7 @@ async function bootstrap() {
     }
   });
 
-  // GET /projects - List all projects for a team
+  // GET /projects - List projects (by team, org, or default team)
   app.get('/projects', async (req: Request, res: Response) => {
     try {
       const teamId = req.query.team_id as string;
@@ -290,7 +321,11 @@ async function bootstrap() {
         const projects = await storage.listProjects(teamId);
         return res.json(projects);
       }
-      return res.status(400).json({ error: 'team_id or org_id query parameter is required' });
+
+      // No filter provided — fall back to default team for local dev
+      const defaults = await getOrCreateDefaultTeam();
+      const projects = await storage.listProjects(defaults.team_id);
+      return res.json(projects);
     } catch (error) {
       console.error('Error listing projects:', error);
       res.status(500).json({ error: 'Failed to list projects' });
@@ -496,10 +531,9 @@ async function bootstrap() {
 
           await storage.setTaskDiff(taskId, data.diff);
 
-          // Extract HTML content from diff and save as preview
-          const lines = data.diff.split('\n');
-          const htmlLines = lines.filter((l: string) => l.startsWith('+')).map((l: string) => l.substring(1)).filter((l: string) => !l.startsWith('++'));
-          const html = htmlLines.join('\n');
+          // The edge function returns raw HTML in the `diff` field (mode defaults to "html").
+          // Use the response directly — no diff parsing needed.
+          const html = data.diff;
           const previewDir = path.join('/data/previews', taskId);
           fs.mkdirSync(previewDir, { recursive: true });
           fs.writeFileSync(path.join(previewDir, 'index.html'), html);
