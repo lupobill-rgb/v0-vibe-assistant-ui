@@ -128,7 +128,7 @@ export async function generateDiff(
   } catch (primaryErr) {
     // Primary model failed — try the other provider
     const fallbackModel = flipModel(options.model);
-    storage.logEvent(
+    await storage.logEvent(
       options.taskId,
       `LLM primary model "${options.model}" failed: ${(primaryErr as Error).message}. Falling back to "${fallbackModel}".`,
       'warning'
@@ -148,7 +148,7 @@ export async function generateDiff(
   const latencyMs = Date.now() - startTime;
   const modelLabel = usedModel === 'claude' ? 'claude (via edge fn)' : 'gpt (via edge fn)';
   const fallbackNote = usedModel !== options.model ? ` (fallback from ${options.model})` : '';
-  storage.logEvent(
+  await storage.logEvent(
     options.taskId,
     `LLM call complete: model=${modelLabel}${fallbackNote} input_tokens=${result.usage.input_tokens} output_tokens=${result.usage.output_tokens} latency=${latencyMs}ms`,
     'info'
