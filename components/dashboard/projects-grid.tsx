@@ -2,9 +2,51 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
-import { ProjectCard } from "./project-card"
+import { ProjectCard, type NormalizedProject } from "./project-card"
 import { type Project, TENANT_ID } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
+
+/** Coerce a date value (epoch ms, epoch seconds, or ISO string) to epoch ms. */
+function toEpochMs(value: number | string | null | undefined): number {
+  if (value == null) return 0
+  if (typeof value === "string") {
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+  // Heuristic: if < 1e12, it's likely epoch seconds (not ms)
+  return value < 1e12 ? value * 1000 : value
+}
+
+/** Derive a display status from the raw project fields. */
+function deriveStatus(project: Project): "published" | "synced" | "draft" {
+  if (project.published_url) return "published"
+  if (project.last_synced) return "synced"
+  return "draft"
+}
+
+/** Derive template type from the project name. */
+function deriveTemplateType(name: string): "landing" | "project" {
+  return name.startsWith("landing-") ? "landing" : "project"
+}
+
+/** Map the raw API Project into a normalized shape for ProjectCard. */
+function normalizeProject(raw: Project): NormalizedProject {
+  const createdAt = toEpochMs(raw.created_at)
+  const lastSynced = toEpochMs(raw.last_synced)
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.repository_url || "No description",
+    status: deriveStatus(raw),
+    template_type: deriveTemplateType(raw.name),
+    created_at: createdAt,
+    updated_at: lastSynced || createdAt,
+    published_url: raw.published_url,
+    repository_url: raw.repository_url,
+    local_path: raw.local_path,
+  }
+}
+
 import { FolderPlus, RefreshCw, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -26,7 +68,7 @@ function ProjectCardSkeleton() {
 }
 
 export function ProjectsGrid() {
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<NormalizedProject[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +83,7 @@ export function ProjectsGrid() {
         throw new Error(`API returned ${response.status}`)
       }
       const data: Project[] = await response.json()
-      setProjects(data)
+      setProjects(data.map(normalizeProject))
     } catch {
       setError("Failed to load projects. Is the API running?")
     } finally {

@@ -3,9 +3,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ExternalLink, Clock, Trash2, FolderOpen, MoreHorizontal } from "lucide-react"
+import { ExternalLink, Clock, Trash2, FolderOpen, MoreHorizontal, Globe, GitBranch } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { deleteProject, type Project } from "@/lib/api"
+import { deleteProject } from "@/lib/api"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,25 +24,39 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-function formatTimeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000)
-  if (seconds < 60) return "just now"
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
-  const weeks = Math.floor(days / 7)
-  if (weeks < 4) return `${weeks}w ago`
-  return new Date(timestamp).toLocaleDateString()
+export interface NormalizedProject {
+  id: string
+  name: string
+  description: string
+  status: "published" | "synced" | "draft"
+  template_type: "landing" | "project"
+  created_at: number
+  updated_at: number
+  published_url?: string | null
+  repository_url: string
+  local_path: string
+}
+
+const STATUS_CONFIG = {
+  published: { label: "Published", bg: "bg-emerald-500/20", text: "text-emerald-400", icon: Globe },
+  synced: { label: "Synced", bg: "bg-[#4F8EFF]/20", text: "text-[#4F8EFF]", icon: GitBranch },
+  draft: { label: "Draft", bg: "bg-amber-500/20", text: "text-amber-400", icon: Clock },
+} as const
+
+function formatDate(timestamp: number): string {
+  if (!timestamp) return "Unknown"
+  return new Date(timestamp).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 export function ProjectCard({
   project,
   onDeleted,
 }: {
-  project: Project
+  project: NormalizedProject
   onDeleted?: () => void
 }) {
   const [hovering, setHovering] = useState(false)
@@ -63,7 +77,9 @@ export function ProjectCard({
     }
   }
 
-  const lastActivity = project.last_synced ?? project.created_at
+  const lastActivity = project.updated_at || project.created_at
+  const statusCfg = STATUS_CONFIG[project.status]
+  const StatusIcon = statusCfg.icon
 
   return (
     <>
@@ -103,8 +119,13 @@ export function ProjectCard({
 
           {/* Status */}
           <div className="absolute top-3 left-3">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#4F8EFF]/20 text-[#4F8EFF]">
-              active
+            <span className={cn(
+              "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium",
+              statusCfg.bg,
+              statusCfg.text
+            )}>
+              <StatusIcon className="w-2.5 h-2.5" />
+              {statusCfg.label}
             </span>
           </div>
         </div>
@@ -115,12 +136,12 @@ export function ProjectCard({
             {project.name}
           </h3>
           <p className="text-xs text-muted-foreground truncate mb-3">
-            {project.repository_url || project.local_path || "Local project"}
+            {project.description}
           </p>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
               <Clock className="w-3 h-3" />
-              {formatTimeAgo(lastActivity)}
+              {formatDate(project.created_at)}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

@@ -20,11 +20,15 @@ export interface LogEvent {
 
 export interface Project {
   id: string
+  team_id?: string
   name: string
   repository_url: string
   local_path: string
-  last_synced?: number
-  created_at: number
+  last_synced?: number | string | null
+  published_url?: string | null
+  published_at?: string | null
+  published_job_id?: string | null
+  created_at: number | string
 }
 
 export interface Task {
