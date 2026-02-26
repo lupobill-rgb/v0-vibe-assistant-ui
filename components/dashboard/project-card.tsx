@@ -3,9 +3,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Star, ExternalLink, Clock, Trash2, FolderOpen, MoreHorizontal } from "lucide-react"
+import { ExternalLink, Clock, Trash2, FolderOpen, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { deleteProject } from "@/lib/api"
+import { deleteProject, type Project } from "@/lib/api"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,34 +24,37 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-export interface Project {
-  id: string
-  name: string
-  description: string
-  thumbnail: string
-  starred: boolean
-  lastEdited: string
-  status: "active" | "deployed" | "draft"
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return "just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 4) return `${weeks}w ago`
+  return new Date(timestamp).toLocaleDateString()
 }
 
-export function ProjectCard({ project }: { project: Project }) {
-  const [starred, setStarred] = useState(project.starred)
+export function ProjectCard({
+  project,
+  onDeleted,
+}: {
+  project: Project
+  onDeleted?: () => void
+}) {
   const [hovering, setHovering] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const router = useRouter()
 
-  const statusColors = {
-    active: "bg-[#4F8EFF]/20 text-[#4F8EFF]",
-    deployed: "bg-emerald-500/20 text-emerald-400",
-    draft: "bg-muted text-muted-foreground",
-  }
-
   const handleDelete = async () => {
     setDeleting(true)
     try {
       await deleteProject(project.id)
-      router.refresh()
+      onDeleted?.()
     } catch {
       // silently fail — user can retry
     } finally {
@@ -59,6 +62,8 @@ export function ProjectCard({ project }: { project: Project }) {
       setDeleteDialogOpen(false)
     }
   }
+
+  const lastActivity = project.last_synced ?? project.created_at
 
   return (
     <>
@@ -69,14 +74,7 @@ export function ProjectCard({ project }: { project: Project }) {
       >
         {/* Thumbnail */}
         <div className="relative aspect-[16/10] bg-secondary overflow-hidden">
-          <div
-            className="absolute inset-0 bg-gradient-to-br from-[#4F8EFF]/20 via-[#A855F7]/20 to-[#EC4899]/20"
-            style={{
-              backgroundImage: `url(${project.thumbnail})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#4F8EFF]/20 via-[#A855F7]/20 to-[#EC4899]/20" />
           {/* Grid pattern overlay */}
           <div
             className="absolute inset-0 opacity-10"
@@ -87,47 +85,26 @@ export function ProjectCard({ project }: { project: Project }) {
             }}
           />
 
-        {/* Hover overlay */}
-        <div
-          className={cn(
-            "absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200",
-            hovering ? "opacity-100" : "opacity-0"
-          )}
-        >
-          <Link
-            href={`/projects/${project.id}`}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-sm font-medium text-white hover:bg-white/25 transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            Open Project
-          </Link>
-          </div>
-
-          {/* Star Button */}
-          <button
-            onClick={(e) => {
-              e.preventDefault()
-              setStarred(!starred)
-            }}
+          {/* Hover overlay */}
+          <div
             className={cn(
-              "absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
-              starred
-                ? "bg-amber-500/20 text-amber-400"
-                : "bg-black/30 backdrop-blur-sm text-white/60 hover:text-white opacity-0 group-hover:opacity-100"
+              "absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200",
+              hovering ? "opacity-100" : "opacity-0"
             )}
           >
-            <Star className={cn("w-4 h-4", starred && "fill-current")} />
-          </button>
+            <Link
+              href={`/projects/${project.id}`}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-sm font-medium text-white hover:bg-white/25 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open Project
+            </Link>
+          </div>
 
           {/* Status */}
           <div className="absolute top-3 left-3">
-            <span
-              className={cn(
-                "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium",
-                statusColors[project.status]
-              )}
-            >
-              {project.status}
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#4F8EFF]/20 text-[#4F8EFF]">
+              active
             </span>
           </div>
         </div>
@@ -138,12 +115,12 @@ export function ProjectCard({ project }: { project: Project }) {
             {project.name}
           </h3>
           <p className="text-xs text-muted-foreground truncate mb-3">
-            {project.description}
+            {project.repository_url || project.local_path || "Local project"}
           </p>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
               <Clock className="w-3 h-3" />
-              {project.lastEdited}
+              {formatTimeAgo(lastActivity)}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
