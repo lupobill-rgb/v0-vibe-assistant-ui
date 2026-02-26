@@ -16,7 +16,6 @@ import {
   CreditCard,
   HelpCircle,
   User,
-  LayoutTemplate,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -26,10 +25,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
-  { icon: LayoutTemplate, label: "Templates", href: "/templates" },
   { icon: FolderKanban, label: "Projects", href: "/projects" },
   { icon: MessageSquare, label: "Chat", href: "/chat" },
   { icon: Settings, label: "Settings", href: "/settings" },
@@ -43,8 +42,18 @@ const bottomItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
+  const [dialogOpen, setDialogOpen] = useState(false)
+
+  const openSearch = () => {
+    window.dispatchEvent(new Event("open-command-palette"))
+  }
 
   return (
+    <>
+    <CreateProjectDialog
+      open={dialogOpen}
+      onOpenChange={setDialogOpen}
+    />
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
@@ -71,6 +80,7 @@ export function AppSidebar() {
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
+                  onClick={() => setDialogOpen(true)}
                   className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0"
                 >
                   <Plus className="w-4 h-4" />
@@ -79,7 +89,10 @@ export function AppSidebar() {
               <TooltipContent side="right">New Project</TooltipContent>
             </Tooltip>
           ) : (
-            <Button className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0 justify-start gap-2">
+            <Button
+              onClick={() => setDialogOpen(true)}
+              className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0 justify-start gap-2"
+            >
               <Plus className="w-4 h-4" />
               New Project
             </Button>
@@ -87,16 +100,32 @@ export function AppSidebar() {
         </div>
 
         {/* Search */}
-        {!collapsed && (
-          <div className="px-3 pb-2 flex-shrink-0">
-            <button className="flex items-center gap-2 w-full h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-sm hover:bg-sidebar-accent/80 transition-colors">
+        <div className="px-3 pb-2 flex-shrink-0">
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={openSearch}
+                  className="flex items-center justify-center w-full h-9 rounded-lg bg-sidebar-accent text-muted-foreground hover:bg-sidebar-accent/80 transition-colors"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Search</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              onClick={openSearch}
+              className="flex items-center gap-2 w-full h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-sm hover:bg-sidebar-accent/80 transition-colors"
+            >
               <Search className="w-4 h-4" />
               <span>Search...</span>
               <kbd className="ml-auto text-[10px] bg-sidebar-border px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-                {"/"}</kbd>
+                /
+              </kbd>
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Main Nav */}
         <nav className="flex-1 px-3 py-2 flex flex-col gap-1 overflow-y-auto">
@@ -208,5 +237,6 @@ export function AppSidebar() {
         </div>
       </aside>
     </TooltipProvider>
+    </>
   )
 }
