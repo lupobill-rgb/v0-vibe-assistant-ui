@@ -28,10 +28,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
 
     try {
       let projectId = selectedProjectId
+
       if (!projectId) {
-        const proj = await createProject(prompt.trim().slice(0, 60))
-        if (proj.error || !proj.id) throw new Error(proj.error || "Failed to create project")
-        projectId = proj.id
+        const project = await createProject(prompt.trim().slice(0, 60))
+        if (project.error || !project.id) {
+          throw new Error(project.error || "Failed to create project")
+        }
+        projectId = project.id
       }
 
       const result = await createJob({
@@ -39,13 +42,15 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         project_id: projectId,
         base_branch: "main",
       })
-      if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
+
+      if (result.error || !result.task_id) {
+        throw new Error(result.error || "Failed to create job")
+      }
 
       router.push(`/building/${result.task_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed")
       console.error(err)
-    } finally {
       setSubmitting(false)
     }
   }
@@ -133,7 +138,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           </button>
         ))}
       </div>
-
     </div>
   )
 }
