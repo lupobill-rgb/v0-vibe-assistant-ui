@@ -1,39 +1,39 @@
+import jwt from 'jsonwebtoken';
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../auth';
 
-/** Decode a JWT payload without verifying the signature. */
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    // base64url → base64 → Buffer → string
-    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = Buffer.from(padded, 'base64').toString('utf-8');
-    return JSON.parse(payload) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 
 /**
- * Middleware: extract tenantId from JWT Bearer token.
+ * Middleware: extract tenantId from a **verified** JWT Bearer token.
+ *
+ * The token is verified against SUPABASE_JWT_SECRET to prevent forgery.
  *
  * Resolution order:
- *   1. Authorization: Bearer <jwt>  → claims.tenant_id | claims.tenantId | claims.sub
- *   2. X-Tenant-Id header           (legacy / service-to-service)
+ *   1. Authorization: Bearer <jwt>  → verified claims.tenant_id | claims.tenantId | claims.sub
+ *   2. X-Tenant-Id header           (development only — disabled in production)
  *
  * Returns 401 when no tenant context can be established.
  * Cross-tenant 403s are enforced per-resource via assertTenantOwnership().
  */
 export function extractTenantFromJwt() {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!JWT_SECRET) {
+      console.error('FATAL: SUPABASE_JWT_SECRET is not set — refusing to process requests');
+      res.status(500).json({ error: 'Server misconfiguration: JWT secret not set' });
+      return;
+    }
+
     const authHeader = req.headers.authorization;
 
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.slice(7);
-      const payload = decodeJwtPayload(token);
 
-      if (payload) {
+      try {
+        const payload = jwt.verify(token, JWT_SECRET, {
+          algorithms: ['HS256'],
+        }) as Record<string, unknown>;
+
         const tenantId =
           (payload.tenant_id as string | undefined) ||
           (payload.tenantId as string | undefined) ||
@@ -44,15 +44,21 @@ export function extractTenantFromJwt() {
           next();
           return;
         }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unknown error';
+        res.status(401).json({ error: `Invalid token: ${message}` });
+        return;
       }
     }
 
-    // Fallback: explicit header (service-to-service or legacy clients)
-    const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
-    if (headerTenantId) {
-      req.tenantId = headerTenantId;
-      next();
-      return;
+    // Fallback: explicit header — ONLY allowed in development
+    if (process.env.NODE_ENV === 'development') {
+      const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
+      if (headerTenantId) {
+        req.tenantId = headerTenantId;
+        next();
+        return;
+      }
     }
 
     res.status(401).json({ error: 'Authentication required: no tenant context found' });
