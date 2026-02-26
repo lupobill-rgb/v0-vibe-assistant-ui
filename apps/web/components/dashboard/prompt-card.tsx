@@ -32,22 +32,22 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       if (!projectId) {
         const project = await createProject(prompt.trim().slice(0, 60))
         if (project.error || !project.id) {
-          throw new Error(project.error ?? "Failed to create project")
+          throw new Error(project.error || "Failed to create project")
         }
         projectId = project.id
       }
 
-      const job = await createJob({
+      const result = await createJob({
         prompt: prompt.trim(),
         project_id: projectId,
         base_branch: "main",
       })
 
-      if (job.error || !job.task_id) {
-        throw new Error(job.error ?? "Failed to create job")
+      if (result.error || !result.task_id) {
+        throw new Error(result.error || "Failed to create job")
       }
 
-      router.push(`/building/${job.task_id}`)
+      router.push(`/building/${result.task_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed")
       console.error(err)
@@ -118,7 +118,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               ) : (
                 <ArrowUp className="w-4 h-4" />
               )}
-              Build Landing Page
+              Build Project
             </button>
           </div>
         </div>
@@ -138,7 +138,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           </button>
         ))}
       </div>
-
     </div>
   )
 }
