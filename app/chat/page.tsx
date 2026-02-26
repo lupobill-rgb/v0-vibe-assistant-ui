@@ -1,149 +1,227 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { Suspense, useEffect, useState } from "react"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
-import { ChatHistory } from "@/components/chat/chat-history"
-import { ChatMessage, type Message } from "@/components/chat/chat-message"
-import { ChatInput } from "@/components/chat/chat-input"
-import { Sparkles } from "lucide-react"
+import { PromptCard } from "@/components/dashboard/prompt-card"
+import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
+import { ImportGithubDialog } from "@/components/dialogs/import-github-dialog"
+import { fetchJobs, fetchProjects, type Task, type Project } from "@/lib/api"
+import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink, FolderOpen, Plus, Github } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-const initialMessages: Message[] = [
-  {
-    id: "1",
-    role: "assistant",
-    content:
-      "Hello! I'm VIBE, your AI coding assistant. I can help you build applications, debug code, design interfaces, and much more. What would you like to work on today?",
-    timestamp: "10:30 AM",
-  },
-  {
-    id: "2",
-    role: "user",
-    content: "I need help building a checkout flow for my e-commerce app. It should support Stripe payments and have a multi-step form.",
-    timestamp: "10:31 AM",
-  },
-  {
-    id: "3",
-    role: "assistant",
-    content: `I'd be happy to help you build a checkout flow! Here's what I'll set up for you:
+const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
+  completed: { label: "Completed", icon: CheckCircle2, color: "text-emerald-400" },
+  failed: { label: "Failed", icon: XCircle, color: "text-red-400" },
+  running: { label: "Running", icon: Loader2, color: "text-[#4F8EFF]" },
+  queued: { label: "Queued", icon: Clock, color: "text-amber-400" },
+}
 
-1. **Multi-step form** with shipping, payment, and review steps
-2. **Stripe Elements** integration for secure card input
-3. **Form validation** at each step with helpful error messages
-4. **Order summary** sidebar that updates in real-time
+function JobRow({ task }: { task: Task }) {
+  const cfg = STATE_CONFIG[task.execution_state] ?? STATE_CONFIG["queued"]
+  const Icon = cfg.icon
+  const isRunning = task.execution_state === "running"
+  const date = new Date(task.initiated_at).toLocaleString()
 
-Let me start by scaffolding the checkout page component. I'll use a step-based approach with React state to manage the flow between steps.
+  return (
+    <Link
+      href={`/task/${task.task_id}`}
+      className="flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all duration-200 group"
+    >
+      <Icon
+        className={cn("w-4 h-4 flex-shrink-0", cfg.color, isRunning && "animate-spin")}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-foreground truncate">{task.user_prompt}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{date}</p>
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <span
+          className={cn(
+            "text-[11px] font-medium px-2 py-0.5 rounded-md",
+            task.execution_state === "completed" && "bg-emerald-500/10 text-emerald-400",
+            task.execution_state === "failed" && "bg-red-500/10 text-red-400",
+            task.execution_state === "running" && "bg-[#4F8EFF]/10 text-[#4F8EFF]",
+            task.execution_state === "queued" && "bg-amber-500/10 text-amber-400",
+          )}
+        >
+          {cfg.label}
+        </span>
+        {task.pull_request_link && (
+          <a
+            href={task.pull_request_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            PR
+          </a>
+        )}
+        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </Link>
+  )
+}
 
-Would you like me to include guest checkout support, or will this require user authentication?`,
-    timestamp: "10:31 AM",
-  },
-  {
-    id: "4",
-    role: "user",
-    content: "Let's include both guest checkout and authenticated checkout options.",
-    timestamp: "10:32 AM",
-  },
-  {
-    id: "5",
-    role: "assistant",
-    content: `Great choice! I'll implement both flows. Here's the plan:
+function ChatContent() {
+  const searchParams = useSearchParams()
+  const initialProjectId = searchParams.get("project") ?? undefined
 
-**Guest Checkout:**
-- Email capture at the beginning
-- Shipping address form
-- Payment via Stripe
+  const [jobs, setJobs] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
 
-**Authenticated Checkout:**
-- Pre-filled shipping from saved addresses
-- Saved payment methods
-- One-click reorder capability
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
-I'm generating the code now. This will include the checkout page, the step components, and the Stripe integration hooks.`,
-    timestamp: "10:33 AM",
-  },
-]
-
-export default function ChatPage() {
-  const [activeConversation, setActiveConversation] = useState("1")
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
-  const [isLoading, setIsLoading] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  const refreshProjects = (selectId?: string) => {
+    fetchProjects().then((data) => {
+      setProjects(data)
+      if (selectId) {
+        setSelectedProjectId(selectId)
+      } else if (data.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(data[0].id)
+      }
+    })
   }
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    fetchJobs()
+      .then((data) => {
+        setJobs(data.slice(0, 20))
+        setLoading(false)
+      })
+      .catch(() => {
+        setError(true)
+        setLoading(false)
+      })
 
-  const handleSend = (content: string) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    }
-    setMessages((prev) => [...prev, userMessage])
-    setIsLoading(true)
-
-    // Simulate AI response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "I'll get right on that. Let me analyze your request and generate the code you need. This should just take a moment...",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      }
-      setMessages((prev) => [...prev, assistantMessage])
-      setIsLoading(false)
-    }, 1500)
-  }
+    fetchProjects().then((data) => {
+      setProjects(data)
+      if (data.length > 0) setSelectedProjectId(data[0].id)
+    })
+  }, [])
 
   return (
     <AppShell>
-      <div className="flex h-screen">
-        {/* Chat History Sidebar */}
-        <ChatHistory activeConversation={activeConversation} onSelect={setActiveConversation} />
-
-        {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Chat Header */}
-          <div className="flex items-center gap-3 px-6 h-14 border-b border-border flex-shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#4F8EFF] via-[#A855F7] to-[#EC4899] flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">E-commerce checkout flow</h2>
-              <p className="text-[10px] text-muted-foreground">5 messages</p>
-            </div>
+    <div className="min-h-screen">
+      {/* Page Header */}
+      <div className="px-6 pt-8 pb-2">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center">
+            <MessageSquare className="w-5 h-5 text-white" />
           </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6">
-            <div className="max-w-3xl mx-auto py-4">
-              {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
-              ))}
-              {isLoading && (
-                <div className="flex gap-3 py-4">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#4F8EFF] via-[#A855F7] to-[#EC4899] flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="w-4 h-4 text-primary-foreground" />
-                  </div>
-                  <div className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-card border border-border rounded-tl-sm">
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse [animation-delay:0.2s]" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse [animation-delay:0.4s]" />
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">Chat</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Submit prompts and track your AI jobs
+            </p>
           </div>
-
-          {/* Input */}
-          <ChatInput onSend={handleSend} isLoading={isLoading} />
         </div>
       </div>
+
+        {/* Project Selector */}
+        <div className="px-6 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-shrink-0">
+              <FolderOpen className="w-4 h-4" />
+              <span>Project</span>
+            </div>
+            {projects.length > 0 ? (
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="flex-1 bg-secondary text-foreground text-sm rounded-lg px-3 py-2 border border-border outline-none focus:border-primary/40 transition-colors"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm text-muted-foreground italic">
+                No projects yet.
+              </span>
+            )}
+            <button
+              onClick={() => setCreateDialogOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 flex-shrink-0"
+              title="New Project"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New
+            </button>
+            <button
+              onClick={() => setImportDialogOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 flex-shrink-0"
+              title="Import from GitHub"
+            >
+              <Github className="w-3.5 h-3.5" />
+              Import
+            </button>
+          </div>
+        </div>
+
+        {/* Prompt Card */}
+        <PromptCard selectedProjectId={selectedProjectId} />
+
+      {/* Recent Jobs */}
+      <div className="px-6 py-8">
+        <h2 className="text-base font-semibold text-foreground mb-4">Recent Jobs</h2>
+
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading jobs...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="text-sm text-red-400 py-4">
+            Failed to load jobs. Is the API running?
+          </div>
+        )}
+
+        {!loading && !error && jobs.length === 0 && (
+          <div className="text-sm text-muted-foreground py-4">
+            No jobs yet. Submit a prompt above to get started.
+          </div>
+        )}
+
+        {!loading && !error && jobs.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {jobs.map((job) => (
+              <JobRow key={job.task_id} task={job} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <CreateProjectDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onCreated={(id) => refreshProjects(id)}
+      />
+      <ImportGithubDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImported={(id) => refreshProjects(id)}
+      />
+    </div>
     </AppShell>
+  )
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense>
+      <ChatContent />
+    </Suspense>
   )
 }
