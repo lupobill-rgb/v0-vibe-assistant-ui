@@ -558,43 +558,33 @@ async function bootstrap() {
           let pageNames: string[] = [];
 
           if (plan) {
-            // ── Step 2: Page loop — build pages in parallel batches ──
-            const CONCURRENCY = 3;
-            for (let i = 0; i < plan.length; i += CONCURRENCY) {
-              const batch = plan.slice(i, i + CONCURRENCY);
-              const batchPromises = batch.map(async (page, batchIdx) => {
-                const idx = i + batchIdx;
-                const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-                await storage.logEvent(taskId, `Building page ${idx + 1} of ${plan.length}: ${page.name}...`, 'info');
+            // ── Step 2: Page loop — build pages sequentially ──
+            for (let i = 0; i < plan.length; i++) {
+              const page = plan[i];
+              const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+              await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + plan.length + ': ' + page.name + '...', 'info');
 
+              try {
                 const pageResponse = await fetch(edgeFunctionUrl, {
                   method: 'POST',
                   headers,
-                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', context: 'Original request: ' + prompt + '\nAll pages in this site: ' + plan!.map(p => p.name + ' - ' + p.title).join(', ') + '\nMaintain consistent design: same colors, fonts, nav bar, and footer across all pages.' }),
+                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', max_tokens: 2000, context: 'Original request: ' + prompt + '. All pages: ' + plan.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
                 });
                 const pageRawText = await pageResponse.text();
-                if (!pageResponse.ok) throw new Error(`Page "${page.name}" call returned ${pageResponse.status}: ${pageRawText.slice(0, 200)}`);
-
-                let pageData: { diff: string; usage: { total_tokens: number } };
-                try {
-                  pageData = JSON.parse(pageRawText);
-                } catch {
-                  throw new Error(`Page "${page.name}" returned invalid JSON (${pageRawText.length} chars)`);
-                }
-
-                // Write the HTML file
-                fs.writeFileSync(path.join(previewDir, `${safeName}.html`), pageData.diff);
-                return { name: page.name, safeName, tokens: pageData.usage?.total_tokens || 0 };
-              });
-              const results = await Promise.all(batchPromises);
-              for (const r of results) {
-                totalTokens += r.tokens;
-                pageNames.push(r.name);
+                if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
+                const pageData = JSON.parse(pageRawText);
+                if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
+                fs.writeFileSync(path.join(previewDir, safeName + '.html'), pageData.diff);
+                pageNames.push(page.name);
+              } catch (pageErr: any) {
+                await storage.logEvent(taskId, 'Page ' + page.name + ' failed: ' + pageErr.message + ' — skipping', 'info');
               }
+
+              if (i < plan.length - 1) await new Promise(r => setTimeout(r, 15000));
             }
 
             // Save generated pages to jobs table so the frontend can read last_diff
-            const pagesArray = plan.map((p) => {
+            const pagesArray = plan.filter(p => pageNames.includes(p.name)).map((p) => {
               const safeName = p.name.replace(/[^a-zA-Z0-9_-]/g, '_');
               const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
               return { name: p.name, filename: `${safeName}.html`, html };
