@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { fetchJob, type Task } from "@/lib/api"
+import { fetchJob, subscribeToJobUpdates, type Task } from "@/lib/api"
 
 export type StepStatus = "done" | "active" | "pending" | "error"
 
@@ -76,23 +76,19 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const [steps, setSteps] = useState<PipelineStep[]>(buildStepsFromTask(null))
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>
-
-    const load = async () => {
-      const t = await fetchJob(taskId)
+    fetchJob(taskId).then((t) => {
       if (t) {
         setTask(t)
         setSteps(buildStepsFromTask(t))
-        if (t.execution_state === "completed" || t.execution_state === "failed") {
-          clearInterval(interval)
-        }
       }
-    }
+    })
 
-    load()
-    interval = setInterval(load, 2000)
+    const unsubscribe = subscribeToJobUpdates(taskId, (t) => {
+      setTask(t)
+      setSteps(buildStepsFromTask(t))
+    })
 
-    return () => clearInterval(interval)
+    return () => unsubscribe()
   }, [taskId])
 
   const completedCount = steps.filter((s) => s.status === "done").length
