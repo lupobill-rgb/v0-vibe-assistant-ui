@@ -73,19 +73,17 @@ async function runPlanPageFlow(
   let pageNames: string[] = [];
 
   if (plan) {
-    // ── Step 2: Page loop — build pages in parallel batches ──
-    const CONCURRENCY = 2;
-    for (let i = 0; i < plan.length; i += CONCURRENCY) {
-      const batch = plan.slice(i, i + CONCURRENCY);
-      const batchPromises = batch.map(async (page, batchIdx) => {
-        const idx = i + batchIdx;
-        const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-        log(`Building page ${idx + 1} of ${plan.length}: ${page.name}...`);
+    // ── Step 2: Page loop — build pages sequentially ──
+    for (let i = 0; i < plan.length; i++) {
+      const page = plan[i];
+      const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      log(`Building page ${i + 1} of ${plan!.length}: ${page.name}...`);
 
+      try {
         const pageResponse = await fetch(edgeFunctionUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ prompt: page.description, model, mode: 'page', context: 'Original request: ' + prompt + '\nAll pages in this site: ' + plan!.map(p => p.name + ' - ' + p.title).join(', ') + '\nMaintain consistent design: same colors, fonts, nav bar, and footer across all pages.' }),
+          body: JSON.stringify({ prompt: page.description, model, mode: 'page', max_tokens: 4096, context: 'Original request: ' + prompt + '\nAll pages in this site: ' + plan!.map(p => p.name + ' - ' + p.title).join(', ') + '\nMaintain consistent design: same colors, fonts, nav bar, and footer across all pages.' }),
         });
         const pageRawText = await pageResponse.text();
         if (!pageResponse.ok) throw new Error(`Page "${page.name}" call returned ${pageResponse.status}: ${pageRawText.slice(0, 200)}`);
@@ -98,13 +96,17 @@ async function runPlanPageFlow(
         }
 
         fs.writeFileSync(path.join(previewDir, `${safeName}.html`), pageData.diff);
-        return { name: page.name, safeName, tokens: pageData.usage?.total_tokens || 0 };
-      });
-      const results = await Promise.all(batchPromises);
-      for (const r of results) {
-        totalTokens += r.tokens;
-        pageNames.push(r.name);
+        totalTokens += pageData.usage?.total_tokens || 0;
+        pageNames.push(page.name);
+      } catch (pageErr: any) {
+        log(`Page "${page.name}" failed: ${pageErr.message}`);
       }
+
+      // Delay between pages omitted for test speed (production uses 5s)
+    }
+
+    if (pageNames.length === 0) {
+      throw new Error('All page builds failed — zero pages generated');
     }
   } else {
     // ── Fallback: single-page build with mode: 'html' ──
@@ -361,7 +363,7 @@ describe('Plan+page flow — multi-page HTML generation', () => {
     }
   });
 
-  it('builds >3 pages correctly using multiple batches', async () => {
+  it('builds >3 pages correctly in sequential order', async () => {
     const fivePages = [
       { name: 'index', title: 'Home', description: 'homepage' },
       { name: 'about', title: 'About Us', description: 'about page' },
@@ -409,6 +411,121 @@ describe('Plan+page flow — multi-page HTML generation', () => {
       assert.ok(buildLogs[0].includes('1 of 5'), `First: ${buildLogs[0]}`);
       assert.ok(buildLogs[3].includes('4 of 5'), `Fourth: ${buildLogs[3]}`);
       assert.ok(buildLogs[4].includes('5 of 5'), `Fifth: ${buildLogs[4]}`);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('continues building remaining pages when one page fails', async () => {
+    const { server, url } = await createMockServer((body) => {
+      if (body.mode === 'plan') {
+        return {
+          status: 200,
+          json: {
+            diff: JSON.stringify([
+              { name: 'index', title: 'Home', description: 'homepage' },
+              { name: 'broken', title: 'Broken', description: 'this will fail' },
+              { name: 'contact', title: 'Contact', description: 'contact page' },
+            ]),
+            mode: 'plan',
+            usage: { total_tokens: 80 },
+          },
+        };
+      }
+      // Fail the second page
+      if (body.prompt === 'this will fail') {
+        return { status: 500, json: { error: 'Internal Server Error' } };
+      }
+      return {
+        status: 200,
+        json: { diff: `<html><body>${body.prompt}</body></html>`, usage: { total_tokens: 100 } },
+      };
+    });
+
+    try {
+      const previewDir = path.join(tmpDir, 'task-resilience');
+      const result = await runPlanPageFlow(url, 'Build a site', 'claude', 'task-err', previewDir);
+
+      // Only 2 of 3 pages should succeed
+      assert.deepStrictEqual(result.pageNames, ['index', 'contact']);
+
+      // HTML files for successful pages should exist
+      assert.ok(fs.existsSync(path.join(previewDir, 'index.html')), 'index.html exists');
+      assert.ok(fs.existsSync(path.join(previewDir, 'contact.html')), 'contact.html exists');
+      assert.ok(!fs.existsSync(path.join(previewDir, 'broken.html')), 'broken.html should not exist');
+
+      // Logs should show the failure warning
+      const failLog = result.logs.find(l => l.includes('Page "broken" failed'));
+      assert.ok(failLog, 'Should log page failure');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('throws when ALL pages fail (zero pages built)', async () => {
+    const { server, url } = await createMockServer((body) => {
+      if (body.mode === 'plan') {
+        return {
+          status: 200,
+          json: {
+            diff: JSON.stringify([
+              { name: 'page1', title: 'Page 1', description: 'fail1' },
+              { name: 'page2', title: 'Page 2', description: 'fail2' },
+            ]),
+            mode: 'plan',
+            usage: { total_tokens: 50 },
+          },
+        };
+      }
+      // All pages fail
+      return { status: 500, json: { error: 'Server Error' } };
+    });
+
+    try {
+      const previewDir = path.join(tmpDir, 'task-all-fail');
+      await assert.rejects(
+        () => runPlanPageFlow(url, 'Build a site', 'claude', 'task-allfail', previewDir),
+        { message: 'All page builds failed — zero pages generated' },
+      );
+    } finally {
+      server.close();
+    }
+  });
+
+  it('sends max_tokens: 4096 in each page request', async () => {
+    const receivedRequests: any[] = [];
+
+    const { server, url } = await createMockServer((body) => {
+      receivedRequests.push(body);
+      if (body.mode === 'plan') {
+        return {
+          status: 200,
+          json: {
+            diff: JSON.stringify([
+              { name: 'index', title: 'Home', description: 'homepage' },
+            ]),
+            mode: 'plan',
+            usage: { total_tokens: 50 },
+          },
+        };
+      }
+      return {
+        status: 200,
+        json: { diff: '<html>page</html>', usage: { total_tokens: 100 } },
+      };
+    });
+
+    try {
+      const previewDir = path.join(tmpDir, 'task-maxtokens');
+      await runPlanPageFlow(url, 'Build a site', 'claude', 'task-mt', previewDir);
+
+      // Plan request should NOT have max_tokens
+      assert.strictEqual(receivedRequests[0].mode, 'plan');
+      assert.strictEqual(receivedRequests[0].max_tokens, undefined, 'Plan call should not have max_tokens');
+
+      // Page request should have max_tokens: 4096
+      assert.strictEqual(receivedRequests[1].mode, 'page');
+      assert.strictEqual(receivedRequests[1].max_tokens, 4096, 'Page call should have max_tokens: 4096');
     } finally {
       server.close();
     }
