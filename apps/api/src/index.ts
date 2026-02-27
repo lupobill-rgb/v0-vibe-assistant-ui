@@ -537,10 +537,14 @@ async function bootstrap() {
             const planData = JSON.parse(planRawText);
             if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
             // Edge Function returns { diff: "<JSON string of pages array>", mode: "plan", usage }
-            const planPages = typeof planData.diff === 'string'
+            let planPages = typeof planData.diff === 'string'
               ? JSON.parse(planData.diff)
               : planData.diff;
             if (Array.isArray(planPages) && planPages.length > 0) {
+              if (planPages.length > 4) {
+                planPages = planPages.slice(0, 4);
+                await storage.logEvent(taskId, 'Capped to 4 pages for fast initial build — add more pages later', 'info');
+              }
               plan = planPages;
               await storage.logEvent(taskId, `Plan received: ${plan!.length} page(s) — ${plan!.map((p: { name: string }) => p.name).join(', ')}`, 'info');
             } else {
@@ -568,7 +572,7 @@ async function bootstrap() {
                 const pageResponse = await fetch(edgeFunctionUrl, {
                   method: 'POST',
                   headers,
-                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', context: 'Original request: ' + prompt + '. All pages: ' + plan.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
+                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', context: 'Site pages: ' + plan.map((p: any) => p.name).join(', ') + '. Keep consistent nav, colors, and fonts.' }),
                 });
                 const pageRawText = await pageResponse.text();
                 if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
