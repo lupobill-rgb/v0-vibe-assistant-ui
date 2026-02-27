@@ -512,34 +512,43 @@ async function bootstrap() {
         try {
           await storage.updateTaskState(taskId, 'calling_llm');
           await storage.logEvent(taskId, 'Calling Edge Function...', 'info');
-
           const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
           const supabaseKey = process.env.SUPABASE_ANON_KEY;
           if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
-
           const response = await fetch(`${supabaseUrl}/functions/v1/generate-diff`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${supabaseKey}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ prompt, model: resolvedModel }),
+            body: JSON.stringify({ prompt, model: resolvedModel, mode: 'multi' }),
           });
-
-          const data = await response.json() as { error?: string; diff: string; usage: { total_tokens: number } };
-          if (!response.ok) throw new Error(data.error || 'Edge Function call failed');
-
+          const rawText = await response.text();
+          if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
+          let data: { error?: string; diff: string; usage: { total_tokens: number } };
+          try {
+            data = JSON.parse(rawText);
+          } catch (parseErr) {
+            console.error(`Job ${taskId} — raw response (${rawText.length} chars):`, rawText.slice(0, 500));
+            throw new Error(`Edge Function returned invalid JSON (${rawText.length} chars)`);
+          }
           await storage.setTaskDiff(taskId, data.diff);
-
-          // The edge function returns raw HTML in the `diff` field (mode defaults to "html").
-          // Use the response directly — no diff parsing needed.
-          const html = data.diff;
           const previewDir = path.join('/data/previews', taskId);
           fs.mkdirSync(previewDir, { recursive: true });
-          fs.writeFileSync(path.join(previewDir, 'index.html'), html);
+          let pages: { name: string; html: string }[];
+          try {
+            const parsed = JSON.parse(data.diff);
+            pages = Array.isArray(parsed) ? parsed : [{ name: 'index', html: data.diff }];
+          } catch {
+            pages = [{ name: 'index', html: data.diff }];
+          }
+          for (const page of pages) {
+            const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+            fs.writeFileSync(path.join(previewDir, `${safeName}.html`), page.html);
+          }
+          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pages.map(p => p.name)));
           await storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
           await storage.logEvent(taskId, 'Preview generated', 'info');
-
           await storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
