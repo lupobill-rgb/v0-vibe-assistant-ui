@@ -28,7 +28,7 @@ Respond ONLY with a JSON object — no markdown, no prose, no code fences:
 {"passed": ["description of each passing check"], "failed": ["description of each failing check"]}`;
 
 export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAgentResult> {
-  storage.logEvent(taskId, '[UX] Starting UX agent', 'info');
+  await storage.logEvent(taskId, '[UX] Starting UX agent', 'info');
 
   const contextResult = await buildContext(repoPath, 'UX review: responsive breakpoints, empty states, loading states, consistent spacing');
   const context = formatContext(contextResult.files);
@@ -48,20 +48,20 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
       throw new Error('Unexpected JSON shape from LLM');
     }
   } catch (err: any) {
-    storage.logEvent(taskId, `[UX] LLM check failed: ${err.message}`, 'error');
+    await storage.logEvent(taskId, `[UX] LLM check failed: ${err.message}`, 'error');
     return { passed: [], failed: [], fixed: [] };
   }
 
-  storage.logEvent(taskId, `[UX] Report: ${report.passed.length} passed, ${report.failed.length} failed`, 'info');
+  await storage.logEvent(taskId, `[UX] Report: ${report.passed.length} passed, ${report.failed.length} failed`, 'info');
   for (const p of report.passed) {
-    storage.logEvent(taskId, `[UX] PASS: ${p}`, 'success');
+    await storage.logEvent(taskId, `[UX] PASS: ${p}`, 'success');
   }
   for (const f of report.failed) {
-    storage.logEvent(taskId, `[UX] FAIL: ${f}`, 'warning');
+    await storage.logEvent(taskId, `[UX] FAIL: ${f}`, 'warning');
   }
 
   if (report.failed.length === 0) {
-    storage.logEvent(taskId, '[UX] All UX checks passed', 'success');
+    await storage.logEvent(taskId, '[UX] All UX checks passed', 'success');
     return { passed: report.passed, failed: [], fixed: [] };
   }
 
@@ -74,26 +74,26 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
     const fixDiff = result.diff;
 
     if (!fixDiff || fixDiff === 'NO_CHANGES') {
-      storage.logEvent(taskId, '[UX] LLM produced no fix diff', 'warning');
+      await storage.logEvent(taskId, '[UX] LLM produced no fix diff', 'warning');
       return { passed: report.passed, failed: report.failed, fixed: [] };
     }
 
     const sanitized = sanitizeUnifiedDiff(fixDiff);
     if (!sanitized) {
-      storage.logEvent(taskId, '[UX] Fix diff failed sanitization, skipping', 'warning');
+      await storage.logEvent(taskId, '[UX] Fix diff failed sanitization, skipping', 'warning');
       return { passed: report.passed, failed: report.failed, fixed: [] };
     }
 
     const diff = extractDiff(sanitized);
     const validation = validateUnifiedDiffEnhanced(diff);
     if (!validation.ok) {
-      storage.logEvent(taskId, `[UX] Fix diff validation failed: ${validation.errors.join('; ')}`, 'warning');
+      await storage.logEvent(taskId, `[UX] Fix diff validation failed: ${validation.errors.join('; ')}`, 'warning');
       return { passed: report.passed, failed: report.failed, fixed: [] };
     }
 
     const applicability = validateDiffApplicability(diff, repoPath);
     if (!applicability.valid) {
-      storage.logEvent(taskId, `[UX] Fix diff not applicable: ${applicability.error}`, 'warning');
+      await storage.logEvent(taskId, `[UX] Fix diff not applicable: ${applicability.error}`, 'warning');
       return { passed: report.passed, failed: report.failed, fixed: [] };
     }
 
@@ -101,15 +101,15 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
     try {
       fs.writeFileSync(patchPath, diff, 'utf-8');
       await simpleGit(repoPath).raw(['apply', '--verbose', '.vibe-ux.patch']);
-      storage.logEvent(taskId, '[UX] Fix diff applied successfully', 'success');
+      await storage.logEvent(taskId, '[UX] Fix diff applied successfully', 'success');
       fixed.push(...report.failed);
     } catch (err: any) {
-      storage.logEvent(taskId, `[UX] Failed to apply fix diff: ${err.message}`, 'warning');
+      await storage.logEvent(taskId, `[UX] Failed to apply fix diff: ${err.message}`, 'warning');
     } finally {
       try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
     }
   } catch (err: any) {
-    storage.logEvent(taskId, `[UX] Fix LLM call failed: ${err.message}`, 'error');
+    await storage.logEvent(taskId, `[UX] Fix LLM call failed: ${err.message}`, 'error');
   }
 
   const stillFailed = report.failed.filter((f) => !fixed.includes(f));

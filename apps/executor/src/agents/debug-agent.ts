@@ -26,7 +26,7 @@ export async function runDebugAgent(
   repoPath: string,
   errorLog: string
 ): Promise<DebugAgentResult> {
-  storage.logEvent(taskId, '[DEBUG] Starting debug agent', 'info');
+  await storage.logEvent(taskId, '[DEBUG] Starting debug agent', 'info');
 
   // Build context with build/test logs pre-attached
   const contextResult = await buildContext(repoPath, 'Fix build and test errors');
@@ -40,40 +40,40 @@ Rules:
 - Do not add unrelated features or refactor code
 - Do not change logic unrelated to the failures`;
 
-  storage.logEvent(taskId, '[DEBUG] Calling LLM to generate fix diff...', 'info');
+  await storage.logEvent(taskId, '[DEBUG] Calling LLM to generate fix diff...', 'info');
 
   let fixDiff: string;
   try {
     const result = await generateDiff(prompt, enrichedContext, { model: 'claude', taskId });
     fixDiff = result.diff;
-    storage.logEvent(taskId, `[DEBUG] LLM generated fix diff (${fixDiff.length} chars)`, 'info');
+    await storage.logEvent(taskId, `[DEBUG] LLM generated fix diff (${fixDiff.length} chars)`, 'info');
   } catch (err: any) {
-    storage.logEvent(taskId, `[DEBUG] LLM call failed: ${err.message}`, 'error');
+    await storage.logEvent(taskId, `[DEBUG] LLM call failed: ${err.message}`, 'error');
     return { success: false, buildOutput: `LLM error: ${err.message}` };
   }
 
   if (!fixDiff || fixDiff === 'NO_CHANGES') {
-    storage.logEvent(taskId, '[DEBUG] LLM produced no fix diff', 'warning');
+    await storage.logEvent(taskId, '[DEBUG] LLM produced no fix diff', 'warning');
     return { success: false, buildOutput: 'LLM indicated no changes needed' };
   }
 
   // Validate fix diff
   const sanitized = sanitizeUnifiedDiff(fixDiff);
   if (!sanitized) {
-    storage.logEvent(taskId, '[DEBUG] Fix diff failed sanitization', 'error');
+    await storage.logEvent(taskId, '[DEBUG] Fix diff failed sanitization', 'error');
     return { success: false, buildOutput: 'Fix diff sanitization failed' };
   }
 
   const diff = extractDiff(sanitized);
   const validation = validateUnifiedDiffEnhanced(diff);
   if (!validation.ok) {
-    storage.logEvent(taskId, `[DEBUG] Fix diff validation failed: ${validation.errors.join('; ')}`, 'error');
+    await storage.logEvent(taskId, `[DEBUG] Fix diff validation failed: ${validation.errors.join('; ')}`, 'error');
     return { success: false, buildOutput: `Fix diff validation: ${validation.errors.join('; ')}` };
   }
 
   const applicability = validateDiffApplicability(diff, repoPath);
   if (!applicability.valid) {
-    storage.logEvent(taskId, `[DEBUG] Fix diff not applicable: ${applicability.error}`, 'error');
+    await storage.logEvent(taskId, `[DEBUG] Fix diff not applicable: ${applicability.error}`, 'error');
     return { success: false, buildOutput: `Fix diff not applicable: ${applicability.error}` };
   }
 
@@ -82,16 +82,16 @@ Rules:
   try {
     fs.writeFileSync(patchPath, diff, 'utf-8');
     await simpleGit(repoPath).raw(['apply', '--verbose', '.vibe-debug.patch']);
-    storage.logEvent(taskId, '[DEBUG] Fix diff applied', 'success');
+    await storage.logEvent(taskId, '[DEBUG] Fix diff applied', 'success');
   } catch (err: any) {
-    storage.logEvent(taskId, `[DEBUG] Failed to apply fix diff: ${err.message}`, 'error');
+    await storage.logEvent(taskId, `[DEBUG] Failed to apply fix diff: ${err.message}`, 'error');
     return { success: false, buildOutput: `Failed to apply fix: ${err.message}` };
   } finally {
     try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
   }
 
   // Re-run build to verify fix
-  storage.logEvent(taskId, `[DEBUG] Re-running build to verify fix: ${BUILD_COMMAND}`, 'info');
+  await storage.logEvent(taskId, `[DEBUG] Re-running build to verify fix: ${BUILD_COMMAND}`, 'info');
   try {
     const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
       cwd: repoPath,
@@ -99,11 +99,11 @@ Rules:
       maxBuffer: 10 * 1024 * 1024,
     });
     const output = ((stdout || '') + (stderr || '')).slice(0, 2000);
-    storage.logEvent(taskId, `[DEBUG] Build succeeded after fix:\n${output}`, 'success');
+    await storage.logEvent(taskId, `[DEBUG] Build succeeded after fix:\n${output}`, 'success');
     return { success: true, buildOutput: output };
   } catch (err: any) {
     const output = ((err.stdout || '') + (err.stderr || '')).slice(0, 2000);
-    storage.logEvent(taskId, `[DEBUG] Build still failing after fix:\n${output}`, 'error');
+    await storage.logEvent(taskId, `[DEBUG] Build still failing after fix:\n${output}`, 'error');
     return { success: false, buildOutput: output };
   }
 }

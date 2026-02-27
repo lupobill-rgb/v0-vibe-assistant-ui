@@ -1,4 +1,9 @@
-import { getSupabaseClient } from './supabase-client';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load .env from the repository root
+dotenv.config({ path: path.join(__dirname, '../../../.env') });
 
 // Lifecycle states as defined in requirements
 export type ExecutionState =
@@ -10,18 +15,23 @@ export type ExecutionState =
   | 'running_preflight'
   | 'creating_pr'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  // Agent pipeline states
+  | 'planning'
+  | 'building'
+  | 'validating'
+  | 'testing';
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
 export interface Project {
   id: string;
   name: string;
-  repository_url: string;
+  team_id: string;
+  repository_url: string | null;
   local_path: string;
   last_synced?: string | null;
   created_at: string;
-  team_id?: string;
   tenant_id?: string;
 }
 
@@ -125,12 +135,35 @@ function eventRowToVibeEvent(row: JobEventRow): VibeEvent {
   };
 }
 
+// ── Supabase client singleton ──
+
+let _client: SupabaseClient | null = null;
+
+function getSupabaseClient(): SupabaseClient {
+  if (_client) return _client;
+
+  const url = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) {
+    throw new Error(
+      'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for executor storage'
+    );
+  }
+  _client = createClient(url, serviceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+  return _client;
+}
+
 class ExecutorStorage {
   private get sb() {
     return getSupabaseClient();
   }
 
-  // Task methods
+  // ── Task methods ──
 
   async createTask(task: Omit<VibeTask, 'iteration_count'>): Promise<void> {
     const insert: Record<string, unknown> = {
@@ -175,6 +208,7 @@ class ExecutorStorage {
   }
 
   async incrementIteration(taskId: string): Promise<void> {
+    // Read-then-write; safe because only one executor processes a task at a time
     const { data, error: readErr } = await this.sb
       .from('jobs')
       .select('iteration_count')
@@ -258,7 +292,7 @@ class ExecutorStorage {
     return data as Project;
   }
 
-  // Event methods
+  // ── Event methods ──
 
   async logEvent(taskId: string, message: string, severity: EventSeverity): Promise<void> {
     const now = new Date().toISOString();
@@ -271,8 +305,8 @@ class ExecutorStorage {
         event_time: now,
       });
     if (error) {
-      // Don't throw on log failures — just print to console so the executor doesn't crash
-      console.error(`[LOG-ERR] Failed to log event for ${taskId}: ${error.message}`);
+      // Log to console but don't throw — logging failures shouldn't crash execution
+      console.error(`Failed to log event to Supabase: ${error.message}`);
     }
     console.log(`[${severity.toUpperCase()}] ${taskId}: ${message}`);
   }
@@ -298,7 +332,7 @@ class ExecutorStorage {
     return (data || []).map((row) => eventRowToVibeEvent(row as JobEventRow));
   }
 
-  // Usage metrics update method
+  // ── Usage metrics ──
 
   async updateTaskUsageMetrics(taskId: string, metrics: {
     llm_prompt_tokens?: number;

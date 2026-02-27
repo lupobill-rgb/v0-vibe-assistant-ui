@@ -1,17 +1,12 @@
 import dotenv from 'dotenv';
 import { storage, VibeTask } from './storage';
-import simpleGit, { SimpleGit, RemoteWithRefs } from 'simple-git';
+import simpleGit, { SimpleGit } from 'simple-git';
 import { buildContext, formatContext } from './context-builder';
-import { extractDiff, sanitizeUnifiedDiff, validateUnifiedDiffEnhanced, validateDiffApplicability, performPreApplySanityChecks } from './diff-validator';
-import { runPreflightChecks } from './preflight';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
-import { generateDiff as routerGenerateDiff } from './llm-router';
 import { generateHtmlPage } from './llm';
-import { runQaAgent } from './agents/qa-agent';
-import { runDebugAgent } from './agents/debug-agent';
 import { runUxAgent } from './agents/ux-agent';
-import { runSecurityAgent } from './agents/security-agent';
+import { runPipeline } from './agent-pipeline';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -31,16 +26,6 @@ const PATCHES_DIR = process.env.PATCHES_DIR || '/data/patches';
 const JOBS_DIR = process.env.JOBS_DIR || '/data/jobs';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
 const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
-
-interface GenerateDiffResult {
-  diff: string | null;
-  error: string | null;
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-  };
-}
 
 class VibeExecutor {
   private processing = false;
@@ -95,10 +80,6 @@ class VibeExecutor {
     let baseWorkDir: string = path.join(os.tmpdir(), '.vibe', 'work', task.task_id);
     let worktreeDir: string = '';
     let mainGit: SimpleGit | null = null;
-    let totalPromptTokens = 0;
-    let totalCompletionTokens = 0;
-    let totalTokens = 0;
-    let totalPreflightSeconds = 0;
 
     try {
       // ── Mode detection ──────────────────────────────────────────────────────
@@ -252,53 +233,76 @@ class VibeExecutor {
       // worktreeDir = repoDir for now (worktree isolation can be added later)
       worktreeDir = repoDir;
 
-      const usageMetrics = {
-        totalPromptTokens: 0,
-        totalCompletionTokens: 0,
-        totalTokens: 0,
-        totalPreflightSeconds: 0,
-      };
-
-      await this.iterationLoop(task, baseWorkDir, repoDir, worktreeDir, mainGit, repoUrl, usageMetrics);
-
-      // Calculate final job duration and store usage metrics
-      const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
-      
-      // Count files changed by comparing branches
-      let filesChangedCount = 0;
-      try {
-        const diffSummary = await mainGit.diffSummary([task.source_branch, task.destination_branch]);
-        filesChangedCount = diffSummary.files.length;
-      } catch (error: any) {
-        await storage.logEvent(task.task_id, `Could not count changed files: ${error.message}`, 'warning');
-      }
-      
-      await storage.updateTaskUsageMetrics(task.task_id, {
-        llm_prompt_tokens: usageMetrics.totalPromptTokens,
-        llm_completion_tokens: usageMetrics.totalCompletionTokens,
-        llm_total_tokens: usageMetrics.totalTokens,
-        preflight_seconds: usageMetrics.totalPreflightSeconds,
-        total_job_seconds: totalJobSeconds,
-        files_changed_count: filesChangedCount,
-      });
-      
-      await storage.logEvent(
+      // ── Agent Pipeline ─────────────────────────────────────────────────────
+      // Build initial context for the planner
+      storage.updateTaskState(task.task_id, 'building_context');
+      storage.logEvent(task.task_id, 'Building context from repository...', 'info');
+      const contextResult = await buildContext(worktreeDir, task.user_prompt);
+      const context = formatContext(contextResult.files);
+      storage.logEvent(
         task.task_id,
-        `Usage: ${usageMetrics.totalTokens} tokens, ${usageMetrics.totalPreflightSeconds.toFixed(1)}s preflight, ${totalJobSeconds.toFixed(1)}s total, ${filesChangedCount} files`,
+        `Context built: ${contextResult.files.size} files, ${contextResult.totalSize} chars${contextResult.truncated ? ' (truncated)' : ''}`,
         'info'
       );
 
+      // Run the full agent pipeline: Planner → Builder → QA → Debug → Security
+      const pipelineResult = await runPipeline(
+        task.task_id,
+        task.user_prompt,
+        context,
+        { model: (task.llm_model as 'claude' | 'gpt') || 'claude' },
+        worktreeDir,
+      );
+
+      if (!pipelineResult.success) {
+        // Pipeline already set state to 'failed' and logged errors
+        const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
+        storage.updateTaskUsageMetrics(task.task_id, { total_job_seconds: totalJobSeconds });
+      } else {
+        // Pipeline passed — commit changes, run UX review, then create PR
+        const worktreeGit = simpleGit(worktreeDir);
+        const status = await worktreeGit.status();
+
+        if (!status.isClean()) {
+          await worktreeGit.add('.');
+          await worktreeGit.commit(`VIBE pipeline: ${task.user_prompt.slice(0, 50)}`);
+          storage.logEvent(task.task_id, 'Pipeline changes committed', 'success');
+        }
+
+        // Run UX agent (not covered by pipeline)
+        await runUxAgent(task.task_id, worktreeDir);
+
+        // Generate preview after successful build
+        await this.generatePreview(task, worktreeDir);
+
+        // Create PR or complete locally
+        await this.createPullRequest(task, mainGit, repoUrl);
+
+        // Calculate final job metrics
+        const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
+        let filesChangedCount = 0;
+        try {
+          const diffSummary = await mainGit.diffSummary([task.source_branch, task.destination_branch]);
+          filesChangedCount = diffSummary.files.length;
+        } catch (error: any) {
+          storage.logEvent(task.task_id, `Could not count changed files: ${error.message}`, 'warning');
+        }
+
+        storage.updateTaskUsageMetrics(task.task_id, {
+          total_job_seconds: totalJobSeconds,
+          files_changed_count: filesChangedCount,
+        });
+
+        storage.logEvent(task.task_id, `Pipeline complete: ${totalJobSeconds.toFixed(1)}s total, ${filesChangedCount} files changed`, 'info');
+      }
+
     } catch (error: any) {
-      await storage.updateTaskState(task.task_id, 'failed');
-      await storage.logEvent(task.task_id, `Fatal error: ${error.message}`, 'error');
-      
+      storage.updateTaskState(task.task_id, 'failed');
+      storage.logEvent(task.task_id, `Fatal error: ${error.message}`, 'error');
+
       // Still try to record usage metrics even on failure
       const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
-      await storage.updateTaskUsageMetrics(task.task_id, {
-        llm_prompt_tokens: totalPromptTokens,
-        llm_completion_tokens: totalCompletionTokens,
-        llm_total_tokens: totalTokens,
-        preflight_seconds: totalPreflightSeconds,
+      storage.updateTaskUsageMetrics(task.task_id, {
         total_job_seconds: totalJobSeconds,
       });
     } finally {
@@ -319,411 +323,6 @@ class VibeExecutor {
           }
         }
       }
-    }
-  }
-
-  private async iterationLoop(
-    task: VibeTask,
-    baseWorkDir: string,
-    repoDir: string,
-    worktreeDir: string,
-    mainGit: SimpleGit,
-    repoUrl: string | null,
-    usageMetrics: {
-      totalPromptTokens: number;
-      totalCompletionTokens: number;
-      totalTokens: number;
-      totalPreflightSeconds: number;
-    }
-  ): Promise<void> {
-    let consecutiveApplyFailures = 0;
-    let consecutiveDiffFailures = 0;
-    let fallbackFiles: Set<string> = new Set();
-    let globalFallback = false;
-    let failureFeedback: string | null = null;
-
-    for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
-      await storage.incrementIteration(task.task_id);
-      await storage.logEvent(task.task_id, `Starting iteration ${iteration}/${MAX_ITERATIONS}`, 'info');
-
-      const worktreeGit = simpleGit(worktreeDir);
-      try {
-        await worktreeGit.reset(['--hard', 'HEAD']);
-        await worktreeGit.raw(['clean', '-fd']);
-        await storage.logEvent(task.task_id, 'Worktree reset to clean state', 'info');
-      } catch (error: any) {
-        await storage.logEvent(task.task_id, `Warning: Failed to reset worktree: ${error.message}`, 'warning');
-      }
-
-      await storage.updateTaskState(task.task_id, 'building_context');
-      await storage.logEvent(task.task_id, 'Building context from repository...', 'info');
-
-      const contextResult = await buildContext(worktreeDir, task.user_prompt);
-      await storage.logEvent(
-        task.task_id,
-        `Context built: ${contextResult.files.size} files, ${contextResult.totalSize} chars${contextResult.truncated ? ' (truncated)' : ''}`,
-        'info'
-      );
-
-      const context = formatContext(contextResult.files);
-
-      await storage.updateTaskState(task.task_id, 'calling_llm');
-      await storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
-
-      const result = await this.generateDiff(
-        task.user_prompt, context, task.task_id, worktreeDir,
-        globalFallback, fallbackFiles, failureFeedback,
-        (task.llm_model as 'claude' | 'gpt') || 'claude'
-      );
-
-      // Accumulate LLM token usage
-      if (result.usage) {
-        usageMetrics.totalPromptTokens += result.usage.input_tokens;
-        usageMetrics.totalCompletionTokens += result.usage.output_tokens;
-        usageMetrics.totalTokens += result.usage.total_tokens;
-      }
-
-      if (!result.diff) {
-        consecutiveDiffFailures++;
-        await storage.logEvent(task.task_id, 'LLM failed to generate valid diff', 'error');
-        if (result.error) {
-          failureFeedback = `You returned an invalid diff. Validator error: ${result.error}`;
-        }
-        if (consecutiveDiffFailures >= 3) {
-          await storage.updateTaskState(task.task_id, 'failed');
-          await storage.logEvent(task.task_id, 'Failed: 3 consecutive invalid diffs from LLM', 'error');
-          return;
-        }
-        continue;
-      }
-
-      consecutiveDiffFailures = 0;
-      if (failureFeedback && failureFeedback.includes('Validator error')) {
-        failureFeedback = null;
-      }
-
-      const diff = result.diff;
-
-      if (diff === 'NO_CHANGES') {
-        await storage.logEvent(task.task_id, 'No changes needed - skipping git apply', 'info');
-        await storage.updateTaskState(task.task_id, 'running_preflight');
-
-        const preflightStartTime = Date.now();
-        const preflightResult = await runPreflightChecks(worktreeDir, async (stage, output) => {
-          await storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
-        });
-        const preflightDuration = (Date.now() - preflightStartTime) / 1000;
-        usageMetrics.totalPreflightSeconds += preflightDuration;
-
-        if (preflightResult.success) {
-          await storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-
-          const buildPassed = await this.runBuildWithAgents(task, worktreeDir);
-          if (!buildPassed) {
-            await storage.updateTaskState(task.task_id, 'failed');
-            await storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
-            return;
-          }
-
-          // Generate preview after successful build
-          await this.generatePreview(task, worktreeDir);
-
-          const log = await worktreeGit.log({ from: task.source_branch, to: task.destination_branch });
-          const status = await worktreeGit.status();
-          if (log.total === 0 && status.isClean()) {
-            await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-            await storage.updateTaskState(task.task_id, 'completed');
-            await storage.logEvent(task.task_id, 'No changes; no PR created.', 'success');
-            return;
-          }
-          await this.createPullRequest(task, mainGit, repoUrl);
-          return;
-        } else {
-          await storage.updateTaskState(task.task_id, 'failed');
-          await storage.logEvent(task.task_id, `Preflight failed at stage: ${preflightResult.stage}`, 'error');
-          return;
-        }
-      }
-
-      await storage.updateTaskState(task.task_id, 'applying_diff');
-      await storage.logEvent(task.task_id, 'Applying diff to worktree...', 'info');
-
-      const applyResult = await this.applyDiff(worktreeDir, repoDir, mainGit, diff, task.task_id, iteration);
-
-      if (!applyResult.success) {
-        consecutiveApplyFailures++;
-        await storage.logEvent(task.task_id, 'Failed to apply diff', 'error');
-        failureFeedback = `Git apply failed: ${applyResult.error || 'Unknown error'}`;
-
-        if (consecutiveApplyFailures >= 2) {
-          const failedFiles = this.extractFailedFiles(applyResult.error || '');
-          if (failedFiles.length > 0) {
-            failedFiles.forEach(f => fallbackFiles.add(f));
-            await storage.logEvent(task.task_id, `Fallback mode: full file replacement for ${failedFiles.join(', ')}`, 'warning');
-          } else {
-            globalFallback = true;
-            await storage.logEvent(task.task_id, 'Fallback mode: global full file replacement', 'warning');
-          }
-        }
-
-        if (consecutiveApplyFailures >= 3) {
-          await storage.updateTaskState(task.task_id, 'failed');
-          await storage.logEvent(task.task_id, 'Failed: 3 consecutive git apply failures', 'error');
-          return;
-        }
-        continue;
-      }
-
-      consecutiveApplyFailures = 0;
-      fallbackFiles.clear();
-      globalFallback = false;
-      failureFeedback = null;
-
-      // Persist the successful diff to database and file system
-      await this.persistSuccessfulDiff(diff, task.task_id);
-
-      await worktreeGit.add('.');
-      await worktreeGit.commit(`VIBE iteration ${iteration}: ${task.user_prompt.slice(0, 50)}`);
-      await storage.logEvent(task.task_id, `Changes committed (iteration ${iteration})`, 'success');
-
-      await storage.updateTaskState(task.task_id, 'running_preflight');
-      await storage.logEvent(task.task_id, 'Running preflight checks...', 'info');
-
-      const preflightStartTime = Date.now();
-      const preflightResult = await runPreflightChecks(worktreeDir, async (stage, output) => {
-        await storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
-      });
-      const preflightDuration = (Date.now() - preflightStartTime) / 1000;
-      usageMetrics.totalPreflightSeconds += preflightDuration;
-
-      if (preflightResult.success) {
-        await storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
-
-        const buildPassed = await this.runBuildWithAgents(task, worktreeDir);
-        if (!buildPassed) {
-          await storage.updateTaskState(task.task_id, 'failed');
-          await storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
-          return;
-        }
-
-        // Generate preview after successful build
-        await this.generatePreview(task, worktreeDir);
-
-        await this.createPullRequest(task, mainGit, repoUrl);
-        return;
-      } else {
-        await storage.logEvent(task.task_id, `Preflight failed at stage: ${preflightResult.stage}`, 'error');
-        if (iteration === MAX_ITERATIONS) {
-          await storage.updateTaskState(task.task_id, 'failed');
-          await storage.logEvent(task.task_id, 'Failed: Max iterations reached without passing preflight', 'error');
-          return;
-        }
-        await storage.logEvent(task.task_id, `Will retry (${iteration}/${MAX_ITERATIONS})`, 'warning');
-      }
-    }
-
-    await storage.updateTaskState(task.task_id, 'failed');
-    await storage.logEvent(task.task_id, 'Failed: Max iterations reached', 'error');
-  }
-
-  private buildReadmeContext(prompt: string, repoDir: string): string | null {
-    if (!prompt.toLowerCase().includes('readme')) return null;
-
-    const readmePaths = ['README.md', 'readme.md', 'README', 'apps/web/README.md'];
-    for (const readmePath of readmePaths) {
-      const fullPath = path.join(repoDir, readmePath);
-      if (fs.existsSync(fullPath)) {
-        try {
-          const lines = fs.readFileSync(fullPath, 'utf-8').split('\n').slice(0, 60).join('\n');
-          return `\n---\nREADME FILE CONTEXT:\n- Existing file: ${readmePath}\n- DO NOT create ${readmePath}. It already exists.\n- Generate a MODIFY diff (not new file diff).\n- Must start with "--- a/${readmePath}"\n\nCurrent content (first 60 lines):\n${lines}\n---`;
-        } catch { continue; }
-      }
-    }
-    return null;
-  }
-
-  private async generateDiff(
-    prompt: string,
-    context: string,
-    taskId: string,
-    repoDir: string,
-    globalFallback: boolean = false,
-    fallbackFiles: Set<string> = new Set(),
-    failureFeedback: string | null = null,
-    model: 'claude' | 'gpt' = 'claude'
-  ): Promise<GenerateDiffResult> {
-    const maxRetries = 2;
-    let lastValidationError: string | null = null;
-    const readmeContext = this.buildReadmeContext(prompt, repoDir);
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      if (attempt > 0) {
-        await storage.logEvent(taskId, `Retrying LLM call (attempt ${attempt + 1}/${maxRetries + 1})...`, 'warning');
-      }
-
-      try {
-        // Build enriched context: repo files + readme + fallback instructions
-        let enrichedContext = context;
-        if (readmeContext) {
-          enrichedContext += readmeContext;
-          await storage.logEvent(taskId, 'Added README-specific context to LLM prompt', 'info');
-        }
-        if (globalFallback || fallbackFiles.size > 0) {
-          const fallbackInstructions = `\n- Delete all lines of the old file and add all lines of the new file`;
-          if (fallbackFiles.size > 0) {
-            enrichedContext += `\n\n---\n\nFALLBACK MODE for files: ${Array.from(fallbackFiles).join(', ')}\nGenerate diffs that REPLACE THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
-          } else {
-            enrichedContext += `\n\n---\n\nFALLBACK MODE: Generate diffs that REPLACE THE ENTIRE FILE CONTENT:${fallbackInstructions}`;
-          }
-        }
-
-        // Combine all error feedback for this attempt
-        const errorParts: string[] = [];
-        if (failureFeedback) {
-          errorParts.push(`PATCH FAILURE FEEDBACK:\n${failureFeedback}`);
-        }
-        if (attempt > 0 && lastValidationError) {
-          errorParts.push(`VALIDATION ERROR: ${lastValidationError}\n\nPlease output a valid unified diff starting with "diff --git", including --- and +++ headers and @@ hunk markers. Or output exactly "NO_CHANGES".\n\nExample:\ndiff --git a/example.js b/example.js\n--- a/example.js\n+++ b/example.js\n@@ -1,3 +1,4 @@\n function example() {\n+  console.log('added line');\n   return true;\n }`);
-        }
-        const combinedError = errorParts.length > 0 ? errorParts.join('\n\n---\n\n') : undefined;
-
-        const routerResult = await routerGenerateDiff(prompt, enrichedContext, { model, taskId }, combinedError);
-        const rawOutput = routerResult.diff;
-        await storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
-
-        if (rawOutput === 'NO_CHANGES') {
-          await storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
-          return { diff: 'NO_CHANGES', error: null, usage: routerResult.usage };
-        }
-
-        const sanitized = sanitizeUnifiedDiff(rawOutput);
-        if (sanitized === null) {
-          lastValidationError = 'LLM output missing diff --git header or contains commentary/markdown';
-          await storage.logEvent(taskId, lastValidationError, 'error');
-          continue;
-        }
-
-        const diff = extractDiff(sanitized);
-        const enhancedValidation = validateUnifiedDiffEnhanced(diff);
-        if (!enhancedValidation.ok) {
-          lastValidationError = enhancedValidation.errors.join('; ');
-          await storage.logEvent(taskId, `Invalid diff: ${lastValidationError}`, 'error');
-          continue;
-        }
-
-        const sanityCheck = performPreApplySanityChecks(diff, repoDir, prompt);
-        if (!sanityCheck.ok) {
-          lastValidationError = sanityCheck.errors.join('; ');
-          await storage.logEvent(taskId, `Pre-apply sanity check failed: ${lastValidationError}`, 'error');
-          continue;
-        }
-
-        await storage.logEvent(taskId, `Valid diff generated (${diff.split('\n').length} lines)`, 'success');
-        return { diff, error: null, usage: routerResult.usage };
-
-      } catch (error: any) {
-        await storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
-        lastValidationError = `LLM API error: ${error.message}`;
-        continue;
-      }
-    }
-
-    await storage.logEvent(taskId, `Failed to generate valid diff after ${maxRetries + 1} attempts`, 'error');
-    return { diff: null, error: lastValidationError };
-  }
-
-  private extractFailedFiles(errorMessage: string): string[] {
-    const files: string[] = [];
-    const patterns = [
-      /error: patch failed: ([^:]+):/g,
-      /error: ([^:]+): patch does not apply/g
-    ];
-    for (const pattern of patterns) {
-      for (const match of errorMessage.matchAll(pattern)) {
-        const file = match[1].trim();
-        if (file && !files.includes(file)) files.push(file);
-      }
-    }
-    return files;
-  }
-
-  private async applyDiff(
-    worktreeDir: string,
-    repoDir: string,
-    mainGit: SimpleGit,
-    diff: string,
-    taskId: string,
-    iteration: number
-  ): Promise<{ success: boolean; error?: string }> {
-    let patch = diff.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    patch = patch.trimEnd() + '\n';
-
-    try {
-      const checkResult = validateDiffApplicability(patch, worktreeDir);
-      if (!checkResult.valid) {
-        await storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
-        await this.persistFailedPatch(patch, taskId, iteration);
-        return { success: false, error: checkResult.error };
-      }
-
-      const worktreeGit = simpleGit(worktreeDir);
-      const patchFilePath = path.join(worktreeDir, '.vibe-diff.patch');
-      fs.writeFileSync(patchFilePath, patch, { encoding: 'utf-8' });
-
-      try {
-        await worktreeGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
-        await storage.logEvent(taskId, 'Diff applied successfully', 'success');
-      } catch (applyError: any) {
-        const errorOutput = [applyError.message, applyError.stderr, applyError.stdout].filter(Boolean).join('\n');
-        if (applyError.stderr) await storage.logEvent(taskId, `git apply stderr: ${applyError.stderr}`, 'error');
-        if (applyError.stdout) await storage.logEvent(taskId, `git apply stdout: ${applyError.stdout}`, 'error');
-        await this.persistFailedPatch(patch, taskId, iteration);
-        return { success: false, error: errorOutput };
-      } finally {
-        if (fs.existsSync(patchFilePath)) fs.unlinkSync(patchFilePath);
-      }
-
-      return { success: true };
-
-    } catch (error: any) {
-      await storage.logEvent(taskId, `Git apply failed: ${error.message}`, 'error');
-      await this.persistFailedPatch(patch, taskId, iteration);
-      return { success: false, error: error.message };
-    }
-  }
-
-  private async persistFailedPatch(diff: string, taskId: string, iteration: number): Promise<void> {
-    try {
-      const patchFilePath = path.join(PATCHES_DIR, `${taskId}-iter${iteration}.diff`);
-      fs.writeFileSync(patchFilePath, diff, { encoding: 'utf-8' });
-
-      const lines = diff.split('\n');
-      await storage.logEvent(taskId, `[Patch] Saved to: ${patchFilePath} (${lines.length} lines, ${diff.length} chars)`, 'info');
-
-      const preview = lines.slice(0, 80).map((l, i) => `${String(i + 1).padStart(4, ' ')}. ${l}`).join('\n');
-      await storage.logEvent(taskId, `[Patch] First 80 lines:\n${preview}`, 'info');
-      if (lines.length > 80) await storage.logEvent(taskId, `[Patch] ... (${lines.length - 80} more lines)`, 'info');
-
-    } catch (error: any) {
-      await storage.logEvent(taskId, `[Patch] WARNING: Could not save failed patch: ${error.message}`, 'warning');
-    }
-  }
-
-  private async persistSuccessfulDiff(diff: string, taskId: string): Promise<void> {
-    try {
-      // Store in SQLite database
-      await storage.setTaskDiff(taskId, diff);
-      await storage.logEvent(taskId, '✓ Diff persisted to database', 'info');
-
-      // Also store as a file in /data/jobs/
-      const diffFilePath = path.join(JOBS_DIR, `${taskId}.diff`);
-      fs.writeFileSync(diffFilePath, diff, { encoding: 'utf-8' });
-
-      const lines = diff.split('\n');
-      await storage.logEvent(taskId, `✓ Diff saved to: ${diffFilePath} (${lines.length} lines, ${diff.length} chars)`, 'info');
-
-    } catch (error: any) {
-      await storage.logEvent(taskId, `WARNING: Could not persist diff: ${error.message}`, 'warning');
     }
   }
 
@@ -800,59 +399,6 @@ class VibeExecutor {
       await storage.updateTaskState(task.task_id, 'failed');
       await storage.logEvent(task.task_id, `Error creating PR: ${error.message}`, 'error');
     }
-  }
-
-  private async runBuild(taskId: string, worktreeDir: string): Promise<{ success: boolean; output: string }> {
-    await storage.logEvent(taskId, `Running build: ${BUILD_COMMAND}`, 'info');
-    try {
-      const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
-        cwd: worktreeDir,
-        timeout: 300000,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      const output = ((stdout || '') + (stderr || '')).slice(0, 2000);
-      await storage.logEvent(taskId, '✓ Build succeeded', 'success');
-      return { success: true, output };
-    } catch (err: any) {
-      const output = ((err.stdout || '') + (err.stderr || '')).slice(0, 2000);
-      await storage.logEvent(taskId, `Build failed: ${output.slice(0, 200)}`, 'error');
-      return { success: false, output };
-    }
-  }
-
-  private async runBuildWithAgents(task: VibeTask, worktreeDir: string): Promise<boolean> {
-    const MAX_DEBUG_ATTEMPTS = 2;
-
-    let buildResult = await this.runBuild(task.task_id, worktreeDir);
-
-    if (!buildResult.success) {
-      for (let attempt = 1; attempt <= MAX_DEBUG_ATTEMPTS; attempt++) {
-        await storage.logEvent(task.task_id, `[DEBUG] Debug attempt ${attempt}/${MAX_DEBUG_ATTEMPTS}`, 'warning');
-        const debugResult = await runDebugAgent(task.task_id, worktreeDir, buildResult.output);
-        if (debugResult.success) {
-          await storage.logEvent(task.task_id, `[DEBUG] Build fixed on attempt ${attempt}`, 'success');
-          buildResult = { success: true, output: debugResult.buildOutput };
-          break;
-        }
-        buildResult = { success: false, output: debugResult.buildOutput };
-      }
-    }
-
-    if (!buildResult.success) {
-      return false;
-    }
-
-    await runQaAgent(task.task_id, worktreeDir);
-
-    await runUxAgent(task.task_id, worktreeDir);
-
-    const securityResult = await runSecurityAgent(task.task_id, worktreeDir);
-    if (securityResult.blocked) {
-      await storage.logEvent(task.task_id, '[SECURITY] Job blocked: critical security findings must be resolved', 'error');
-      return false;
-    }
-
-    return true;
   }
 
   private async generateWebsiteForTask(task: VibeTask): Promise<void> {

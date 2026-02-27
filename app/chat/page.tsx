@@ -16,22 +16,12 @@ const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color:
   failed: { label: "Failed", icon: XCircle, color: "text-red-400" },
   running: { label: "Running", icon: Loader2, color: "text-[#4F8EFF]" },
   queued: { label: "Queued", icon: Clock, color: "text-amber-400" },
-  planning: { label: "Planning", icon: Loader2, color: "text-[#4F8EFF]" },
-  building: { label: "Building", icon: Loader2, color: "text-[#4F8EFF]" },
-  validating: { label: "Validating", icon: Loader2, color: "text-[#4F8EFF]" },
-  testing: { label: "Testing", icon: Loader2, color: "text-[#4F8EFF]" },
-  cloning: { label: "Cloning", icon: Loader2, color: "text-[#4F8EFF]" },
-  building_context: { label: "Building Context", icon: Loader2, color: "text-[#4F8EFF]" },
-  calling_llm: { label: "Calling LLM", icon: Loader2, color: "text-[#4F8EFF]" },
-  applying_diff: { label: "Applying Diff", icon: Loader2, color: "text-[#4F8EFF]" },
-  running_preflight: { label: "Preflight", icon: Loader2, color: "text-[#4F8EFF]" },
-  creating_pr: { label: "Creating PR", icon: Loader2, color: "text-[#4F8EFF]" },
 }
 
 function JobRow({ task }: { task: Task }) {
   const cfg = STATE_CONFIG[task.execution_state] ?? STATE_CONFIG["queued"]
   const Icon = cfg.icon
-  const isRunning = !["completed", "failed", "queued"].includes(task.execution_state)
+  const isRunning = task.execution_state === "running"
   const date = new Date(task.initiated_at).toLocaleString()
 
   return (
@@ -52,8 +42,8 @@ function JobRow({ task }: { task: Task }) {
             "text-[11px] font-medium px-2 py-0.5 rounded-md",
             task.execution_state === "completed" && "bg-emerald-500/10 text-emerald-400",
             task.execution_state === "failed" && "bg-red-500/10 text-red-400",
+            task.execution_state === "running" && "bg-[#4F8EFF]/10 text-[#4F8EFF]",
             task.execution_state === "queued" && "bg-amber-500/10 text-amber-400",
-            !["completed", "failed", "queued"].includes(task.execution_state) && "bg-[#4F8EFF]/10 text-[#4F8EFF]",
           )}
         >
           {cfg.label}

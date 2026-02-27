@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
 // API base URL — must be set via NEXT_PUBLIC_API_URL for browser access
 const API_URL =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) ||
@@ -10,10 +8,6 @@ const API_URL =
 export const TENANT_ID =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TENANT_ID) ||
   'test-tenant'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -187,11 +181,6 @@ export async function fetchJob(taskId: string): Promise<Task | null> {
   } catch {
     return null
   }
-}
-
-export function subscribeToJobUpdates(taskId: string, onUpdate: (task: Task) => void): () => void {
-  const channel = supabase.channel(`job-${taskId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${taskId}` }, (payload) => { onUpdate(payload.new as Task) }).subscribe()
-  return () => { channel.unsubscribe() }
 }
 
 // ── Logs (SSE) ─────────────────────────────────────────────────────────────
