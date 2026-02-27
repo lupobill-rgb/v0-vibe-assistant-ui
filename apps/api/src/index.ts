@@ -522,7 +522,7 @@ async function bootstrap() {
           };
 
           // ── Step 1: Plan call — ask the LLM for a page plan ──
-          let plan: { name: string; description: string }[] | null = null;
+          let plan: { name: string; title: string; description: string }[] | null = null;
           let totalTokens = 0;
 
           try {
