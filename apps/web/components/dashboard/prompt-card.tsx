@@ -24,32 +24,32 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     if (!prompt.trim() || submitting) return
     setSubmitting(true)
     setError(null)
+
     try {
       let projectId = selectedProjectId
+
       if (!projectId) {
-        const project = await createProject(`project-${Date.now()}`, "")
+        const project = await createProject(prompt.trim().slice(0, 60))
         if (project.error || !project.id) {
-          setError(project.error ?? "Failed to create project")
-          return
+          throw new Error(project.error || "Failed to create project")
         }
         projectId = project.id
       }
+
       const result = await createJob({
         prompt: prompt.trim(),
         project_id: projectId,
         base_branch: "main",
       })
-      if (result.error) {
-        setError(result.error)
-        return
+
+      if (result.error || !result.task_id) {
+        throw new Error(result.error || "Failed to create job")
       }
-      if (result.task_id) {
-        router.push(`/building/${result.task_id}`)
-      }
+
+      router.push(`/building/${result.task_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start build")
       console.error(err)
-    } finally {
       setSubmitting(false)
     }
   }

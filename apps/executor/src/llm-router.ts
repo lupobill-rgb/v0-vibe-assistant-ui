@@ -4,6 +4,8 @@ const EDGE_FUNCTION_URL =
   process.env.SUPABASE_EDGE_FUNCTION_URL ||
   'https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/generate-diff';
 
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
 export interface RouterDiffResult {
   diff: string;
   usage: {

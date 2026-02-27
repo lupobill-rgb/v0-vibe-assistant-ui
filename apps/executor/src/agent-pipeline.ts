@@ -3,9 +3,8 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import simpleGit from 'simple-git';
-import Anthropic from '@anthropic-ai/sdk';
 import { storage } from './storage';
-import { generateDiff } from './llm-router';
+import { generateDiff, callEdgeFunction } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
 import { sanitizeUnifiedDiff, extractDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runSecurityAgent } from './agents/security-agent';
@@ -22,17 +21,21 @@ export interface PipelineState {
   job_id: string; current_agent: AgentType; results: AgentResult[];
   plan?: { tasks: string[]; files: string[]; acceptance_criteria: string[] };
   retry_count: number; max_retries: number;
+  success: boolean;
 }
 
 export interface RouterConfig { model: 'claude' | 'gpt' }
 
-/** Raw LLM call without the diff-only system prompt — used by planner for JSON output. */
-async function callLLM(system: string, userMsg: string, taskId: string): Promise<string> {
-  const res = await new Anthropic().messages.create({
-    model: 'claude-sonnet-4-5-20250929', max_tokens: 4096, system, messages: [{ role: 'user', content: userMsg }],
+/** LLM call via the edge function router — used by planner for JSON output. */
+async function callLLM(system: string, userMsg: string, taskId: string, model: 'claude' | 'gpt' = 'claude'): Promise<string> {
+  const res = await callEdgeFunction({
+    prompt: `${system}\n\n${userMsg}`,
+    model,
+    system,
+    max_tokens: 4096,
   });
-  await storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
-  return res.content.filter((b) => b.type === 'text').map((b) => (b as any).text).join('').trim();
+  storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
+  return res.diff.trim();
 }
 
 async function callAgent(
@@ -78,18 +81,29 @@ async function runCmd(cmd: string, cwd: string): Promise<{ ok: boolean; output: 
 
 const BUILD = () => process.env.BUILD_COMMAND || 'npm run build';
 
+/**
+ * Orchestrates the full agent pipeline: Planner → Builder → QA → Debug → Security.
+ * Uses llm-router.ts for all LLM calls.
+ * Reports state transitions for SSE log streaming:
+ *   planning → building → validating → testing → (caller handles completed/creating_pr)
+ *
+ * Does NOT set 'completed' or 'creating_pr' — the caller handles PR creation and final state.
+ */
 export async function runPipeline(
-  jobId: string, prompt: string, context: string, config: RouterConfig, _teamId: string,
+  jobId: string, prompt: string, context: string, config: RouterConfig,
+  worktreeDir: string,
 ): Promise<PipelineState> {
-  const worktreeDir = path.join(process.env.WORKTREES_BASE_DIR || '/data/worktrees', jobId);
   const state: PipelineState = {
     job_id: jobId, current_agent: 'planner', results: [], retry_count: 0, max_retries: 3,
+    success: false,
   };
 
-  await storage.updateTaskState(jobId, 'building_context'); // PLANNER
+  // ── PLANNER ───────────────────────────────────────────────────────────────
+  storage.updateTaskState(jobId, 'planning');
+  storage.logEvent(jobId, '[PIPELINE] Phase: Planning — decomposing prompt into tasks', 'info');
   const planResult = await callAgent('planner', jobId, async () => {
     const msg = `${context}\n\n---\nAnalyze this request and return ONLY a JSON object with keys: tasks (string[]), files (string[]), acceptance_criteria (string[]). No markdown.\n\nRequest: ${prompt}`;
-    const raw = await callLLM('You are a planning assistant. Return ONLY valid JSON, no markdown.', msg, jobId);
+    const raw = await callLLM('You are a planning assistant. Return ONLY valid JSON, no markdown.', msg, jobId, config.model);
     try {
       state.plan = JSON.parse(raw);
       return { status: 'passed', output: `Plan: ${state.plan!.tasks.length} tasks, ${state.plan!.files.length} files` };
@@ -102,11 +116,14 @@ export async function runPipeline(
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
-  state.current_agent = 'builder'; // BUILDER
-  await storage.updateTaskState(jobId, 'calling_llm');
+  // ── BUILDER ───────────────────────────────────────────────────────────────
+  state.current_agent = 'builder';
+  storage.updateTaskState(jobId, 'building');
+  storage.logEvent(jobId, `[PIPELINE] Phase: Building — executing ${state.plan.tasks.length} tasks`, 'info');
   const builderResult = await callAgent('builder', jobId, async () => {
     const diffs: string[] = [];
     for (const task of state.plan!.tasks) {
+      storage.logEvent(jobId, `[PIPELINE] Builder task: ${task.slice(0, 80)}`, 'info');
       const ctxResult = await buildContext(worktreeDir, task);
       const res = await generateDiff(task, formatContext(ctxResult.files), { model: config.model, taskId: jobId });
       if (!res.diff || res.diff === 'NO_CHANGES') continue;
@@ -127,8 +144,10 @@ export async function runPipeline(
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
-  state.current_agent = 'qa'; // QA
-  await storage.updateTaskState(jobId, 'running_preflight');
+  // ── QA (VALIDATING) ──────────────────────────────────────────────────────
+  state.current_agent = 'qa';
+  storage.updateTaskState(jobId, 'validating');
+  storage.logEvent(jobId, '[PIPELINE] Phase: Validating — running build, lint, and tests', 'info');
   const qaResult = await callAgent('qa', jobId, async () => {
     const build = await runCmd(BUILD(), worktreeDir);
     if (!build.ok) return { status: 'needs_fix', output: 'Build failed', errors: [build.output] };
@@ -149,7 +168,10 @@ export async function runPipeline(
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
-  state.current_agent = 'security'; // SECURITY — final gate
+  // ── SECURITY (TESTING) ────────────────────────────────────────────────────
+  state.current_agent = 'security';
+  storage.updateTaskState(jobId, 'testing');
+  storage.logEvent(jobId, '[PIPELINE] Phase: Testing — running security scan', 'info');
   const secResult = await callAgent('security', jobId, async () => {
     const scan = await runSecurityAgent(jobId, worktreeDir);
     if (scan.blocked)
@@ -162,8 +184,9 @@ export async function runPipeline(
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
-  await storage.updateTaskState(jobId, 'completed');
-  await storage.logEvent(jobId, '[PIPELINE] All agents passed — job complete', 'success');
+  // Pipeline succeeded — caller handles PR creation and final 'completed' state
+  state.success = true;
+  storage.logEvent(jobId, '[PIPELINE] All agents passed — ready for PR creation', 'success');
   return state;
 }
 
@@ -175,6 +198,7 @@ async function runDebugLoop( // resumes from the failing agent, not from scratch
   while (state.retry_count < state.max_retries) {
     state.retry_count++;
     state.current_agent = 'debug';
+    storage.logEvent(jobId, `[PIPELINE] Debug attempt ${state.retry_count}/${state.max_retries} for ${failedAgent}`, 'warning');
     const result = await callAgent('debug', jobId, async () => {
       const ctxResult = await buildContext(worktreeDir, 'Fix errors');
       const enriched = `${formatContext(ctxResult.files)}\n\n---\nERROR LOG:\n${errorLog.slice(0, 5000)}`;

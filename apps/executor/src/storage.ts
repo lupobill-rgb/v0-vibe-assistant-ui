@@ -15,7 +15,12 @@ export type ExecutionState =
   | 'running_preflight'
   | 'creating_pr'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  // Agent pipeline states
+  | 'planning'
+  | 'building'
+  | 'validating'
+  | 'testing';
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
