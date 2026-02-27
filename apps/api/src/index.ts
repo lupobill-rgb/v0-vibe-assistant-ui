@@ -536,9 +536,12 @@ async function bootstrap() {
             if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
             const planData = JSON.parse(planRawText);
             if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
-            // planData should contain { pages: [{ name, description }], usage }
-            if (Array.isArray(planData.pages) && planData.pages.length > 0) {
-              plan = planData.pages;
+            // Edge Function returns { diff: "<JSON string of pages array>", mode: "plan", usage }
+            const planPages = typeof planData.diff === 'string'
+              ? JSON.parse(planData.diff)
+              : planData.diff;
+            if (Array.isArray(planPages) && planPages.length > 0) {
+              plan = planPages;
               await storage.logEvent(taskId, `Plan received: ${plan!.length} page(s) — ${plan!.map((p: { name: string }) => p.name).join(', ')}`, 'info');
             } else {
               throw new Error('Plan response missing valid pages array');
