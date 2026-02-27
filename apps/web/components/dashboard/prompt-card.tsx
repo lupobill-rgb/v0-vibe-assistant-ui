@@ -22,7 +22,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
-
     setSubmitting(true)
     setError(null)
 
@@ -49,7 +48,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
 
       router.push(`/building/${result.task_id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed")
+      setError(err instanceof Error ? err.message : "Failed to start build")
       console.error(err)
       setSubmitting(false)
     }
@@ -71,7 +70,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         )}
       >
         <div className="p-6">
-          {/* Text Input */}
           <div className="relative">
             <textarea
               value={prompt}
@@ -85,13 +83,9 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed disabled:opacity-60"
             />
           </div>
-
-          {/* Error message */}
           {error && (
             <p className="text-xs text-red-400 mt-1 mb-2">{error}</p>
           )}
-
-          {/* Bottom Controls */}
           <div className="flex items-center justify-between pt-3 border-t border-border/50 mt-2">
             <div className="flex items-center gap-2">
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
@@ -100,7 +94,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               </button>
               <div className="w-px h-4 bg-border" />
               <span className="text-[10px] text-muted-foreground font-mono">
-                {prompt.length > 0 ? `${prompt.length} chars` : "⌘↵ to submit"}
+                {prompt.length > 0 ? `${prompt.length} chars` : "\u2318\u21b5 to submit"}
               </span>
             </div>
             <button
@@ -123,8 +117,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           </div>
         </div>
       </div>
-
-      {/* Suggestion Chips */}
       <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
         {suggestions.map((s) => (
           <button

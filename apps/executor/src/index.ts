@@ -59,11 +59,11 @@ class VibeExecutor {
 
   private async processNextTask(): Promise<void> {
     try {
-      const task = storage.getNextQueuedTask();
+      const task = await storage.getNextQueuedTask();
       if (!task) return;
 
       this.processing = true;
-      storage.logEvent(task.task_id, `Starting execution for task ${task.task_id}`, 'info');
+      await storage.logEvent(task.task_id, `Starting execution for task ${task.task_id}`, 'info');
       await this.executeTask(task);
     } catch (error: any) {
       console.error('Error processing task:', error);
@@ -84,14 +84,14 @@ class VibeExecutor {
     try {
       // ── Mode detection ──────────────────────────────────────────────────────
       // Re-fetch the task from DB to ensure we have the latest project_id and tenant_id
-      const freshTask = storage.getTask(task.task_id) ?? task;
+      const freshTask = (await storage.getTask(task.task_id)) ?? task;
       const projectId = freshTask.project_id ?? task.project_id;
 
       // ── Website generation shortcut ─────────────────────────────────────────
       // If the project has no git URL, generate a self-contained HTML page directly.
       if (projectId) {
         const tenantIdForCheck = freshTask.tenant_id ?? task.tenant_id;
-        const projectForCheck = storage.getProject(projectId, tenantIdForCheck);
+        const projectForCheck = await storage.getProject(projectId, tenantIdForCheck);
         if (projectForCheck && !projectForCheck.repository_url) {
           await this.generateWebsiteForTask(task);
           return;
@@ -103,7 +103,7 @@ class VibeExecutor {
         // OPTION A: Project-centric mode — use cached repo
         isProjectMode = true;
         // Use project_id from DB and scope by tenant_id when available
-        const project = storage.getProject(projectId, tenantId);
+        const project = await storage.getProject(projectId, tenantId);
 
         if (!project) {
           throw new Error(`Project not found: ${projectId}`);
@@ -112,22 +112,22 @@ class VibeExecutor {
         repoDir = project.local_path;
         repoUrl = project.repository_url ?? null;
 
-        storage.logEvent(task.task_id, `Using project: ${project.name} (${projectId})`, 'info');
-        storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
+        await storage.logEvent(task.task_id, `Using project: ${project.name} (${projectId})`, 'info');
+        await storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
 
         // Clone if project cache doesn't exist yet
         if (!fs.existsSync(repoDir)) {
           if (!repoUrl) {
             // No remote URL — initialize empty local repo
-            storage.logEvent(task.task_id, 'No repo_source set — initializing local repo', 'info');
+            await storage.logEvent(task.task_id, 'No repo_source set — initializing local repo', 'info');
             fs.mkdirSync(repoDir, { recursive: true });
             await simpleGit(repoDir).init();
             await simpleGit(repoDir).addConfig('user.name', process.env.GIT_AUTHOR_NAME || 'VIBE Bot');
             await simpleGit(repoDir).addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'vibe@example.com');
             await simpleGit(repoDir).commit('Initial empty commit', { '--allow-empty': null });
           } else {
-            storage.logEvent(task.task_id, `Project cache not initialized. Cloning ${repoUrl}...`, 'info');
-            storage.updateTaskState(task.task_id, 'cloning');
+            await storage.logEvent(task.task_id, `Project cache not initialized. Cloning ${repoUrl}...`, 'info');
+            await storage.updateTaskState(task.task_id, 'cloning');
 
             const reposDir = path.dirname(repoDir);
             if (!fs.existsSync(reposDir)) {
@@ -148,21 +148,21 @@ class VibeExecutor {
                 delete process.env.GIT_TERMINAL_PROMPT;
               }
             }
-            storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
+            await storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
           }
         } else {
           // Cache exists — sync with remote if we have one
           if (repoUrl) {
-            storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
+            await storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
             const syncGit = simpleGit(repoDir);
             try {
               await syncGit.fetch(['--all', '--prune']);
-              storage.logEvent(task.task_id, 'Project cache synced', 'success');
+              await storage.logEvent(task.task_id, 'Project cache synced', 'success');
             } catch (error: any) {
-              storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
+              await storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
             }
           } else {
-            storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
+            await storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
           }
         }
 
@@ -170,7 +170,7 @@ class VibeExecutor {
         // MODE B: Legacy mode — clone to temp directory
         isProjectMode = false;
         repoUrl = task.repository_url;
-        storage.logEvent(task.task_id, '[DEPRECATED] Using legacy Mode B with repo_url', 'warning');
+        await storage.logEvent(task.task_id, '[DEPRECATED] Using legacy Mode B with repo_url', 'warning');
 
         repoDir = path.join(baseWorkDir, 'repo');
 
@@ -178,8 +178,8 @@ class VibeExecutor {
           fs.mkdirSync(baseWorkDir, { recursive: true });
         }
 
-        storage.updateTaskState(task.task_id, 'cloning');
-        storage.logEvent(task.task_id, `Cloning repository: ${repoUrl}`, 'info');
+        await storage.updateTaskState(task.task_id, 'cloning');
+        await storage.logEvent(task.task_id, `Cloning repository: ${repoUrl}`, 'info');
 
         const cloneUrl = buildCredentialedUrl(repoUrl);
         if (!cloneUrl) throw new Error(`Could not build clone URL from: ${repoUrl}`);
@@ -195,7 +195,7 @@ class VibeExecutor {
             delete process.env.GIT_TERMINAL_PROMPT;
           }
         }
-        storage.logEvent(task.task_id, 'Clone completed', 'success');
+        await storage.logEvent(task.task_id, 'Clone completed', 'success');
 
       } else {
         throw new Error('Task has neither project_id nor repository_url');
@@ -209,9 +209,9 @@ class VibeExecutor {
         const logMsg = fileCount <= 10
           ? `Directory listing (${fileCount} items): ${preview}`
           : `Directory listing (${fileCount} items, showing first 10): ${preview}...`;
-        storage.logEvent(task.task_id, logMsg, 'info');
+        await storage.logEvent(task.task_id, logMsg, 'info');
       } catch (e: any) {
-        storage.logEvent(task.task_id, `Could not list repoDir: ${e.message}`, 'warning');
+        await storage.logEvent(task.task_id, `Could not list repoDir: ${e.message}`, 'warning');
       }
 
       // ── Git setup ────────────────────────────────────────────────────────
@@ -220,14 +220,14 @@ class VibeExecutor {
       await mainGit.addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'vibe@example.com');
 
       await mainGit.checkout(task.source_branch);
-      storage.logEvent(task.task_id, `Checked out base branch: ${task.source_branch}`, 'info');
+      await storage.logEvent(task.task_id, `Checked out base branch: ${task.source_branch}`, 'info');
 
       try {
         await mainGit.checkoutBranch(task.destination_branch, task.source_branch);
-        storage.logEvent(task.task_id, `Created target branch: ${task.destination_branch}`, 'info');
+        await storage.logEvent(task.task_id, `Created target branch: ${task.destination_branch}`, 'info');
       } catch {
         await mainGit.checkout(task.destination_branch);
-        storage.logEvent(task.task_id, `Using existing branch: ${task.destination_branch}`, 'info');
+        await storage.logEvent(task.task_id, `Using existing branch: ${task.destination_branch}`, 'info');
       }
 
       // worktreeDir = repoDir for now (worktree isolation can be added later)
@@ -330,29 +330,29 @@ class VibeExecutor {
     try {
       const tagName = `vibe/job-${taskId}`;
       await mainGit.tag([tagName, branch]);
-      storage.logEvent(taskId, `✓ Created checkpoint tag: ${tagName}`, 'success');
+      await storage.logEvent(taskId, `✓ Created checkpoint tag: ${tagName}`, 'success');
     } catch (error: any) {
-      storage.logEvent(taskId, `Warning: Failed to create checkpoint tag: ${error.message}`, 'warning');
+      await storage.logEvent(taskId, `Warning: Failed to create checkpoint tag: ${error.message}`, 'warning');
     }
   }
 
   private async createPullRequest(task: VibeTask, mainGit: SimpleGit, repoUrl: string | null): Promise<void> {
     try {
-      storage.updateTaskState(task.task_id, 'creating_pr');
+      await storage.updateTaskState(task.task_id, 'creating_pr');
       
       // For local-only projects (no remote), skip push and PR creation
       if (!repoUrl) {
-        storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
+        await storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
         await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-        storage.updateTaskState(task.task_id, 'completed');
-        storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
+        await storage.updateTaskState(task.task_id, 'completed');
+        await storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
         return;
       }
       
-      storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
+      await storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
       await mainGit.push('origin', task.destination_branch, ['--force']);
-      storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
+      await storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
 
       // Resolve repoUrl if not passed in
       let effectiveRepoUrl = repoUrl;
@@ -363,15 +363,15 @@ class VibeExecutor {
           if (origin?.refs?.fetch) {
             effectiveRepoUrl = origin.refs.fetch;
           } else {
-            storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
+            await storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
             await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-            storage.updateTaskState(task.task_id, 'completed');
+            await storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
-          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
+          await storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
           await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-          storage.updateTaskState(task.task_id, 'completed');
+          await storage.updateTaskState(task.task_id, 'completed');
           return;
         }
       }
@@ -386,25 +386,25 @@ class VibeExecutor {
       });
 
       if (prResult.success && prResult.prUrl) {
-        storage.setPrUrl(task.task_id, prResult.prUrl);
+        await storage.setPrUrl(task.task_id, prResult.prUrl);
         await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-        storage.updateTaskState(task.task_id, 'completed');
-        storage.logEvent(task.task_id, `✓ Pull request created: ${prResult.prUrl}`, 'success');
+        await storage.updateTaskState(task.task_id, 'completed');
+        await storage.logEvent(task.task_id, `✓ Pull request created: ${prResult.prUrl}`, 'success');
       } else {
-        storage.updateTaskState(task.task_id, 'failed');
-        storage.logEvent(task.task_id, `Failed to create PR: ${prResult.error}`, 'error');
+        await storage.updateTaskState(task.task_id, 'failed');
+        await storage.logEvent(task.task_id, `Failed to create PR: ${prResult.error}`, 'error');
       }
 
     } catch (error: any) {
-      storage.updateTaskState(task.task_id, 'failed');
-      storage.logEvent(task.task_id, `Error creating PR: ${error.message}`, 'error');
+      await storage.updateTaskState(task.task_id, 'failed');
+      await storage.logEvent(task.task_id, `Error creating PR: ${error.message}`, 'error');
     }
   }
 
   private async generateWebsiteForTask(task: VibeTask): Promise<void> {
     try {
-      storage.updateTaskState(task.task_id, 'calling_llm');
-      storage.logEvent(task.task_id, 'Generating website HTML via Claude...', 'info');
+      await storage.updateTaskState(task.task_id, 'calling_llm');
+      await storage.logEvent(task.task_id, 'Generating website HTML via Claude...', 'info');
 
       const html = await generateHtmlPage(task.user_prompt);
 
@@ -416,21 +416,21 @@ class VibeExecutor {
       fs.writeFileSync(path.join(previewDir, 'index.html'), html, 'utf8');
 
       const previewUrl = `/previews/${task.task_id}/index.html`;
-      storage.setPreviewUrl(task.task_id, previewUrl);
-      storage.updateTaskState(task.task_id, 'completed');
-      storage.logEvent(task.task_id, `✅ Website generated! Preview at: ${previewUrl}`, 'success');
+      await storage.setPreviewUrl(task.task_id, previewUrl);
+      await storage.updateTaskState(task.task_id, 'completed');
+      await storage.logEvent(task.task_id, `✅ Website generated! Preview at: ${previewUrl}`, 'success');
     } catch (error: any) {
-      storage.updateTaskState(task.task_id, 'failed');
-      storage.logEvent(task.task_id, `❌ Failed to generate website: ${error.message}`, 'error');
+      await storage.updateTaskState(task.task_id, 'failed');
+      await storage.logEvent(task.task_id, `❌ Failed to generate website: ${error.message}`, 'error');
     }
   }
 
   private async generatePreview(task: VibeTask, worktreeDir: string): Promise<void> {
     try {
-      storage.logEvent(task.task_id, 'Generating static preview...', 'info');
+      await storage.logEvent(task.task_id, 'Generating static preview...', 'info');
 
       // Run build command in worktree
-      storage.logEvent(task.task_id, `Running build command: ${BUILD_COMMAND}`, 'info');
+      await storage.logEvent(task.task_id, `Running build command: ${BUILD_COMMAND}`, 'info');
       
       try {
         const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
@@ -442,11 +442,11 @@ class VibeExecutor {
         if (stdout) storage.logEvent(task.task_id, `Build stdout: ${stdout.slice(0, 500)}`, 'info');
         if (stderr) storage.logEvent(task.task_id, `Build stderr: ${stderr.slice(0, 500)}`, 'info');
         
-        storage.logEvent(task.task_id, '✓ Build completed successfully', 'success');
+        await storage.logEvent(task.task_id, '✓ Build completed successfully', 'success');
       } catch (buildError: any) {
         const errorOutput = (buildError.stdout || '') + (buildError.stderr || '');
-        storage.logEvent(task.task_id, `Build failed: ${errorOutput.slice(0, 1000)}`, 'error');
-        storage.logEvent(task.task_id, 'Preview generation skipped due to build failure', 'warning');
+        await storage.logEvent(task.task_id, `Build failed: ${errorOutput.slice(0, 1000)}`, 'error');
+        await storage.logEvent(task.task_id, 'Preview generation skipped due to build failure', 'warning');
         return;
       }
 
@@ -460,15 +460,15 @@ class VibeExecutor {
           const stat = fs.statSync(candidatePath);
           if (stat.isDirectory()) {
             buildOutputDir = candidatePath;
-            storage.logEvent(task.task_id, `Found build output directory: ${dir}`, 'info');
+            await storage.logEvent(task.task_id, `Found build output directory: ${dir}`, 'info');
             break;
           }
         }
       }
 
       if (!buildOutputDir) {
-        storage.logEvent(task.task_id, 'No build output directory found (checked: dist, build, out, .next, public)', 'warning');
-        storage.logEvent(task.task_id, 'Preview generation skipped', 'warning');
+        await storage.logEvent(task.task_id, 'No build output directory found (checked: dist, build, out, .next, public)', 'warning');
+        await storage.logEvent(task.task_id, 'Preview generation skipped', 'warning');
         return;
       }
 
@@ -479,7 +479,7 @@ class VibeExecutor {
       }
 
       // Copy build output to preview directory
-      storage.logEvent(task.task_id, `Copying build output to: ${previewDir}`, 'info');
+      await storage.logEvent(task.task_id, `Copying build output to: ${previewDir}`, 'info');
       
       if (fs.existsSync(previewDir)) {
         fs.rmSync(previewDir, { recursive: true, force: true });
@@ -506,11 +506,11 @@ class VibeExecutor {
 
       // Store preview URL
       const previewUrl = `/previews/${task.task_id}/index.html`;
-      storage.setPreviewUrl(task.task_id, previewUrl);
-      storage.logEvent(task.task_id, `✓ Preview available at: ${previewUrl}`, 'success');
+      await storage.setPreviewUrl(task.task_id, previewUrl);
+      await storage.logEvent(task.task_id, `✓ Preview available at: ${previewUrl}`, 'success');
 
     } catch (error: any) {
-      storage.logEvent(task.task_id, `Preview generation error: ${error.message}`, 'warning');
+      await storage.logEvent(task.task_id, `Preview generation error: ${error.message}`, 'warning');
     }
   }
 }

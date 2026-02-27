@@ -161,21 +161,21 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
 
   // Only severity counts go to SSE — no finding details, file paths, or secret values
   if (criticalFindings.length > 0) {
-    storage.logEvent(
+    await storage.logEvent(
       taskId,
       `[SECURITY] ${criticalFindings.length} critical finding(s) — job blocked`,
       'error'
     );
   }
   if (warnFindings.length > 0) {
-    storage.logEvent(
+    await storage.logEvent(
       taskId,
       `[SECURITY] ${warnFindings.length} warning(s) detected`,
       'warning'
     );
   }
   if (criticalFindings.length === 0 && warnFindings.length === 0) {
-    storage.logEvent(taskId, '[SECURITY] Scan complete: no findings', 'success');
+    await storage.logEvent(taskId, '[SECURITY] Scan complete: no findings', 'success');
   }
 
   return {

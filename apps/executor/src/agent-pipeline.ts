@@ -41,11 +41,11 @@ async function callLLM(system: string, userMsg: string, taskId: string, model: '
 async function callAgent(
   name: AgentType, taskId: string, fn: () => Promise<Omit<AgentResult, 'agent' | 'duration_ms'>>,
 ): Promise<AgentResult> {
-  storage.logEvent(taskId, `[PIPELINE] Starting ${name} agent`, 'info');
+  await storage.logEvent(taskId, `[PIPELINE] Starting ${name} agent`, 'info');
   const start = Date.now();
   const partial = await fn();
   const result: AgentResult = { ...partial, agent: name, duration_ms: Date.now() - start };
-  storage.logEvent(taskId, `[PIPELINE] ${name} finished: ${result.status} (${result.duration_ms}ms)`,
+  await storage.logEvent(taskId, `[PIPELINE] ${name} finished: ${result.status} (${result.duration_ms}ms)`,
     result.status === 'failed' ? 'error' : 'info');
   return result;
 }
@@ -113,7 +113,7 @@ export async function runPipeline(
   });
   state.results.push(planResult);
   if (planResult.status === 'failed' || !state.plan) {
-    storage.updateTaskState(jobId, 'failed'); return state;
+    await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
   // ── BUILDER ───────────────────────────────────────────────────────────────
@@ -138,10 +138,10 @@ export async function runPipeline(
   state.results.push(builderResult);
   if (builderResult.status === 'needs_fix') {
     if (!await runDebugLoop(state, 'builder', builderResult.errors?.[0] || '', worktreeDir, config)) {
-      storage.updateTaskState(jobId, 'failed'); return state;
+      await storage.updateTaskState(jobId, 'failed'); return state;
     }
   } else if (builderResult.status === 'failed') {
-    storage.updateTaskState(jobId, 'failed'); return state;
+    await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
   // ── QA (VALIDATING) ──────────────────────────────────────────────────────
@@ -156,16 +156,16 @@ export async function runPipeline(
     const test = await runCmd('npm test', worktreeDir);
     if (!test.ok) return { status: 'needs_fix', output: 'Tests failed', errors: [test.output] };
     for (const c of state.plan?.acceptance_criteria || [])
-      storage.logEvent(jobId, `[QA] Criteria: ${c}`, 'info');
+      await storage.logEvent(jobId, `[QA] Criteria: ${c}`, 'info');
     return { status: 'passed', output: 'All QA checks passed' };
   });
   state.results.push(qaResult);
   if (qaResult.status === 'needs_fix') {
     if (!await runDebugLoop(state, 'qa', qaResult.errors?.[0] || '', worktreeDir, config)) {
-      storage.updateTaskState(jobId, 'failed'); return state;
+      await storage.updateTaskState(jobId, 'failed'); return state;
     }
   } else if (qaResult.status === 'failed') {
-    storage.updateTaskState(jobId, 'failed'); return state;
+    await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
   // ── SECURITY (TESTING) ────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ export async function runPipeline(
   });
   state.results.push(secResult);
   if (secResult.status === 'failed') {
-    storage.updateTaskState(jobId, 'failed'); return state;
+    await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
   // Pipeline succeeded — caller handles PR creation and final 'completed' state
@@ -214,11 +214,11 @@ async function runDebugLoop( // resumes from the failing agent, not from scratch
     });
     state.results.push(result);
     if (result.status === 'passed') {
-      storage.logEvent(jobId, `[PIPELINE] Debug fixed ${failedAgent} (retry ${state.retry_count})`, 'success');
+      await storage.logEvent(jobId, `[PIPELINE] Debug fixed ${failedAgent} (retry ${state.retry_count})`, 'success');
       return true;
     }
     errorLog = result.errors?.[0] || result.output;
   }
-  storage.logEvent(jobId, `[PIPELINE] Debug exhausted ${state.max_retries} retries for ${failedAgent}`, 'error');
+  await storage.logEvent(jobId, `[PIPELINE] Debug exhausted ${state.max_retries} retries for ${failedAgent}`, 'error');
   return false;
 }
