@@ -585,6 +585,14 @@ async function bootstrap() {
               fs.writeFileSync(path.join(previewDir, `${safeName}.html`), pageData.diff);
               pageNames.push(page.name);
             }
+
+            // Save generated pages to jobs table so the frontend can read last_diff
+            const pagesArray = plan.map((p) => {
+              const safeName = p.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+              const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
+              return { name: p.name, filename: `${safeName}.html`, html };
+            });
+            await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
           } else {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
@@ -607,6 +615,9 @@ async function bootstrap() {
             if (data.usage?.total_tokens) totalTokens += data.usage.total_tokens;
             fs.writeFileSync(path.join(previewDir, 'index.html'), data.diff);
             pageNames = ['index'];
+
+            // Save single-page HTML to jobs table so the frontend can read last_diff
+            await storage.setTaskDiff(taskId, data.diff);
           }
 
           // ── Step 3: Write manifest and finalize ──
