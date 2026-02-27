@@ -83,23 +83,16 @@ async function runPlanPageFlow(
         const pageResponse = await fetch(edgeFunctionUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ prompt: page.description, model, mode: 'page', max_tokens: 4096, context: 'Original request: ' + prompt + '\nAll pages in this site: ' + plan!.map(p => p.name + ' - ' + p.title).join(', ') + '\nMaintain consistent design: same colors, fonts, nav bar, and footer across all pages.' }),
+          body: JSON.stringify({ prompt: page.description, model, mode: 'page', context: 'Original request: ' + prompt + '. All pages: ' + plan!.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
         });
         const pageRawText = await pageResponse.text();
-        if (!pageResponse.ok) throw new Error(`Page "${page.name}" call returned ${pageResponse.status}: ${pageRawText.slice(0, 200)}`);
-
-        let pageData: { diff: string; usage: { total_tokens: number } };
-        try {
-          pageData = JSON.parse(pageRawText);
-        } catch {
-          throw new Error(`Page "${page.name}" returned invalid JSON (${pageRawText.length} chars)`);
-        }
-
-        fs.writeFileSync(path.join(previewDir, `${safeName}.html`), pageData.diff);
-        totalTokens += pageData.usage?.total_tokens || 0;
+        if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
+        const pageData = JSON.parse(pageRawText);
+        if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
+        fs.writeFileSync(path.join(previewDir, safeName + '.html'), pageData.diff);
         pageNames.push(page.name);
       } catch (pageErr: any) {
-        log(`Page "${page.name}" failed: ${pageErr.message}`);
+        log('Page ' + page.name + ' failed: ' + pageErr.message + ' — skipping');
       }
 
       // Delay between pages omitted for test speed (production uses 5s)
@@ -455,8 +448,9 @@ describe('Plan+page flow — multi-page HTML generation', () => {
       assert.ok(!fs.existsSync(path.join(previewDir, 'broken.html')), 'broken.html should not exist');
 
       // Logs should show the failure warning
-      const failLog = result.logs.find(l => l.includes('Page "broken" failed'));
+      const failLog = result.logs.find(l => l.includes('Page broken failed'));
       assert.ok(failLog, 'Should log page failure');
+      assert.ok(failLog!.includes('— skipping'), 'Should include skipping suffix');
     } finally {
       server.close();
     }
@@ -492,7 +486,7 @@ describe('Plan+page flow — multi-page HTML generation', () => {
     }
   });
 
-  it('sends max_tokens: 4096 in each page request', async () => {
+  it('does not send max_tokens in page requests (uses model default)', async () => {
     const receivedRequests: any[] = [];
 
     const { server, url } = await createMockServer((body) => {
@@ -519,13 +513,11 @@ describe('Plan+page flow — multi-page HTML generation', () => {
       const previewDir = path.join(tmpDir, 'task-maxtokens');
       await runPlanPageFlow(url, 'Build a site', 'claude', 'task-mt', previewDir);
 
-      // Plan request should NOT have max_tokens
+      // Neither plan nor page requests should have max_tokens
       assert.strictEqual(receivedRequests[0].mode, 'plan');
       assert.strictEqual(receivedRequests[0].max_tokens, undefined, 'Plan call should not have max_tokens');
-
-      // Page request should have max_tokens: 4096
       assert.strictEqual(receivedRequests[1].mode, 'page');
-      assert.strictEqual(receivedRequests[1].max_tokens, 4096, 'Page call should have max_tokens: 4096');
+      assert.strictEqual(receivedRequests[1].max_tokens, undefined, 'Page call should not have max_tokens');
     } finally {
       server.close();
     }
@@ -572,10 +564,10 @@ describe('Plan+page flow — multi-page HTML generation', () => {
         assert.ok(req.context, `Page request ${i} should have context field`);
         assert.ok(req.context.includes('Original request: Build a startup website'),
           `Context should include original prompt, got: ${req.context.slice(0, 100)}`);
-        assert.ok(req.context.includes('home - Home Page'),
-          `Context should include sibling page info for home`);
-        assert.ok(req.context.includes('about - About Us'),
-          `Context should include sibling page info for about`);
+        assert.ok(req.context.includes('home'),
+          `Context should include sibling page name home`);
+        assert.ok(req.context.includes('about'),
+          `Context should include sibling page name about`);
         assert.ok(req.context.includes('Maintain consistent design'),
           `Context should include consistency instruction`);
       }
