@@ -537,7 +537,7 @@ async function bootstrap() {
             const planData = JSON.parse(planRawText);
             if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
             // Edge Function returns { diff: "<JSON string of pages array>", mode: "plan", usage }
-            const planPages = typeof planData.diff === 'string'
+            let planPages = typeof planData.diff === 'string'
               ? JSON.parse(planData.diff)
               : planData.diff;
             if (Array.isArray(planPages) && planPages.length > 0) {
