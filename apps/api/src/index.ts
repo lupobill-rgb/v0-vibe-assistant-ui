@@ -597,7 +597,7 @@ async function bootstrap() {
             }
 
             // Save generated pages to jobs table so the frontend can read last_diff
-            const pagesArray = plan.map((p) => {
+            const pagesArray = plan.filter(p => pageNames.includes(p.name)).map((p) => {
               const safeName = p.name.replace(/[^a-zA-Z0-9_-]/g, '_');
               const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
               return { name: p.name, filename: `${safeName}.html`, html };
