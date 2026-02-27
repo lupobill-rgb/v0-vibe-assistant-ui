@@ -74,11 +74,11 @@ class VibeExecutor {
 
   private async processNextTask(): Promise<void> {
     try {
-      const task = storage.getNextQueuedTask();
+      const task = await storage.getNextQueuedTask();
       if (!task) return;
 
       this.processing = true;
-      storage.logEvent(task.task_id, `Starting execution for task ${task.task_id}`, 'info');
+      await storage.logEvent(task.task_id, `Starting execution for task ${task.task_id}`, 'info');
       await this.executeTask(task);
     } catch (error: any) {
       console.error('Error processing task:', error);
@@ -103,14 +103,14 @@ class VibeExecutor {
     try {
       // ── Mode detection ──────────────────────────────────────────────────────
       // Re-fetch the task from DB to ensure we have the latest project_id and tenant_id
-      const freshTask = storage.getTask(task.task_id) ?? task;
+      const freshTask = (await storage.getTask(task.task_id)) ?? task;
       const projectId = freshTask.project_id ?? task.project_id;
 
       // ── Website generation shortcut ─────────────────────────────────────────
       // If the project has no git URL, generate a self-contained HTML page directly.
       if (projectId) {
         const tenantIdForCheck = freshTask.tenant_id ?? task.tenant_id;
-        const projectForCheck = storage.getProject(projectId, tenantIdForCheck);
+        const projectForCheck = await storage.getProject(projectId, tenantIdForCheck);
         if (projectForCheck && !projectForCheck.repository_url) {
           await this.generateWebsiteForTask(task);
           return;
@@ -122,7 +122,7 @@ class VibeExecutor {
         // OPTION A: Project-centric mode — use cached repo
         isProjectMode = true;
         // Use project_id from DB and scope by tenant_id when available
-        const project = storage.getProject(projectId, tenantId);
+        const project = await storage.getProject(projectId, tenantId);
 
         if (!project) {
           throw new Error(`Project not found: ${projectId}`);
@@ -131,22 +131,22 @@ class VibeExecutor {
         repoDir = project.local_path;
         repoUrl = project.repository_url ?? null;
 
-        storage.logEvent(task.task_id, `Using project: ${project.name} (${projectId})`, 'info');
-        storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
+        await storage.logEvent(task.task_id, `Using project: ${project.name} (${projectId})`, 'info');
+        await storage.logEvent(task.task_id, `Project cache location: ${repoDir}`, 'info');
 
         // Clone if project cache doesn't exist yet
         if (!fs.existsSync(repoDir)) {
           if (!repoUrl) {
             // No remote URL — initialize empty local repo
-            storage.logEvent(task.task_id, 'No repo_source set — initializing local repo', 'info');
+            await storage.logEvent(task.task_id, 'No repo_source set — initializing local repo', 'info');
             fs.mkdirSync(repoDir, { recursive: true });
             await simpleGit(repoDir).init();
             await simpleGit(repoDir).addConfig('user.name', process.env.GIT_AUTHOR_NAME || 'VIBE Bot');
             await simpleGit(repoDir).addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'vibe@example.com');
             await simpleGit(repoDir).commit('Initial empty commit', { '--allow-empty': null });
           } else {
-            storage.logEvent(task.task_id, `Project cache not initialized. Cloning ${repoUrl}...`, 'info');
-            storage.updateTaskState(task.task_id, 'cloning');
+            await storage.logEvent(task.task_id, `Project cache not initialized. Cloning ${repoUrl}...`, 'info');
+            await storage.updateTaskState(task.task_id, 'cloning');
 
             const reposDir = path.dirname(repoDir);
             if (!fs.existsSync(reposDir)) {
@@ -167,21 +167,21 @@ class VibeExecutor {
                 delete process.env.GIT_TERMINAL_PROMPT;
               }
             }
-            storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
+            await storage.logEvent(task.task_id, 'Repository cloned to project cache', 'success');
           }
         } else {
           // Cache exists — sync with remote if we have one
           if (repoUrl) {
-            storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
+            await storage.logEvent(task.task_id, 'Syncing project cache with remote...', 'info');
             const syncGit = simpleGit(repoDir);
             try {
               await syncGit.fetch(['--all', '--prune']);
-              storage.logEvent(task.task_id, 'Project cache synced', 'success');
+              await storage.logEvent(task.task_id, 'Project cache synced', 'success');
             } catch (error: any) {
-              storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
+              await storage.logEvent(task.task_id, `Warning: Failed to sync: ${error.message}`, 'warning');
             }
           } else {
-            storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
+            await storage.logEvent(task.task_id, 'Using existing local project (no remote sync)', 'info');
           }
         }
 
@@ -189,7 +189,7 @@ class VibeExecutor {
         // MODE B: Legacy mode — clone to temp directory
         isProjectMode = false;
         repoUrl = task.repository_url;
-        storage.logEvent(task.task_id, '[DEPRECATED] Using legacy Mode B with repo_url', 'warning');
+        await storage.logEvent(task.task_id, '[DEPRECATED] Using legacy Mode B with repo_url', 'warning');
 
         repoDir = path.join(baseWorkDir, 'repo');
 
@@ -197,8 +197,8 @@ class VibeExecutor {
           fs.mkdirSync(baseWorkDir, { recursive: true });
         }
 
-        storage.updateTaskState(task.task_id, 'cloning');
-        storage.logEvent(task.task_id, `Cloning repository: ${repoUrl}`, 'info');
+        await storage.updateTaskState(task.task_id, 'cloning');
+        await storage.logEvent(task.task_id, `Cloning repository: ${repoUrl}`, 'info');
 
         const cloneUrl = buildCredentialedUrl(repoUrl);
         if (!cloneUrl) throw new Error(`Could not build clone URL from: ${repoUrl}`);
@@ -214,7 +214,7 @@ class VibeExecutor {
             delete process.env.GIT_TERMINAL_PROMPT;
           }
         }
-        storage.logEvent(task.task_id, 'Clone completed', 'success');
+        await storage.logEvent(task.task_id, 'Clone completed', 'success');
 
       } else {
         throw new Error('Task has neither project_id nor repository_url');
@@ -228,9 +228,9 @@ class VibeExecutor {
         const logMsg = fileCount <= 10
           ? `Directory listing (${fileCount} items): ${preview}`
           : `Directory listing (${fileCount} items, showing first 10): ${preview}...`;
-        storage.logEvent(task.task_id, logMsg, 'info');
+        await storage.logEvent(task.task_id, logMsg, 'info');
       } catch (e: any) {
-        storage.logEvent(task.task_id, `Could not list repoDir: ${e.message}`, 'warning');
+        await storage.logEvent(task.task_id, `Could not list repoDir: ${e.message}`, 'warning');
       }
 
       // ── Git setup ────────────────────────────────────────────────────────
@@ -239,14 +239,14 @@ class VibeExecutor {
       await mainGit.addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'vibe@example.com');
 
       await mainGit.checkout(task.source_branch);
-      storage.logEvent(task.task_id, `Checked out base branch: ${task.source_branch}`, 'info');
+      await storage.logEvent(task.task_id, `Checked out base branch: ${task.source_branch}`, 'info');
 
       try {
         await mainGit.checkoutBranch(task.destination_branch, task.source_branch);
-        storage.logEvent(task.task_id, `Created target branch: ${task.destination_branch}`, 'info');
+        await storage.logEvent(task.task_id, `Created target branch: ${task.destination_branch}`, 'info');
       } catch {
         await mainGit.checkout(task.destination_branch);
-        storage.logEvent(task.task_id, `Using existing branch: ${task.destination_branch}`, 'info');
+        await storage.logEvent(task.task_id, `Using existing branch: ${task.destination_branch}`, 'info');
       }
 
       // worktreeDir = repoDir for now (worktree isolation can be added later)
@@ -270,10 +270,10 @@ class VibeExecutor {
         const diffSummary = await mainGit.diffSummary([task.source_branch, task.destination_branch]);
         filesChangedCount = diffSummary.files.length;
       } catch (error: any) {
-        storage.logEvent(task.task_id, `Could not count changed files: ${error.message}`, 'warning');
+        await storage.logEvent(task.task_id, `Could not count changed files: ${error.message}`, 'warning');
       }
       
-      storage.updateTaskUsageMetrics(task.task_id, {
+      await storage.updateTaskUsageMetrics(task.task_id, {
         llm_prompt_tokens: usageMetrics.totalPromptTokens,
         llm_completion_tokens: usageMetrics.totalCompletionTokens,
         llm_total_tokens: usageMetrics.totalTokens,
@@ -282,19 +282,19 @@ class VibeExecutor {
         files_changed_count: filesChangedCount,
       });
       
-      storage.logEvent(
+      await storage.logEvent(
         task.task_id,
         `Usage: ${usageMetrics.totalTokens} tokens, ${usageMetrics.totalPreflightSeconds.toFixed(1)}s preflight, ${totalJobSeconds.toFixed(1)}s total, ${filesChangedCount} files`,
         'info'
       );
 
     } catch (error: any) {
-      storage.updateTaskState(task.task_id, 'failed');
-      storage.logEvent(task.task_id, `Fatal error: ${error.message}`, 'error');
+      await storage.updateTaskState(task.task_id, 'failed');
+      await storage.logEvent(task.task_id, `Fatal error: ${error.message}`, 'error');
       
       // Still try to record usage metrics even on failure
       const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
-      storage.updateTaskUsageMetrics(task.task_id, {
+      await storage.updateTaskUsageMetrics(task.task_id, {
         llm_prompt_tokens: totalPromptTokens,
         llm_completion_tokens: totalCompletionTokens,
         llm_total_tokens: totalTokens,
@@ -343,23 +343,23 @@ class VibeExecutor {
     let failureFeedback: string | null = null;
 
     for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
-      storage.incrementIteration(task.task_id);
-      storage.logEvent(task.task_id, `Starting iteration ${iteration}/${MAX_ITERATIONS}`, 'info');
+      await storage.incrementIteration(task.task_id);
+      await storage.logEvent(task.task_id, `Starting iteration ${iteration}/${MAX_ITERATIONS}`, 'info');
 
       const worktreeGit = simpleGit(worktreeDir);
       try {
         await worktreeGit.reset(['--hard', 'HEAD']);
         await worktreeGit.raw(['clean', '-fd']);
-        storage.logEvent(task.task_id, 'Worktree reset to clean state', 'info');
+        await storage.logEvent(task.task_id, 'Worktree reset to clean state', 'info');
       } catch (error: any) {
-        storage.logEvent(task.task_id, `Warning: Failed to reset worktree: ${error.message}`, 'warning');
+        await storage.logEvent(task.task_id, `Warning: Failed to reset worktree: ${error.message}`, 'warning');
       }
 
-      storage.updateTaskState(task.task_id, 'building_context');
-      storage.logEvent(task.task_id, 'Building context from repository...', 'info');
+      await storage.updateTaskState(task.task_id, 'building_context');
+      await storage.logEvent(task.task_id, 'Building context from repository...', 'info');
 
       const contextResult = await buildContext(worktreeDir, task.user_prompt);
-      storage.logEvent(
+      await storage.logEvent(
         task.task_id,
         `Context built: ${contextResult.files.size} files, ${contextResult.totalSize} chars${contextResult.truncated ? ' (truncated)' : ''}`,
         'info'
@@ -367,8 +367,8 @@ class VibeExecutor {
 
       const context = formatContext(contextResult.files);
 
-      storage.updateTaskState(task.task_id, 'calling_llm');
-      storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
+      await storage.updateTaskState(task.task_id, 'calling_llm');
+      await storage.logEvent(task.task_id, `Calling LLM (iteration ${iteration})...`, 'info');
 
       const result = await this.generateDiff(
         task.user_prompt, context, task.task_id, worktreeDir,
@@ -385,13 +385,13 @@ class VibeExecutor {
 
       if (!result.diff) {
         consecutiveDiffFailures++;
-        storage.logEvent(task.task_id, 'LLM failed to generate valid diff', 'error');
+        await storage.logEvent(task.task_id, 'LLM failed to generate valid diff', 'error');
         if (result.error) {
           failureFeedback = `You returned an invalid diff. Validator error: ${result.error}`;
         }
         if (consecutiveDiffFailures >= 3) {
-          storage.updateTaskState(task.task_id, 'failed');
-          storage.logEvent(task.task_id, 'Failed: 3 consecutive invalid diffs from LLM', 'error');
+          await storage.updateTaskState(task.task_id, 'failed');
+          await storage.logEvent(task.task_id, 'Failed: 3 consecutive invalid diffs from LLM', 'error');
           return;
         }
         continue;
@@ -405,23 +405,23 @@ class VibeExecutor {
       const diff = result.diff;
 
       if (diff === 'NO_CHANGES') {
-        storage.logEvent(task.task_id, 'No changes needed - skipping git apply', 'info');
-        storage.updateTaskState(task.task_id, 'running_preflight');
+        await storage.logEvent(task.task_id, 'No changes needed - skipping git apply', 'info');
+        await storage.updateTaskState(task.task_id, 'running_preflight');
 
         const preflightStartTime = Date.now();
-        const preflightResult = await runPreflightChecks(worktreeDir, (stage, output) => {
-          storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
+        const preflightResult = await runPreflightChecks(worktreeDir, async (stage, output) => {
+          await storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
         });
         const preflightDuration = (Date.now() - preflightStartTime) / 1000;
         usageMetrics.totalPreflightSeconds += preflightDuration;
 
         if (preflightResult.success) {
-          storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
+          await storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
 
           const buildPassed = await this.runBuildWithAgents(task, worktreeDir);
           if (!buildPassed) {
-            storage.updateTaskState(task.task_id, 'failed');
-            storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
+            await storage.updateTaskState(task.task_id, 'failed');
+            await storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
             return;
           }
 
@@ -432,43 +432,43 @@ class VibeExecutor {
           const status = await worktreeGit.status();
           if (log.total === 0 && status.isClean()) {
             await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-            storage.updateTaskState(task.task_id, 'completed');
-            storage.logEvent(task.task_id, 'No changes; no PR created.', 'success');
+            await storage.updateTaskState(task.task_id, 'completed');
+            await storage.logEvent(task.task_id, 'No changes; no PR created.', 'success');
             return;
           }
           await this.createPullRequest(task, mainGit, repoUrl);
           return;
         } else {
-          storage.updateTaskState(task.task_id, 'failed');
-          storage.logEvent(task.task_id, `Preflight failed at stage: ${preflightResult.stage}`, 'error');
+          await storage.updateTaskState(task.task_id, 'failed');
+          await storage.logEvent(task.task_id, `Preflight failed at stage: ${preflightResult.stage}`, 'error');
           return;
         }
       }
 
-      storage.updateTaskState(task.task_id, 'applying_diff');
-      storage.logEvent(task.task_id, 'Applying diff to worktree...', 'info');
+      await storage.updateTaskState(task.task_id, 'applying_diff');
+      await storage.logEvent(task.task_id, 'Applying diff to worktree...', 'info');
 
       const applyResult = await this.applyDiff(worktreeDir, repoDir, mainGit, diff, task.task_id, iteration);
 
       if (!applyResult.success) {
         consecutiveApplyFailures++;
-        storage.logEvent(task.task_id, 'Failed to apply diff', 'error');
+        await storage.logEvent(task.task_id, 'Failed to apply diff', 'error');
         failureFeedback = `Git apply failed: ${applyResult.error || 'Unknown error'}`;
 
         if (consecutiveApplyFailures >= 2) {
           const failedFiles = this.extractFailedFiles(applyResult.error || '');
           if (failedFiles.length > 0) {
             failedFiles.forEach(f => fallbackFiles.add(f));
-            storage.logEvent(task.task_id, `Fallback mode: full file replacement for ${failedFiles.join(', ')}`, 'warning');
+            await storage.logEvent(task.task_id, `Fallback mode: full file replacement for ${failedFiles.join(', ')}`, 'warning');
           } else {
             globalFallback = true;
-            storage.logEvent(task.task_id, 'Fallback mode: global full file replacement', 'warning');
+            await storage.logEvent(task.task_id, 'Fallback mode: global full file replacement', 'warning');
           }
         }
 
         if (consecutiveApplyFailures >= 3) {
-          storage.updateTaskState(task.task_id, 'failed');
-          storage.logEvent(task.task_id, 'Failed: 3 consecutive git apply failures', 'error');
+          await storage.updateTaskState(task.task_id, 'failed');
+          await storage.logEvent(task.task_id, 'Failed: 3 consecutive git apply failures', 'error');
           return;
         }
         continue;
@@ -484,25 +484,25 @@ class VibeExecutor {
 
       await worktreeGit.add('.');
       await worktreeGit.commit(`VIBE iteration ${iteration}: ${task.user_prompt.slice(0, 50)}`);
-      storage.logEvent(task.task_id, `Changes committed (iteration ${iteration})`, 'success');
+      await storage.logEvent(task.task_id, `Changes committed (iteration ${iteration})`, 'success');
 
-      storage.updateTaskState(task.task_id, 'running_preflight');
-      storage.logEvent(task.task_id, 'Running preflight checks...', 'info');
+      await storage.updateTaskState(task.task_id, 'running_preflight');
+      await storage.logEvent(task.task_id, 'Running preflight checks...', 'info');
 
       const preflightStartTime = Date.now();
-      const preflightResult = await runPreflightChecks(worktreeDir, (stage, output) => {
-        storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
+      const preflightResult = await runPreflightChecks(worktreeDir, async (stage, output) => {
+        await storage.logEvent(task.task_id, `[${stage}] ${output}`, 'info');
       });
       const preflightDuration = (Date.now() - preflightStartTime) / 1000;
       usageMetrics.totalPreflightSeconds += preflightDuration;
 
       if (preflightResult.success) {
-        storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
+        await storage.logEvent(task.task_id, '✓ All preflight checks passed!', 'success');
 
         const buildPassed = await this.runBuildWithAgents(task, worktreeDir);
         if (!buildPassed) {
-          storage.updateTaskState(task.task_id, 'failed');
-          storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
+          await storage.updateTaskState(task.task_id, 'failed');
+          await storage.logEvent(task.task_id, 'Build failed after max debug attempts', 'error');
           return;
         }
 
@@ -512,18 +512,18 @@ class VibeExecutor {
         await this.createPullRequest(task, mainGit, repoUrl);
         return;
       } else {
-        storage.logEvent(task.task_id, `Preflight failed at stage: ${preflightResult.stage}`, 'error');
+        await storage.logEvent(task.task_id, `Preflight failed at stage: ${preflightResult.stage}`, 'error');
         if (iteration === MAX_ITERATIONS) {
-          storage.updateTaskState(task.task_id, 'failed');
-          storage.logEvent(task.task_id, 'Failed: Max iterations reached without passing preflight', 'error');
+          await storage.updateTaskState(task.task_id, 'failed');
+          await storage.logEvent(task.task_id, 'Failed: Max iterations reached without passing preflight', 'error');
           return;
         }
-        storage.logEvent(task.task_id, `Will retry (${iteration}/${MAX_ITERATIONS})`, 'warning');
+        await storage.logEvent(task.task_id, `Will retry (${iteration}/${MAX_ITERATIONS})`, 'warning');
       }
     }
 
-    storage.updateTaskState(task.task_id, 'failed');
-    storage.logEvent(task.task_id, 'Failed: Max iterations reached', 'error');
+    await storage.updateTaskState(task.task_id, 'failed');
+    await storage.logEvent(task.task_id, 'Failed: Max iterations reached', 'error');
   }
 
   private buildReadmeContext(prompt: string, repoDir: string): string | null {
@@ -558,7 +558,7 @@ class VibeExecutor {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (attempt > 0) {
-        storage.logEvent(taskId, `Retrying LLM call (attempt ${attempt + 1}/${maxRetries + 1})...`, 'warning');
+        await storage.logEvent(taskId, `Retrying LLM call (attempt ${attempt + 1}/${maxRetries + 1})...`, 'warning');
       }
 
       try {
@@ -566,7 +566,7 @@ class VibeExecutor {
         let enrichedContext = context;
         if (readmeContext) {
           enrichedContext += readmeContext;
-          storage.logEvent(taskId, 'Added README-specific context to LLM prompt', 'info');
+          await storage.logEvent(taskId, 'Added README-specific context to LLM prompt', 'info');
         }
         if (globalFallback || fallbackFiles.size > 0) {
           const fallbackInstructions = `\n- Delete all lines of the old file and add all lines of the new file`;
@@ -589,17 +589,17 @@ class VibeExecutor {
 
         const routerResult = await routerGenerateDiff(prompt, enrichedContext, { model, taskId }, combinedError);
         const rawOutput = routerResult.diff;
-        storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
+        await storage.logEvent(taskId, `LLM generated ${rawOutput.length} characters`, 'info');
 
         if (rawOutput === 'NO_CHANGES') {
-          storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
+          await storage.logEvent(taskId, 'LLM indicated no changes needed', 'info');
           return { diff: 'NO_CHANGES', error: null, usage: routerResult.usage };
         }
 
         const sanitized = sanitizeUnifiedDiff(rawOutput);
         if (sanitized === null) {
           lastValidationError = 'LLM output missing diff --git header or contains commentary/markdown';
-          storage.logEvent(taskId, lastValidationError, 'error');
+          await storage.logEvent(taskId, lastValidationError, 'error');
           continue;
         }
 
@@ -607,28 +607,28 @@ class VibeExecutor {
         const enhancedValidation = validateUnifiedDiffEnhanced(diff);
         if (!enhancedValidation.ok) {
           lastValidationError = enhancedValidation.errors.join('; ');
-          storage.logEvent(taskId, `Invalid diff: ${lastValidationError}`, 'error');
+          await storage.logEvent(taskId, `Invalid diff: ${lastValidationError}`, 'error');
           continue;
         }
 
         const sanityCheck = performPreApplySanityChecks(diff, repoDir, prompt);
         if (!sanityCheck.ok) {
           lastValidationError = sanityCheck.errors.join('; ');
-          storage.logEvent(taskId, `Pre-apply sanity check failed: ${lastValidationError}`, 'error');
+          await storage.logEvent(taskId, `Pre-apply sanity check failed: ${lastValidationError}`, 'error');
           continue;
         }
 
-        storage.logEvent(taskId, `Valid diff generated (${diff.split('\n').length} lines)`, 'success');
+        await storage.logEvent(taskId, `Valid diff generated (${diff.split('\n').length} lines)`, 'success');
         return { diff, error: null, usage: routerResult.usage };
 
       } catch (error: any) {
-        storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
+        await storage.logEvent(taskId, `LLM error: ${error.message}`, 'error');
         lastValidationError = `LLM API error: ${error.message}`;
         continue;
       }
     }
 
-    storage.logEvent(taskId, `Failed to generate valid diff after ${maxRetries + 1} attempts`, 'error');
+    await storage.logEvent(taskId, `Failed to generate valid diff after ${maxRetries + 1} attempts`, 'error');
     return { diff: null, error: lastValidationError };
   }
 
@@ -661,7 +661,7 @@ class VibeExecutor {
     try {
       const checkResult = validateDiffApplicability(patch, worktreeDir);
       if (!checkResult.valid) {
-        storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
+        await storage.logEvent(taskId, `git apply --check failed: ${checkResult.error}`, 'error');
         await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: checkResult.error };
       }
@@ -672,11 +672,11 @@ class VibeExecutor {
 
       try {
         await worktreeGit.raw(['apply', '--verbose', '.vibe-diff.patch']);
-        storage.logEvent(taskId, 'Diff applied successfully', 'success');
+        await storage.logEvent(taskId, 'Diff applied successfully', 'success');
       } catch (applyError: any) {
         const errorOutput = [applyError.message, applyError.stderr, applyError.stdout].filter(Boolean).join('\n');
-        if (applyError.stderr) storage.logEvent(taskId, `git apply stderr: ${applyError.stderr}`, 'error');
-        if (applyError.stdout) storage.logEvent(taskId, `git apply stdout: ${applyError.stdout}`, 'error');
+        if (applyError.stderr) await storage.logEvent(taskId, `git apply stderr: ${applyError.stderr}`, 'error');
+        if (applyError.stdout) await storage.logEvent(taskId, `git apply stdout: ${applyError.stdout}`, 'error');
         await this.persistFailedPatch(patch, taskId, iteration);
         return { success: false, error: errorOutput };
       } finally {
@@ -686,7 +686,7 @@ class VibeExecutor {
       return { success: true };
 
     } catch (error: any) {
-      storage.logEvent(taskId, `Git apply failed: ${error.message}`, 'error');
+      await storage.logEvent(taskId, `Git apply failed: ${error.message}`, 'error');
       await this.persistFailedPatch(patch, taskId, iteration);
       return { success: false, error: error.message };
     }
@@ -698,32 +698,32 @@ class VibeExecutor {
       fs.writeFileSync(patchFilePath, diff, { encoding: 'utf-8' });
 
       const lines = diff.split('\n');
-      storage.logEvent(taskId, `[Patch] Saved to: ${patchFilePath} (${lines.length} lines, ${diff.length} chars)`, 'info');
+      await storage.logEvent(taskId, `[Patch] Saved to: ${patchFilePath} (${lines.length} lines, ${diff.length} chars)`, 'info');
 
       const preview = lines.slice(0, 80).map((l, i) => `${String(i + 1).padStart(4, ' ')}. ${l}`).join('\n');
-      storage.logEvent(taskId, `[Patch] First 80 lines:\n${preview}`, 'info');
-      if (lines.length > 80) storage.logEvent(taskId, `[Patch] ... (${lines.length - 80} more lines)`, 'info');
+      await storage.logEvent(taskId, `[Patch] First 80 lines:\n${preview}`, 'info');
+      if (lines.length > 80) await storage.logEvent(taskId, `[Patch] ... (${lines.length - 80} more lines)`, 'info');
 
     } catch (error: any) {
-      storage.logEvent(taskId, `[Patch] WARNING: Could not save failed patch: ${error.message}`, 'warning');
+      await storage.logEvent(taskId, `[Patch] WARNING: Could not save failed patch: ${error.message}`, 'warning');
     }
   }
 
   private async persistSuccessfulDiff(diff: string, taskId: string): Promise<void> {
     try {
       // Store in SQLite database
-      storage.setTaskDiff(taskId, diff);
-      storage.logEvent(taskId, '✓ Diff persisted to database', 'info');
+      await storage.setTaskDiff(taskId, diff);
+      await storage.logEvent(taskId, '✓ Diff persisted to database', 'info');
 
       // Also store as a file in /data/jobs/
       const diffFilePath = path.join(JOBS_DIR, `${taskId}.diff`);
       fs.writeFileSync(diffFilePath, diff, { encoding: 'utf-8' });
 
       const lines = diff.split('\n');
-      storage.logEvent(taskId, `✓ Diff saved to: ${diffFilePath} (${lines.length} lines, ${diff.length} chars)`, 'info');
+      await storage.logEvent(taskId, `✓ Diff saved to: ${diffFilePath} (${lines.length} lines, ${diff.length} chars)`, 'info');
 
     } catch (error: any) {
-      storage.logEvent(taskId, `WARNING: Could not persist diff: ${error.message}`, 'warning');
+      await storage.logEvent(taskId, `WARNING: Could not persist diff: ${error.message}`, 'warning');
     }
   }
 
@@ -731,29 +731,29 @@ class VibeExecutor {
     try {
       const tagName = `vibe/job-${taskId}`;
       await mainGit.tag([tagName, branch]);
-      storage.logEvent(taskId, `✓ Created checkpoint tag: ${tagName}`, 'success');
+      await storage.logEvent(taskId, `✓ Created checkpoint tag: ${tagName}`, 'success');
     } catch (error: any) {
-      storage.logEvent(taskId, `Warning: Failed to create checkpoint tag: ${error.message}`, 'warning');
+      await storage.logEvent(taskId, `Warning: Failed to create checkpoint tag: ${error.message}`, 'warning');
     }
   }
 
   private async createPullRequest(task: VibeTask, mainGit: SimpleGit, repoUrl: string | null): Promise<void> {
     try {
-      storage.updateTaskState(task.task_id, 'creating_pr');
+      await storage.updateTaskState(task.task_id, 'creating_pr');
       
       // For local-only projects (no remote), skip push and PR creation
       if (!repoUrl) {
-        storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
+        await storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
         await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-        storage.updateTaskState(task.task_id, 'completed');
-        storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
+        await storage.updateTaskState(task.task_id, 'completed');
+        await storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
         return;
       }
       
-      storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
+      await storage.logEvent(task.task_id, 'Pushing branch to remote...', 'info');
 
       await mainGit.push('origin', task.destination_branch, ['--force']);
-      storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
+      await storage.logEvent(task.task_id, `Branch pushed: ${task.destination_branch}`, 'success');
 
       // Resolve repoUrl if not passed in
       let effectiveRepoUrl = repoUrl;
@@ -764,15 +764,15 @@ class VibeExecutor {
           if (origin?.refs?.fetch) {
             effectiveRepoUrl = origin.refs.fetch;
           } else {
-            storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
+            await storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
             await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-            storage.updateTaskState(task.task_id, 'completed');
+            await storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
-          storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
+          await storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
           await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-          storage.updateTaskState(task.task_id, 'completed');
+          await storage.updateTaskState(task.task_id, 'completed');
           return;
         }
       }
@@ -787,23 +787,23 @@ class VibeExecutor {
       });
 
       if (prResult.success && prResult.prUrl) {
-        storage.setPrUrl(task.task_id, prResult.prUrl);
+        await storage.setPrUrl(task.task_id, prResult.prUrl);
         await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
-        storage.updateTaskState(task.task_id, 'completed');
-        storage.logEvent(task.task_id, `✓ Pull request created: ${prResult.prUrl}`, 'success');
+        await storage.updateTaskState(task.task_id, 'completed');
+        await storage.logEvent(task.task_id, `✓ Pull request created: ${prResult.prUrl}`, 'success');
       } else {
-        storage.updateTaskState(task.task_id, 'failed');
-        storage.logEvent(task.task_id, `Failed to create PR: ${prResult.error}`, 'error');
+        await storage.updateTaskState(task.task_id, 'failed');
+        await storage.logEvent(task.task_id, `Failed to create PR: ${prResult.error}`, 'error');
       }
 
     } catch (error: any) {
-      storage.updateTaskState(task.task_id, 'failed');
-      storage.logEvent(task.task_id, `Error creating PR: ${error.message}`, 'error');
+      await storage.updateTaskState(task.task_id, 'failed');
+      await storage.logEvent(task.task_id, `Error creating PR: ${error.message}`, 'error');
     }
   }
 
   private async runBuild(taskId: string, worktreeDir: string): Promise<{ success: boolean; output: string }> {
-    storage.logEvent(taskId, `Running build: ${BUILD_COMMAND}`, 'info');
+    await storage.logEvent(taskId, `Running build: ${BUILD_COMMAND}`, 'info');
     try {
       const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
         cwd: worktreeDir,
@@ -811,11 +811,11 @@ class VibeExecutor {
         maxBuffer: 10 * 1024 * 1024,
       });
       const output = ((stdout || '') + (stderr || '')).slice(0, 2000);
-      storage.logEvent(taskId, '✓ Build succeeded', 'success');
+      await storage.logEvent(taskId, '✓ Build succeeded', 'success');
       return { success: true, output };
     } catch (err: any) {
       const output = ((err.stdout || '') + (err.stderr || '')).slice(0, 2000);
-      storage.logEvent(taskId, `Build failed: ${output.slice(0, 200)}`, 'error');
+      await storage.logEvent(taskId, `Build failed: ${output.slice(0, 200)}`, 'error');
       return { success: false, output };
     }
   }
@@ -827,10 +827,10 @@ class VibeExecutor {
 
     if (!buildResult.success) {
       for (let attempt = 1; attempt <= MAX_DEBUG_ATTEMPTS; attempt++) {
-        storage.logEvent(task.task_id, `[DEBUG] Debug attempt ${attempt}/${MAX_DEBUG_ATTEMPTS}`, 'warning');
+        await storage.logEvent(task.task_id, `[DEBUG] Debug attempt ${attempt}/${MAX_DEBUG_ATTEMPTS}`, 'warning');
         const debugResult = await runDebugAgent(task.task_id, worktreeDir, buildResult.output);
         if (debugResult.success) {
-          storage.logEvent(task.task_id, `[DEBUG] Build fixed on attempt ${attempt}`, 'success');
+          await storage.logEvent(task.task_id, `[DEBUG] Build fixed on attempt ${attempt}`, 'success');
           buildResult = { success: true, output: debugResult.buildOutput };
           break;
         }
@@ -848,7 +848,7 @@ class VibeExecutor {
 
     const securityResult = await runSecurityAgent(task.task_id, worktreeDir);
     if (securityResult.blocked) {
-      storage.logEvent(task.task_id, '[SECURITY] Job blocked: critical security findings must be resolved', 'error');
+      await storage.logEvent(task.task_id, '[SECURITY] Job blocked: critical security findings must be resolved', 'error');
       return false;
     }
 
@@ -857,8 +857,8 @@ class VibeExecutor {
 
   private async generateWebsiteForTask(task: VibeTask): Promise<void> {
     try {
-      storage.updateTaskState(task.task_id, 'calling_llm');
-      storage.logEvent(task.task_id, 'Generating website HTML via Claude...', 'info');
+      await storage.updateTaskState(task.task_id, 'calling_llm');
+      await storage.logEvent(task.task_id, 'Generating website HTML via Claude...', 'info');
 
       const html = await generateHtmlPage(task.user_prompt);
 
@@ -870,21 +870,21 @@ class VibeExecutor {
       fs.writeFileSync(path.join(previewDir, 'index.html'), html, 'utf8');
 
       const previewUrl = `/previews/${task.task_id}/index.html`;
-      storage.setPreviewUrl(task.task_id, previewUrl);
-      storage.updateTaskState(task.task_id, 'completed');
-      storage.logEvent(task.task_id, `✅ Website generated! Preview at: ${previewUrl}`, 'success');
+      await storage.setPreviewUrl(task.task_id, previewUrl);
+      await storage.updateTaskState(task.task_id, 'completed');
+      await storage.logEvent(task.task_id, `✅ Website generated! Preview at: ${previewUrl}`, 'success');
     } catch (error: any) {
-      storage.updateTaskState(task.task_id, 'failed');
-      storage.logEvent(task.task_id, `❌ Failed to generate website: ${error.message}`, 'error');
+      await storage.updateTaskState(task.task_id, 'failed');
+      await storage.logEvent(task.task_id, `❌ Failed to generate website: ${error.message}`, 'error');
     }
   }
 
   private async generatePreview(task: VibeTask, worktreeDir: string): Promise<void> {
     try {
-      storage.logEvent(task.task_id, 'Generating static preview...', 'info');
+      await storage.logEvent(task.task_id, 'Generating static preview...', 'info');
 
       // Run build command in worktree
-      storage.logEvent(task.task_id, `Running build command: ${BUILD_COMMAND}`, 'info');
+      await storage.logEvent(task.task_id, `Running build command: ${BUILD_COMMAND}`, 'info');
       
       try {
         const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
@@ -893,14 +893,14 @@ class VibeExecutor {
           maxBuffer: 10 * 1024 * 1024 // 10MB
         });
 
-        if (stdout) storage.logEvent(task.task_id, `Build stdout: ${stdout.slice(0, 500)}`, 'info');
-        if (stderr) storage.logEvent(task.task_id, `Build stderr: ${stderr.slice(0, 500)}`, 'info');
+        if (stdout) await storage.logEvent(task.task_id, `Build stdout: ${stdout.slice(0, 500)}`, 'info');
+        if (stderr) await storage.logEvent(task.task_id, `Build stderr: ${stderr.slice(0, 500)}`, 'info');
         
-        storage.logEvent(task.task_id, '✓ Build completed successfully', 'success');
+        await storage.logEvent(task.task_id, '✓ Build completed successfully', 'success');
       } catch (buildError: any) {
         const errorOutput = (buildError.stdout || '') + (buildError.stderr || '');
-        storage.logEvent(task.task_id, `Build failed: ${errorOutput.slice(0, 1000)}`, 'error');
-        storage.logEvent(task.task_id, 'Preview generation skipped due to build failure', 'warning');
+        await storage.logEvent(task.task_id, `Build failed: ${errorOutput.slice(0, 1000)}`, 'error');
+        await storage.logEvent(task.task_id, 'Preview generation skipped due to build failure', 'warning');
         return;
       }
 
@@ -914,15 +914,15 @@ class VibeExecutor {
           const stat = fs.statSync(candidatePath);
           if (stat.isDirectory()) {
             buildOutputDir = candidatePath;
-            storage.logEvent(task.task_id, `Found build output directory: ${dir}`, 'info');
+            await storage.logEvent(task.task_id, `Found build output directory: ${dir}`, 'info');
             break;
           }
         }
       }
 
       if (!buildOutputDir) {
-        storage.logEvent(task.task_id, 'No build output directory found (checked: dist, build, out, .next, public)', 'warning');
-        storage.logEvent(task.task_id, 'Preview generation skipped', 'warning');
+        await storage.logEvent(task.task_id, 'No build output directory found (checked: dist, build, out, .next, public)', 'warning');
+        await storage.logEvent(task.task_id, 'Preview generation skipped', 'warning');
         return;
       }
 
@@ -933,7 +933,7 @@ class VibeExecutor {
       }
 
       // Copy build output to preview directory
-      storage.logEvent(task.task_id, `Copying build output to: ${previewDir}`, 'info');
+      await storage.logEvent(task.task_id, `Copying build output to: ${previewDir}`, 'info');
       
       if (fs.existsSync(previewDir)) {
         fs.rmSync(previewDir, { recursive: true, force: true });
@@ -960,11 +960,11 @@ class VibeExecutor {
 
       // Store preview URL
       const previewUrl = `/previews/${task.task_id}/index.html`;
-      storage.setPreviewUrl(task.task_id, previewUrl);
-      storage.logEvent(task.task_id, `✓ Preview available at: ${previewUrl}`, 'success');
+      await storage.setPreviewUrl(task.task_id, previewUrl);
+      await storage.logEvent(task.task_id, `✓ Preview available at: ${previewUrl}`, 'success');
 
     } catch (error: any) {
-      storage.logEvent(task.task_id, `Preview generation error: ${error.message}`, 'warning');
+      await storage.logEvent(task.task_id, `Preview generation error: ${error.message}`, 'warning');
     }
   }
 }
