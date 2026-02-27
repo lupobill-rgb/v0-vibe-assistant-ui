@@ -53,8 +53,12 @@ async function runPlanPageFlow(
     if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
     const planData = JSON.parse(planRawText);
     if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
-    if (Array.isArray(planData.pages) && planData.pages.length > 0) {
-      plan = planData.pages;
+    // Edge Function returns { diff: "<JSON string of pages array>", mode: "plan", usage }
+    const planPages = typeof planData.diff === 'string'
+      ? JSON.parse(planData.diff)
+      : planData.diff;
+    if (Array.isArray(planPages) && planPages.length > 0) {
+      plan = planPages;
       log(`Plan received: ${plan!.length} page(s) — ${plan!.map((p: PlanPage) => p.name).join(', ')}`);
     } else {
       throw new Error('Plan response missing valid pages array');
@@ -170,11 +174,12 @@ describe('Plan+page flow — multi-page HTML generation', () => {
         return {
           status: 200,
           json: {
-            pages: [
+            diff: JSON.stringify([
               { name: 'index', description: 'Build the homepage with hero section' },
               { name: 'about', description: 'Build the about page' },
               { name: 'pricing', description: 'Build the pricing page with tiers' },
-            ],
+            ]),
+            mode: 'plan',
             usage: { total_tokens: 150 },
           },
         };
@@ -236,10 +241,11 @@ describe('Plan+page flow — multi-page HTML generation', () => {
         return {
           status: 200,
           json: {
-            pages: [
+            diff: JSON.stringify([
               { name: '../../../etc/passwd', description: 'evil page' },
               { name: 'good-page', description: 'safe page' },
-            ],
+            ]),
+            mode: 'plan',
             usage: { total_tokens: 50 },
           },
         };
@@ -271,6 +277,41 @@ describe('Plan+page flow — multi-page HTML generation', () => {
     }
   });
 
+  it('handles planData.diff as an already-parsed array (not a string)', async () => {
+    const { server, url } = await createMockServer((body) => {
+      if (body.mode === 'plan') {
+        // Return diff as a raw array instead of a JSON string
+        return {
+          status: 200,
+          json: {
+            diff: [
+              { name: 'index', description: 'Build the homepage' },
+              { name: 'docs', description: 'Build the docs page' },
+            ],
+            mode: 'plan',
+            usage: { total_tokens: 80 },
+          },
+        };
+      }
+      return {
+        status: 200,
+        json: { diff: '<html><body>Page content</body></html>', usage: { total_tokens: 120 } },
+      };
+    });
+
+    try {
+      const previewDir = path.join(tmpDir, 'task-array-diff');
+      const result = await runPlanPageFlow(url, 'Build a site', 'claude', 'task-array', previewDir);
+
+      assert.deepStrictEqual(result.pageNames, ['index', 'docs']);
+      assert.ok(fs.existsSync(path.join(previewDir, 'index.html')), 'index.html exists');
+      assert.ok(fs.existsSync(path.join(previewDir, 'docs.html')), 'docs.html exists');
+      assert.strictEqual(result.totalTokens, 80 + 120 * 2);
+    } finally {
+      server.close();
+    }
+  });
+
   it('sends mode:page with page description as prompt for each page', async () => {
     const receivedRequests: any[] = [];
 
@@ -280,10 +321,11 @@ describe('Plan+page flow — multi-page HTML generation', () => {
         return {
           status: 200,
           json: {
-            pages: [
+            diff: JSON.stringify([
               { name: 'home', description: 'Build homepage with navigation' },
               { name: 'contact', description: 'Build contact form page' },
-            ],
+            ]),
+            mode: 'plan',
             usage: { total_tokens: 100 },
           },
         };
@@ -361,8 +403,8 @@ describe('Plan+page flow — single-page fallback', () => {
   it('falls back to mode:html when plan returns invalid JSON', async () => {
     const { server, url } = await createMockServer((body) => {
       if (body.mode === 'plan') {
-        // Return valid HTTP 200 but with a pages field that's not an array
-        return { status: 200, json: { pages: 'not-an-array', usage: { total_tokens: 10 } } };
+        // Return valid HTTP 200 but with a diff field that's not valid JSON
+        return { status: 200, json: { diff: 'not-valid-json', mode: 'plan', usage: { total_tokens: 10 } } };
       }
       if (body.mode === 'html') {
         return {
@@ -396,7 +438,7 @@ describe('Plan+page flow — single-page fallback', () => {
   it('falls back when plan returns empty pages array', async () => {
     const { server, url } = await createMockServer((body) => {
       if (body.mode === 'plan') {
-        return { status: 200, json: { pages: [], usage: { total_tokens: 10 } } };
+        return { status: 200, json: { diff: '[]', mode: 'plan', usage: { total_tokens: 10 } } };
       }
       if (body.mode === 'html') {
         return {
@@ -431,7 +473,8 @@ describe('Plan+page flow — progress log messages', () => {
         return {
           status: 200,
           json: {
-            pages: [{ name: 'index', description: 'home' }],
+            diff: JSON.stringify([{ name: 'index', description: 'home' }]),
+            mode: 'plan',
             usage: { total_tokens: 50 },
           },
         };
@@ -461,11 +504,12 @@ describe('Plan+page flow — progress log messages', () => {
         return {
           status: 200,
           json: {
-            pages: [
+            diff: JSON.stringify([
               { name: 'home', description: 'homepage' },
               { name: 'pricing', description: 'pricing page' },
               { name: 'faq', description: 'faq page' },
-            ],
+            ]),
+            mode: 'plan',
             usage: { total_tokens: 50 },
           },
         };
@@ -497,11 +541,12 @@ describe('Plan+page flow — progress log messages', () => {
         return {
           status: 200,
           json: {
-            pages: [
+            diff: JSON.stringify([
               { name: 'index', description: 'home' },
               { name: 'about', description: 'about' },
               { name: 'contact', description: 'contact' },
-            ],
+            ]),
+            mode: 'plan',
             usage: { total_tokens: 50 },
           },
         };
@@ -537,7 +582,8 @@ describe('Plan+page flow — progress log messages', () => {
         return {
           status: 200,
           json: {
-            pages: [{ name: 'index', description: 'home' }, { name: 'about', description: 'about' }],
+            diff: JSON.stringify([{ name: 'index', description: 'home' }, { name: 'about', description: 'about' }]),
+            mode: 'plan',
             usage: { total_tokens: 100 },
           },
         };
