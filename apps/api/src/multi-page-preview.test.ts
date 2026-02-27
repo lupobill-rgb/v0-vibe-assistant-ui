@@ -74,7 +74,7 @@ async function runPlanPageFlow(
 
   if (plan) {
     // ── Step 2: Page loop — build pages in parallel batches ──
-    const CONCURRENCY = 3;
+    const CONCURRENCY = 2;
     for (let i = 0; i < plan.length; i += CONCURRENCY) {
       const batch = plan.slice(i, i + CONCURRENCY);
       const batchPromises = batch.map(async (page, batchIdx) => {

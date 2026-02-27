@@ -559,7 +559,7 @@ async function bootstrap() {
 
           if (plan) {
             // ── Step 2: Page loop — build pages in parallel batches ──
-            const CONCURRENCY = 3;
+            const CONCURRENCY = 2;
             for (let i = 0; i < plan.length; i += CONCURRENCY) {
               const batch = plan.slice(i, i + CONCURRENCY);
               const batchPromises = batch.map(async (page, batchIdx) => {
@@ -591,6 +591,7 @@ async function bootstrap() {
                 totalTokens += r.tokens;
                 pageNames.push(r.name);
               }
+              await new Promise(r => setTimeout(r, 2000));
             }
 
             // Save generated pages to jobs table so the frontend can read last_diff
