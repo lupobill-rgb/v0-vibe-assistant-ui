@@ -55,7 +55,7 @@ async function runPlanPageFlow(
     if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
     if (Array.isArray(planData.pages) && planData.pages.length > 0) {
       plan = planData.pages;
-      log(`Plan received: ${plan.length} page(s) — ${plan.map((p: PlanPage) => p.name).join(', ')}`);
+      log(`Plan received: ${plan!.length} page(s) — ${plan!.map((p: PlanPage) => p.name).join(', ')}`);
     } else {
       throw new Error('Plan response missing valid pages array');
     }
