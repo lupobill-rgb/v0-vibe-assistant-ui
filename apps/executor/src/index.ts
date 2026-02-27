@@ -439,8 +439,8 @@ class VibeExecutor {
           maxBuffer: 10 * 1024 * 1024 // 10MB
         });
 
-        if (stdout) storage.logEvent(task.task_id, `Build stdout: ${stdout.slice(0, 500)}`, 'info');
-        if (stderr) storage.logEvent(task.task_id, `Build stderr: ${stderr.slice(0, 500)}`, 'info');
+        if (stdout) await storage.logEvent(task.task_id, `Build stdout: ${stdout.slice(0, 500)}`, 'info');
+        if (stderr) await storage.logEvent(task.task_id, `Build stderr: ${stderr.slice(0, 500)}`, 'info');
         
         await storage.logEvent(task.task_id, '✓ Build completed successfully', 'success');
       } catch (buildError: any) {
