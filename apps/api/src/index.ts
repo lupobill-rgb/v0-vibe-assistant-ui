@@ -568,7 +568,7 @@ async function bootstrap() {
                 const pageResponse = await fetch(edgeFunctionUrl, {
                   method: 'POST',
                   headers,
-                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', context: 'Original request: ' + prompt + '. All pages: ' + plan.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
+                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', max_tokens: 2000, context: 'Original request: ' + prompt + '. All pages: ' + plan.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
                 });
                 const pageRawText = await pageResponse.text();
                 if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
@@ -580,7 +580,7 @@ async function bootstrap() {
                 await storage.logEvent(taskId, 'Page ' + page.name + ' failed: ' + pageErr.message + ' — skipping', 'info');
               }
 
-              if (i < plan.length - 1) await new Promise(r => setTimeout(r, 5000));
+              if (i < plan.length - 1) await new Promise(r => setTimeout(r, 15000));
             }
 
             // Save generated pages to jobs table so the frontend can read last_diff

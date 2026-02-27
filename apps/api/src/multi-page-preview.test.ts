@@ -83,7 +83,7 @@ async function runPlanPageFlow(
         const pageResponse = await fetch(edgeFunctionUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ prompt: page.description, model, mode: 'page', context: 'Original request: ' + prompt + '. All pages: ' + plan!.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
+          body: JSON.stringify({ prompt: page.description, model, mode: 'page', max_tokens: 2000, context: 'Original request: ' + prompt + '. All pages: ' + plan!.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
         });
         const pageRawText = await pageResponse.text();
         if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
@@ -486,7 +486,7 @@ describe('Plan+page flow — multi-page HTML generation', () => {
     }
   });
 
-  it('does not send max_tokens in page requests (uses model default)', async () => {
+  it('sends max_tokens: 2000 in page requests to stay under rate limit', async () => {
     const receivedRequests: any[] = [];
 
     const { server, url } = await createMockServer((body) => {
@@ -513,11 +513,11 @@ describe('Plan+page flow — multi-page HTML generation', () => {
       const previewDir = path.join(tmpDir, 'task-maxtokens');
       await runPlanPageFlow(url, 'Build a site', 'claude', 'task-mt', previewDir);
 
-      // Neither plan nor page requests should have max_tokens
+      // Plan request should NOT have max_tokens, page request should have 2000
       assert.strictEqual(receivedRequests[0].mode, 'plan');
       assert.strictEqual(receivedRequests[0].max_tokens, undefined, 'Plan call should not have max_tokens');
       assert.strictEqual(receivedRequests[1].mode, 'page');
-      assert.strictEqual(receivedRequests[1].max_tokens, undefined, 'Page call should not have max_tokens');
+      assert.strictEqual(receivedRequests[1].max_tokens, 2000, 'Page call should have max_tokens: 2000');
     } finally {
       server.close();
     }
