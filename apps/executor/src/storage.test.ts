@@ -1,139 +1,164 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
+import { storage, VibeTask, ExecutionState } from './storage';
 
 /**
- * Tests for storage functionality, specifically verifying that
- * vibe_projects table uses `id` as primary key (not `project_id`)
+ * Integration tests for the Supabase-backed ExecutorStorage.
+ *
+ * These tests hit the live Supabase instance using the configured
+ * SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY env vars.
+ * Each test run uses unique IDs (timestamp-based) to avoid collisions.
  */
 
-describe('Storage - Project Lookup', () => {
-  let testDb: Database.Database;
-  let testDbPath: string;
+const TEST_PREFIX = `test-${Date.now()}`;
+const TEST_PROJECT_ID = `${TEST_PREFIX}-project`;
+const TEST_TASK_ID = `${TEST_PREFIX}-task`;
 
-  before(() => {
-    // Create a temporary test database
-    testDbPath = path.join('/tmp', `test-vibe-${Date.now()}.db`);
-    testDb = new Database(testDbPath);
+// Helper to build a minimal task object
+function makeTask(overrides: Partial<VibeTask> = {}): Omit<VibeTask, 'iteration_count'> {
+  return {
+    task_id: TEST_TASK_ID,
+    user_prompt: 'Test prompt for storage integration test',
+    project_id: TEST_PROJECT_ID,
+    source_branch: 'main',
+    destination_branch: `test-branch-${TEST_PREFIX}`,
+    execution_state: 'queued' as ExecutionState,
+    initiated_at: new Date().toISOString(),
+    last_modified: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
-    // Initialize the same schema as storage.ts
-    testDb.exec(`
-      CREATE TABLE IF NOT EXISTS vibe_projects (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        repository_url TEXT NOT NULL,
-        local_path TEXT NOT NULL,
-        last_synced INTEGER,
-        created_at INTEGER NOT NULL
-      );
+describe('ExecutorStorage — Supabase integration', () => {
+  // ── Cleanup helper ──
+  // We delete test rows in `after` so a failed run doesn't leave junk.
+  // Deletion is best-effort; we swallow errors so cleanup never masks test failures.
 
-      CREATE TABLE IF NOT EXISTS vibe_tasks (
-        task_id TEXT PRIMARY KEY,
-        user_prompt TEXT NOT NULL,
-        project_id TEXT,
-        repository_url TEXT,
-        source_branch TEXT NOT NULL,
-        destination_branch TEXT NOT NULL,
-        execution_state TEXT NOT NULL,
-        pull_request_link TEXT,
-        iteration_count INTEGER DEFAULT 0,
-        initiated_at INTEGER NOT NULL,
-        last_modified INTEGER NOT NULL,
-        FOREIGN KEY (project_id) REFERENCES vibe_projects(id)
-      );
+  after(async () => {
+    try {
+      // The storage class doesn't expose raw delete, so we use the client directly.
+      // Import createClient just for cleanup.
+      const { createClient } = await import('@supabase/supabase-js');
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) return;
+      const sb = createClient(url, key, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
 
-      CREATE TABLE IF NOT EXISTS vibe_events (
-        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task_id TEXT NOT NULL,
-        event_message TEXT NOT NULL,
-        severity TEXT NOT NULL,
-        event_time INTEGER NOT NULL,
-        FOREIGN KEY (task_id) REFERENCES vibe_tasks(task_id)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_events_by_task ON vibe_events(task_id, event_time);
-      CREATE INDEX IF NOT EXISTS idx_tasks_by_project ON vibe_tasks(project_id);
-    `);
-  });
-
-  after(() => {
-    // Clean up test database
-    testDb.close();
-    if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath);
+      // Delete in dependency order: events first, then jobs
+      await sb.from('job_events').delete().eq('job_id', TEST_TASK_ID);
+      await sb.from('jobs').delete().eq('id', TEST_TASK_ID);
+    } catch {
+      // best-effort cleanup
     }
   });
 
-  it('should insert and retrieve project using id column', () => {
-    const projectId = 'test-project-123';
-    const projectData = {
-      id: projectId,
-      name: 'Test Project',
-      repository_url: 'https://github.com/test/repo',
-      local_path: '/data/repos/test-project-123',
-      created_at: Date.now()
-    };
+  // ── Task CRUD ──
 
-    // Insert project using id column
-    const insertStmt = testDb.prepare(`
-      INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    insertStmt.run(
-      projectData.id,
-      projectData.name,
-      projectData.repository_url,
-      projectData.local_path,
-      projectData.created_at
-    );
+  it('should create and retrieve a task', async () => {
+    const task = makeTask();
+    await storage.createTask(task);
 
-    // Query using id column (not project_id)
-    const selectStmt = testDb.prepare('SELECT * FROM vibe_projects WHERE id = ?');
-    const result = selectStmt.get(projectId);
-
-    assert.ok(result, 'Project should be retrieved');
-    assert.strictEqual(result.id, projectId, 'Project id should match');
-    assert.strictEqual(result.name, 'Test Project', 'Project name should match');
+    const fetched = await storage.getTask(TEST_TASK_ID);
+    assert.ok(fetched, 'Task should be retrievable after creation');
+    assert.strictEqual(fetched.task_id, TEST_TASK_ID);
+    assert.strictEqual(fetched.user_prompt, task.user_prompt);
+    assert.strictEqual(fetched.execution_state, 'queued');
+    assert.strictEqual(fetched.iteration_count, 0);
   });
 
-  it('should allow tasks to reference projects via project_id foreign key', () => {
-    const projectId = 'test-project-456';
-    const taskId = 'test-task-123';
+  it('should update task state', async () => {
+    await storage.updateTaskState(TEST_TASK_ID, 'cloning');
 
-    // Insert a project
-    const insertProject = testDb.prepare(`
-      INSERT INTO vibe_projects (id, name, repository_url, local_path, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    insertProject.run(projectId, 'Test Project 2', 'https://github.com/test/repo2', '/data/repos/test-project-456', Date.now());
+    const fetched = await storage.getTask(TEST_TASK_ID);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.execution_state, 'cloning');
+  });
 
-    // Insert a task that references the project
-    // Note: vibe_tasks.project_id is a foreign key to projects.id
-    const insertTask = testDb.prepare(`
-      INSERT INTO vibe_tasks (task_id, user_prompt, project_id, source_branch, destination_branch, execution_state, initiated_at, last_modified)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    insertTask.run(taskId, 'Test prompt', projectId, 'main', 'feature', 'queued', Date.now(), Date.now());
+  it('should increment iteration count', async () => {
+    await storage.incrementIteration(TEST_TASK_ID);
+    await storage.incrementIteration(TEST_TASK_ID);
 
-    // Verify task references correct project
-    const selectTask = testDb.prepare('SELECT * FROM vibe_tasks WHERE task_id = ?');
-    const task = selectTask.get(taskId);
+    const fetched = await storage.getTask(TEST_TASK_ID);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.iteration_count, 2);
+  });
 
-    assert.ok(task, 'Task should be retrieved');
-    assert.strictEqual(task.project_id, projectId, 'Task should reference project via project_id');
+  it('should set PR URL', async () => {
+    const prUrl = 'https://github.com/test/repo/pull/42';
+    await storage.setPrUrl(TEST_TASK_ID, prUrl);
 
-    // Verify we can join to get project info
-    const joinQuery = testDb.prepare(`
-      SELECT t.*, p.name as project_name
-      FROM vibe_tasks t
-      INNER JOIN vibe_projects p ON t.project_id = p.id
-      WHERE t.task_id = ?
-    `);
-    const joinResult = joinQuery.get(taskId);
+    const fetched = await storage.getTask(TEST_TASK_ID);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.pull_request_link, prUrl);
+  });
 
-    assert.ok(joinResult, 'Join should return result');
-    assert.strictEqual(joinResult.project_name, 'Test Project 2', 'Should join correctly via project_id -> id');
+  it('should set preview URL', async () => {
+    const previewUrl = 'https://preview.example.com/42';
+    await storage.setPreviewUrl(TEST_TASK_ID, previewUrl);
+
+    const fetched = await storage.getTask(TEST_TASK_ID);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.preview_url, previewUrl);
+  });
+
+  it('should update usage metrics', async () => {
+    await storage.updateTaskUsageMetrics(TEST_TASK_ID, {
+      llm_prompt_tokens: 100,
+      llm_completion_tokens: 200,
+      llm_total_tokens: 300,
+      preflight_seconds: 5,
+      total_job_seconds: 30,
+      files_changed_count: 3,
+    });
+
+    const fetched = await storage.getTask(TEST_TASK_ID);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.llm_prompt_tokens, 100);
+    assert.strictEqual(fetched.llm_completion_tokens, 200);
+    assert.strictEqual(fetched.llm_total_tokens, 300);
+    assert.strictEqual(fetched.preflight_seconds, 5);
+    assert.strictEqual(fetched.total_job_seconds, 30);
+    assert.strictEqual(fetched.files_changed_count, 3);
+  });
+
+  it('should include the task in recent tasks list', async () => {
+    const recent = await storage.getRecentTasks();
+    const found = recent.find((t) => t.task_id === TEST_TASK_ID);
+    assert.ok(found, 'Test task should appear in recent tasks');
+  });
+
+  // ── Events ──
+
+  it('should log and retrieve events for a task', async () => {
+    await storage.logEvent(TEST_TASK_ID, 'First event', 'info');
+    await storage.logEvent(TEST_TASK_ID, 'Second event', 'success');
+    await storage.logEvent(TEST_TASK_ID, 'Error event', 'error');
+
+    const events = await storage.getEventsForTask(TEST_TASK_ID);
+    assert.ok(events.length >= 3, `Expected at least 3 events, got ${events.length}`);
+
+    const messages = events.map((e) => e.event_message);
+    assert.ok(messages.includes('First event'));
+    assert.ok(messages.includes('Second event'));
+    assert.ok(messages.includes('Error event'));
+  });
+
+  it('should retrieve events after a given time', async () => {
+    // All events created above should have event_time after epoch
+    const events = await storage.getEventsAfterTime(TEST_TASK_ID, '1970-01-01T00:00:00.000Z');
+    assert.ok(events.length >= 3, 'Should return events after epoch');
+
+    // Events after far-future should be empty
+    const futureEvents = await storage.getEventsAfterTime(TEST_TASK_ID, '2099-01-01T00:00:00.000Z');
+    assert.strictEqual(futureEvents.length, 0, 'No events should exist in the far future');
+  });
+
+  // ── Project lookup ──
+
+  it('should return undefined for a nonexistent project', async () => {
+    const project = await storage.getProject('nonexistent-project-id-9999');
+    assert.strictEqual(project, undefined);
   });
 });
