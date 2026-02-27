@@ -526,17 +526,38 @@ async function bootstrap() {
             body: JSON.stringify({ prompt, model: resolvedModel }),
           });
 
-          const data = await response.json() as { error?: string; diff: string; usage: { total_tokens: number } };
-          if (!response.ok) throw new Error(data.error || 'Edge Function call failed');
+          const rawText = await response.text();
+          if (!response.ok) throw new Error(rawText.slice(0, 500) || 'Edge Function call failed');
+          let data: { error?: string; diff: string; usage: { total_tokens: number } };
+          try {
+            data = JSON.parse(rawText);
+          } catch (parseErr) {
+            console.error('JSON parse failed. First 500 chars:', rawText.slice(0, 500));
+            throw new Error('Edge Function returned non-JSON response');
+          }
 
           await storage.setTaskDiff(taskId, data.diff);
 
-          // The edge function returns raw HTML in the `diff` field (mode defaults to "html").
-          // Use the response directly — no diff parsing needed.
-          const html = data.diff;
           const previewDir = path.join('/data/previews', taskId);
           fs.mkdirSync(previewDir, { recursive: true });
-          fs.writeFileSync(path.join(previewDir, 'index.html'), html);
+
+          let pageNames: string[];
+          try {
+            const pages = JSON.parse(data.diff) as { name: string; html: string }[];
+            if (Array.isArray(pages) && pages.length > 0 && pages[0].name && pages[0].html) {
+              pageNames = pages.map(p => p.name);
+              for (const page of pages) {
+                fs.writeFileSync(path.join(previewDir, page.name), page.html);
+              }
+            } else {
+              throw new Error('not a pages array');
+            }
+          } catch {
+            // Fallback: treat data.diff as single-page HTML
+            pageNames = ['index.html'];
+            fs.writeFileSync(path.join(previewDir, 'index.html'), data.diff);
+          }
+          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify({ pages: pageNames }));
           await storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
           await storage.logEvent(taskId, 'Preview generated', 'info');
 
