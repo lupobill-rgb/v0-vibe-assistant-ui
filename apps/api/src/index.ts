@@ -511,45 +511,110 @@ async function bootstrap() {
       (async () => {
         try {
           await storage.updateTaskState(taskId, 'calling_llm');
-          await storage.logEvent(taskId, 'Calling Edge Function...', 'info');
           const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
           const supabaseKey = process.env.SUPABASE_ANON_KEY;
           if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
-          const response = await fetch(`${supabaseUrl}/functions/v1/generate-diff`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ prompt, model: resolvedModel, mode: 'multi' }),
-          });
-          const rawText = await response.text();
-          if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
-          let data: { error?: string; diff: string; usage: { total_tokens: number } };
+
+          const edgeFunctionUrl = `${supabaseUrl}/functions/v1/generate-diff`;
+          const headers = {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          };
+
+          // ── Step 1: Plan call — ask the LLM for a page plan ──
+          let plan: { name: string; description: string }[] | null = null;
+          let totalTokens = 0;
+
           try {
-            data = JSON.parse(rawText);
-          } catch (parseErr) {
-            console.error(`Job ${taskId} — raw response (${rawText.length} chars):`, rawText.slice(0, 500));
-            throw new Error(`Edge Function returned invalid JSON (${rawText.length} chars)`);
+            await storage.logEvent(taskId, 'Generating plan...', 'info');
+            const planResponse = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'plan' }),
+            });
+            const planRawText = await planResponse.text();
+            if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
+            const planData = JSON.parse(planRawText);
+            if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
+            // planData should contain { pages: [{ name, description }], usage }
+            if (Array.isArray(planData.pages) && planData.pages.length > 0) {
+              plan = planData.pages;
+              if (!plan || plan.length === 0) {
+                throw new Error('Plan response returned empty pages array');
+              }
+              await storage.logEvent(taskId, `Plan received: ${plan.length} page(s) — ${plan.map((p: { name: string }) => p.name).join(', ')}`, 'info');
+            } else {
+              throw new Error('Plan response missing valid pages array');
+            }
+          } catch (planErr: any) {
+            // Plan call failed — fall back to single-page build
+            await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'info');
+            plan = null;
           }
-          await storage.setTaskDiff(taskId, data.diff);
+
           const previewDir = path.join('/data/previews', taskId);
           fs.mkdirSync(previewDir, { recursive: true });
-          let pages: { name: string; html: string }[];
-          try {
-            const parsed = JSON.parse(data.diff);
-            pages = Array.isArray(parsed) ? parsed : [{ name: 'index', html: data.diff }];
-          } catch {
-            pages = [{ name: 'index', html: data.diff }];
+
+          let pageNames: string[] = [];
+
+          if (plan) {
+            // ── Step 2: Page loop — build each page individually ──
+            for (let i = 0; i < plan.length; i++) {
+              const page = plan[i];
+              const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+              await storage.logEvent(taskId, `Building page ${i + 1} of ${plan.length}: ${page.name}...`, 'info');
+
+              const pageResponse = await fetch(edgeFunctionUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page' }),
+              });
+              const pageRawText = await pageResponse.text();
+              if (!pageResponse.ok) throw new Error(`Page "${page.name}" call returned ${pageResponse.status}: ${pageRawText.slice(0, 200)}`);
+
+              let pageData: { diff: string; usage: { total_tokens: number } };
+              try {
+                pageData = JSON.parse(pageRawText);
+              } catch {
+                throw new Error(`Page "${page.name}" returned invalid JSON (${pageRawText.length} chars)`);
+              }
+
+              if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
+
+              // ── Step 3 (per page): Write the HTML file ──
+              fs.writeFileSync(path.join(previewDir, `${safeName}.html`), pageData.diff);
+              pageNames.push(page.name);
+            }
+          } else {
+            // ── Fallback: single-page build with mode: 'html' ──
+            await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
+            const response = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'html' }),
+            });
+            const rawText = await response.text();
+            if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
+
+            let data: { diff: string; usage: { total_tokens: number } };
+            try {
+              data = JSON.parse(rawText);
+            } catch {
+              console.error(`Job ${taskId} — raw response (${rawText.length} chars):`, rawText.slice(0, 500));
+              throw new Error(`Edge Function returned invalid JSON (${rawText.length} chars)`);
+            }
+
+            if (data.usage?.total_tokens) totalTokens += data.usage.total_tokens;
+            fs.writeFileSync(path.join(previewDir, 'index.html'), data.diff);
+            pageNames = ['index'];
           }
-          for (const page of pages) {
-            const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-            fs.writeFileSync(path.join(previewDir, `${safeName}.html`), page.html);
-          }
-          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pages.map(p => p.name)));
-          await storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
+
+          // ── Step 3: Write manifest and finalize ──
+          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
+          const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
+          await storage.setPreviewUrl(taskId, `/previews/${taskId}/${firstPage}.html`);
           await storage.logEvent(taskId, 'Preview generated', 'info');
-          await storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
+          await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
         } catch (err: any) {
