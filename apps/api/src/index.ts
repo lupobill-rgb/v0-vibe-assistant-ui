@@ -539,16 +539,13 @@ async function bootstrap() {
             // planData should contain { pages: [{ name, description }], usage }
             if (Array.isArray(planData.pages) && planData.pages.length > 0) {
               plan = planData.pages;
-              if (!plan || plan.length === 0) {
-                throw new Error('Plan response returned empty pages array');
-              }
-              await storage.logEvent(taskId, `Plan received: ${plan.length} page(s) — ${plan.map((p: { name: string }) => p.name).join(', ')}`, 'info');
+              await storage.logEvent(taskId, `Plan received: ${plan!.length} page(s) — ${plan!.map((p: { name: string }) => p.name).join(', ')}`, 'info');
             } else {
               throw new Error('Plan response missing valid pages array');
             }
           } catch (planErr: any) {
             // Plan call failed — fall back to single-page build
-            await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'info');
+            await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'warning');
             plan = null;
           }
 
