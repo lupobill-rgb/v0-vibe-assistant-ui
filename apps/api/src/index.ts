@@ -523,30 +523,39 @@ async function bootstrap() {
             },
             body: JSON.stringify({ prompt, model: resolvedModel, mode: 'multi' }),
           });
+
           const rawText = await response.text();
-          if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
+          if (!response.ok) throw new Error(rawText.slice(0, 500) || 'Edge Function call failed');
           let data: { error?: string; diff: string; usage: { total_tokens: number } };
           try {
             data = JSON.parse(rawText);
           } catch (parseErr) {
-            console.error(`Job ${taskId} — raw response (${rawText.length} chars):`, rawText.slice(0, 500));
-            throw new Error(`Edge Function returned invalid JSON (${rawText.length} chars)`);
+            console.error('JSON parse failed. First 500 chars:', rawText.slice(0, 500));
+            throw new Error('Edge Function returned non-JSON response');
           }
+
           await storage.setTaskDiff(taskId, data.diff);
+
           const previewDir = path.join('/data/previews', taskId);
           fs.mkdirSync(previewDir, { recursive: true });
-          let pages: { name: string; html: string }[];
+
+          let pageNames: string[];
           try {
-            const parsed = JSON.parse(data.diff);
-            pages = Array.isArray(parsed) ? parsed : [{ name: 'index', html: data.diff }];
+            const pages = JSON.parse(data.diff) as { name: string; html: string }[];
+            if (Array.isArray(pages) && pages.length > 0 && pages[0].name && pages[0].html) {
+              pageNames = pages.map(p => p.name);
+              for (const page of pages) {
+                fs.writeFileSync(path.join(previewDir, page.name), page.html);
+              }
+            } else {
+              throw new Error('not a pages array');
+            }
           } catch {
-            pages = [{ name: 'index', html: data.diff }];
+            // Fallback: treat data.diff as single-page HTML
+            pageNames = ['index.html'];
+            fs.writeFileSync(path.join(previewDir, 'index.html'), data.diff);
           }
-          for (const page of pages) {
-            const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-            fs.writeFileSync(path.join(previewDir, `${safeName}.html`), page.html);
-          }
-          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pages.map(p => p.name)));
+          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify({ pages: pageNames }));
           await storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
           await storage.logEvent(taskId, 'Preview generated', 'info');
           await storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
