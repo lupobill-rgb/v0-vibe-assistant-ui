@@ -19,7 +19,7 @@ import http from 'node:http';
 
 // ── Extracted helpers (mirror the logic in index.ts) ─────────────────────────
 
-type PlanPage = { name: string; description: string };
+type PlanPage = { name: string; title: string; description: string };
 
 /**
  * Simulates the plan+page orchestration from the fire-and-forget block.
@@ -73,31 +73,38 @@ async function runPlanPageFlow(
   let pageNames: string[] = [];
 
   if (plan) {
-    // ── Step 2: Page loop ──
-    for (let i = 0; i < plan.length; i++) {
-      const page = plan[i];
-      const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-      log(`Building page ${i + 1} of ${plan.length}: ${page.name}...`);
+    // ── Step 2: Page loop — build pages in parallel batches ──
+    const CONCURRENCY = 3;
+    for (let i = 0; i < plan.length; i += CONCURRENCY) {
+      const batch = plan.slice(i, i + CONCURRENCY);
+      const batchPromises = batch.map(async (page, batchIdx) => {
+        const idx = i + batchIdx;
+        const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+        log(`Building page ${idx + 1} of ${plan.length}: ${page.name}...`);
 
-      const pageResponse = await fetch(edgeFunctionUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ prompt: page.description, model, mode: 'page' }),
+        const pageResponse = await fetch(edgeFunctionUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ prompt: page.description, model, mode: 'page', context: 'Original request: ' + prompt + '\nAll pages in this site: ' + plan!.map(p => p.name + ' - ' + p.title).join(', ') + '\nMaintain consistent design: same colors, fonts, nav bar, and footer across all pages.' }),
+        });
+        const pageRawText = await pageResponse.text();
+        if (!pageResponse.ok) throw new Error(`Page "${page.name}" call returned ${pageResponse.status}: ${pageRawText.slice(0, 200)}`);
+
+        let pageData: { diff: string; usage: { total_tokens: number } };
+        try {
+          pageData = JSON.parse(pageRawText);
+        } catch {
+          throw new Error(`Page "${page.name}" returned invalid JSON (${pageRawText.length} chars)`);
+        }
+
+        fs.writeFileSync(path.join(previewDir, `${safeName}.html`), pageData.diff);
+        return { name: page.name, safeName, tokens: pageData.usage?.total_tokens || 0 };
       });
-      const pageRawText = await pageResponse.text();
-      if (!pageResponse.ok) throw new Error(`Page "${page.name}" call returned ${pageResponse.status}: ${pageRawText.slice(0, 200)}`);
-
-      let pageData: { diff: string; usage: { total_tokens: number } };
-      try {
-        pageData = JSON.parse(pageRawText);
-      } catch {
-        throw new Error(`Page "${page.name}" returned invalid JSON (${pageRawText.length} chars)`);
+      const results = await Promise.all(batchPromises);
+      for (const r of results) {
+        totalTokens += r.tokens;
+        pageNames.push(r.name);
       }
-
-      if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
-
-      fs.writeFileSync(path.join(previewDir, `${safeName}.html`), pageData.diff);
-      pageNames.push(page.name);
     }
   } else {
     // ── Fallback: single-page build with mode: 'html' ──
@@ -175,9 +182,9 @@ describe('Plan+page flow — multi-page HTML generation', () => {
           status: 200,
           json: {
             diff: JSON.stringify([
-              { name: 'index', description: 'Build the homepage with hero section' },
-              { name: 'about', description: 'Build the about page' },
-              { name: 'pricing', description: 'Build the pricing page with tiers' },
+              { name: 'index', title: 'Home', description: 'Build the homepage with hero section' },
+              { name: 'about', title: 'About Us', description: 'Build the about page' },
+              { name: 'pricing', title: 'Pricing', description: 'Build the pricing page with tiers' },
             ]),
             mode: 'plan',
             usage: { total_tokens: 150 },
@@ -242,8 +249,8 @@ describe('Plan+page flow — multi-page HTML generation', () => {
           status: 200,
           json: {
             diff: JSON.stringify([
-              { name: '../../../etc/passwd', description: 'evil page' },
-              { name: 'good-page', description: 'safe page' },
+              { name: '../../../etc/passwd', title: 'Evil', description: 'evil page' },
+              { name: 'good-page', title: 'Good Page', description: 'safe page' },
             ]),
             mode: 'plan',
             usage: { total_tokens: 50 },
@@ -285,8 +292,8 @@ describe('Plan+page flow — multi-page HTML generation', () => {
           status: 200,
           json: {
             diff: [
-              { name: 'index', description: 'Build the homepage' },
-              { name: 'docs', description: 'Build the docs page' },
+              { name: 'index', title: 'Home', description: 'Build the homepage' },
+              { name: 'docs', title: 'Documentation', description: 'Build the docs page' },
             ],
             mode: 'plan',
             usage: { total_tokens: 80 },
@@ -322,8 +329,8 @@ describe('Plan+page flow — multi-page HTML generation', () => {
           status: 200,
           json: {
             diff: JSON.stringify([
-              { name: 'home', description: 'Build homepage with navigation' },
-              { name: 'contact', description: 'Build contact form page' },
+              { name: 'home', title: 'Home', description: 'Build homepage with navigation' },
+              { name: 'contact', title: 'Contact', description: 'Build contact form page' },
             ]),
             mode: 'plan',
             usage: { total_tokens: 100 },
@@ -349,6 +356,112 @@ describe('Plan+page flow — multi-page HTML generation', () => {
       assert.strictEqual(receivedRequests[1].prompt, 'Build homepage with navigation');
       assert.strictEqual(receivedRequests[2].mode, 'page');
       assert.strictEqual(receivedRequests[2].prompt, 'Build contact form page');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('builds >3 pages correctly using multiple batches', async () => {
+    const fivePages = [
+      { name: 'index', title: 'Home', description: 'homepage' },
+      { name: 'about', title: 'About Us', description: 'about page' },
+      { name: 'pricing', title: 'Pricing', description: 'pricing page' },
+      { name: 'blog', title: 'Blog', description: 'blog page' },
+      { name: 'contact', title: 'Contact', description: 'contact page' },
+    ];
+
+    const { server, url } = await createMockServer((body) => {
+      if (body.mode === 'plan') {
+        return {
+          status: 200,
+          json: {
+            diff: JSON.stringify(fivePages),
+            mode: 'plan',
+            usage: { total_tokens: 100 },
+          },
+        };
+      }
+      return {
+        status: 200,
+        json: { diff: `<html><body>${body.prompt}</body></html>`, usage: { total_tokens: 50 } },
+      };
+    });
+
+    try {
+      const previewDir = path.join(tmpDir, 'task-batching');
+      const result = await runPlanPageFlow(url, 'Build a 5-page site', 'claude', 'task-batch', previewDir);
+
+      // All 5 pages should be built
+      assert.deepStrictEqual(result.pageNames, ['index', 'about', 'pricing', 'blog', 'contact']);
+
+      // All 5 HTML files should exist
+      for (const page of fivePages) {
+        const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+        assert.ok(fs.existsSync(path.join(previewDir, `${safeName}.html`)), `${safeName}.html exists`);
+      }
+
+      // Token count: 100 (plan) + 5 * 50 (pages) = 350
+      assert.strictEqual(result.totalTokens, 350);
+
+      // Build logs should reference all 5 pages
+      const buildLogs = result.logs.filter(l => l.startsWith('Building page'));
+      assert.strictEqual(buildLogs.length, 5, `Should have 5 build logs, got ${buildLogs.length}`);
+      assert.ok(buildLogs[0].includes('1 of 5'), `First: ${buildLogs[0]}`);
+      assert.ok(buildLogs[3].includes('4 of 5'), `Fourth: ${buildLogs[3]}`);
+      assert.ok(buildLogs[4].includes('5 of 5'), `Fifth: ${buildLogs[4]}`);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('sends context field with original prompt and sibling page info in each page request', async () => {
+    const receivedRequests: any[] = [];
+
+    const planPages = [
+      { name: 'home', title: 'Home Page', description: 'Build the homepage' },
+      { name: 'about', title: 'About Us', description: 'Build the about page' },
+    ];
+
+    const { server, url } = await createMockServer((body) => {
+      receivedRequests.push(body);
+      if (body.mode === 'plan') {
+        return {
+          status: 200,
+          json: {
+            diff: JSON.stringify(planPages),
+            mode: 'plan',
+            usage: { total_tokens: 80 },
+          },
+        };
+      }
+      return {
+        status: 200,
+        json: { diff: '<html>page</html>', usage: { total_tokens: 60 } },
+      };
+    });
+
+    try {
+      const previewDir = path.join(tmpDir, 'task-context');
+      await runPlanPageFlow(url, 'Build a startup website', 'claude', 'task-ctx', previewDir);
+
+      // Plan request (index 0) should NOT have context
+      assert.strictEqual(receivedRequests[0].mode, 'plan');
+      assert.strictEqual(receivedRequests[0].context, undefined, 'Plan call should not have context');
+
+      // Page requests (index 1, 2) should have context
+      for (let i = 1; i < receivedRequests.length; i++) {
+        const req = receivedRequests[i];
+        assert.strictEqual(req.mode, 'page');
+        assert.ok(req.context, `Page request ${i} should have context field`);
+        assert.ok(req.context.includes('Original request: Build a startup website'),
+          `Context should include original prompt, got: ${req.context.slice(0, 100)}`);
+        assert.ok(req.context.includes('home - Home Page'),
+          `Context should include sibling page info for home`);
+        assert.ok(req.context.includes('about - About Us'),
+          `Context should include sibling page info for about`);
+        assert.ok(req.context.includes('Maintain consistent design'),
+          `Context should include consistency instruction`);
+      }
     } finally {
       server.close();
     }
@@ -473,7 +586,7 @@ describe('Plan+page flow — progress log messages', () => {
         return {
           status: 200,
           json: {
-            diff: JSON.stringify([{ name: 'index', description: 'home' }]),
+            diff: JSON.stringify([{ name: 'index', title: 'Home', description: 'home' }]),
             mode: 'plan',
             usage: { total_tokens: 50 },
           },
@@ -505,9 +618,9 @@ describe('Plan+page flow — progress log messages', () => {
           status: 200,
           json: {
             diff: JSON.stringify([
-              { name: 'home', description: 'homepage' },
-              { name: 'pricing', description: 'pricing page' },
-              { name: 'faq', description: 'faq page' },
+              { name: 'home', title: 'Home', description: 'homepage' },
+              { name: 'pricing', title: 'Pricing', description: 'pricing page' },
+              { name: 'faq', title: 'FAQ', description: 'faq page' },
             ]),
             mode: 'plan',
             usage: { total_tokens: 50 },
@@ -542,9 +655,9 @@ describe('Plan+page flow — progress log messages', () => {
           status: 200,
           json: {
             diff: JSON.stringify([
-              { name: 'index', description: 'home' },
-              { name: 'about', description: 'about' },
-              { name: 'contact', description: 'contact' },
+              { name: 'index', title: 'Home', description: 'home' },
+              { name: 'about', title: 'About', description: 'about' },
+              { name: 'contact', title: 'Contact', description: 'contact' },
             ]),
             mode: 'plan',
             usage: { total_tokens: 50 },
@@ -582,7 +695,7 @@ describe('Plan+page flow — progress log messages', () => {
         return {
           status: 200,
           json: {
-            diff: JSON.stringify([{ name: 'index', description: 'home' }, { name: 'about', description: 'about' }]),
+            diff: JSON.stringify([{ name: 'index', title: 'Home', description: 'home' }, { name: 'about', title: 'About', description: 'about' }]),
             mode: 'plan',
             usage: { total_tokens: 100 },
           },
@@ -704,9 +817,9 @@ describe('last_diff payload for multi-page (frontend parseDiff compat)', () => {
   it('multi-page JSON array from setTaskDiff is parseable by frontend parseDiff', () => {
     // Simulate the multi-page flow from index.ts
     const plan = [
-      { name: 'index', description: 'Home page' },
-      { name: 'about', description: 'About page' },
-      { name: 'pricing', description: 'Pricing page' },
+      { name: 'index', title: 'Home', description: 'Home page' },
+      { name: 'about', title: 'About', description: 'About page' },
+      { name: 'pricing', title: 'Pricing', description: 'Pricing page' },
     ];
 
     const previewDir = path.join(tmpDir, 'task-multi-diff');
@@ -753,8 +866,8 @@ describe('last_diff payload for multi-page (frontend parseDiff compat)', () => {
 
   it('multi-page payload with special characters in names is parseable', () => {
     const plan = [
-      { name: 'My Cool Page!', description: 'A page with special chars' },
-      { name: 'page-2', description: 'Second page' },
+      { name: 'My Cool Page!', title: 'My Cool Page', description: 'A page with special chars' },
+      { name: 'page-2', title: 'Page 2', description: 'Second page' },
     ];
 
     const previewDir = path.join(tmpDir, 'task-special');
