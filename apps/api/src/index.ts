@@ -512,18 +512,16 @@ async function bootstrap() {
         try {
           await storage.updateTaskState(taskId, 'calling_llm');
           await storage.logEvent(taskId, 'Calling Edge Function...', 'info');
-
           const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
           const supabaseKey = process.env.SUPABASE_ANON_KEY;
           if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
-
           const response = await fetch(`${supabaseUrl}/functions/v1/generate-diff`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${supabaseKey}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ prompt, model: resolvedModel }),
+            body: JSON.stringify({ prompt, model: resolvedModel, mode: 'multi' }),
           });
 
           const rawText = await response.text();
@@ -560,7 +558,6 @@ async function bootstrap() {
           fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify({ pages: pageNames }));
           await storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
           await storage.logEvent(taskId, 'Preview generated', 'info');
-
           await storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
