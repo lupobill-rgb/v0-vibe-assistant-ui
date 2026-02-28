@@ -36,13 +36,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       const projectType = detectProjectType(prompt.trim())
 
       if (projectType === "dashboard") {
-        const pages = await generateDashboard(prompt.trim())
+        const pages = await generateDashboard(prompt.trim(), selectedProjectId)
         setGeneratedPages(pages)
         return
       }
 
       // For website / landing types, use multi-page generation
-      const pages = await generateMultiPageSite(prompt.trim())
+      const pages = await generateMultiPageSite(prompt.trim(), selectedProjectId)
       setGeneratedPages(pages)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed")
