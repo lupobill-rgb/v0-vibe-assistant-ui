@@ -5,8 +5,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const VIBE_SYSTEM_RULES = `VIBE PLATFORM — GOVERNING RULES (NON-NEGOTIABLE)
+Mission: Convert user intent into deployed, production-grade software.
+Stack: Next.js + NestJS + Supabase + Vercel + Docker executor.
+LLM: You are the primary Claude execution engine. GPT-4 is infrastructure fallback only (rate limit / timeout / 529).
+
+Rules — apply to every output:
+1. Reliability over cleverness. Working output beats clever broken output.
+2. Atomic diffs only. Never whole-file rewrites unless explicitly instructed.
+3. Secure by default: no secrets in output, RLS on, least privilege.
+4. Never silently fail. Return plain-English explanation if task cannot complete.
+5. No raw stack traces in user-facing output. Ever.
+6. OSS patterns first. No custom primitives when a standard approach exists.
+7. Every change must be scoped, minimal, and purposeful.`;
+
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
-async function callClaude(systemMsg: string, prompt: string) {
+async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
 
@@ -19,7 +33,7 @@ async function callClaude(systemMsg: string, prompt: string) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system: systemMsg,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -41,7 +55,7 @@ async function callClaude(systemMsg: string, prompt: string) {
 }
 
 /** Call OpenAI GPT and return { diff, usage }. Throws on failure. */
-async function callGpt(systemMsg: string, prompt: string) {
+async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
 
@@ -53,7 +67,7 @@ async function callGpt(systemMsg: string, prompt: string) {
     },
     body: JSON.stringify({
       model: "gpt-4-turbo",
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       messages: [
         { role: "system", content: systemMsg },
         { role: "user", content: prompt },
@@ -76,7 +90,7 @@ async function callGpt(systemMsg: string, prompt: string) {
   };
 }
 
-const PROVIDERS: Record<string, (s: string, p: string) => Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } }>> = {
+const PROVIDERS: Record<string, (s: string, p: string, m?: number) => Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } }>> = {
   claude: callClaude,
   gpt: callGpt,
 };
@@ -97,7 +111,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, context, model = "claude" } = await req.json();
+    const { prompt, context, model = "claude", system, max_tokens } = await req.json();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -112,9 +126,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemMsg =
-      "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
-      (context ? "\nProject context:\n" + context : "");
+    // Build system message: always prepend VIBE_SYSTEM_RULES
+    const baseSystemMsg = system
+      ? system
+      : "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
+        (context ? "\nProject context:\n" + context : "");
+    const systemMsg = VIBE_SYSTEM_RULES + "\n" + baseSystemMsg;
+    const resolvedMaxTokens = max_tokens || 4096;
 
     // Try the requested model first
     let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
@@ -122,14 +140,14 @@ Deno.serve(async (req: Request) => {
     let originalModel = model;
 
     try {
-      result = await PROVIDERS[model](systemMsg, prompt);
+      result = await PROVIDERS[model](systemMsg, prompt, resolvedMaxTokens);
     } catch (primaryErr) {
       // Primary model failed — try the other provider
       const fallbackModel = flipModel(model);
       console.warn(`Primary model "${model}" failed: ${primaryErr.message}. Falling back to "${fallbackModel}".`);
 
       try {
-        result = await PROVIDERS[fallbackModel](systemMsg, prompt);
+        result = await PROVIDERS[fallbackModel](systemMsg, prompt, resolvedMaxTokens);
         fallbackUsed = true;
         originalModel = model;
       } catch (fallbackErr) {
