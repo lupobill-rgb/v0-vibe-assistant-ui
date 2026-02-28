@@ -511,36 +511,122 @@ async function bootstrap() {
       (async () => {
         try {
           await storage.updateTaskState(taskId, 'calling_llm');
-          await storage.logEvent(taskId, 'Calling Edge Function...', 'info');
-
           const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
           const supabaseKey = process.env.SUPABASE_ANON_KEY;
           if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
 
-          const response = await fetch(`${supabaseUrl}/functions/v1/generate-diff`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ prompt, model: resolvedModel }),
-          });
+          const edgeFunctionUrl = `${supabaseUrl}/functions/v1/generate-diff`;
+          const headers = {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          };
 
-          const data = await response.json() as { error?: string; diff: string; usage: { total_tokens: number } };
-          if (!response.ok) throw new Error(data.error || 'Edge Function call failed');
+          // ── Step 1: Plan call — ask the LLM for a page plan ──
+          let plan: { name: string; title: string; description: string }[] | null = null;
+          let totalTokens = 0;
 
-          await storage.setTaskDiff(taskId, data.diff);
+          try {
+            await storage.logEvent(taskId, 'Generating plan...', 'info');
+            const planResponse = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'plan' }),
+            });
+            const planRawText = await planResponse.text();
+            if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
+            const planData = JSON.parse(planRawText);
+            if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
+            // Edge Function returns { diff: "<JSON string of pages array>", mode: "plan", usage }
+            let planPages = typeof planData.diff === 'string'
+              ? JSON.parse(planData.diff)
+              : planData.diff;
+            if (Array.isArray(planPages) && planPages.length > 0) {
+              if (planPages.length > 4) {
+                planPages = planPages.slice(0, 4);
+                await storage.logEvent(taskId, 'Capped to 4 pages for fast initial build — add more pages later', 'info');
+              }
+              plan = planPages;
+              await storage.logEvent(taskId, `Plan received: ${plan!.length} page(s) — ${plan!.map((p: { name: string }) => p.name).join(', ')}`, 'info');
+            } else {
+              throw new Error('Plan response missing valid pages array');
+            }
+          } catch (planErr: any) {
+            // Plan call failed — fall back to single-page build
+            await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'warning');
+            plan = null;
+          }
 
-          // The edge function returns raw HTML in the `diff` field (mode defaults to "html").
-          // Use the response directly — no diff parsing needed.
-          const html = data.diff;
           const previewDir = path.join('/data/previews', taskId);
           fs.mkdirSync(previewDir, { recursive: true });
-          fs.writeFileSync(path.join(previewDir, 'index.html'), html);
-          await storage.setPreviewUrl(taskId, '/previews/' + taskId + '/index.html');
-          await storage.logEvent(taskId, 'Preview generated', 'info');
 
-          await storage.logEvent(taskId, `LLM responded: ${data.usage.total_tokens} tokens used`, 'info');
+          let pageNames: string[] = [];
+
+          if (plan) {
+            // ── Step 2: Page loop — build pages sequentially ──
+            for (let i = 0; i < plan.length; i++) {
+              const page = plan[i];
+              const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+              await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + plan.length + ': ' + page.name + '...', 'info');
+
+              try {
+                const pageResponse = await fetch(edgeFunctionUrl, {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', context: 'Site pages: ' + plan.map((p: any) => p.name).join(', ') + '. Keep consistent nav, colors, and fonts.' }),
+                });
+                const pageRawText = await pageResponse.text();
+                if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
+                const pageData = JSON.parse(pageRawText);
+                if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
+                fs.writeFileSync(path.join(previewDir, safeName + '.html'), pageData.diff);
+                pageNames.push(page.name);
+              } catch (pageErr: any) {
+                await storage.logEvent(taskId, 'Page ' + page.name + ' failed: ' + pageErr.message + ' — skipping', 'info');
+              }
+
+              if (i < plan.length - 1) await new Promise(r => setTimeout(r, 60000));
+            }
+
+            // Save generated pages to jobs table so the frontend can read last_diff
+            const pagesArray = plan.filter(p => pageNames.includes(p.name)).map((p) => {
+              const safeName = p.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+              const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
+              return { name: p.name, filename: `${safeName}.html`, html };
+            });
+            await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
+          } else {
+            // ── Fallback: single-page build with mode: 'html' ──
+            await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
+            const response = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'html' }),
+            });
+            const rawText = await response.text();
+            if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
+
+            let data: { diff: string; usage: { total_tokens: number } };
+            try {
+              data = JSON.parse(rawText);
+            } catch {
+              console.error(`Job ${taskId} — raw response (${rawText.length} chars):`, rawText.slice(0, 500));
+              throw new Error(`Edge Function returned invalid JSON (${rawText.length} chars)`);
+            }
+
+            if (data.usage?.total_tokens) totalTokens += data.usage.total_tokens;
+            fs.writeFileSync(path.join(previewDir, 'index.html'), data.diff);
+            pageNames = ['index'];
+
+            // Save single-page HTML to jobs table so the frontend can read last_diff
+            await storage.setTaskDiff(taskId, data.diff);
+          }
+
+          // ── Step 3: Write manifest and finalize ──
+          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
+          const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
+          await storage.setPreviewUrl(taskId, `/previews/${taskId}/${firstPage}.html`);
+          await storage.logEvent(taskId, 'Preview generated', 'info');
+          await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
         } catch (err: any) {
