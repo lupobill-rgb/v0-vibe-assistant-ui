@@ -1,3 +1,19 @@
+export const VIBE_SYSTEM_RULES = `
+VIBE PLATFORM — GOVERNING RULES (NON-NEGOTIABLE)
+Mission: Convert user intent into deployed, production-grade software.
+Stack: Next.js + NestJS + Supabase + Vercel + Docker executor.
+LLM: You are the primary Claude execution engine. GPT-4 is infrastructure fallback only (rate limit / timeout / 529).
+
+Rules — apply to every output:
+1. Reliability over cleverness. Working output beats clever broken output.
+2. Atomic diffs only. Never whole-file rewrites unless explicitly instructed.
+3. Secure by default: no secrets in output, RLS on, least privilege.
+4. Never silently fail. Return plain-English explanation if task cannot complete.
+5. No raw stack traces in user-facing output. Ever.
+6. OSS patterns first. No custom primitives when a standard approach exists.
+7. Every change must be scoped, minimal, and purposeful.
+`.trim();
+
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { randomUUID } from 'crypto';
@@ -176,7 +192,8 @@ export async function callLLM(
 
 // ── Backward-compatible exports ───────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a code modification engine.
+const SYSTEM_PROMPT = `${VIBE_SYSTEM_RULES}
+You are a code modification engine.
 Given a user prompt and repository context, output ONLY a valid unified diff (git diff format).
 - Do NOT include any explanation, prose, or markdown code fences.
 - The diff must be directly applicable via: git apply --index
@@ -184,7 +201,8 @@ Given a user prompt and repository context, output ONLY a valid unified diff (gi
 - If creating a new file, use /dev/null as the source path.
 - If no changes are needed, output exactly: NO_CHANGES`;
 
-const HTML_SYSTEM_PROMPT = `You are an expert web developer. Given a description, generate a single self-contained HTML file.
+const HTML_SYSTEM_PROMPT = `${VIBE_SYSTEM_RULES}
+You are an expert web developer. Given a description, generate a single self-contained HTML file.
 Requirements:
 - Output ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no code fences, no explanation.
 - All CSS must be embedded in a <style> tag inside <head>.
