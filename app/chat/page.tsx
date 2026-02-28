@@ -75,7 +75,7 @@ function ChatContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId ?? "")
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -105,7 +105,11 @@ function ChatContent() {
 
     fetchProjects().then((data) => {
       setProjects(data)
-      if (data.length > 0) setSelectedProjectId(data[0].id)
+      if (initialProjectId && data.some((p) => p.id === initialProjectId)) {
+        setSelectedProjectId(initialProjectId)
+      } else if (data.length > 0 && !initialProjectId) {
+        setSelectedProjectId(data[0].id)
+      }
     })
   }, [])
 
