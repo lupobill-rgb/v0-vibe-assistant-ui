@@ -18,8 +18,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_PATH || '/tmp/repos';
-const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
-const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
+const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/tmp/published';
 
 // Ensure repos directory exists
 try {
@@ -31,22 +31,29 @@ try {
 }
 
 // Ensure previews directory exists
-if (!fs.existsSync(PREVIEWS_DIR)) {
-  fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(PREVIEWS_DIR)) {
+    fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create previews directory at ${PREVIEWS_DIR}: ${(err as Error).message}`);
 }
 
 // Ensure published directory exists
-if (!fs.existsSync(PUBLISHED_DIR)) {
-  fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(PUBLISHED_DIR)) {
+    fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create published directory at ${PUBLISHED_DIR}: ${(err as Error).message}`);
 }
 
-// Startup sanity check: verify git is available
+// Startup sanity check: verify git is available (optional on serverless)
 try {
   const gitVersion = execSync('git --version', { encoding: 'utf-8' }).trim();
   console.log(`Git is available: ${gitVersion}`);
-} catch (error) {
-  console.error('ERROR: git command not found. The API service requires git to be installed.');
-  console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
+} catch {
+  console.warn('Git not available — git-dependent routes will degrade gracefully.');
 }
 
 // ── Default team for local development ──
@@ -216,23 +223,34 @@ async function bootstrap() {
       const projectId = uuidv4();
       const repoDir = path.join(REPOS_BASE_DIR, team.org_id, team_id, projectId);
 
-      // Create directory structure
-      fs.mkdirSync(repoDir, { recursive: true });
+      // Create directory structure — may fail on read-only filesystems (e.g. Vercel)
+      try {
+        fs.mkdirSync(repoDir, { recursive: true });
+      } catch (fsErr: any) {
+        console.warn(`Cannot create repo directory (serverless?): ${fsErr.message}`);
+        // Still create the project in DB without local git repo
+      }
 
-      // Initialize git repository
-      execSync('git init', { cwd: repoDir });
-      execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
-      execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
-      execSync('git config commit.gpgsign false', { cwd: repoDir });
+      // Initialize git repository (only if directory was created)
+      if (fs.existsSync(repoDir)) {
+        try {
+          execSync('git init', { cwd: repoDir });
+          execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
+          execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+          execSync('git config commit.gpgsign false', { cwd: repoDir });
 
-      // Create initial README for template
-      const readmePath = path.join(repoDir, 'README.md');
-      fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
+          // Create initial README for template
+          const readmePath = path.join(repoDir, 'README.md');
+          fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
 
-      // Initial commit
-      execSync('git add .', { cwd: repoDir });
-      execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
-      execSync('git branch -M main', { cwd: repoDir });
+          // Initial commit
+          execSync('git add .', { cwd: repoDir });
+          execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
+          execSync('git branch -M main', { cwd: repoDir });
+        } catch (gitErr: any) {
+          console.warn(`Git init skipped (serverless?): ${gitErr.message}`);
+        }
+      }
 
       const project = await storage.createProject({
         id: projectId,
@@ -289,7 +307,13 @@ async function bootstrap() {
         cloneUrl = repo_url.replace('https://', `https://${githubToken}@`);
       }
 
-      execFileSync('git', ['clone', cloneUrl, repoDir], { env: cloneEnv });
+      try {
+        execFileSync('git', ['clone', cloneUrl, repoDir], { env: cloneEnv });
+      } catch (cloneErr: any) {
+        console.warn(`Git clone failed (serverless?): ${cloneErr.message}`);
+        // Create the directory so the project record can still be created
+        try { fs.mkdirSync(repoDir, { recursive: true }); } catch {}
+      }
 
       const repoName = repo_url.split('/').pop()?.replace('.git', '') || 'imported-repo';
 
@@ -380,7 +404,11 @@ async function bootstrap() {
       await storage.deleteProject(req.params.id);
       // Best-effort cleanup of the on-disk repo directory
       if (localPath && fs.existsSync(localPath)) {
-        fs.rmSync(localPath, { recursive: true, force: true });
+        try {
+          fs.rmSync(localPath, { recursive: true, force: true });
+        } catch (rmErr: any) {
+          console.warn(`Could not remove repo directory: ${rmErr.message}`);
+        }
       }
       res.json({ message: 'Project deleted successfully' });
     } catch (error) {
@@ -421,8 +449,12 @@ async function bootstrap() {
       }
 
       const destDir = path.join(PUBLISHED_DIR, projectId);
-      if (fs.existsSync(destDir)) {
-        fs.rmSync(destDir, { recursive: true, force: true });
+      try {
+        if (fs.existsSync(destDir)) {
+          fs.rmSync(destDir, { recursive: true, force: true });
+        }
+      } catch (rmErr: any) {
+        console.warn(`Could not clean published dir: ${rmErr.message}`);
       }
 
       const copyRecursive = (src: string, dest: string) => {
@@ -435,7 +467,11 @@ async function bootstrap() {
           else fs.copyFileSync(srcPath, destPath);
         }
       };
-      copyRecursive(sourceDir, destDir);
+      try {
+        copyRecursive(sourceDir, destDir);
+      } catch (copyErr: any) {
+        return res.status(500).json({ error: `Failed to copy preview files: ${copyErr.message}` });
+      }
 
       const publishedUrl = `/published/${projectId}/index.html`;
       await storage.publishProject(projectId, job_id, publishedUrl);
@@ -560,8 +596,12 @@ async function bootstrap() {
             plan = null;
           }
 
-          const previewDir = path.join('/data/previews', taskId);
-          fs.mkdirSync(previewDir, { recursive: true });
+          const previewDir = path.join(PREVIEWS_DIR, taskId);
+          try {
+            fs.mkdirSync(previewDir, { recursive: true });
+          } catch (mkErr: any) {
+            console.warn(`Could not create preview directory: ${mkErr.message}`);
+          }
 
           let pageNames: string[] = [];
 
