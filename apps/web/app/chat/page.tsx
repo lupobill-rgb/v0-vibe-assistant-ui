@@ -113,7 +113,11 @@ function ChatContent() {
 
     fetchProjects().then((data) => {
       setProjects(data)
-      if (data.length > 0) setSelectedProjectId(data[0].id)
+      if (initialProjectId && data.some((p) => p.id === initialProjectId)) {
+        setSelectedProjectId(initialProjectId)
+      } else if (data.length > 0) {
+        setSelectedProjectId(data[0].id)
+      }
     })
   }, [])
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   Home,
   FolderKanban,
@@ -42,6 +42,7 @@ const bottomItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const openSearch = () => {
@@ -53,6 +54,7 @@ export function AppSidebar() {
     <CreateProjectDialog
       open={dialogOpen}
       onOpenChange={setDialogOpen}
+      onCreated={(id) => router.push(`/chat?project=${id}`)}
     />
     <TooltipProvider delayDuration={0}>
       <aside
