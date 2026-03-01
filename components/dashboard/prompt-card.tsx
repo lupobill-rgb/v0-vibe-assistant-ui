@@ -42,15 +42,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         base_branch: "main",
       })
 
-      if (projectType === "dashboard") {
-        const pages = await generateDashboard(prompt.trim(), selectedProjectId)
-        setGeneratedPages(pages)
-        return
+      if (result.error || !result.task_id) {
+        throw new Error(result.error || "Failed to create job")
       }
 
-      // For website / landing types, use multi-page generation
-      const pages = await generateMultiPageSite(prompt.trim(), selectedProjectId)
-      setGeneratedPages(pages)
+      router.push(`/task/${result.task_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start build")
       console.error(err)
