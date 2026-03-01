@@ -17,13 +17,17 @@ import billingRouter from './routes/billing';
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
-const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
+const REPOS_BASE_DIR = process.env.REPOS_PATH || '/tmp/repos';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
 const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
 
 // Ensure repos directory exists
-if (!fs.existsSync(REPOS_BASE_DIR)) {
-  fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(REPOS_BASE_DIR)) {
+    fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create repos directory at ${REPOS_BASE_DIR}: ${(err as Error).message}`);
 }
 
 // Ensure previews directory exists
