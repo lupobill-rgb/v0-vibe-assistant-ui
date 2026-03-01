@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
@@ -77,6 +77,7 @@ function JobRow({ task }: { task: Task }) {
 }
 
 function ChatContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const initialProjectId = searchParams.get("project") ?? undefined
 
@@ -84,7 +85,7 @@ function ChatContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId ?? "")
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -94,6 +95,7 @@ function ChatContent() {
       setProjects(data)
       if (selectId) {
         setSelectedProjectId(selectId)
+        router.push(`/chat?project=${selectId}`)
       } else if (data.length > 0 && !selectedProjectId) {
         setSelectedProjectId(data[0].id)
       }
@@ -115,7 +117,7 @@ function ChatContent() {
       setProjects(data)
       if (initialProjectId && data.some((p) => p.id === initialProjectId)) {
         setSelectedProjectId(initialProjectId)
-      } else if (data.length > 0) {
+      } else if (data.length > 0 && !initialProjectId) {
         setSelectedProjectId(data[0].id)
       }
     })
