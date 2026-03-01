@@ -404,7 +404,11 @@ async function bootstrap() {
       await storage.deleteProject(req.params.id);
       // Best-effort cleanup of the on-disk repo directory
       if (localPath && fs.existsSync(localPath)) {
-        fs.rmSync(localPath, { recursive: true, force: true });
+        try {
+          fs.rmSync(localPath, { recursive: true, force: true });
+        } catch (rmErr: any) {
+          console.warn(`Could not remove repo directory: ${rmErr.message}`);
+        }
       }
       res.json({ message: 'Project deleted successfully' });
     } catch (error) {
