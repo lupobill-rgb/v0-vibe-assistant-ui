@@ -18,8 +18,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_PATH || '/tmp/repos';
-const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
-const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
+const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/tmp/published';
 
 // Ensure repos directory exists
 try {
@@ -31,13 +31,21 @@ try {
 }
 
 // Ensure previews directory exists
-if (!fs.existsSync(PREVIEWS_DIR)) {
-  fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(PREVIEWS_DIR)) {
+    fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create previews directory at ${PREVIEWS_DIR}: ${(err as Error).message}`);
 }
 
 // Ensure published directory exists
-if (!fs.existsSync(PUBLISHED_DIR)) {
-  fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(PUBLISHED_DIR)) {
+    fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create published directory at ${PUBLISHED_DIR}: ${(err as Error).message}`);
 }
 
 // Startup sanity check: verify git is available
@@ -560,7 +568,7 @@ async function bootstrap() {
             plan = null;
           }
 
-          const previewDir = path.join('/data/previews', taskId);
+          const previewDir = path.join(PREVIEWS_DIR, taskId);
           fs.mkdirSync(previewDir, { recursive: true });
 
           let pageNames: string[] = [];
