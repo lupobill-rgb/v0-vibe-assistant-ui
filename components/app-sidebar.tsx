@@ -55,6 +55,7 @@ export function AppSidebar() {
     <CreateProjectDialog
       open={dialogOpen}
       onOpenChange={setDialogOpen}
+      onCreated={(id) => router.push(`/chat?project=${id}`)}
     />
     <TooltipProvider delayDuration={0}>
       <aside

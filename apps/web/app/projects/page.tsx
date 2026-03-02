@@ -3,6 +3,7 @@
 import { AppShell } from "@/components/app-shell"
 import { ProjectsGrid } from "@/components/dashboard/projects-grid"
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Plus, Github, FolderKanban } from "lucide-react"
 import { fetchProjects, type Project } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -14,13 +15,15 @@ export default function ProjectsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const router = useRouter()
 
   useEffect(() => {
     fetchProjects().then((data: Project[]) => setProjectCount(data.length))
   }, [refreshKey])
 
-  const handleCreated = () => {
+  const handleCreated = (id?: string) => {
     setRefreshKey((k) => k + 1)
+    if (id) router.push(`/chat?project=${id}`)
   }
 
   return (
