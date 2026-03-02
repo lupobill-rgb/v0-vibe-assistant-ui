@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const MAX_INITIAL_PAGES = 4;
+export const MAX_INITIAL_PAGES = 6;
 
 export const INITIAL_BUILD_BUDGETS = {
   maxWallTimeMs: 180_000,
@@ -43,7 +43,7 @@ export function buildStarterSitePlan(rawPlan: Array<{ name: string; title: strin
 
   if (normalized.length > MAX_INITIAL_PAGES) {
     normalized = normalized.slice(0, MAX_INITIAL_PAGES);
-    notes.push('Initial build limited to 4 pages; add more pages after.');
+    notes.push('Initial build limited to 6 pages; add more pages after.');
   }
 
   return { pages: normalized, notes };

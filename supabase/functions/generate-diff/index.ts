@@ -90,6 +90,20 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
   };
 }
 
+const PLAN_SYSTEM =
+  "You are VIBE, an AI website planner. Given a user's request, return a JSON array of pages to build.\n" +
+  "Each page object must have: name, title, description.\n" +
+  "Rules:\n" +
+  "1. Always include an index/home page.\n" +
+  "2. Each page must have a clear, distinct purpose.\n" +
+  "3. Return between 1 and 6 pages depending on the request. " +
+  "   - If the user asks for a single page, landing page, or one-pager, return EXACTLY 1 page (just index). " +
+  "   - If the user asks for a dashboard or app, return 1-3 pages focused on core functionality. " +
+  "   - If the user asks for a full website or multi-page site, return 3-6 pages.\n" +
+  "4. Return ONLY valid JSON — no markdown fences, no explanation.\n" +
+  "5. The JSON must be an array of objects: [{name, title, description}, ...].\n" +
+  "6. Users can add more pages later — focus on the core pages that deliver the most value.";
+
 const PROVIDERS: Record<string, (s: string, p: string, m?: number) => Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } }>> = {
   claude: callClaude,
   gpt: callGpt,
@@ -111,7 +125,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, context, model = "claude", system, max_tokens } = await req.json();
+    const { prompt, context, model = "claude", system, max_tokens, mode } = await req.json();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -127,10 +141,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // Build system message: always prepend VIBE_SYSTEM_RULES
-    const baseSystemMsg = system
-      ? system
-      : "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
-        (context ? "\nProject context:\n" + context : "");
+    const baseSystemMsg = mode === "plan"
+      ? PLAN_SYSTEM
+      : system
+        ? system
+        : "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
+          (context ? "\nProject context:\n" + context : "");
     const systemMsg = VIBE_SYSTEM_RULES + "\n" + baseSystemMsg;
     const resolvedMaxTokens = max_tokens || 4096;
 

@@ -139,7 +139,7 @@ Mode B is the current implementation that accepts a `repo_url` parameter for eac
 
 ### Starter site limits and speed budgets
 
-- Initial website generation is capped to **4 pages** (`MAX_INITIAL_PAGES`) in `apps/api/src/starter-site.ts`.
+- Initial website generation is capped to **6 pages** (`MAX_INITIAL_PAGES`) in `apps/api/src/starter-site.ts`.
 - Initial build budgets (wall time, model calls, token output, and per-step deadlines) are defined in `INITIAL_BUILD_BUDGETS` in `apps/api/src/starter-site.ts`.
 - To verify planner cap + generated page/nav coverage locally, run:
 
