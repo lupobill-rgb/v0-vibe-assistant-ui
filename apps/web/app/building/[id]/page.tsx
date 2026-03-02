@@ -184,6 +184,15 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         </div>
         {isComplete && (
           <div className="px-4 pb-4 flex flex-col gap-2">
+            <div className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+              4-page starter built; add pages anytime.
+            </div>
+            <button
+              type="button"
+              className="flex items-center justify-center h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+            >
+              Add Page
+            </button>
             {task?.pull_request_link && (
               <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 h-9 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">

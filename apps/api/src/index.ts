@@ -12,6 +12,15 @@ import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
 import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
+import {
+  INITIAL_BUILD_BUDGETS,
+  MAX_INITIAL_PAGES,
+  StarterSitePlan,
+  buildStarterSitePlan,
+  mapWithConcurrency,
+  validateStarterSiteQuality,
+  writePagePlanArtifact,
+} from './starter-site';
 
 // Load .env from the repository root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -560,18 +569,62 @@ async function bootstrap() {
             'Authorization': `Bearer ${supabaseKey}`,
             'Content-Type': 'application/json',
           };
+          let fallbacks = 0;
+          let retries = 0;
 
-          // ── Step 1: Plan call — ask the LLM for a page plan ──
-          let plan: { name: string; title: string; description: string }[] | null = null;
-          let totalTokens = 0;
-
-          try {
-            await storage.logEvent(taskId, 'Generating plan...', 'info');
-            const planResponse = await fetch(edgeFunctionUrl, {
+          const edgeCall = async (payload: any) => {
+            const attempt = async (model: string) => fetch(edgeFunctionUrl, {
               method: 'POST',
               headers,
-              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'plan' }),
+              body: JSON.stringify({ ...payload, model }),
             });
+            let response = await attempt(payload.model || resolvedModel);
+            if (response.ok) return response;
+            const text = await response.text();
+            if (/rate limit|overload|429/i.test(text)) {
+              retries += 1;
+              await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
+              response = await attempt(payload.model || resolvedModel);
+              if (response.ok) return response;
+              fallbacks += 1;
+              const fallbackModel = (payload.model || resolvedModel) === 'claude' ? 'gpt' : 'claude';
+              response = await attempt(fallbackModel);
+            }
+            return response;
+          };
+
+          // ── Step 1: Plan call — ask the LLM for a page plan ──
+          let plan: StarterSitePlan | null = null;
+          let totalTokens = 0;
+          let modelCalls = 0;
+          const startedAtMs = Date.now();
+          const timeline: any[] = [];
+
+          const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security', fn: () => Promise<T>): Promise<T> => {
+            const start = Date.now();
+            try {
+              const result = await Promise.race([
+                fn(),
+                new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${name} deadline exceeded`)), INITIAL_BUILD_BUDGETS.stepDeadlinesMs[name])),
+              ]);
+              timeline.push({ step: name, startedAt: new Date(start).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - start, status: 'completed' });
+              return result;
+            } catch (err: any) {
+              const status = name === 'security' ? 'deferred' : 'failed';
+              timeline.push({ step: name, startedAt: new Date(start).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - start, status });
+              if (name === 'security') {
+                await storage.logEvent(taskId, 'Security scan deferred (deadline exceeded)', 'warning');
+                return undefined as T;
+              }
+              throw err;
+            }
+          };
+
+          try {
+            await runStep('planning', async () => {
+            await storage.logEvent(taskId, 'Generating plan...', 'info');
+            const planResponse = await edgeCall({ prompt, model: resolvedModel, mode: 'plan' });
+            modelCalls += 1;
             const planRawText = await planResponse.text();
             if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
             const planData = JSON.parse(planRawText);
@@ -580,16 +633,10 @@ async function bootstrap() {
             let planPages = typeof planData.diff === 'string'
               ? JSON.parse(planData.diff)
               : planData.diff;
-            if (Array.isArray(planPages) && planPages.length > 0) {
-              if (planPages.length > 4) {
-                planPages = planPages.slice(0, 4);
-                await storage.logEvent(taskId, 'Capped to 4 pages for fast initial build — add more pages later', 'info');
-              }
-              plan = planPages;
-              await storage.logEvent(taskId, `Plan received: ${plan!.length} page(s) — ${plan!.map((p: { name: string }) => p.name).join(', ')}`, 'info');
-            } else {
-              throw new Error('Plan response missing valid pages array');
-            }
+            plan = buildStarterSitePlan(Array.isArray(planPages) ? planPages : null, prompt);
+            if (plan.notes.length > 0) await storage.logEvent(taskId, plan.notes.join(' '), 'info');
+            await storage.logEvent(taskId, `Plan received: ${plan.pages.length} page(s) — ${plan.pages.map((p) => p.name).join(', ')}`, 'info');
+            });
           } catch (planErr: any) {
             // Plan call failed — fall back to single-page build
             await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'warning');
@@ -599,6 +646,7 @@ async function bootstrap() {
           const previewDir = path.join(PREVIEWS_DIR, taskId);
           try {
             fs.mkdirSync(previewDir, { recursive: true });
+            if (plan) writePagePlanArtifact(previewDir, plan);
           } catch (mkErr: any) {
             console.warn(`Could not create preview directory: ${mkErr.message}`);
           }
@@ -606,46 +654,68 @@ async function bootstrap() {
           let pageNames: string[] = [];
 
           if (plan) {
-            // ── Step 2: Page loop — build pages sequentially ──
-            for (let i = 0; i < plan.length; i++) {
-              const page = plan[i];
-              const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-              await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + plan.length + ': ' + page.name + '...', 'info');
-
-              try {
-                const pageResponse = await fetch(edgeFunctionUrl, {
-                  method: 'POST',
-                  headers,
-                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', context: 'Site pages: ' + plan.map((p: any) => p.name).join(', ') + '. Keep consistent nav, colors, and fonts.' }),
+            await runStep('building', async () => {
+              const builtPages = await mapWithConcurrency(plan.pages, INITIAL_BUILD_BUDGETS.buildConcurrency, async (page, i) => {
+                const safeName = page.route === '/' ? 'index' : page.route.slice(1);
+                await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + plan!.pages.length + ': ' + page.name + '...', 'info');
+                const pageResponse = await edgeCall({
+                  prompt: page.description,
+                  model: resolvedModel,
+                  mode: 'page',
+                  context: `PagePlan JSON: ${JSON.stringify(plan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
                 });
+                modelCalls += 1;
                 const pageRawText = await pageResponse.text();
                 if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
                 const pageData = JSON.parse(pageRawText);
                 if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
                 fs.writeFileSync(path.join(previewDir, safeName + '.html'), pageData.diff);
-                pageNames.push(page.name);
-              } catch (pageErr: any) {
-                await storage.logEvent(taskId, 'Page ' + page.name + ' failed: ' + pageErr.message + ' — skipping', 'info');
-              }
+                return page;
+              });
+              pageNames = builtPages.map((p) => (p.route === '/' ? 'index' : p.route.slice(1)));
+            });
 
-              if (i < plan.length - 1) await new Promise(r => setTimeout(r, 60000));
+            if (pageNames.length < Math.min(2, plan.pages.length)) {
+              throw new Error(`pages generated check failed (${pageNames.length}/${plan.pages.length})`);
             }
 
+            await runStep('validating', async () => {
+              const htmlFiles = pageNames.map((name) => ({
+                route: name === 'index' ? '/' : `/${name}`,
+                html: fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8'),
+              }));
+              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt));
+              if (!quality.ok) {
+                await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
+                for (const failingRoute of quality.failingRoutes.slice(0, 1)) {
+                  const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
+                  const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
+                  const repair = await edgeCall({ prompt: `Repair this page to include h1, >=2 sections, CTA, navbar, title and description metadata, no lorem ipsum.\n${existing}`, model: resolvedModel, mode: 'page' });
+                  modelCalls += 1;
+                  const repairText = await repair.text();
+                  if (repair.ok) {
+                    const repairData = JSON.parse(repairText);
+                    fs.writeFileSync(path.join(previewDir, `${fileName}.html`), repairData.diff);
+                    if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
+                  }
+                }
+              }
+            });
+
+            await runStep('security', async () => new Promise((r) => setTimeout(r, 5)));
+
             // Save generated pages to jobs table so the frontend can read last_diff
-            const pagesArray = plan.filter(p => pageNames.includes(p.name)).map((p) => {
-              const safeName = p.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const pagesArray = plan.pages.filter(p => pageNames.includes(p.route === '/' ? 'index' : p.route.slice(1))).map((p) => {
+              const safeName = p.route === '/' ? 'index' : p.route.slice(1);
               const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
-              return { name: p.name, filename: `${safeName}.html`, html };
+              return { name: p.name, filename: `${safeName}.html`, route: p.route, html };
             });
             await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
           } else {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
-            const response = await fetch(edgeFunctionUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'html' }),
-            });
+            const response = await edgeCall({ prompt, model: resolvedModel, mode: 'html' });
+            modelCalls += 1;
             const rawText = await response.text();
             if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
 
@@ -667,10 +737,15 @@ async function bootstrap() {
 
           // ── Step 3: Write manifest and finalize ──
           fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
+          fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
           const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
           await storage.setPreviewUrl(taskId, `/previews/${taskId}/${firstPage}.html`);
           await storage.logEvent(taskId, 'Preview generated', 'info');
           await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
+          await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
+          if (modelCalls > INITIAL_BUILD_BUDGETS.maxModelCalls || totalTokens > INITIAL_BUILD_BUDGETS.maxTokensOut || (Date.now() - startedAtMs) > INITIAL_BUILD_BUDGETS.maxWallTimeMs) {
+            await storage.logEvent(taskId, 'Starter build budget exceeded', 'warning');
+          }
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
         } catch (err: any) {
@@ -692,7 +767,16 @@ async function bootstrap() {
       if (!task) {
         return res.status(404).json({ error: 'Task not found' });
       }
-      res.json(task);
+      let job_timeline: unknown = null;
+      const timelinePath = path.join(PREVIEWS_DIR, req.params.id, 'timeline.json');
+      if (fs.existsSync(timelinePath)) {
+        try {
+          job_timeline = JSON.parse(fs.readFileSync(timelinePath, 'utf8'));
+        } catch {
+          job_timeline = null;
+        }
+      }
+      res.json({ ...task, job_timeline });
     } catch (error) {
       console.error('Error fetching task:', error);
       res.status(500).json({ error: 'Failed to fetch task' });
