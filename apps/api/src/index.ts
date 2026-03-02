@@ -835,9 +835,13 @@ async function bootstrap() {
     }
   });
 
-  // Health check
+  // Root and health checks
+  app.get('/', (_req: Request, res: Response) => {
+    res.json({ ok: true, service: 'vibe-api' });
+  });
+
   app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
+    res.json({ ok: true });
   });
 
   // Start the NestJS server
