@@ -9,10 +9,11 @@ import { generateDiff, callEdgeFunction } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
 import { sanitizeUnifiedDiff, extractDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runSecurityAgent } from './agents/security-agent';
+import { DESIGN_PHASE, DesignPhaseKey } from './agent-prompts';
 
 const execAsync = promisify(exec);
 
-export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security';
+export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security' | 'design';
 
 export interface AgentResult {
   agent: AgentType; status: 'passed' | 'failed' | 'needs_fix'; output: string;
@@ -189,6 +190,12 @@ export async function runPipeline(
   state.success = true;
   storage.logEvent(jobId, '[PIPELINE] All agents passed — ready for PR creation', 'success');
   return state;
+}
+
+export async function runDesignPhase(phase: DesignPhaseKey): Promise<string> {
+  const prompt = DESIGN_PHASE[phase];
+  const result = await generateDiff(prompt, '', { model: 'claude' });
+  return result;
 }
 
 async function runDebugLoop( // resumes from the failing agent, not from scratch
