@@ -66,7 +66,7 @@ function buildBlobUrl(pages: PageData[], activeFile: string): string | null {
   return URL.createObjectURL(blob)
 }
 
-function AddPageModal({ onSubmit, onClose, isLoading }: { onSubmit: (desc: string) => void; onClose: () => void; isLoading: boolean }) {
+function AddPageModal({ onSubmit, onClose, isLoading, error }: { onSubmit: (desc: string) => void; onClose: () => void; isLoading: boolean; error: string | null }) {
   const [desc, setDesc] = useState('')
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -80,6 +80,9 @@ function AddPageModal({ onSubmit, onClose, isLoading }: { onSubmit: (desc: strin
           placeholder="e.g. A careers page with open positions and an apply form"
           className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
         />
+        {error && (
+          <p className="mt-2 text-xs text-red-400">{error}</p>
+        )}
         <div className="flex items-center justify-end gap-2 mt-4">
           <button onClick={onClose} disabled={isLoading}
             className="h-9 px-4 rounded-lg text-sm text-slate-400 hover:text-white transition-colors">
@@ -105,6 +108,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [activeFile, setActiveFile] = useState('index.html')
   const [showAddPage, setShowAddPage] = useState(false)
   const [addingPage, setAddingPage] = useState(false)
+  const [addPageError, setAddPageError] = useState<string | null>(null)
   const [editingPageIndex, setEditingPageIndex] = useState<number | null>(null)
   const [editingHtml, setEditingHtml] = useState('')
   const [editPrompt, setEditPrompt] = useState('')
@@ -167,25 +171,57 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   const handleAddPage = useCallback(async (description: string) => {
     setAddingPage(true)
+    setAddPageError(null)
     try {
-      const res = await fetch(EDGE_FN_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'}`,
-        },
-        body: JSON.stringify({ prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' }),
+      const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
+      const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
+      const url = SUPABASE_URL + '/functions/v1/generate-diff'
+      const body = { prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' }
+
+      console.log("[VIBE] Add Page request:", url, body)
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_KEY },
+        body: JSON.stringify(body),
       })
-      const data = await res.json()
-      const raw = data.html || data.diff || ''
-      const newPages = parseDiff(raw)
-      if (!newPages.length) throw new Error('No page generated')
-      const merged = [...pages, newPages[0]]
+
+      const text = await res.text()
+      console.log("[VIBE] Add Page response:", res.status, text)
+
+      if (!res.ok) throw new Error("Edge Function returned " + res.status)
+
+      let newPage: PageData | null = null
+      try {
+        const payload = JSON.parse(text)
+        if (payload.html) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.html }
+        } else if (payload.diff) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.diff }
+        } else if (Array.isArray(payload) && payload[0]?.html) {
+          newPage = payload[0]
+        } else if (payload.pages && Array.isArray(payload.pages)) {
+          newPage = payload.pages[0]
+        }
+      } catch {
+        if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: text }
+        }
+      }
+
+      if (!newPage) {
+        setAddPageError('No page could be parsed from the response. Check console for details.')
+        return
+      }
+
+      const merged = [...pages, newPage]
       setDiff(JSON.stringify(merged))
-      setActiveFile(newPages[0].filename)
+      setActiveFile(newPage.filename)
       setShowAddPage(false)
     } catch (err) {
-      console.error('[VIBE] Failed to generate page:', err instanceof Error ? err.message : err)
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[VIBE] Failed to generate page:', message)
+      setAddPageError(message)
     } finally {
       setAddingPage(false)
     }
@@ -377,7 +413,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         </div>
       )}
-      {showAddPage && <AddPageModal onSubmit={handleAddPage} onClose={() => setShowAddPage(false)} isLoading={addingPage} />}
+      {showAddPage && <AddPageModal onSubmit={handleAddPage} onClose={() => { setShowAddPage(false); setAddPageError(null) }} isLoading={addingPage} error={addPageError} />}
     </div>
   )
 }
