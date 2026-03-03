@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { fetchJob, subscribeToJobUpdates, type Task } from "@/lib/api"
+import { fetchJob, subscribeToJobUpdates, type Task, API_URL } from "@/lib/api"
 
 export type StepStatus = "done" | "active" | "pending" | "error"
 
@@ -21,6 +21,7 @@ export interface PipelineStep {
   description: string
   status: StepStatus
   duration?: string
+  agentSummary?: string
 }
 
 function buildStepsFromTask(task: Task | null): PipelineStep[] {
@@ -83,6 +84,9 @@ interface PipelineTrackerProps {
 export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const [task, setTask] = useState<Task | null>(null)
   const [steps, setSteps] = useState<PipelineStep[]>(buildStepsFromTask(null))
+  const [expandedStep, setExpandedStep] = useState<string | null>(null)
+  const [applyingFix, setApplyingFix] = useState<number | null>(null)
+  const [fixResult, setFixResult] = useState<{ success: boolean; summary: string } | null>(null)
 
   useEffect(() => {
     fetchJob(taskId).then((t) => {
@@ -104,8 +108,28 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const totalCount = steps.length
   const progress = (completedCount / totalCount) * 100
 
+  const allFixes = (task?.agent_results ?? []).flatMap((r: any) => r.fixes ?? [])
+
   const isTerminal =
     task?.execution_state === "completed" || task?.execution_state === "failed"
+
+  const applyFix = async (fixIndex: number) => {
+    setApplyingFix(fixIndex)
+    setFixResult(null)
+    try {
+      const res = await fetch(`${API_URL}/jobs/${taskId}/diff/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fix_index: fixIndex }),
+      })
+      const data = await res.json()
+      setFixResult({ success: data.success, summary: data.summary })
+    } catch (err) {
+      setFixResult({ success: false, summary: 'Request failed — check network connection.' })
+    } finally {
+      setApplyingFix(null)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full bg-card border-r border-border">
@@ -184,6 +208,58 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                   {step.description}
                 </p>
+
+                {step.agentSummary && (
+                  <p className={cn(
+                    "text-[10px] mt-0.5 leading-relaxed font-mono",
+                    step.status === "error" ? "text-red-400/80" : "text-emerald-400/70"
+                  )}>
+                    {step.agentSummary}
+                  </p>
+                )}
+
+                {step.status === 'error' && allFixes.length > 0 && (
+                  <div className="mt-2">
+                    <button
+                      onClick={() => setExpandedStep(expandedStep === step.id ? null : step.id)}
+                      className="text-[10px] text-red-400 hover:text-red-300 underline underline-offset-2 transition-colors"
+                    >
+                      {expandedStep === step.id ? 'Hide fixes' : `${allFixes.length} fix${allFixes.length > 1 ? 'es' : ''} available`}
+                    </button>
+
+                    {expandedStep === step.id && (
+                      <div className="mt-2 flex flex-col gap-2">
+                        {fixResult && (
+                          <p className={cn(
+                            "text-[10px] font-mono px-2 py-1 rounded",
+                            fixResult.success ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                          )}>
+                            {fixResult.summary}
+                          </p>
+                        )}
+                        {allFixes.map((fix: any, i: number) => (
+                          <div key={i} className="bg-secondary/50 rounded-lg p-2 border border-border">
+                            <p className="text-[10px] text-muted-foreground leading-relaxed">
+                              {fix.description}
+                            </p>
+                            <button
+                              onClick={() => applyFix(i)}
+                              disabled={applyingFix !== null}
+                              className={cn(
+                                "mt-1.5 text-[10px] font-medium px-2 py-1 rounded transition-colors",
+                                applyingFix === i
+                                  ? "bg-[#4F8EFF]/20 text-[#4F8EFF]/50 cursor-not-allowed"
+                                  : "bg-[#4F8EFF]/10 text-[#4F8EFF] hover:bg-[#4F8EFF]/20"
+                              )}
+                            >
+                              {applyingFix === i ? 'Applying…' : 'Apply fix'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
