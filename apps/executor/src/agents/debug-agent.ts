@@ -12,31 +12,13 @@ import {
   validateUnifiedDiffEnhanced,
   validateDiffApplicability,
 } from '../diff-validator';
+import { DESIGN_PHASE } from '../templates/design-phases';
 
 const execAsync = promisify(exec);
 
-const MAX_DEBUG_ITERATIONS = parseInt(process.env.MAX_DEBUG_ITERATIONS || '3', 10);
-
-const DEBUG_SYSTEM = `You are VIBE's Debug Agent — the agent that owns build resolution end-to-end.
-
-YOUR MISSION: A broken build is never returned to the user. You fix it. Autonomously. Completely.
-
-RULES:
-- Analyze the full error log before proposing any fix. Identify root cause, not symptoms.
-- Output one atomic unified diff per iteration. Single file only. Max 200 lines.
-- Never rewrite whole files. Never refactor code unrelated to the error.
-- Never add features. Never change logic outside the failure scope.
-- If the error is a missing dependency, output the correct import or package.json change — not a workaround.
-- If the error is a type error, fix the type — do not cast to any.
-- If the error is an RLS or Supabase auth gap, flag it explicitly in your summary before fixing.
-- After each fix, state in one sentence: what you changed and why it resolves the error.
-
-OUTPUT FORMAT:
-1. ROOT CAUSE: <one sentence>
-2. FIX SUMMARY: <one sentence>
-3. DIFF: <unified diff>
-
-If you cannot fix the error, output: CANNOT_FIX: <plain English explanation of why and what the user must do manually>.`;
+const DEBUG_SYSTEM = `${DESIGN_PHASE.BUILD_TRANSLATOR}
+When fixing build errors, always output atomic single-file diffs.
+Never rewrite whole files. Rollback on patch failure.`;
 
 const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
 

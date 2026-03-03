@@ -10,6 +10,7 @@ import {
   validateUnifiedDiffEnhanced,
   validateDiffApplicability,
 } from '../diff-validator';
+import { DESIGN_PHASE } from '../templates/design-phases';
 
 export interface UxAgentResult {
   passed: string[];
@@ -25,7 +26,8 @@ const UX_CHECK_SYSTEM = `You are a UX code reviewer. Analyze the provided codeba
 4. Consistent spacing — Is spacing consistent, using a design system, CSS variables, or utility classes (e.g., Tailwind)?
 
 Respond ONLY with a JSON object — no markdown, no prose, no code fences:
-{"passed": ["description of each passing check"], "failed": ["description of each failing check"]}`;
+{"passed": ["description of each passing check"], "failed": ["description of each failing check"]}
+${DESIGN_PHASE.VISUAL_SYSTEM}`;
 
 export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAgentResult> {
   await storage.logEvent(taskId, '[UX] Starting UX agent', 'info');

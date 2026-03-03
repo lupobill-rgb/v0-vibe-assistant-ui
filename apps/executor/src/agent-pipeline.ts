@@ -4,14 +4,16 @@ import fs from 'fs';
 import path from 'path';
 import simpleGit from 'simple-git';
 import { storage } from './storage';
+import { VIBE_SYSTEM_RULES } from './llm';
 import { generateDiff, callEdgeFunction } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
 import { sanitizeUnifiedDiff, extractDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runSecurityAgent } from './agents/security-agent';
+import { DESIGN_PHASE, DesignPhaseKey } from './agent-prompts';
 
 const execAsync = promisify(exec);
 
-export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security';
+export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security' | 'design';
 
 export interface AgentResult {
   agent: AgentType; status: 'passed' | 'failed' | 'needs_fix'; output: string;
@@ -103,7 +105,7 @@ export async function runPipeline(
   storage.logEvent(jobId, '[PIPELINE] Phase: Planning — decomposing prompt into tasks', 'info');
   const planResult = await callAgent('planner', jobId, async () => {
     const msg = `${context}\n\n---\nAnalyze this request and return ONLY a JSON object with keys: tasks (string[]), files (string[]), acceptance_criteria (string[]). No markdown.\n\nRequest: ${prompt}`;
-    const raw = await callLLM('You are a planning assistant. Return ONLY valid JSON, no markdown.', msg, jobId, config.model);
+    const raw = await callLLM(`${VIBE_SYSTEM_RULES}\n\nYou are a planning assistant. Return ONLY valid JSON, no markdown.`, msg, jobId, config.model);
     try {
       state.plan = JSON.parse(raw);
       return { status: 'passed', output: `Plan: ${state.plan!.tasks.length} tasks, ${state.plan!.files.length} files` };
@@ -188,6 +190,12 @@ export async function runPipeline(
   state.success = true;
   storage.logEvent(jobId, '[PIPELINE] All agents passed — ready for PR creation', 'success');
   return state;
+}
+
+export async function runDesignPhase(phase: DesignPhaseKey): Promise<string> {
+  const prompt = DESIGN_PHASE[phase];
+  const result = await generateDiff(prompt, '', { model: 'claude', taskId: 'design-phase' });
+  return result.diff;
 }
 
 async function runDebugLoop( // resumes from the failing agent, not from scratch
