@@ -621,7 +621,7 @@ async function bootstrap() {
           };
 
           try {
-            await runStep('planning', async () => {
+            plan = await runStep('planning', async () => {
             await storage.logEvent(taskId, 'Generating plan...', 'info');
             const planResponse = await edgeCall({ prompt, model: resolvedModel, mode: 'plan' });
             modelCalls += 1;
@@ -633,9 +633,10 @@ async function bootstrap() {
             let planPages = typeof planData.diff === 'string'
               ? JSON.parse(planData.diff)
               : planData.diff;
-            plan = buildStarterSitePlan(Array.isArray(planPages) ? planPages : null, prompt);
-            if (plan.notes.length > 0) await storage.logEvent(taskId, plan.notes.join(' '), 'info');
-            await storage.logEvent(taskId, `Plan received: ${plan.pages.length} page(s) — ${plan.pages.map((p) => p.name).join(', ')}`, 'info');
+            const result = buildStarterSitePlan(Array.isArray(planPages) ? planPages : null, prompt);
+            if (result.notes.length > 0) await storage.logEvent(taskId, result.notes.join(' '), 'info');
+            await storage.logEvent(taskId, `Plan received: ${result.pages.length} page(s) — ${result.pages.map((p) => p.name).join(', ')}`, 'info');
+            return result;
             });
           } catch (planErr: any) {
             // Plan call failed — fall back to single-page build
@@ -654,15 +655,16 @@ async function bootstrap() {
           let pageNames: string[] = [];
 
           if (plan) {
+            const currentPlan = plan;
             await runStep('building', async () => {
-              const builtPages = await mapWithConcurrency(plan.pages, INITIAL_BUILD_BUDGETS.buildConcurrency, async (page, i) => {
+              const builtPages = await mapWithConcurrency(currentPlan.pages, INITIAL_BUILD_BUDGETS.buildConcurrency, async (page, i) => {
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
-                await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + plan!.pages.length + ': ' + page.name + '...', 'info');
+                await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
                 const pageResponse = await edgeCall({
                   prompt: page.description,
                   model: resolvedModel,
                   mode: 'page',
-                  context: `PagePlan JSON: ${JSON.stringify(plan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
+                  context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
                 });
                 modelCalls += 1;
                 const pageRawText = await pageResponse.text();
@@ -675,8 +677,8 @@ async function bootstrap() {
               pageNames = builtPages.map((p) => (p.route === '/' ? 'index' : p.route.slice(1)));
             });
 
-            if (pageNames.length < Math.min(2, plan.pages.length)) {
-              throw new Error(`pages generated check failed (${pageNames.length}/${plan.pages.length})`);
+            if (pageNames.length < Math.min(2, currentPlan.pages.length)) {
+              throw new Error(`pages generated check failed (${pageNames.length}/${currentPlan.pages.length})`);
             }
 
             await runStep('validating', async () => {
@@ -705,7 +707,7 @@ async function bootstrap() {
             await runStep('security', async () => new Promise((r) => setTimeout(r, 5)));
 
             // Save generated pages to jobs table so the frontend can read last_diff
-            const pagesArray = plan.pages.filter(p => pageNames.includes(p.route === '/' ? 'index' : p.route.slice(1))).map((p) => {
+            const pagesArray = currentPlan.pages.filter((p) => pageNames.includes(p.route === '/' ? 'index' : p.route.slice(1))).map((p) => {
               const safeName = p.route === '/' ? 'index' : p.route.slice(1);
               const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
               return { name: p.name, filename: `${safeName}.html`, route: p.route, html };
