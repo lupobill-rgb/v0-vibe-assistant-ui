@@ -66,9 +66,7 @@ function buildBlobUrl(pages: PageData[], activeFile: string): string | null {
   return URL.createObjectURL(blob)
 }
 
-function AddPageModal({ onSubmit, onClose, isLoading, error, statusText }: {
-  onSubmit: (desc: string) => void; onClose: () => void; isLoading: boolean; error: string | null; statusText: string
-}) {
+function AddPageModal({ onSubmit, onClose, isLoading, error }: { onSubmit: (desc: string) => void; onClose: () => void; isLoading: boolean; error: string | null }) {
   const [desc, setDesc] = useState('')
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -83,7 +81,7 @@ function AddPageModal({ onSubmit, onClose, isLoading, error, statusText }: {
           className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
         />
         {error && (
-          <p className="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
+          <p className="mt-2 text-xs text-red-400">{error}</p>
         )}
         <div className="flex items-center justify-end gap-2 mt-4">
           <button onClick={onClose} disabled={isLoading}
@@ -110,11 +108,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [activeFile, setActiveFile] = useState('index.html')
   const [showAddPage, setShowAddPage] = useState(false)
   const [addingPage, setAddingPage] = useState(false)
+  const [addPageError, setAddPageError] = useState<string | null>(null)
   const [editingPageIndex, setEditingPageIndex] = useState<number | null>(null)
   const [editingHtml, setEditingHtml] = useState('')
-  const [addPageError, setAddPageError] = useState<string | null>(null)
-  const [addPageStatus, setAddPageStatus] = useState('Generating…')
-  const [successToast, setSuccessToast] = useState<string | null>(null)
+  const [editPrompt, setEditPrompt] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -175,87 +172,59 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const handleAddPage = useCallback(async (description: string) => {
     setAddingPage(true)
     setAddPageError(null)
-    setAddPageStatus('Generating…')
-
-    const reqBody = JSON.stringify({ prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' })
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'),
-    }
-
-    console.log('[VIBE] Edge Function URL:', EDGE_FN_URL)
-    console.log('[VIBE] Request body:', reqBody)
-
-    const attempt = async (): Promise<{ text: string; status: number }> => {
-      const res = await fetch(EDGE_FN_URL, { method: 'POST', headers, body: reqBody })
-      const text = await res.text()
-      console.log('[VIBE] Edge Function response:', res.status, text)
-      return { text, status: res.status }
-    }
-
     try {
-      let result: { text: string; status: number }
+      const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
+      const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
+      const url = SUPABASE_URL + '/functions/v1/generate-diff'
+      const body = { prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' }
+
+      console.log("[VIBE] Add Page request:", url, body)
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_KEY },
+        body: JSON.stringify(body),
+      })
+
+      const text = await res.text()
+      console.log("[VIBE] Add Page response:", res.status, text)
+
+      if (!res.ok) throw new Error("Edge Function returned " + res.status)
+
+      let newPage: PageData | null = null
       try {
-        result = await attempt()
-      } catch (firstErr) {
-        console.error('[VIBE] First attempt failed:', firstErr)
-        setAddPageStatus('Retrying…')
-        await new Promise((r) => setTimeout(r, 2000))
-        result = await attempt()
+        const payload = JSON.parse(text)
+        if (payload.html) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.html }
+        } else if (payload.diff) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.diff }
+        } else if (Array.isArray(payload) && payload[0]?.html) {
+          newPage = payload[0]
+        } else if (payload.pages && Array.isArray(payload.pages)) {
+          newPage = payload.pages[0]
+        }
+      } catch {
+        if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: text }
+        }
       }
 
-      // Retry once on 500
-      if (result.status >= 500) {
-        console.error('[VIBE] First attempt returned', result.status)
-        setAddPageStatus('Retrying…')
-        await new Promise((r) => setTimeout(r, 2000))
-        result = await attempt()
-      }
-
-      if (result.status >= 400) {
-        throw new Error(`Edge Function returned ${result.status}: ${result.text.slice(0, 200)}`)
-      }
-
-      // Parse the response — try all known shapes
-      let payload: Record<string, unknown> = {}
-      try { payload = JSON.parse(result.text) } catch { /* raw HTML or unparseable */ }
-
-      let newPages: PageData[] = []
-
-      // Shape: { pages: [...] }
-      if (Array.isArray(payload.pages) && payload.pages.length > 0) {
-        newPages = payload.pages as PageData[]
-      }
-      // Shape: { html: "..." }
-      if (!newPages.length && typeof payload.html === 'string' && payload.html.trim()) {
-        newPages = parseDiff(payload.html)
-      }
-      // Shape: { diff: "..." }
-      if (!newPages.length && typeof payload.diff === 'string' && payload.diff.trim()) {
-        newPages = parseDiff(payload.diff)
-      }
-      // Shape: raw JSON array of PageData, or raw HTML string
-      if (!newPages.length) {
-        newPages = parseDiff(result.text)
-      }
-
-      if (!newPages.length) {
-        setAddPageError('Could not generate page. Check browser console for details.')
-        console.error('[VIBE] All parse attempts produced no pages. Raw response:', result.text)
+      if (!newPage) {
+        setAddPageError('No page could be parsed from the response. Check console for details.')
         return
       }
 
-      const merged = [...pages, newPages[0]]
+      const merged = [...pages, newPage]
       setDiff(JSON.stringify(merged))
-      setActiveFile(newPages[0].filename)
+      setActiveFile(newPage.filename)
       setShowAddPage(false)
       setAddPageError(null)
       setSuccessToast('Page added successfully')
       setTimeout(() => setSuccessToast(null), 3000)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error('[VIBE] Failed to generate page:', msg)
-      setAddPageError('Could not generate page. Check browser console for details.')
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[VIBE] Failed to generate page:', message)
+      setAddPageError(message)
     } finally {
       setAddingPage(false)
       setAddPageStatus('Generating…')
@@ -400,7 +369,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           <button
             type="button"
             onClick={() => console.log('[VIBE] Push Live clicked')}
-            className="flex items-center justify-center gap-2 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+            disabled={!isComplete}
+            className="flex items-center justify-center gap-2 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
             Push Live
           </button>
@@ -418,6 +388,25 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             Build Another
           </Link>
         </div>
+        <div className="px-4 py-3 border-t border-slate-700">
+          <label className="text-xs font-medium text-slate-400 mb-2 block">Edit current page</label>
+          <div className="flex gap-2">
+            <input
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
+              placeholder="e.g. Make the hero section taller"
+              disabled={!isComplete}
+              className="flex-1 h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+            />
+            <button
+              onClick={() => { if (editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
+              disabled={!editPrompt.trim() || !isComplete}
+              className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
+              Apply
+            </button>
+          </div>
+        </div>
       </div>
       {showLogs && (
         <div className="absolute inset-0 z-50 bg-black/60 flex items-end justify-center pb-6 px-6">
@@ -433,7 +422,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         </div>
       )}
-      {showAddPage && <AddPageModal onSubmit={handleAddPage} onClose={() => { setShowAddPage(false); setAddPageError(null) }} isLoading={addingPage} error={addPageError} statusText={addPageStatus} />}
+      {showAddPage && <AddPageModal onSubmit={handleAddPage} onClose={() => { setShowAddPage(false); setAddPageError(null) }} isLoading={addingPage} error={addPageError} />}
     </div>
   )
 }

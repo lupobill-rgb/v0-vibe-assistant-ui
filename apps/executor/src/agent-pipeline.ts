@@ -194,8 +194,8 @@ export async function runPipeline(
 
 export async function runDesignPhase(phase: DesignPhaseKey): Promise<string> {
   const prompt = DESIGN_PHASE[phase];
-  const result = await generateDiff(prompt, '', { model: 'claude' });
-  return result;
+  const result = await generateDiff(prompt, '', { model: 'claude', taskId: 'design-phase' });
+  return result.diff;
 }
 
 async function runDebugLoop( // resumes from the failing agent, not from scratch
