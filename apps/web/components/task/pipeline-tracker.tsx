@@ -34,17 +34,19 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
     state === "creating_pr" ? "pr" :
     state
 
-  const stateOrder = ["queued", "planning", "building", "validating", "testing", "pr", "completed"]
+  const stateOrder = ["queued", "planning", "security", "building", "validating", "ux", "testing", "pr", "completed"]
   const stateIdx = stateOrder.indexOf(normalizedState)
 
   const stepDefs = [
     { id: "1", key: "queued",      label: "Queued",           description: "Waiting for executor" },
     { id: "2", key: "planning",    label: "Planning",         description: "Decomposing prompt into tasks" },
-    { id: "3", key: "building",    label: "Building",         description: "Generating and applying diffs" },
-    { id: "4", key: "validating",  label: "Validating",       description: "Running build, lint, and tests" },
-    { id: "5", key: "testing",     label: "Security Scan",    description: "Running security analysis" },
-    { id: "6", key: "pr",          label: "Pull Request",     description: "Creating GitHub PR" },
-    { id: "7", key: "completed",   label: "Complete",         description: "Job finished successfully" },
+    { id: "3", key: "security",    label: "Security",         description: "RLS coverage and secrets scan" },
+    { id: "4", key: "building",    label: "Building",         description: "Generating and applying diffs" },
+    { id: "5", key: "validating",  label: "Validating",       description: "Running build and tests" },
+    { id: "6", key: "ux",          label: "UX",               description: "Design consistency and accessibility" },
+    { id: "7", key: "testing",     label: "QA",               description: "Test generation and verification" },
+    { id: "8", key: "pr",          label: "Pull Request",     description: "Creating GitHub PR" },
+    { id: "9", key: "completed",   label: "Complete",         description: "Job finished successfully" },
   ]
 
   return stepDefs.map((def) => {

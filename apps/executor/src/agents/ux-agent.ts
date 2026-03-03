@@ -52,6 +52,15 @@ If you cannot fix the issue without a larger refactor, output: CANNOT_FIX: <plai
 
 const MAX_FIX_ATTEMPTS = 2;
 
+const UX_FIX_SYSTEM = `You are a UX fix engine.
+Given a specific UX issue and the relevant code context, output ONLY a valid unified diff that fixes the issue.
+Rules:
+- Fix ONLY the specific issue described — no other changes
+- Do NOT refactor, rename, or restructure unrelated code
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root
+- If you cannot fix the issue, output exactly: CANNOT_FIX`;
+
 export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAgentResult> {
   await storage.logEvent(taskId, '[UX] Starting UX agent', 'info');
 

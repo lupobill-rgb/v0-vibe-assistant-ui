@@ -23,14 +23,26 @@ When fixing build errors, always output atomic single-file diffs.
 Never rewrite whole files. Rollback on patch failure.`;
 
 const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
+const MAX_DEBUG_RETRIES = 3;
 
 // ── Debug Agent ────────────────────────────────────────────
 export interface DebugAgentResult {
   success: boolean;
+  cannotFix: boolean;
   buildOutput: string;
   summary: string;
   iterations: number;
 }
+
+const DEBUG_SYSTEM = `You are a build-error repair engine.
+You receive the full repository context and an error log.
+Output ONLY a valid unified diff (git diff format) that fixes the errors.
+Rules:
+- Fix ONLY errors shown in the log — no refactoring, no new features
+- Do NOT add unrelated features or change logic unrelated to the failures
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root
+- If you cannot fix the errors, output exactly: CANNOT_FIX`;
 
 export async function runDebugAgent(
   taskId: string,

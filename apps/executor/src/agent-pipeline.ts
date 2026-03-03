@@ -55,7 +55,7 @@ async function callAgent(
   const partial = await fn();
   const result: AgentResult = { ...partial, agent: name, duration_ms: Date.now() - start };
   await storage.logEvent(taskId, `[PIPELINE] ${name} finished: ${result.status} (${result.duration_ms}ms)`,
-    result.status === 'failed' ? 'error' : 'info');
+    result.status === 'failed' || result.status === 'cannot_fix' ? 'error' : 'info');
   return result;
 }
 
@@ -141,13 +141,44 @@ export async function runPipeline(
     const raw = await callLLM(`${VIBE_SYSTEM_RULES}\n\nYou are a planning assistant. Return ONLY valid JSON, no markdown.`, msg, jobId, config.model);
     try {
       state.plan = JSON.parse(raw);
-      return { status: 'passed', output: `Plan: ${state.plan!.tasks.length} tasks, ${state.plan!.files.length} files` };
+      return {
+        status: 'passed',
+        output: `Plan: ${state.plan!.tasks.length} tasks, ${state.plan!.files.length} files`,
+        summary: `Planned ${state.plan!.tasks.length} tasks across ${state.plan!.files.length} files`,
+      };
     } catch {
       return { status: 'failed', output: 'Invalid JSON plan', errors: [raw.slice(0, 500)] };
     }
   });
   state.results.push(planResult);
   if (planResult.status === 'failed' || !state.plan) {
+    await storage.updateTaskState(jobId, 'failed'); return state;
+  }
+
+  // ── SECURITY ──────────────────────────────────────────────────────────────
+  state.current_agent = 'security';
+  storage.updateTaskState(jobId, 'security');
+  storage.logEvent(jobId, '[PIPELINE] Phase: Security — RLS coverage and secrets scan', 'info');
+  const secResult = await callAgent('security', jobId, async () => {
+    const scan = await runSecurityAgent(jobId, worktreeDir);
+    if (scan.blocked) {
+      return {
+        status: 'failed',
+        output: `Blocked: ${scan.criticalCount} critical finding(s)`,
+        summary: `Security scan blocked: ${scan.criticalCount} critical, ${scan.warnCount} warnings`,
+        fixes: scan.fixes,
+        errors: [`${scan.criticalCount} critical, ${scan.warnCount} warnings`],
+      };
+    }
+    return {
+      status: 'passed',
+      output: `Security clean (${scan.warnCount} warnings)`,
+      summary: `Security passed: ${scan.warnCount} warnings${scan.fixes.length > 0 ? `, ${scan.fixes.length} auto-fixed` : ''}`,
+      fixes: scan.fixes,
+    };
+  });
+  state.results.push(secResult);
+  if (secResult.status === 'failed') {
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
@@ -168,7 +199,12 @@ export async function runPipeline(
       const build = await runCmd(BUILD(), worktreeDir);
       if (!build.ok) return { status: 'needs_fix' as const, output: `Build failed after: ${task}`, diffs, errors: [build.output] };
     }
-    return { status: 'passed', output: `Applied ${diffs.length} diffs`, diffs };
+    return {
+      status: 'passed',
+      output: `Applied ${diffs.length} diffs`,
+      summary: `Built ${diffs.length} diff(s) across ${state.plan!.tasks.length} tasks`,
+      diffs,
+    };
   });
   state.results.push(builderResult);
   if (builderResult.status === 'needs_fix') {
@@ -202,7 +238,7 @@ export async function runPipeline(
     if (!await runDebugLoop(state, 'qa', qaResult.errors?.[0] || '', worktreeDir, jobId)) {
       await storage.updateTaskState(jobId, 'failed'); return state;
     }
-  } else if (qaResult.status === 'failed') {
+  } else if (validateResult.status === 'failed') {
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 

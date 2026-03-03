@@ -14,6 +14,7 @@ import {
 } from '../diff-validator';
 
 const execAsync = promisify(exec);
+const MAX_QA_RETRIES = 3;
 
 const MAX_QA_FIX_ITERATIONS = parseInt(process.env.MAX_QA_FIX_ITERATIONS || '2', 10);
 
@@ -56,18 +57,42 @@ OUTPUT FORMAT:
 
 export interface QaAgentResult {
   success: boolean;
+  cannotFix: boolean;
   testOutput: string;
   summary: string;
 }
 
+const QA_SYSTEM = `You are a test generation engine.
+Given changed source files and codebase context, generate test files using ONLY the Node.js built-in test runner.
+Output ONLY a valid unified diff creating or updating test files.
+Rules:
+- Import: import { describe, it, before, after } from 'node:test'
+- Import: import assert from 'node:assert'
+- Do NOT use Jest, Mocha, or any third-party test framework
+- Place test files alongside the source with a .test.ts extension
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root
+- If no tests are needed, output exactly: NO_CHANGES`;
+
+const QA_FIX_SYSTEM = `You are a test repair engine.
+Given failing test output and codebase context, fix the test failures.
+Output ONLY a valid unified diff that fixes the failing tests.
+Rules:
+- Fix ONLY the test failures shown in the error log — no refactoring
+- Do NOT change application source code — only modify test files
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root
+- If you cannot fix the tests, output exactly: CANNOT_FIX`;
+
 export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAgentResult> {
   await storage.logEvent(taskId, '[QA] Starting QA agent', 'info');
 
-  // Discover changed source files from last commit
   const git = simpleGit(repoPath);
+  const fixes: string[] = [];
+
+  // Discover changed source files from last commit
   let changedFiles: string[] = [];
   try {
-    // git.diff() returns a string with file names (one per line)
     const diffString = await git.diff(['HEAD~1', 'HEAD', '--name-only']);
     changedFiles = diffString
       .split('\n')
@@ -113,6 +138,81 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
     return { success: true, testOutput: 'Test diff sanitization failed', summary: 'Test diff sanitization failed — skipped.' };
   }
 
+  await storage.logEvent(taskId, '[QA] Tests failed, entering fix loop', 'warning');
+
+  // Test-fix retry loop
+  let lastError = initialRun.output;
+  for (let attempt = 1; attempt <= MAX_QA_RETRIES; attempt++) {
+    await storage.logEvent(taskId, `[QA] Fix attempt ${attempt}/${MAX_QA_RETRIES}`, 'info');
+
+    // Rollback before retry
+    try {
+      await git.checkout(['--', '.']);
+      await storage.logEvent(taskId, '[QA] Rolled back working tree', 'info');
+    } catch (err: any) {
+      await storage.logEvent(taskId, `[QA] Rollback warning: ${err.message}`, 'warning');
+    }
+
+    // Rebuild context with error output
+    const fixContext = formatContext((await buildContext(repoPath, 'Fix failing tests')).files);
+    const enriched = `${fixContext}\n\n---\n\nTEST ERROR OUTPUT:\n${lastError.slice(0, 5000)}`;
+
+    const fixPrompt = `The generated tests are failing. Analyze the test error output and generate a unified diff that fixes the test failures.`;
+
+    let fixDiff: string;
+    try {
+      const result = await generateDiff(fixPrompt, enriched, { model: 'claude', taskId });
+      fixDiff = result.diff;
+    } catch (err: any) {
+      await storage.logEvent(taskId, `[QA] Fix LLM call failed: ${err.message}`, 'error');
+      lastError = `LLM error: ${err.message}`;
+      continue;
+    }
+
+    // Check for CANNOT_FIX signal
+    if (!fixDiff || fixDiff === 'NO_CHANGES' || fixDiff.trim() === 'CANNOT_FIX') {
+      await storage.logEvent(taskId, '[QA] LLM signalled CANNOT_FIX', 'warning');
+      return { success: false, cannotFix: true, testOutput: lastError, fixes };
+    }
+
+    const applyResult = await applyTestDiff(taskId, fixDiff, repoPath, git);
+    if (!applyResult.ok) {
+      await storage.logEvent(taskId, `[QA] Fix diff failed: ${applyResult.error}`, 'warning');
+      lastError = `Fix diff failed: ${applyResult.error}`;
+      continue;
+    }
+
+    const testRun = await runTests(repoPath);
+    if (testRun.ok) {
+      fixes.push(`Attempt ${attempt}: fixed test failures`);
+      await storage.logEvent(taskId, `[QA] Tests passed after fix attempt ${attempt}`, 'success');
+      return { success: true, cannotFix: false, testOutput: testRun.output, fixes };
+    }
+
+    lastError = testRun.output;
+    await storage.logEvent(taskId, `[QA] Tests still failing after attempt ${attempt}`, 'error');
+  }
+
+  await storage.logEvent(taskId, `[QA] Exhausted ${MAX_QA_RETRIES} retries — CANNOT_FIX`, 'error');
+
+  // Final rollback
+  try {
+    await git.checkout(['--', '.']);
+  } catch { /* ignore */ }
+
+  return { success: false, cannotFix: true, testOutput: lastError, fixes };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function applyTestDiff(
+  taskId: string, rawDiff: string, repoPath: string, git: ReturnType<typeof simpleGit>
+): Promise<{ ok: boolean; error?: string }> {
+  const sanitized = sanitizeUnifiedDiff(rawDiff);
+  if (!sanitized) return { ok: false, error: 'Diff failed sanitization' };
+
   const diff = extractDiff(sanitized);
   const validation = validateUnifiedDiffEnhanced(diff);
   if (!validation.ok) {
@@ -138,8 +238,9 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
     try { await git.raw(['checkout', headSha, '--', '.']); } catch { /* best effort */ }
     return { success: true, testOutput: `Failed to apply test diff: ${err.message}`, summary: 'Test patch apply failed — rolled back.' };
   } finally {
-    try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
+    try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore */ }
   }
+}
 
   // Run tests — retry loop fixes failing tests up to MAX_QA_FIX_ITERATIONS
   let currentTestOutput = '';
