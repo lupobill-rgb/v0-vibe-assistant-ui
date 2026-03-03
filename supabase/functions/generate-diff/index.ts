@@ -19,6 +19,41 @@ Rules — apply to every output:
 6. OSS patterns first. No custom primitives when a standard approach exists.
 7. Every change must be scoped, minimal, and purposeful.`;
 
+// ── Mode-specific system prompts ─────────────────────────────────────────
+
+const PLAN_SYSTEM =
+  "You are VIBE, an AI website planner. " +
+  "1. Given a user prompt, return a JSON array of page objects. Each object has: name, title, description. " +
+  "2. Return ONLY valid JSON — no markdown fences, no explanation, no extra text. " +
+  "3. Return between 1 and 6 pages depending on the request. " +
+  "   - If the user asks for a single page, landing page, or one-pager, return EXACTLY 1 page (just index). " +
+  "   - If the user asks for a dashboard or app, return 1-3 pages focused on core functionality. " +
+  "   - If the user asks for a full website or multi-page site, return 3-6 pages. " +
+  "4. Each page should serve a distinct purpose. " +
+  "5. Descriptions should be specific enough to guide HTML generation. " +
+  "6. Users can add more pages later — focus on the core pages that deliver the most value.";
+
+const PAGE_SYSTEM =
+  "You are VIBE, an AI website builder. " +
+  "1. Return ONLY a complete, self-contained HTML page. " +
+  "2. No markdown fences, no explanation, no extra text — just the HTML starting with <!DOCTYPE html>. " +
+  "3. Use a modern, professional design with clean typography. " +
+  "4. Include all CSS in a <style> tag and all JS in a <script> tag. " +
+  "5. Make the page responsive using CSS flexbox/grid. " +
+  "6. Use semantic HTML elements (nav, main, section, footer, etc). " +
+  "7. NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {\" \"} expressions, no 'export default function'. " +
+  "8. Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. ";
+
+const SINGLE_PAGE_SYSTEM =
+  "You are VIBE, an AI website builder. " +
+  "1. Return ONLY a complete, self-contained HTML page. " +
+  "2. No markdown fences, no explanation, no extra text — just the HTML starting with <!DOCTYPE html>. " +
+  "3. Use a modern, professional design with clean typography and a dark theme. " +
+  "4. Include all CSS in a <style> tag and all JS in a <script> tag. " +
+  "5. Make the page responsive using CSS flexbox/grid. " +
+  "6. NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {\" \"} expressions, no 'export default function'. " +
+  "7. Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. ";
+
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -111,7 +146,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, context, model = "claude", system, max_tokens } = await req.json();
+    const { prompt, context, model = "claude", system, max_tokens, mode } = await req.json();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -126,13 +161,30 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Build system message: always prepend VIBE_SYSTEM_RULES
-    const baseSystemMsg = system
-      ? system
-      : "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
+    // Build system message: select prompt based on mode, always prepend VIBE_SYSTEM_RULES
+    let baseSystemMsg: string;
+    let defaultMaxTokens = 4096;
+
+    if (system) {
+      // Explicit system prompt overrides mode-based selection
+      baseSystemMsg = system;
+    } else if (mode === "plan") {
+      baseSystemMsg = PLAN_SYSTEM;
+      defaultMaxTokens = 2048;
+    } else if (mode === "page") {
+      baseSystemMsg = PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
+      defaultMaxTokens = 8192;
+    } else if (mode === "html") {
+      baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
+      defaultMaxTokens = 8192;
+    } else {
+      // Default: diff generation mode
+      baseSystemMsg = "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
         (context ? "\nProject context:\n" + context : "");
+    }
+
     const systemMsg = VIBE_SYSTEM_RULES + "\n" + baseSystemMsg;
-    const resolvedMaxTokens = max_tokens || 4096;
+    const resolvedMaxTokens = max_tokens || defaultMaxTokens;
 
     // Try the requested model first
     let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
@@ -163,6 +215,7 @@ Deno.serve(async (req: Request) => {
         diff: result.diff,
         usage: result.usage,
         model: fallbackUsed ? flipModel(model) : model,
+        mode: mode || "diff",
         fallback_used: fallbackUsed,
         original_model: fallbackUsed ? originalModel : undefined,
       }),
