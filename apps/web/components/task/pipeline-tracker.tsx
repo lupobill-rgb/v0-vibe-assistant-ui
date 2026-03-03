@@ -99,6 +99,9 @@ interface PipelineTrackerProps {
 export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const [task, setTask] = useState<Task | null>(null)
   const [steps, setSteps] = useState<PipelineStep[]>(buildStepsFromTask(null))
+  const [expandedStep, setExpandedStep] = useState<string | null>(null)
+  const [applyingFix, setApplyingFix] = useState<number | null>(null)
+  const [fixResult, setFixResult] = useState<{ success: boolean; summary: string } | null>(null)
 
   useEffect(() => {
     fetchJob(taskId).then((t) => {
@@ -120,8 +123,28 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const totalCount = steps.length
   const progress = (completedCount / totalCount) * 100
 
+  const allFixes = extractFixes(task)
+
   const isTerminal =
     task?.execution_state === "completed" || task?.execution_state === "failed"
+
+  const applyFix = async (fixIndex: number) => {
+    setApplyingFix(fixIndex)
+    setFixResult(null)
+    try {
+      const res = await fetch(`${API_URL}/jobs/${taskId}/diff/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fix_index: fixIndex }),
+      })
+      const data = await res.json()
+      setFixResult({ success: data.success, summary: data.summary })
+    } catch (err) {
+      setFixResult({ success: false, summary: 'Request failed — check network connection.' })
+    } finally {
+      setApplyingFix(null)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full bg-card border-r border-border">

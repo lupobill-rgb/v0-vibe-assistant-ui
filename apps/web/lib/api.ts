@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 // API base URL — must be set via NEXT_PUBLIC_API_URL for browser access
-const API_URL =
+export const API_URL =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) ||
   'http://localhost:3001'
 
