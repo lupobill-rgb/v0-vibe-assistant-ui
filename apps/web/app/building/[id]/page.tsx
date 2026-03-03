@@ -75,8 +75,8 @@ function AddPageModal({ onSubmit, onClose, isLoading, error }: { onSubmit: (desc
         <input
           autoFocus
           value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && desc.trim()) onSubmit(desc.trim()) }}
+          onChange={(e) => { setDesc(e.target.value) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && desc.trim() && !isLoading) onSubmit(desc.trim()) }}
           placeholder="e.g. A careers page with open positions and an apply form"
           className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
         />
@@ -90,7 +90,7 @@ function AddPageModal({ onSubmit, onClose, isLoading, error }: { onSubmit: (desc
           </button>
           <button onClick={() => { if (desc.trim()) onSubmit(desc.trim()) }} disabled={isLoading || !desc.trim()}
             className="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium transition-colors flex items-center gap-2">
-            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</> : 'Generate Page'}
+            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> {statusText}</> : 'Generate Page'}
           </button>
         </div>
       </div>
@@ -218,12 +218,16 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       setDiff(JSON.stringify(merged))
       setActiveFile(newPage.filename)
       setShowAddPage(false)
+      setAddPageError(null)
+      setSuccessToast('Page added successfully')
+      setTimeout(() => setSuccessToast(null), 3000)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error('[VIBE] Failed to generate page:', message)
       setAddPageError(message)
     } finally {
       setAddingPage(false)
+      setAddPageStatus('Generating…')
     }
   }, [pages])
 
@@ -287,6 +291,11 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
         {/* ── PAGE MANAGEMENT SECTION ── */}
         <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+          {successToast && (
+            <div className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 animate-pulse">
+              {successToast}
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Pages</span>
             <button
