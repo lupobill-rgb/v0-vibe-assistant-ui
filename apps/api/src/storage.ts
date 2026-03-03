@@ -17,7 +17,14 @@ export type ExecutionState =
   | 'running_preflight'
   | 'creating_pr'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  // Agent pipeline states
+  | 'planning'
+  | 'security'
+  | 'building'
+  | 'validating'
+  | 'ux'
+  | 'testing';
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
 
@@ -92,7 +99,7 @@ export interface AgentResultSummary {
   status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix';
   summary?: string;
   duration_ms: number;
-  fixes?: { category: string; description: string; diff?: string }[];
+  fixes?: { category: string; description: string }[];
 }
 
 export interface VibeEvent {

@@ -18,8 +18,10 @@ export type ExecutionState =
   | 'failed'
   // Agent pipeline states
   | 'planning'
+  | 'security'
   | 'building'
   | 'validating'
+  | 'ux'
   | 'testing';
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
@@ -65,7 +67,7 @@ export interface AgentResultSummary {
   status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix';
   summary?: string;
   duration_ms: number;
-  fixes?: { category: string; description: string; diff?: string }[];
+  fixes?: { category: string; description: string }[];
 }
 
 export interface VibeEvent {
@@ -383,6 +385,17 @@ class ExecutorStorage {
       .update(updates)
       .eq('id', taskId);
     if (error) throw new Error(`Failed to update usage metrics: ${error.message}`);
+  }
+
+  async updateTaskAgentResults(taskId: string, agentResults: AgentResultSummary[]): Promise<void> {
+    const { error } = await this.sb
+      .from('jobs')
+      .update({
+        agent_results: agentResults,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+    if (error) throw new Error(`Failed to update agent results: ${error.message}`);
   }
 }
 
