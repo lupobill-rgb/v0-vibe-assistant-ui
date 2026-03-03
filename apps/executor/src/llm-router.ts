@@ -89,7 +89,7 @@ async function callEdgeDiff(
     body: JSON.stringify({
       prompt: fullPrompt,
       context,
-      model,
+      model: model === 'gpt' ? 'openai' : model,
     }),
   });
 
