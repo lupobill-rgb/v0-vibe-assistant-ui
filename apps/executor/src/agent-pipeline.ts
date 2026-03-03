@@ -90,6 +90,27 @@ async function runCmd(cmd: string, cwd: string): Promise<{ ok: boolean; output: 
 
 const BUILD = () => process.env.BUILD_COMMAND || 'npm run build';
 
+/** Map pipeline AgentResult[] → AgentResultSummary[] for DB persistence. */
+function toAgentResultSummaries(results: AgentResult[]): AgentResultSummary[] {
+  return results.map((r) => ({
+    agent: r.agent,
+    status: r.status === 'needs_fix' ? 'needs_fix' : r.status,
+    summary: r.output,
+    duration_ms: r.duration_ms,
+    // Store fix descriptions only — not full diff payloads
+    fixes: r.fixes?.map((f) => ({ category: f.category, description: f.description })),
+  }));
+}
+
+/** Persist agent results — fire and forget, never block pipeline return. */
+async function persistAgentResults(jobId: string, results: AgentResult[]): Promise<void> {
+  try {
+    await storage.updateTaskAgentResults(jobId, toAgentResultSummaries(results));
+  } catch (err: any) {
+    storage.logEvent(jobId, `[PIPELINE] Failed to persist agent results: ${err.message}`, 'warning');
+  }
+}
+
 /**
  * Orchestrates the full agent pipeline: Security → Planner → Builder → QA → UX.
  * Uses llm-router.ts for all LLM calls.
@@ -152,6 +173,7 @@ export async function runPipeline(
   });
   state.results.push(planResult);
   if (planResult.status === 'failed' || !state.plan) {
+    await persistAgentResults(jobId, state.results);
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
@@ -212,6 +234,24 @@ export async function runPipeline(
       await storage.updateTaskState(jobId, 'failed'); return state;
     }
   } else if (builderResult.status === 'failed') {
+    await persistAgentResults(jobId, state.results);
+    await storage.updateTaskState(jobId, 'failed'); return state;
+  }
+
+  // ── SECURITY (TESTING) ────────────────────────────────────────────────────
+  state.current_agent = 'security';
+  storage.updateTaskState(jobId, 'testing');
+  storage.logEvent(jobId, '[PIPELINE] Phase: Testing — running security scan', 'info');
+  const secResult = await callAgent('security', jobId, async () => {
+    const scan = await runSecurityAgent(jobId, worktreeDir);
+    if (scan.blocked)
+      return { status: 'failed', output: `Blocked: ${scan.criticalCount} critical findings`,
+        errors: [`${scan.criticalCount} critical, ${scan.warnCount} warnings`] };
+    return { status: 'passed', output: `Security clean (${scan.warnCount} warnings)` };
+  });
+  state.results.push(secResult);
+  if (secResult.status === 'failed') {
+    await persistAgentResults(jobId, state.results);
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
@@ -265,6 +305,7 @@ export async function runPipeline(
 
   // Pipeline succeeded — caller handles PR creation and final 'completed' state
   state.success = true;
+  await persistAgentResults(jobId, state.results);
   storage.logEvent(jobId, '[PIPELINE] All agents passed — ready for PR creation', 'success');
   return state;
 }

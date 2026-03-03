@@ -346,6 +346,19 @@ class ExecutorStorage {
     return (data || []).map((row) => eventRowToVibeEvent(row as JobEventRow));
   }
 
+  // ── Agent results ──
+
+  async updateTaskAgentResults(taskId: string, agentResults: AgentResultSummary[]): Promise<void> {
+    const { error } = await this.sb
+      .from('jobs')
+      .update({
+        agent_results: agentResults,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+    if (error) throw new Error(`Failed to update agent results: ${error.message}`);
+  }
+
   // ── Usage metrics ──
 
   async updateTaskUsageMetrics(taskId: string, metrics: {

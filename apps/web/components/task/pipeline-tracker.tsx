@@ -12,6 +12,7 @@ import {
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { fetchJob, subscribeToJobUpdates, type Task } from "@/lib/api"
+import type { AgentResultSummary } from "@/lib/api"
 
 export type StepStatus = "done" | "active" | "pending" | "error"
 
@@ -21,6 +22,7 @@ export interface PipelineStep {
   description: string
   status: StepStatus
   duration?: string
+  agentSummary?: string
 }
 
 function buildStepsFromTask(task: Task | null): PipelineStep[] {
@@ -49,6 +51,9 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
     { id: "9", key: "completed",   label: "Complete",         description: "Job finished successfully" },
   ]
 
+  // Attach agent summaries from persisted results
+  const agentResults: AgentResultSummary[] = task?.agent_results ?? []
+
   return stepDefs.map((def) => {
     const idx = stateOrder.indexOf(def.key)
     let status: StepStatus = "pending"
@@ -63,7 +68,14 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
       else if (idx === stateIdx) status = "active"
     }
 
-    return { ...def, status }
+    // Match agent result to step by key name
+    const agentResult = agentResults.find((r) => r.agent === def.key)
+
+    return {
+      ...def,
+      status,
+      agentSummary: agentResult?.summary,
+    }
   })
 }
 
@@ -188,6 +200,14 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                   {step.description}
                 </p>
+                {step.agentSummary && (
+                  <p className={cn(
+                    "text-[10px] mt-0.5 leading-relaxed font-mono",
+                    step.status === "error" ? "text-red-400/80" : "text-emerald-400/70"
+                  )}>
+                    {step.agentSummary}
+                  </p>
+                )}
               </div>
             </div>
           ))}
