@@ -57,11 +57,11 @@ export async function runBuilderAgent(
     // Generate diff
     let diff: string;
     try {
-      const result = await generateDiff(
-        `${BUILDER_SYSTEM}\n\n---\nTASK: ${task}`,
-        context,
-        { model: 'claude', taskId },
-      );
+      const result = await generateDiff(task, context, {
+        model: 'claude',
+        taskId,
+        systemPrompt: BUILDER_SYSTEM,
+      });
       diff = result.diff;
     } catch (err: any) {
       await storage.logEvent(taskId, `[BUILDER] LLM call failed on task ${i + 1}: ${err.message}`, 'error');

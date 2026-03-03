@@ -97,7 +97,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, context, model = "claude" } = await req.json();
+    const { prompt, context, model = "claude", system } = await req.json();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -112,9 +112,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemMsg =
+    const defaultSystem =
       "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
       (context ? "\nProject context:\n" + context : "");
+    const systemMsg = system ? `${system}\n\nProject context:\n${context || ''}` : defaultSystem;
 
     // Try the requested model first
     let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };

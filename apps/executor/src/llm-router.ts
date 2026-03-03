@@ -68,7 +68,8 @@ function flipModel(model: 'claude' | 'gpt'): 'claude' | 'gpt' {
 async function callEdgeDiff(
   fullPrompt: string,
   context: string,
-  model: 'claude' | 'gpt'
+  model: 'claude' | 'gpt',
+  system?: string
 ): Promise<{
   diff: string;
   usage: { input_tokens: number; output_tokens: number; total_tokens: number };
@@ -90,6 +91,7 @@ async function callEdgeDiff(
       prompt: fullPrompt,
       context,
       model,
+      ...(system ? { system } : {}),
     }),
   });
 
@@ -111,7 +113,7 @@ async function callEdgeDiff(
 export async function generateDiff(
   prompt: string,
   context: string,
-  options: { model: 'claude' | 'gpt'; taskId: string },
+  options: { model: 'claude' | 'gpt'; taskId: string; systemPrompt?: string },
   previousError?: string
 ): Promise<RouterDiffResult> {
   const startTime = Date.now();
@@ -126,7 +128,7 @@ export async function generateDiff(
   let usedModel = options.model;
 
   try {
-    result = await callEdgeDiff(fullPrompt, context, options.model);
+    result = await callEdgeDiff(fullPrompt, context, options.model, options.systemPrompt);
   } catch (primaryErr) {
     // Primary model failed — try the other provider
     const fallbackModel = flipModel(options.model);
@@ -137,7 +139,7 @@ export async function generateDiff(
     );
 
     try {
-      result = await callEdgeDiff(fullPrompt, context, fallbackModel);
+      result = await callEdgeDiff(fullPrompt, context, fallbackModel, options.systemPrompt);
       usedModel = fallbackModel;
     } catch (fallbackErr) {
       // Both providers failed
