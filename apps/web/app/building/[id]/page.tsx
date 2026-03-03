@@ -113,7 +113,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [editingHtml, setEditingHtml] = useState('')
   const [editPrompt, setEditPrompt] = useState('')
   const [successToast, setSuccessToast] = useState<string | null>(null)
-  const [addPageStatus, setAddPageStatus] = useState('Generating…')
+
 
   useEffect(() => {
     let cancelled = false
@@ -229,8 +229,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       setAddPageError(message)
     } finally {
       setAddingPage(false)
-      setAddPageStatus('Generating…')
-    }
+}
   }, [pages])
 
   return (
