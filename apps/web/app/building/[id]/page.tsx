@@ -107,6 +107,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [addingPage, setAddingPage] = useState(false)
   const [editingPageIndex, setEditingPageIndex] = useState<number | null>(null)
   const [editingHtml, setEditingHtml] = useState('')
+  const [editPrompt, setEditPrompt] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -341,6 +342,25 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           <Link href="/" className="flex items-center justify-center h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-sm font-medium transition-colors">
             Build Another
           </Link>
+        </div>
+        <div className="px-4 py-3 border-t border-slate-700">
+          <label className="text-xs font-medium text-slate-400 mb-2 block">Edit current page</label>
+          <div className="flex gap-2">
+            <input
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
+              placeholder="e.g. Make the hero section taller"
+              disabled={!isComplete}
+              className="flex-1 h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+            />
+            <button
+              onClick={() => { if (editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
+              disabled={!editPrompt.trim() || !isComplete}
+              className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
+              Apply
+            </button>
+          </div>
         </div>
       </div>
       {showLogs && (
