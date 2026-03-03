@@ -90,7 +90,7 @@ function AddPageModal({ onSubmit, onClose, isLoading, error }: { onSubmit: (desc
           </button>
           <button onClick={() => { if (desc.trim()) onSubmit(desc.trim()) }} disabled={isLoading || !desc.trim()}
             className="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium transition-colors flex items-center gap-2">
-            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> {statusText}</> : 'Generate Page'}
+            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : 'Generate Page'}
           </button>
         </div>
       </div>
@@ -112,6 +112,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [editingPageIndex, setEditingPageIndex] = useState<number | null>(null)
   const [editingHtml, setEditingHtml] = useState('')
   const [editPrompt, setEditPrompt] = useState('')
+  const [successToast, setSuccessToast] = useState<string | null>(null)
+  const [addPageStatus, setAddPageStatus] = useState('Generating…')
 
   useEffect(() => {
     let cancelled = false
