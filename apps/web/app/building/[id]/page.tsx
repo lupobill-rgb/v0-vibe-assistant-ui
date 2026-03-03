@@ -323,7 +323,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           <button
             type="button"
             onClick={() => console.log('[VIBE] Push Live clicked')}
-            className="flex items-center justify-center gap-2 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+            disabled={!isComplete}
+            className="flex items-center justify-center gap-2 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
             Push Live
           </button>
