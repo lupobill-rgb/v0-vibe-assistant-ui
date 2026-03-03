@@ -65,7 +65,7 @@ export interface AgentResultSummary {
   status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix';
   summary?: string;
   duration_ms: number;
-  fixes?: { category: string; description: string }[];
+  fixes?: { category: string; description: string; diff?: string }[];
 }
 
 export interface VibeEvent {
@@ -74,15 +74,6 @@ export interface VibeEvent {
   event_message: string;
   severity: EventSeverity;
   event_time: string;
-}
-
-/** Lightweight summary of an agent run, persisted as JSON on the jobs row. */
-export interface AgentResultSummary {
-  agent: string;
-  status: string;
-  summary: string;
-  duration_ms: number;
-  fixes?: Array<{ category: string; description: string }>;
 }
 
 // ── Row types from Supabase (DB column names) ──
@@ -392,17 +383,6 @@ class ExecutorStorage {
       .update(updates)
       .eq('id', taskId);
     if (error) throw new Error(`Failed to update usage metrics: ${error.message}`);
-  }
-
-  async updateTaskAgentResults(taskId: string, agentResults: AgentResultSummary[]): Promise<void> {
-    const { error } = await this.sb
-      .from('jobs')
-      .update({
-        agent_results: agentResults,
-        last_modified: new Date().toISOString(),
-      })
-      .eq('id', taskId);
-    if (error) throw new Error(`Failed to update agent results: ${error.message}`);
   }
 }
 

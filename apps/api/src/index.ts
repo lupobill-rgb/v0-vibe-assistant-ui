@@ -5,7 +5,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { storage } from './storage';
 import path from 'path';
 import fs from 'fs';
-import { execSync, execFileSync } from 'child_process';
+import { exec, execSync, execFileSync } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
@@ -682,14 +685,91 @@ async function bootstrap() {
 
   app.post('/jobs/:id/diff/apply', async (req: Request, res: Response) => {
     try {
-      const { diff } = req.body;
-      if (!diff) return res.status(400).json({ error: 'diff is required' });
+      const { fix_index } = req.body as { fix_index?: number };
+      if (fix_index === undefined || typeof fix_index !== 'number') {
+        return res.status(400).json({ error: 'fix_index (number) is required' });
+      }
+
       const task = await storage.getTask(req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
-      await storage.setTaskDiff(req.params.id, diff);
-      res.json({ message: 'Diff updated successfully' });
+
+      // Only allow fix application on terminal jobs
+      if (task.execution_state !== 'failed' && task.execution_state !== 'completed') {
+        return res.status(409).json({ error: 'Fix can only be applied to completed or failed jobs' });
+      }
+
+      // Locate the fix in agent_results
+      const allFixes = (task.agent_results ?? []).flatMap((r) => r.fixes ?? []);
+      const fix = allFixes[fix_index];
+      if (!fix) {
+        return res.status(404).json({ error: `No fix at index ${fix_index}` });
+      }
+      if (!fix.diff) {
+        return res.status(400).json({ error: 'Fix has no diff payload' });
+      }
+
+      // Locate worktree — executor convention: /data/worktrees/{task_id}
+      const worktreePath = path.join('/data/worktrees', req.params.id);
+      if (!fs.existsSync(worktreePath)) {
+        return res.status(404).json({
+          error: 'Worktree not found. The executor environment may have been cleaned up.',
+        });
+      }
+
+      // Validate diff before applying
+      const patchPath = path.join(worktreePath, '.vibe-fix-apply.patch');
+      try {
+        fs.writeFileSync(patchPath, fix.diff, 'utf-8');
+      } catch (err: any) {
+        return res.status(500).json({ error: `Failed to write patch: ${err.message}` });
+      }
+
+      // git apply --check first — dry run
+      try {
+        await execAsync(`git apply --check ${patchPath}`, { cwd: worktreePath });
+      } catch (err: any) {
+        fs.existsSync(patchPath) && fs.unlinkSync(patchPath);
+        return res.status(422).json({
+          error: 'Fix diff cannot be applied cleanly — the codebase may have changed.',
+          detail: err.stderr?.slice(0, 500),
+        });
+      }
+
+      // Apply
+      try {
+        await execAsync(`git apply --verbose ${patchPath}`, { cwd: worktreePath });
+      } catch (err: any) {
+        fs.existsSync(patchPath) && fs.unlinkSync(patchPath);
+        return res.status(500).json({ error: `Failed to apply fix: ${err.message}` });
+      } finally {
+        fs.existsSync(patchPath) && fs.unlinkSync(patchPath);
+      }
+
+      // Verify with build
+      const buildCmd = process.env.BUILD_COMMAND || 'npm run build';
+      let buildOutput = '';
+      let buildPassed = false;
+      try {
+        const { stdout, stderr } = await execAsync(buildCmd, {
+          cwd: worktreePath,
+          timeout: 300000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        buildOutput = (stdout + stderr).slice(0, 2000);
+        buildPassed = true;
+      } catch (err: any) {
+        buildOutput = ((err.stdout || '') + (err.stderr || '')).slice(0, 2000);
+      }
+
+      res.json({
+        success: buildPassed,
+        summary: buildPassed
+          ? `Fix applied and build passed: ${fix.description}`
+          : `Fix applied but build failed. Manual review required.`,
+        buildOutput,
+      });
     } catch (error: any) {
-      res.status(500).json({ error: 'Failed to apply diff' });
+      res.status(500).json({ error: `Unexpected error: ${error.message}` });
     }
   });
 

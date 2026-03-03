@@ -17,7 +17,7 @@ export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security';
 export interface AgentResult {
   agent: AgentType; status: 'passed' | 'failed' | 'needs_fix'; output: string;
   diffs?: string[]; errors?: string[]; duration_ms: number;
-  fixes?: Array<{ category: string; description: string }>;
+  fixes?: Array<{ category: string; description: string; diff?: string }>;
 }
 export interface PipelineState {
   job_id: string; current_agent: AgentType; results: AgentResult[];
