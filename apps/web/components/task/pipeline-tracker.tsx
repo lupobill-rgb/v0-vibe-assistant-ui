@@ -12,57 +12,9 @@ import {
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { fetchJob, subscribeToJobUpdates, type Task, API_URL } from "@/lib/api"
+import { buildStepsFromTask, extractFixes, type StepStatus, type PipelineStep } from "@/lib/pipeline-utils"
 
-export type StepStatus = "done" | "active" | "pending" | "error"
-
-export interface PipelineStep {
-  id: string
-  label: string
-  description: string
-  status: StepStatus
-  duration?: string
-  agentSummary?: string
-}
-
-function buildStepsFromTask(task: Task | null): PipelineStep[] {
-  const state = task?.execution_state ?? "queued"
-
-  // Map legacy/intermediate states to canonical pipeline states
-  const normalizedState =
-    state === "cloning" || state === "building_context" ? "queued" :
-    state === "calling_llm" || state === "applying_diff" ? "building" :
-    state === "running_preflight" ? "validating" :
-    state === "creating_pr" ? "pr" :
-    state
-
-  const stateOrder = ["queued", "planning", "building", "validating", "testing", "pr", "completed"]
-  const stateIdx = stateOrder.indexOf(normalizedState)
-
-  const stepDefs = [
-    { id: "1", key: "queued",      label: "Queued",           description: "Waiting for executor" },
-    { id: "2", key: "planning",    label: "Planning",         description: "Decomposing prompt into tasks" },
-    { id: "3", key: "building",    label: "Building",         description: "Generating and applying diffs" },
-    { id: "4", key: "validating",  label: "Validating",       description: "Running build, lint, and tests" },
-    { id: "5", key: "testing",     label: "Security Scan",    description: "Running security analysis" },
-    { id: "6", key: "pr",          label: "Pull Request",     description: "Creating GitHub PR" },
-    { id: "7", key: "completed",   label: "Complete",         description: "Job finished successfully" },
-  ]
-
-  return stepDefs.map((def) => {
-    const idx = stateOrder.indexOf(def.key)
-    let status: StepStatus = "pending"
-
-    if (state === "failed") {
-      if (idx < stateIdx) status = "done"
-      else if (idx === stateIdx) status = "error"
-    } else {
-      if (idx < stateIdx) status = "done"
-      else if (idx === stateIdx) status = "active"
-    }
-
-    return { ...def, status }
-  })
-}
+export type { StepStatus, PipelineStep }
 
 function StatusIcon({ status }: { status: StepStatus }) {
   switch (status) {
@@ -108,7 +60,7 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const totalCount = steps.length
   const progress = (completedCount / totalCount) * 100
 
-  const allFixes = (task?.agent_results ?? []).flatMap((r: any) => r.fixes ?? [])
+  const allFixes = extractFixes(task)
 
   const isTerminal =
     task?.execution_state === "completed" || task?.execution_state === "failed"
