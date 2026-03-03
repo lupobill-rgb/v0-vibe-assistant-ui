@@ -8,6 +8,10 @@ import { generateDiff, callEdgeFunction } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
 import { sanitizeUnifiedDiff, extractDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runSecurityAgent } from './agents/security-agent';
+import { runDebugAgent } from './agents/debug-agent';
+import { runQaAgent } from './agents/qa-agent';
+import { runUxAgent } from './agents/ux-agent';
+import { runBuilderAgent } from './agents/builder-agent';
 
 const execAsync = promisify(exec);
 
@@ -121,23 +125,22 @@ export async function runPipeline(
   storage.updateTaskState(jobId, 'building');
   storage.logEvent(jobId, `[PIPELINE] Phase: Building — executing ${state.plan.tasks.length} tasks`, 'info');
   const builderResult = await callAgent('builder', jobId, async () => {
-    const diffs: string[] = [];
-    for (const task of state.plan!.tasks) {
-      storage.logEvent(jobId, `[PIPELINE] Builder task: ${task.slice(0, 80)}`, 'info');
-      const ctxResult = await buildContext(worktreeDir, task);
-      const res = await generateDiff(task, formatContext(ctxResult.files), { model: config.model, taskId: jobId });
-      if (!res.diff || res.diff === 'NO_CHANGES') continue;
-      const apply = await applyDiffToRepo(res.diff, worktreeDir);
-      if (!apply.ok) return { status: 'needs_fix' as const, output: `Apply failed: ${task}`, diffs, errors: [apply.error || 'Unknown'] };
-      diffs.push(res.diff);
-      const build = await runCmd(BUILD(), worktreeDir);
-      if (!build.ok) return { status: 'needs_fix' as const, output: `Build failed after: ${task}`, diffs, errors: [build.output] };
+    const result = await runBuilderAgent(jobId, worktreeDir, state.plan!.tasks);
+    if (!result.success) {
+      return {
+        status: 'needs_fix' as const,
+        output: result.summary,
+        errors: result.failedTask ? [result.failedTask] : undefined,
+      };
     }
-    return { status: 'passed', output: `Applied ${diffs.length} diffs`, diffs };
+    return {
+      status: 'passed' as const,
+      output: result.summary,
+    };
   });
   state.results.push(builderResult);
   if (builderResult.status === 'needs_fix') {
-    if (!await runDebugLoop(state, 'builder', builderResult.errors?.[0] || '', worktreeDir, config)) {
+    if (!await runDebugLoop(state, 'builder', builderResult.errors?.[0] || '', worktreeDir, jobId)) {
       await storage.updateTaskState(jobId, 'failed'); return state;
     }
   } else if (builderResult.status === 'failed') {
@@ -161,7 +164,7 @@ export async function runPipeline(
   });
   state.results.push(qaResult);
   if (qaResult.status === 'needs_fix') {
-    if (!await runDebugLoop(state, 'qa', qaResult.errors?.[0] || '', worktreeDir, config)) {
+    if (!await runDebugLoop(state, 'qa', qaResult.errors?.[0] || '', worktreeDir, jobId)) {
       await storage.updateTaskState(jobId, 'failed'); return state;
     }
   } else if (qaResult.status === 'failed') {
@@ -192,9 +195,8 @@ export async function runPipeline(
 
 async function runDebugLoop( // resumes from the failing agent, not from scratch
   state: PipelineState, failedAgent: AgentType, errorLog: string,
-  worktreeDir: string, config: RouterConfig,
+  worktreeDir: string, jobId: string,
 ): Promise<boolean> {
-  const { job_id: jobId } = state;
   while (state.retry_count < state.max_retries) {
     state.retry_count++;
     state.current_agent = 'debug';
@@ -204,7 +206,7 @@ async function runDebugLoop( // resumes from the failing agent, not from scratch
       const enriched = `${formatContext(ctxResult.files)}\n\n---\nERROR LOG:\n${errorLog.slice(0, 5000)}`;
       const res = await generateDiff(
         'Analyze the error log and generate a unified diff to fix the failures. Only fix errors shown.',
-        enriched, { model: config.model, taskId: jobId });
+        enriched, { model: 'claude', taskId: jobId });
       if (!res.diff || res.diff === 'NO_CHANGES') return { status: 'failed' as const, output: 'No fix produced' };
       const apply = await applyDiffToRepo(res.diff, worktreeDir);
       if (!apply.ok) return { status: 'failed' as const, output: `Fix failed: ${apply.error}` };
