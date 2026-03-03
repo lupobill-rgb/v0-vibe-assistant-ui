@@ -14,20 +14,46 @@ import {
 } from '../diff-validator';
 
 const execAsync = promisify(exec);
+const MAX_QA_RETRIES = 3;
 
 export interface QaAgentResult {
   success: boolean;
+  cannotFix: boolean;
   testOutput: string;
+  fixes: string[];
 }
+
+const QA_SYSTEM = `You are a test generation engine.
+Given changed source files and codebase context, generate test files using ONLY the Node.js built-in test runner.
+Output ONLY a valid unified diff creating or updating test files.
+Rules:
+- Import: import { describe, it, before, after } from 'node:test'
+- Import: import assert from 'node:assert'
+- Do NOT use Jest, Mocha, or any third-party test framework
+- Place test files alongside the source with a .test.ts extension
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root
+- If no tests are needed, output exactly: NO_CHANGES`;
+
+const QA_FIX_SYSTEM = `You are a test repair engine.
+Given failing test output and codebase context, fix the test failures.
+Output ONLY a valid unified diff that fixes the failing tests.
+Rules:
+- Fix ONLY the test failures shown in the error log — no refactoring
+- Do NOT change application source code — only modify test files
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root
+- If you cannot fix the tests, output exactly: CANNOT_FIX`;
 
 export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAgentResult> {
   await storage.logEvent(taskId, '[QA] Starting QA agent', 'info');
 
-  // Discover changed source files from last commit
   const git = simpleGit(repoPath);
+  const fixes: string[] = [];
+
+  // Discover changed source files from last commit
   let changedFiles: string[] = [];
   try {
-    // git.diff() returns a string with file names (one per line)
     const diffString = await git.diff(['HEAD~1', 'HEAD', '--name-only']);
     changedFiles = diffString
       .split('\n')
@@ -40,7 +66,7 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
 
   if (changedFiles.length === 0) {
     await storage.logEvent(taskId, '[QA] No changed source files detected, skipping test generation', 'warning');
-    return { success: true, testOutput: 'No changed source files' };
+    return { success: true, cannotFix: false, testOutput: 'No changed source files', fixes };
   }
 
   // Build context focused on changed files
@@ -48,14 +74,7 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
   const context = formatContext(contextResult.files);
 
   const prompt = `Generate a test file for the following changed source files: ${changedFiles.join(', ')}.
-
-Requirements:
-- Use ONLY the Node.js built-in test runner (node:test module)
-- Import: import { describe, it, before, after } from 'node:test'
-- Import: import assert from 'node:assert'
-- Do NOT use Jest, Mocha, or any third-party test framework
-- Place the test file alongside the first changed source file with a .test.ts extension
-- Output a unified diff that creates or updates the appropriate test file`;
+Place the test file alongside the first changed source file with a .test.ts extension.`;
 
   await storage.logEvent(taskId, '[QA] Calling LLM to generate test diff...', 'info');
 
@@ -66,60 +85,131 @@ Requirements:
     await storage.logEvent(taskId, `[QA] LLM generated test diff (${testDiff.length} chars)`, 'info');
   } catch (err: any) {
     await storage.logEvent(taskId, `[QA] LLM call failed: ${err.message}`, 'error');
-    return { success: false, testOutput: `LLM error: ${err.message}` };
+    return { success: false, cannotFix: false, testOutput: `LLM error: ${err.message}`, fixes };
   }
 
   if (!testDiff || testDiff === 'NO_CHANGES') {
     await storage.logEvent(taskId, '[QA] LLM produced no test diff, skipping', 'warning');
-    return { success: true, testOutput: 'LLM indicated no test changes needed' };
+    return { success: true, cannotFix: false, testOutput: 'LLM indicated no test changes needed', fixes };
   }
 
-  // Validate and apply test diff
-  const sanitized = sanitizeUnifiedDiff(testDiff);
-  if (!sanitized) {
-    await storage.logEvent(taskId, '[QA] Test diff failed sanitization, skipping', 'warning');
-    return { success: true, testOutput: 'Test diff sanitization failed' };
+  // Validate and apply initial test diff
+  const applyResult = await applyTestDiff(taskId, testDiff, repoPath, git);
+  if (!applyResult.ok) {
+    await storage.logEvent(taskId, `[QA] Initial test diff failed: ${applyResult.error}`, 'warning');
+    return { success: true, cannotFix: false, testOutput: `Test diff failed: ${applyResult.error}`, fixes };
   }
+
+  // Run tests — if they pass, we're done
+  const initialRun = await runTests(repoPath);
+  if (initialRun.ok) {
+    await storage.logEvent(taskId, `[QA] Tests passed on first attempt`, 'success');
+    return { success: true, cannotFix: false, testOutput: initialRun.output, fixes };
+  }
+
+  await storage.logEvent(taskId, '[QA] Tests failed, entering fix loop', 'warning');
+
+  // Test-fix retry loop
+  let lastError = initialRun.output;
+  for (let attempt = 1; attempt <= MAX_QA_RETRIES; attempt++) {
+    await storage.logEvent(taskId, `[QA] Fix attempt ${attempt}/${MAX_QA_RETRIES}`, 'info');
+
+    // Rollback before retry
+    try {
+      await git.checkout(['--', '.']);
+      await storage.logEvent(taskId, '[QA] Rolled back working tree', 'info');
+    } catch (err: any) {
+      await storage.logEvent(taskId, `[QA] Rollback warning: ${err.message}`, 'warning');
+    }
+
+    // Rebuild context with error output
+    const fixContext = formatContext((await buildContext(repoPath, 'Fix failing tests')).files);
+    const enriched = `${fixContext}\n\n---\n\nTEST ERROR OUTPUT:\n${lastError.slice(0, 5000)}`;
+
+    const fixPrompt = `The generated tests are failing. Analyze the test error output and generate a unified diff that fixes the test failures.`;
+
+    let fixDiff: string;
+    try {
+      const result = await generateDiff(fixPrompt, enriched, { model: 'claude', taskId });
+      fixDiff = result.diff;
+    } catch (err: any) {
+      await storage.logEvent(taskId, `[QA] Fix LLM call failed: ${err.message}`, 'error');
+      lastError = `LLM error: ${err.message}`;
+      continue;
+    }
+
+    // Check for CANNOT_FIX signal
+    if (!fixDiff || fixDiff === 'NO_CHANGES' || fixDiff.trim() === 'CANNOT_FIX') {
+      await storage.logEvent(taskId, '[QA] LLM signalled CANNOT_FIX', 'warning');
+      return { success: false, cannotFix: true, testOutput: lastError, fixes };
+    }
+
+    const applyResult = await applyTestDiff(taskId, fixDiff, repoPath, git);
+    if (!applyResult.ok) {
+      await storage.logEvent(taskId, `[QA] Fix diff failed: ${applyResult.error}`, 'warning');
+      lastError = `Fix diff failed: ${applyResult.error}`;
+      continue;
+    }
+
+    const testRun = await runTests(repoPath);
+    if (testRun.ok) {
+      fixes.push(`Attempt ${attempt}: fixed test failures`);
+      await storage.logEvent(taskId, `[QA] Tests passed after fix attempt ${attempt}`, 'success');
+      return { success: true, cannotFix: false, testOutput: testRun.output, fixes };
+    }
+
+    lastError = testRun.output;
+    await storage.logEvent(taskId, `[QA] Tests still failing after attempt ${attempt}`, 'error');
+  }
+
+  await storage.logEvent(taskId, `[QA] Exhausted ${MAX_QA_RETRIES} retries — CANNOT_FIX`, 'error');
+
+  // Final rollback
+  try {
+    await git.checkout(['--', '.']);
+  } catch { /* ignore */ }
+
+  return { success: false, cannotFix: true, testOutput: lastError, fixes };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function applyTestDiff(
+  taskId: string, rawDiff: string, repoPath: string, git: ReturnType<typeof simpleGit>
+): Promise<{ ok: boolean; error?: string }> {
+  const sanitized = sanitizeUnifiedDiff(rawDiff);
+  if (!sanitized) return { ok: false, error: 'Diff failed sanitization' };
 
   const diff = extractDiff(sanitized);
   const validation = validateUnifiedDiffEnhanced(diff);
-  if (!validation.ok) {
-    await storage.logEvent(taskId, `[QA] Test diff validation failed: ${validation.errors.join('; ')}`, 'warning');
-    return { success: true, testOutput: `Test diff validation failed: ${validation.errors.join('; ')}` };
-  }
+  if (!validation.ok) return { ok: false, error: `Validation: ${validation.errors.join('; ')}` };
 
   const applicability = validateDiffApplicability(diff, repoPath);
-  if (!applicability.valid) {
-    await storage.logEvent(taskId, `[QA] Test diff not applicable: ${applicability.error}`, 'warning');
-    return { success: true, testOutput: `Test diff not applicable: ${applicability.error}` };
-  }
+  if (!applicability.valid) return { ok: false, error: `Not applicable: ${applicability.error}` };
 
   const patchPath = path.join(repoPath, '.vibe-qa.patch');
   try {
     fs.writeFileSync(patchPath, diff, 'utf-8');
-    await simpleGit(repoPath).raw(['apply', '--verbose', '.vibe-qa.patch']);
-    await storage.logEvent(taskId, '[QA] Test diff applied successfully', 'success');
+    await git.raw(['apply', '--verbose', '.vibe-qa.patch']);
+    return { ok: true };
   } catch (err: any) {
-    await storage.logEvent(taskId, `[QA] Failed to apply test diff: ${err.message}`, 'warning');
-    return { success: true, testOutput: `Failed to apply test diff: ${err.message}` };
+    return { ok: false, error: err.message };
   } finally {
-    try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore cleanup errors */ }
+    try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore */ }
   }
+}
 
-  // Run npm test and capture pass/fail + output
-  await storage.logEvent(taskId, '[QA] Running npm test...', 'info');
+async function runTests(repoPath: string): Promise<{ ok: boolean; output: string }> {
   try {
     const { stdout, stderr } = await execAsync('npm test', {
       cwd: repoPath,
       timeout: 120000,
       maxBuffer: 10 * 1024 * 1024,
     });
-    const output = (stdout + stderr).slice(0, 3000);
-    await storage.logEvent(taskId, `[QA] Tests passed:\n${output}`, 'success');
-    return { success: true, testOutput: output };
+    return { ok: true, output: ((stdout || '') + (stderr || '')).slice(0, 3000) };
   } catch (err: any) {
-    const output = ((err.stdout || '') + (err.stderr || '')).slice(0, 3000);
-    await storage.logEvent(taskId, `[QA] Tests failed:\n${output}`, 'error');
-    return { success: false, testOutput: output };
+    return { ok: false, output: ((err.stdout || '') + (err.stderr || '')).slice(0, 3000) };
   }
 }

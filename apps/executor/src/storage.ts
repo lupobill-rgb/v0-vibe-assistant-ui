@@ -18,8 +18,10 @@ export type ExecutionState =
   | 'failed'
   // Agent pipeline states
   | 'planning'
+  | 'security'
   | 'building'
   | 'validating'
+  | 'ux'
   | 'testing';
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
