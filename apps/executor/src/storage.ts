@@ -76,6 +76,15 @@ export interface VibeEvent {
   event_time: string;
 }
 
+/** Lightweight summary of an agent run, persisted as JSON on the jobs row. */
+export interface AgentResultSummary {
+  agent: string;
+  status: string;
+  summary: string;
+  duration_ms: number;
+  fixes?: Array<{ category: string; description: string }>;
+}
+
 // ── Row types from Supabase (DB column names) ──
 
 interface JobRow {
@@ -342,6 +351,19 @@ class ExecutorStorage {
       .order('event_time', { ascending: true });
     if (error) throw new Error(`Failed to get events after time: ${error.message}`);
     return (data || []).map((row) => eventRowToVibeEvent(row as JobEventRow));
+  }
+
+  // ── Agent results ──
+
+  async updateTaskAgentResults(taskId: string, agentResults: AgentResultSummary[]): Promise<void> {
+    const { error } = await this.sb
+      .from('jobs')
+      .update({
+        agent_results: agentResults,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+    if (error) throw new Error(`Failed to update agent results: ${error.message}`);
   }
 
   // ── Usage metrics ──

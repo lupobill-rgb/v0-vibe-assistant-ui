@@ -27,6 +27,14 @@ export interface Project {
   created_at: number
 }
 
+export interface AgentResultSummary {
+  agent: string
+  status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix'
+  summary?: string
+  duration_ms: number
+  fixes?: { category: string; description: string }[]
+}
+
 export interface Task {
   task_id: string
   user_prompt: string
@@ -47,6 +55,7 @@ export interface Task {
   preflight_seconds?: number
   total_job_seconds?: number
   files_changed_count?: number
+  agent_results?: AgentResultSummary[]
 }
 
 export interface HealthStatus {
