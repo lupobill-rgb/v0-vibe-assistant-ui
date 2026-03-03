@@ -8,6 +8,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 export interface RouterDiffResult {
   diff: string;
+  summary?: string;
   usage: {
     input_tokens: number;
     output_tokens: number;
@@ -68,9 +69,11 @@ function flipModel(model: 'claude' | 'gpt'): 'claude' | 'gpt' {
 async function callEdgeDiff(
   fullPrompt: string,
   context: string,
-  model: 'claude' | 'gpt'
+  model: 'claude' | 'gpt',
+  systemPrompt?: string
 ): Promise<{
   diff: string;
+  summary?: string;
   usage: { input_tokens: number; output_tokens: number; total_tokens: number };
 }> {
   const headers: Record<string, string> = {
@@ -83,14 +86,19 @@ async function callEdgeDiff(
     headers['apikey'] = anonKey;
   }
 
+  const body: Record<string, unknown> = {
+    prompt: fullPrompt,
+    context,
+    model,
+  };
+  if (systemPrompt) {
+    body.system = systemPrompt;
+  }
+
   const response = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      prompt: fullPrompt,
-      context,
-      model,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -102,16 +110,17 @@ async function callEdgeDiff(
 
   const result = (await response.json()) as {
     diff: string;
+    summary?: string;
     usage: { input_tokens: number; output_tokens: number; total_tokens: number };
   };
 
-  return { diff: result.diff, usage: result.usage };
+  return { diff: result.diff, summary: result.summary, usage: result.usage };
 }
 
 export async function generateDiff(
   prompt: string,
   context: string,
-  options: { model: 'claude' | 'gpt'; taskId: string },
+  options: { model: 'claude' | 'gpt'; taskId: string; systemPrompt?: string },
   previousError?: string
 ): Promise<RouterDiffResult> {
   const startTime = Date.now();
@@ -122,11 +131,11 @@ export async function generateDiff(
     fullPrompt += `\n\n---\n\nPREVIOUS ERROR (please fix and regenerate the diff):\n${previousError}`;
   }
 
-  let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
+  let result: { diff: string; summary?: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
   let usedModel = options.model;
 
   try {
-    result = await callEdgeDiff(fullPrompt, context, options.model);
+    result = await callEdgeDiff(fullPrompt, context, options.model, options.systemPrompt);
   } catch (primaryErr) {
     // Primary model failed — try the other provider
     const fallbackModel = flipModel(options.model);
@@ -137,7 +146,7 @@ export async function generateDiff(
     );
 
     try {
-      result = await callEdgeDiff(fullPrompt, context, fallbackModel);
+      result = await callEdgeDiff(fullPrompt, context, fallbackModel, options.systemPrompt);
       usedModel = fallbackModel;
     } catch (fallbackErr) {
       // Both providers failed
@@ -156,5 +165,5 @@ export async function generateDiff(
     'info'
   );
 
-  return { diff: result.diff, usage: result.usage };
+  return { diff: result.diff, summary: result.summary, usage: result.usage };
 }

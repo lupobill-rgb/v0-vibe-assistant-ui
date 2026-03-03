@@ -1,18 +1,110 @@
 import fs from 'fs';
 import path from 'path';
 import { storage } from '../storage';
+import { generateDiff } from '../llm-router';
 
 export interface SecurityAgentResult {
   criticalCount: number;
   warnCount: number;
   blocked: boolean;
-  fixes: string[];
+  summary: string;
+  fixes: SecurityFix[];
+}
+
+export interface SecurityFix {
+  category: string;
+  description: string;
+  diff: string; // unified diff ready for applyDiff
 }
 
 interface Finding {
   severity: 'critical' | 'warn';
   category: string;
   detail: string; // internal only — never written to SSE stream
+}
+
+// ---------------------------------------------------------------------------
+// RLS Coverage — dominant capability
+// ---------------------------------------------------------------------------
+
+const MIGRATION_SEARCH_PATHS = [
+  'supabase/migrations',
+  'apps/api/supabase/migrations',
+];
+
+function findMigrationsDir(repoPath: string): string | null {
+  for (const candidate of MIGRATION_SEARCH_PATHS) {
+    const full = path.join(repoPath, candidate);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+/** Extract table names from CREATE TABLE statements in migration files. */
+function extractTablesFromMigrations(migrationsDir: string): Set<string> {
+  const tables = new Set<string>();
+  let files: string[];
+  try {
+    files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
+  } catch {
+    return tables;
+  }
+  const createTablePattern = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?/gi;
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+    let match: RegExpExecArray | null;
+    createTablePattern.lastIndex = 0;
+    while ((match = createTablePattern.exec(content)) !== null) {
+      const tableName = match[2];
+      // Skip Supabase internal tables
+      if (!tableName.startsWith('_') && tableName !== 'schema_migrations') {
+        tables.add(tableName);
+      }
+    }
+  }
+  return tables;
+}
+
+/** Extract tables that have RLS explicitly enabled or have policies defined. */
+function extractRlsCoveredTables(migrationsDir: string): Set<string> {
+  const covered = new Set<string>();
+  let files: string[];
+  try {
+    files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
+  } catch {
+    return covered;
+  }
+  const enableRlsPattern = /ALTER\s+TABLE\s+(?:"?(\w+)"?\.)?"?(\w+)"?\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/gi;
+  const createPolicyPattern = /CREATE\s+POLICY\s+\S+\s+ON\s+(?:"?(\w+)"?\.)?"?(\w+)"?/gi;
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+    let match: RegExpExecArray | null;
+    enableRlsPattern.lastIndex = 0;
+    while ((match = enableRlsPattern.exec(content)) !== null) covered.add(match[2]);
+    createPolicyPattern.lastIndex = 0;
+    while ((match = createPolicyPattern.exec(content)) !== null) covered.add(match[2]);
+  }
+  return covered;
+}
+
+/** Build a safe default RLS migration for uncovered tables. */
+function buildRlsFixMigration(uncoveredTables: string[]): string {
+  const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+  const filename = `${timestamp}_vibe_rls_fix.sql`;
+  const statements = uncoveredTables.map((table) => `
+-- VIBE Security Agent: enable RLS on ${table}
+ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY;
+
+-- Default deny-all policy — replace with your access rules
+CREATE POLICY "${table}_deny_all" ON "${table}"
+  AS RESTRICTIVE
+  USING (false);
+`).join('\n');
+
+  return `--- /dev/null
++++ b/supabase/migrations/${filename}
+@@ -0,0 +1 @@
++${statements.replace(/\n/g, '\n+')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,13 +346,59 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
   const criticalFindings = allFindings.filter((f) => f.severity === 'critical');
   const warnFindings = allFindings.filter((f) => f.severity === 'warn');
 
+  // --- RLS Coverage Check ---
+  const fixes: SecurityFix[] = [];
+  const migrationsDir = findMigrationsDir(repoPath);
+
+  if (migrationsDir) {
+    internal(`Migrations dir found: ${migrationsDir}`);
+    const allTables = extractTablesFromMigrations(migrationsDir);
+    const coveredTables = extractRlsCoveredTables(migrationsDir);
+    const uncovered = [...allTables].filter((t) => !coveredTables.has(t));
+
+    internal(`Tables found: ${[...allTables].join(', ') || 'none'}`);
+    internal(`RLS covered: ${[...coveredTables].join(', ') || 'none'}`);
+    internal(`RLS gaps: ${uncovered.join(', ') || 'none'}`);
+
+    if (uncovered.length > 0) {
+      // Each uncovered table is a critical finding
+      for (const table of uncovered) {
+        criticalFindings.push({
+          severity: 'critical',
+          category: 'rls_not_enabled',
+          detail: table,
+        });
+      }
+
+      // Generate fix migration
+      const fixDiff = buildRlsFixMigration(uncovered);
+      fixes.push({
+        category: 'rls_not_enabled',
+        description: `Enable RLS on ${uncovered.length} table(s): ${uncovered.join(', ')}. Deny-all policy scaffolded — replace with your access rules.`,
+        diff: fixDiff,
+      });
+
+      await storage.logEvent(
+        taskId,
+        `[SECURITY] RLS not enabled on ${uncovered.length} table(s) — job blocked`,
+        'error'
+      );
+    } else {
+      internal('RLS coverage: all tables covered');
+      await storage.logEvent(taskId, '[SECURITY] RLS coverage: all tables covered', 'success');
+    }
+  } else {
+    internal('No migrations directory found — skipping RLS coverage check');
+    await storage.logEvent(taskId, '[SECURITY] No migrations dir found — RLS coverage check skipped', 'warning');
+  }
+
   internal(`Scan complete: ${criticalFindings.length} critical, ${warnFindings.length} warnings across ${files.length} files`);
 
-  // Only severity counts go to SSE — no finding details, file paths, or secret values
   if (criticalFindings.length > 0) {
-    // If all critical findings were auto-fixed (RLS), don't block
-    const unfixedCritical = criticalFindings.filter(
-      (f) => f.category !== 'rls_missing' || !fixes.some((fix) => fix.includes('RLS migration'))
+    await storage.logEvent(
+      taskId,
+      `[SECURITY] ${criticalFindings.length} critical finding(s) — job blocked. ${fixes.length} fix(es) available.`,
+      'error'
     );
 
     if (unfixedCritical.length > 0) {
@@ -288,15 +426,15 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
     await storage.logEvent(taskId, '[SECURITY] Scan complete: no findings', 'success');
   }
 
-  // Block only if there are unfixed critical findings
-  const unfixedCriticalCount = criticalFindings.filter(
-    (f) => f.category !== 'rls_missing' || !fixes.some((fix) => fix.includes('RLS migration'))
-  ).length;
+  const summary = criticalFindings.length === 0 && warnFindings.length === 0
+    ? 'Security scan passed. No findings.'
+    : `${criticalFindings.length} critical finding(s), ${warnFindings.length} warning(s). ${fixes.length > 0 ? fixes.map((f) => f.description).join(' ') : 'No auto-fixes available.'}`;
 
   return {
     criticalCount: criticalFindings.length,
     warnCount: warnFindings.length,
-    blocked: unfixedCriticalCount > 0,
+    blocked: criticalFindings.length > 0,
+    summary,
     fixes,
   };
 }

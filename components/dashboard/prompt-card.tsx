@@ -1,15 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import {
-  detectProjectType,
-  generateDashboard,
-  generateMultiPageSite,
-  type GeneratedPage,
-} from "@/lib/api"
-import { PreviewPanel } from "@/components/dashboard/preview-panel"
+import { createProject, createJob } from "@/lib/api"
 
 const suggestions = [
   { icon: Globe, label: "Build a landing page" },
@@ -19,35 +14,42 @@ const suggestions = [
 ]
 
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
+  const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [generatedPages, setGeneratedPages] = useState<GeneratedPage[]>([])
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
-
     setSubmitting(true)
     setError(null)
-    setGeneratedPages([])
 
     try {
-      const projectType = detectProjectType(prompt.trim())
+      let projectId = selectedProjectId
 
-      if (projectType === "dashboard") {
-        const pages = await generateDashboard(prompt.trim())
-        setGeneratedPages(pages)
-        return
+      if (!projectId) {
+        const project = await createProject(prompt.trim().slice(0, 60))
+        if (project.error || !project.id) {
+          throw new Error(project.error || "Failed to create project")
+        }
+        projectId = project.id
       }
 
-      // For website / landing types, use multi-page generation
-      const pages = await generateMultiPageSite(prompt.trim())
-      setGeneratedPages(pages)
+      const result = await createJob({
+        prompt: prompt.trim(),
+        project_id: projectId,
+        base_branch: "main",
+      })
+
+      if (result.error || !result.task_id) {
+        throw new Error(result.error || "Failed to create job")
+      }
+
+      router.push(`/task/${result.task_id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed")
+      setError(err instanceof Error ? err.message : "Failed to start build")
       console.error(err)
-    } finally {
       setSubmitting(false)
     }
   }
@@ -115,7 +117,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               ) : (
                 <ArrowUp className="w-4 h-4" />
               )}
-              Build Landing Page
+              Build Project
             </button>
           </div>
         </div>
@@ -136,8 +138,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         ))}
       </div>
 
-      {/* Generated preview */}
-      {generatedPages.length > 0 && <PreviewPanel pages={generatedPages} />}
     </div>
   )
 }

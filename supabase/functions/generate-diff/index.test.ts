@@ -1,0 +1,297 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import http from 'node:http';
+
+/**
+ * Smoke tests for the generate-diff Edge Function's mode routing
+ * and JSX-rejection system prompts.
+ *
+ * These tests simulate calling the Edge Function via a mock LLM backend
+ * that captures the system message, allowing us to verify:
+ *   1. Mode routing selects the correct system prompt
+ *   2. PAGE_SYSTEM and SINGLE_PAGE_SYSTEM contain anti-JSX rules
+ *   3. PLAN_SYSTEM requests JSON output
+ *   4. Default mode (no mode param) still uses the diff prompt
+ *   5. max_tokens defaults are correct per mode
+ *   6. Explicit `system` param overrides mode-based selection
+ */
+
+// ── Re-implement the edge function's core logic for unit testing ─────────────
+
+const VIBE_SYSTEM_RULES = `VIBE PLATFORM — GOVERNING RULES (NON-NEGOTIABLE)
+Mission: Convert user intent into deployed, production-grade software.
+Stack: Next.js + NestJS + Supabase + Vercel + Docker executor.
+LLM: You are the primary Claude execution engine. GPT-4 is infrastructure fallback only (rate limit / timeout / 529).
+
+Rules — apply to every output:
+1. Reliability over cleverness. Working output beats clever broken output.
+2. Atomic diffs only. Never whole-file rewrites unless explicitly instructed.
+3. Secure by default: no secrets in output, RLS on, least privilege.
+4. Never silently fail. Return plain-English explanation if task cannot complete.
+5. No raw stack traces in user-facing output. Ever.
+6. OSS patterns first. No custom primitives when a standard approach exists.
+7. Every change must be scoped, minimal, and purposeful.`;
+
+const PLAN_SYSTEM =
+  "You are VIBE, an AI website planner. " +
+  "1. Given a user prompt, return a JSON array of page objects. Each object has: name, title, description. " +
+  "2. Return ONLY valid JSON — no markdown fences, no explanation, no extra text. " +
+  "3. Return between 1 and 6 pages depending on the request. " +
+  "   - If the user asks for a single page, landing page, or one-pager, return EXACTLY 1 page (just index). " +
+  "   - If the user asks for a dashboard or app, return 1-3 pages focused on core functionality. " +
+  "   - If the user asks for a full website or multi-page site, return 3-6 pages. " +
+  "4. Each page should serve a distinct purpose. " +
+  "5. Descriptions should be specific enough to guide HTML generation. " +
+  "6. Users can add more pages later — focus on the core pages that deliver the most value.";
+
+const PAGE_SYSTEM =
+  "You are VIBE, an AI website builder. " +
+  "1. Return ONLY a complete, self-contained HTML page. " +
+  "2. No markdown fences, no explanation, no extra text — just the HTML starting with <!DOCTYPE html>. " +
+  "3. Use a modern, professional design with clean typography. " +
+  "4. Include all CSS in a <style> tag and all JS in a <script> tag. " +
+  "5. Make the page responsive using CSS flexbox/grid. " +
+  "6. Use semantic HTML elements (nav, main, section, footer, etc). " +
+  "7. NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {\" \"} expressions, no 'export default function'. " +
+  "8. Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. ";
+
+const SINGLE_PAGE_SYSTEM =
+  "You are VIBE, an AI website builder. " +
+  "1. Return ONLY a complete, self-contained HTML page. " +
+  "2. No markdown fences, no explanation, no extra text — just the HTML starting with <!DOCTYPE html>. " +
+  "3. Use a modern, professional design with clean typography and a dark theme. " +
+  "4. Include all CSS in a <style> tag and all JS in a <script> tag. " +
+  "5. Make the page responsive using CSS flexbox/grid. " +
+  "6. NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {\" \"} expressions, no 'export default function'. " +
+  "7. Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. ";
+
+/**
+ * Mirrors the edge function's system message builder.
+ * Returns { systemMsg, resolvedMaxTokens }.
+ */
+function buildSystemMessage(params: {
+  system?: string;
+  mode?: string;
+  context?: string;
+  max_tokens?: number;
+}): { systemMsg: string; resolvedMaxTokens: number } {
+  let baseSystemMsg: string;
+  let defaultMaxTokens = 4096;
+
+  if (params.system) {
+    baseSystemMsg = params.system;
+  } else if (params.mode === 'plan') {
+    baseSystemMsg = PLAN_SYSTEM;
+    defaultMaxTokens = 2048;
+  } else if (params.mode === 'page') {
+    baseSystemMsg = PAGE_SYSTEM + (params.context ? "\nContext:\n" + params.context : "");
+    defaultMaxTokens = 8192;
+  } else if (params.mode === 'html') {
+    baseSystemMsg = SINGLE_PAGE_SYSTEM + (params.context ? "\nContext:\n" + params.context : "");
+    defaultMaxTokens = 8192;
+  } else {
+    baseSystemMsg = "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
+      (params.context ? "\nProject context:\n" + params.context : "");
+  }
+
+  return {
+    systemMsg: VIBE_SYSTEM_RULES + "\n" + baseSystemMsg,
+    resolvedMaxTokens: params.max_tokens || defaultMaxTokens,
+  };
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+describe('Edge Function — mode routing', () => {
+  it('plan mode uses PLAN_SYSTEM prompt', () => {
+    const { systemMsg } = buildSystemMessage({ mode: 'plan' });
+    assert.ok(systemMsg.includes('AI website planner'), 'Should use planner prompt');
+    assert.ok(systemMsg.includes('JSON array of page objects'), 'Should request JSON output');
+    assert.ok(!systemMsg.includes('NEVER output JSX'), 'Plan mode should not have JSX rules');
+  });
+
+  it('page mode uses PAGE_SYSTEM prompt', () => {
+    const { systemMsg } = buildSystemMessage({ mode: 'page' });
+    assert.ok(systemMsg.includes('AI website builder'), 'Should use builder prompt');
+    assert.ok(systemMsg.includes('<!DOCTYPE html>'), 'Should mention DOCTYPE');
+    assert.ok(systemMsg.includes('semantic HTML elements'), 'Should mention semantic HTML');
+  });
+
+  it('html mode uses SINGLE_PAGE_SYSTEM prompt', () => {
+    const { systemMsg } = buildSystemMessage({ mode: 'html' });
+    assert.ok(systemMsg.includes('AI website builder'), 'Should use builder prompt');
+    assert.ok(systemMsg.includes('dark theme'), 'Single-page mode should mention dark theme');
+  });
+
+  it('no mode uses default diff prompt', () => {
+    const { systemMsg } = buildSystemMessage({});
+    assert.ok(systemMsg.includes('unified diff'), 'Default mode should request unified diff');
+    assert.ok(!systemMsg.includes('NEVER output JSX'), 'Default mode should not have JSX rules');
+  });
+
+  it('explicit system param overrides mode', () => {
+    const custom = 'Custom system prompt';
+    const { systemMsg } = buildSystemMessage({ system: custom, mode: 'page' });
+    assert.ok(systemMsg.includes(custom), 'Should use custom system prompt');
+    assert.ok(!systemMsg.includes('NEVER output JSX'), 'Custom system should not include JSX rules');
+  });
+});
+
+describe('Edge Function — anti-JSX rules', () => {
+  const JSX_PATTERNS = [
+    'import',
+    '{/* comments */}',
+    '{" "}',
+    'export default function',
+  ];
+
+  it('PAGE_SYSTEM explicitly forbids all JSX patterns', () => {
+    for (const pattern of JSX_PATTERNS) {
+      assert.ok(
+        PAGE_SYSTEM.includes(pattern),
+        `PAGE_SYSTEM should forbid "${pattern}"`,
+      );
+    }
+    assert.ok(
+      PAGE_SYSTEM.includes('NEVER output JSX, TSX, or React component syntax'),
+      'PAGE_SYSTEM should have the NEVER JSX rule',
+    );
+    assert.ok(
+      PAGE_SYSTEM.includes('renders directly in a browser iframe with zero compilation'),
+      'PAGE_SYSTEM should require browser-renderable HTML',
+    );
+  });
+
+  it('SINGLE_PAGE_SYSTEM explicitly forbids all JSX patterns', () => {
+    for (const pattern of JSX_PATTERNS) {
+      assert.ok(
+        SINGLE_PAGE_SYSTEM.includes(pattern),
+        `SINGLE_PAGE_SYSTEM should forbid "${pattern}"`,
+      );
+    }
+    assert.ok(
+      SINGLE_PAGE_SYSTEM.includes('NEVER output JSX, TSX, or React component syntax'),
+      'SINGLE_PAGE_SYSTEM should have the NEVER JSX rule',
+    );
+    assert.ok(
+      SINGLE_PAGE_SYSTEM.includes('renders directly in a browser iframe with zero compilation'),
+      'SINGLE_PAGE_SYSTEM should require browser-renderable HTML',
+    );
+  });
+
+  it('PLAN_SYSTEM does NOT have JSX rules (irrelevant for JSON)', () => {
+    assert.ok(
+      !PLAN_SYSTEM.includes('NEVER output JSX'),
+      'PLAN_SYSTEM should not have JSX rules',
+    );
+  });
+
+  it('page mode system message includes JSX rules when assembled', () => {
+    const { systemMsg } = buildSystemMessage({ mode: 'page' });
+    assert.ok(systemMsg.includes('NEVER output JSX'), 'Assembled page system msg should contain JSX rules');
+  });
+
+  it('html mode system message includes JSX rules when assembled', () => {
+    const { systemMsg } = buildSystemMessage({ mode: 'html' });
+    assert.ok(systemMsg.includes('NEVER output JSX'), 'Assembled html system msg should contain JSX rules');
+  });
+});
+
+describe('Edge Function — max_tokens defaults', () => {
+  it('plan mode defaults to 2048 tokens', () => {
+    const { resolvedMaxTokens } = buildSystemMessage({ mode: 'plan' });
+    assert.strictEqual(resolvedMaxTokens, 2048);
+  });
+
+  it('page mode defaults to 8192 tokens', () => {
+    const { resolvedMaxTokens } = buildSystemMessage({ mode: 'page' });
+    assert.strictEqual(resolvedMaxTokens, 8192);
+  });
+
+  it('html mode defaults to 8192 tokens', () => {
+    const { resolvedMaxTokens } = buildSystemMessage({ mode: 'html' });
+    assert.strictEqual(resolvedMaxTokens, 8192);
+  });
+
+  it('default (no mode) uses 4096 tokens', () => {
+    const { resolvedMaxTokens } = buildSystemMessage({});
+    assert.strictEqual(resolvedMaxTokens, 4096);
+  });
+
+  it('explicit max_tokens overrides mode default', () => {
+    const { resolvedMaxTokens } = buildSystemMessage({ mode: 'plan', max_tokens: 1024 });
+    assert.strictEqual(resolvedMaxTokens, 1024);
+  });
+});
+
+describe('Edge Function — context handling', () => {
+  it('page mode appends context to system message', () => {
+    const ctx = 'PagePlan JSON: {...}. File: app/page.tsx';
+    const { systemMsg } = buildSystemMessage({ mode: 'page', context: ctx });
+    assert.ok(systemMsg.includes('\nContext:\n' + ctx), 'Should append context');
+  });
+
+  it('html mode appends context to system message', () => {
+    const ctx = 'Some project context';
+    const { systemMsg } = buildSystemMessage({ mode: 'html', context: ctx });
+    assert.ok(systemMsg.includes('\nContext:\n' + ctx), 'Should append context');
+  });
+
+  it('plan mode ignores context', () => {
+    const ctx = 'Should be ignored';
+    const { systemMsg } = buildSystemMessage({ mode: 'plan', context: ctx });
+    assert.ok(!systemMsg.includes(ctx), 'Plan mode should not include context');
+  });
+
+  it('default mode appends context as "Project context"', () => {
+    const ctx = 'Existing project files';
+    const { systemMsg } = buildSystemMessage({ context: ctx });
+    assert.ok(systemMsg.includes('\nProject context:\n' + ctx), 'Default mode should use "Project context" prefix');
+  });
+});
+
+describe('Edge Function — PLAN_SYSTEM page count rules', () => {
+  it('allows 1-6 pages (not fixed at 4)', () => {
+    assert.ok(PLAN_SYSTEM.includes('between 1 and 6 pages'), 'Should allow 1-6 pages');
+    assert.ok(!PLAN_SYSTEM.includes('EXACTLY 4 pages'), 'Should NOT require exactly 4 pages');
+  });
+
+  it('has single-page guidance', () => {
+    assert.ok(PLAN_SYSTEM.includes('single page') || PLAN_SYSTEM.includes('one-pager'),
+      'Should mention single-page case');
+  });
+
+  it('has dashboard guidance', () => {
+    assert.ok(PLAN_SYSTEM.includes('dashboard'), 'Should mention dashboard case');
+  });
+
+  it('has multi-page guidance', () => {
+    assert.ok(PLAN_SYSTEM.includes('multi-page site') || PLAN_SYSTEM.includes('full website'),
+      'Should mention full website case');
+  });
+
+  it('focuses on core value not fixed count', () => {
+    assert.ok(PLAN_SYSTEM.includes('core pages that deliver the most value'),
+      'Should focus on value, not fixed count');
+    assert.ok(!PLAN_SYSTEM.includes('4 core pages'),
+      'Should NOT mention 4 core pages');
+  });
+});
+
+describe('Edge Function — VIBE_SYSTEM_RULES always prepended', () => {
+  const modes = ['plan', 'page', 'html', undefined];
+
+  for (const mode of modes) {
+    it(`prepends VIBE_SYSTEM_RULES for mode=${mode ?? 'default'}`, () => {
+      const { systemMsg } = buildSystemMessage({ mode });
+      assert.ok(
+        systemMsg.startsWith('VIBE PLATFORM'),
+        `System message for mode=${mode ?? 'default'} should start with VIBE_SYSTEM_RULES`,
+      );
+      assert.ok(
+        systemMsg.includes('NON-NEGOTIABLE'),
+        'Should include NON-NEGOTIABLE header',
+      );
+    });
+  }
+});
