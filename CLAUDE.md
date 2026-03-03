@@ -1,5 +1,45 @@
 # CLAUDE.md - AI Assistant Guide for VIBE
 
+## Agent Operating Rules
+
+Read before every session. Non-negotiable.
+
+**Mission:** Prompt -> deployed product. Org-aware. Governed. Beautiful.
+
+**Stack:** Next.js + NestJS + Supabase + Vercel + Docker executor
+
+**LLM:** Claude primary. GPT-4 fallback on rate limit / timeout / 529 only.
+
+### Rules
+
+1. **Reliability over cleverness.** Working MVP beats clever broken code.
+2. **Chunked mode.** ONE file at a time. MAX 200 lines per diff. Ask for path first.
+3. **No large refactors** unless cleanup mode is explicitly triggered.
+4. **RLS on.** Secrets never in logs or LLM context. Ever.
+5. **Every change traceable:** job -> diff -> log -> test result.
+6. **OSS first.** No custom primitives when a library exists.
+7. **Kernel schema before anything** that depends on it.
+
+### Current Layer
+
+Layer 1 is LIVE. Prompt -> deployed site/app. Do not build Layer 2+ features until Layer 1 is stable and paying.
+
+### Never
+
+- Silent failures. Always return plain-English explanation + next action.
+- Raw stack traces to users.
+- Customer API keys. All LLM calls through our accounts.
+- Whole-file rewrites. Diffs only.
+
+### Security
+
+- All Supabase tables have RLS policies (see `supabase/migrations/003_rls_policies.sql`).
+- Secrets (API keys, service keys, encryption keys) must never appear in logs, diffs, or LLM context.
+- Customer API keys are never stored or used directly; all LLM calls go through VIBE's accounts.
+- The `ENCRYPTION_KEY` env var encrypts per-project Supabase service keys at rest.
+
+---
+
 ## Project Overview
 
 VIBE is an AI-powered code generation and automation platform. It accepts natural language prompts, generates unified diffs via LLM (OpenAI GPT-4), applies them to repositories with strict validation, runs CI-parity preflight checks, and creates GitHub pull requests automatically.
@@ -10,12 +50,20 @@ This is a **monorepo** using npm workspaces (`apps/*`):
 
 ```
 VIBE/
+├── app/              # Next.js App Router pages (chat, projects, task)
 ├── apps/
 │   ├── api/          # Backend REST API (Express + NestJS, TypeScript)
 │   ├── executor/     # LLM execution engine (TypeScript, OpenAI SDK)
 │   └── web/          # Frontend UI (React 18, Vite, Tailwind CSS)
+├── components/       # Shared React components (shell, sidebar, dialogs, dashboard)
+├── lib/              # Shared utilities (api.ts)
+├── supabase/
+│   ├── functions/    # Edge Functions (generate-diff)
+│   └── migrations/   # Schema + RLS policies (001-003)
+├── templates/        # Project scaffolding templates
 ├── tests/            # End-to-end tests
 ├── scripts/          # Utility shell scripts (create-project, list-projects)
+├── docs/             # Supplementary docs (CHECKPOINTS.md)
 ├── data/             # Runtime data (repos, worktrees, SQLite DB, patches)
 ├── docker-compose.yml
 ├── Makefile

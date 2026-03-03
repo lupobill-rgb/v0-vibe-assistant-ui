@@ -54,6 +54,8 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
     if (state === "failed") {
       if (idx < stateIdx) status = "done"
       else if (idx === stateIdx) status = "error"
+    } else if (normalizedState === "completed") {
+      status = "done"
     } else {
       if (idx < stateIdx) status = "done"
       else if (idx === stateIdx) status = "active"
