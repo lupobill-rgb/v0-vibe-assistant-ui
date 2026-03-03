@@ -11,8 +11,9 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { fetchJob, subscribeToJobUpdates, type Task } from "@/lib/api"
+import { fetchJob, subscribeToJobUpdates, type Task, API_URL } from "@/lib/api"
 import type { AgentResultSummary } from "@/lib/api"
+import { extractFixes } from "@/lib/pipeline-utils"
 
 export type StepStatus = "done" | "active" | "pending" | "error"
 
