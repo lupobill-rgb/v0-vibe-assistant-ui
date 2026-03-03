@@ -16,6 +16,8 @@ import { DESIGN_PHASE } from '../templates/design-phases';
 
 const execAsync = promisify(exec);
 
+const MAX_DEBUG_ITERATIONS = parseInt(process.env.MAX_DEBUG_ITERATIONS || '3', 10);
+
 const DEBUG_SYSTEM = `${DESIGN_PHASE.BUILD_TRANSLATOR}
 When fixing build errors, always output atomic single-file diffs.
 Never rewrite whole files. Rollback on patch failure.`;
