@@ -11,10 +11,73 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { fetchJob, subscribeToJobUpdates, type Task, API_URL } from "@/lib/api"
-import { buildStepsFromTask, extractFixes, type StepStatus, type PipelineStep } from "@/lib/pipeline-utils"
+import { fetchJob, subscribeToJobUpdates, type Task } from "@/lib/api"
+import type { AgentResultSummary } from "@/lib/api"
 
-export type { StepStatus, PipelineStep }
+export type StepStatus = "done" | "active" | "pending" | "error"
+
+export interface PipelineStep {
+  id: string
+  label: string
+  description: string
+  status: StepStatus
+  duration?: string
+  agentSummary?: string
+}
+
+function buildStepsFromTask(task: Task | null): PipelineStep[] {
+  const state = task?.execution_state ?? "queued"
+
+  // Map legacy/intermediate states to canonical pipeline states
+  const normalizedState =
+    state === "cloning" || state === "building_context" ? "queued" :
+    state === "calling_llm" || state === "applying_diff" ? "building" :
+    state === "running_preflight" ? "validating" :
+    state === "creating_pr" ? "pr" :
+    state
+
+  const stateOrder = ["queued", "planning", "security", "building", "validating", "ux", "testing", "pr", "completed"]
+  const stateIdx = stateOrder.indexOf(normalizedState)
+
+  const stepDefs = [
+    { id: "1", key: "queued",      label: "Queued",           description: "Waiting for executor" },
+    { id: "2", key: "planning",    label: "Planning",         description: "Decomposing prompt into tasks" },
+    { id: "3", key: "security",    label: "Security",         description: "RLS coverage and secrets scan" },
+    { id: "4", key: "building",    label: "Building",         description: "Generating and applying diffs" },
+    { id: "5", key: "validating",  label: "Validating",       description: "Running build and tests" },
+    { id: "6", key: "ux",          label: "UX",               description: "Design consistency and accessibility" },
+    { id: "7", key: "testing",     label: "QA",               description: "Test generation and verification" },
+    { id: "8", key: "pr",          label: "Pull Request",     description: "Creating GitHub PR" },
+    { id: "9", key: "completed",   label: "Complete",         description: "Job finished successfully" },
+  ]
+
+  // Attach agent summaries from persisted results
+  const agentResults: AgentResultSummary[] = task?.agent_results ?? []
+
+  return stepDefs.map((def) => {
+    const idx = stateOrder.indexOf(def.key)
+    let status: StepStatus = "pending"
+
+    if (state === "failed") {
+      if (idx < stateIdx) status = "done"
+      else if (idx === stateIdx) status = "error"
+    } else if (normalizedState === "completed") {
+      status = "done"
+    } else {
+      if (idx < stateIdx) status = "done"
+      else if (idx === stateIdx) status = "active"
+    }
+
+    // Match agent result to step by key name
+    const agentResult = agentResults.find((r) => r.agent === def.key)
+
+    return {
+      ...def,
+      status,
+      agentSummary: agentResult?.summary,
+    }
+  })
+}
 
 function StatusIcon({ status }: { status: StepStatus }) {
   switch (status) {
@@ -160,7 +223,6 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                   {step.description}
                 </p>
-
                 {step.agentSummary && (
                   <p className={cn(
                     "text-[10px] mt-0.5 leading-relaxed font-mono",
@@ -168,49 +230,6 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
                   )}>
                     {step.agentSummary}
                   </p>
-                )}
-
-                {step.status === 'error' && allFixes.length > 0 && (
-                  <div className="mt-2">
-                    <button
-                      onClick={() => setExpandedStep(expandedStep === step.id ? null : step.id)}
-                      className="text-[10px] text-red-400 hover:text-red-300 underline underline-offset-2 transition-colors"
-                    >
-                      {expandedStep === step.id ? 'Hide fixes' : `${allFixes.length} fix${allFixes.length > 1 ? 'es' : ''} available`}
-                    </button>
-
-                    {expandedStep === step.id && (
-                      <div className="mt-2 flex flex-col gap-2">
-                        {fixResult && (
-                          <p className={cn(
-                            "text-[10px] font-mono px-2 py-1 rounded",
-                            fixResult.success ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
-                          )}>
-                            {fixResult.summary}
-                          </p>
-                        )}
-                        {allFixes.map((fix: any, i: number) => (
-                          <div key={i} className="bg-secondary/50 rounded-lg p-2 border border-border">
-                            <p className="text-[10px] text-muted-foreground leading-relaxed">
-                              {fix.description}
-                            </p>
-                            <button
-                              onClick={() => applyFix(i)}
-                              disabled={applyingFix !== null}
-                              className={cn(
-                                "mt-1.5 text-[10px] font-medium px-2 py-1 rounded transition-colors",
-                                applyingFix === i
-                                  ? "bg-[#4F8EFF]/20 text-[#4F8EFF]/50 cursor-not-allowed"
-                                  : "bg-[#4F8EFF]/10 text-[#4F8EFF] hover:bg-[#4F8EFF]/20"
-                              )}
-                            >
-                              {applyingFix === i ? 'Applying…' : 'Apply fix'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 )}
               </div>
             </div>

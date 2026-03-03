@@ -6,7 +6,7 @@ import { storage } from '../storage';
 
 const router = Router();
 
-const PREVIEWS_BASE_DIR = process.env.PREVIEWS_DIR || '/data/previews';
+const PREVIEWS_BASE_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
 
 // ── In-memory registry of live preview processes ────────────────────────────
 

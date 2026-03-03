@@ -1,9 +1,9 @@
 "use client"
 
-import { use, useEffect, useMemo, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@supabase/supabase-js"
-import { ExternalLink, Terminal, X } from "lucide-react"
+import { ExternalLink, Loader2, Pencil, Plus, Terminal, X } from "lucide-react"
 import { fetchJob, type Task } from "@/lib/api"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
@@ -14,6 +14,8 @@ const supabase = createClient(
 )
 
 interface PageData { name: string; filename: string; html: string }
+
+const EDGE_FN_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co') + '/functions/v1/generate-diff'
 
 function parseDiff(raw: string): PageData[] {
   const trimmed = raw.trim()
@@ -64,6 +66,38 @@ function buildBlobUrl(pages: PageData[], activeFile: string): string | null {
   return URL.createObjectURL(blob)
 }
 
+function AddPageModal({ onSubmit, onClose, isLoading, error }: { onSubmit: (desc: string) => void; onClose: () => void; isLoading: boolean; error: string | null }) {
+  const [desc, setDesc] = useState('')
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl">
+        <h3 className="text-sm font-semibold text-white mb-3">Add a new page</h3>
+        <input
+          autoFocus
+          value={desc}
+          onChange={(e) => { setDesc(e.target.value) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && desc.trim() && !isLoading) onSubmit(desc.trim()) }}
+          placeholder="e.g. A careers page with open positions and an apply form"
+          className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+        />
+        {error && (
+          <p className="mt-2 text-xs text-red-400">{error}</p>
+        )}
+        <div className="flex items-center justify-end gap-2 mt-4">
+          <button onClick={onClose} disabled={isLoading}
+            className="h-9 px-4 rounded-lg text-sm text-slate-400 hover:text-white transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => { if (desc.trim()) onSubmit(desc.trim()) }} disabled={isLoading || !desc.trim()}
+            className="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium transition-colors flex items-center gap-2">
+            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : 'Generate Page'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface BuildingPageProps { params: Promise<{ id: string }> }
 
 export default function BuildingPage({ params }: BuildingPageProps) {
@@ -72,6 +106,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [diff, setDiff] = useState<string | null>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [activeFile, setActiveFile] = useState('index.html')
+  const [showAddPage, setShowAddPage] = useState(false)
+  const [addingPage, setAddingPage] = useState(false)
+  const [addPageError, setAddPageError] = useState<string | null>(null)
+  const [editingPageIndex, setEditingPageIndex] = useState<number | null>(null)
+  const [editingHtml, setEditingHtml] = useState('')
+  const [editPrompt, setEditPrompt] = useState('')
+  const [successToast, setSuccessToast] = useState<string | null>(null)
+  const [addPageStatus, setAddPageStatus] = useState('Generating…')
 
   useEffect(() => {
     let cancelled = false
@@ -129,6 +171,68 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
 
+  const handleAddPage = useCallback(async (description: string) => {
+    setAddingPage(true)
+    setAddPageError(null)
+    try {
+      const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
+      const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
+      const url = SUPABASE_URL + '/functions/v1/generate-diff'
+      const body = { prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' }
+
+      console.log("[VIBE] Add Page request:", url, body)
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_KEY },
+        body: JSON.stringify(body),
+      })
+
+      const text = await res.text()
+      console.log("[VIBE] Add Page response:", res.status, text)
+
+      if (!res.ok) throw new Error("Edge Function returned " + res.status)
+
+      let newPage: PageData | null = null
+      try {
+        const payload = JSON.parse(text)
+        if (payload.html) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.html }
+        } else if (payload.diff) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.diff }
+        } else if (Array.isArray(payload) && payload[0]?.html) {
+          newPage = payload[0]
+        } else if (payload.pages && Array.isArray(payload.pages)) {
+          newPage = payload.pages[0]
+        }
+      } catch {
+        if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: text }
+        }
+      }
+
+      if (!newPage) {
+        setAddPageError('No page could be parsed from the response. Check console for details.')
+        return
+      }
+
+      const merged = [...pages, newPage]
+      setDiff(JSON.stringify(merged))
+      setActiveFile(newPage.filename)
+      setShowAddPage(false)
+      setAddPageError(null)
+      setSuccessToast('Page added successfully')
+      setTimeout(() => setSuccessToast(null), 3000)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[VIBE] Failed to generate page:', message)
+      setAddPageError(message)
+    } finally {
+      setAddingPage(false)
+      setAddPageStatus('Generating…')
+    }
+  }, [pages])
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 relative">
       <div className="flex-[2] flex flex-col min-w-0 border-r border-slate-700">
@@ -175,26 +279,136 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         )}
       </div>
       <div className="w-[340px] flex-shrink-0 flex flex-col bg-slate-900">
-        <div className="flex-1 overflow-hidden"><PipelineTracker taskId={id} /></div>
-        <div className="px-4 py-3 border-t border-slate-700">
+        {/* ── PROGRESS SECTION ── */}
+        <div className="flex-shrink-0 border-b border-slate-700">
+          <PipelineTracker taskId={id} />
+          {isComplete && (
+            <div className="px-4 pb-3">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Build complete
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* ── PAGE MANAGEMENT SECTION ── */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+          {successToast && (
+            <div className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 animate-pulse">
+              {successToast}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Pages</span>
+            <button
+              type="button"
+              disabled={!isComplete}
+              onClick={() => setShowAddPage(true)}
+              className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> {isComplete ? 'Add Page' : 'Building...'}
+            </button>
+          </div>
+          {pages.map((p, i) => (
+            <div key={p.filename}>
+              <div className="flex items-center justify-between rounded-lg bg-slate-800 border border-slate-700 px-3 py-2">
+                <button
+                  onClick={() => setActiveFile(p.filename)}
+                  className={"text-xs font-medium truncate " + (activeFile === p.filename ? "text-violet-400" : "text-slate-300")}
+                >
+                  {p.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingPageIndex === i) {
+                      setEditingPageIndex(null)
+                    } else {
+                      setEditingPageIndex(i)
+                      setEditingHtml(p.html)
+                    }
+                  }}
+                  className="ml-2 flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                  title={`Edit ${p.name}`}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {editingPageIndex === i && (
+                <div className="mt-1 rounded-lg border border-slate-700 overflow-hidden">
+                  <textarea
+                    value={editingHtml}
+                    onChange={(e) => setEditingHtml(e.target.value)}
+                    spellCheck={false}
+                    className="w-full h-48 bg-slate-950 text-slate-200 text-xs font-mono p-3 resize-y focus:outline-none focus:ring-1 focus:ring-violet-500 border-0"
+                  />
+                  <div className="flex items-center justify-end gap-2 px-3 py-2 bg-slate-900 border-t border-slate-700">
+                    <button
+                      onClick={() => setEditingPageIndex(null)}
+                      className="h-7 px-3 rounded text-xs text-slate-400 hover:text-white transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const updated = pages.map((pg, idx) => idx === i ? { ...pg, html: editingHtml } : pg)
+                        setDiff(JSON.stringify(updated))
+                        setEditingPageIndex(null)
+                      }}
+                      className="h-7 px-3 rounded bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* ── ACTIONS SECTION ── */}
+        <div className="px-4 py-3 border-t border-slate-700 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => console.log('[VIBE] Push Live clicked')}
+            disabled={!isComplete}
+            className="flex items-center justify-center gap-2 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+          >
+            Push Live
+          </button>
+          {task?.pull_request_link && (
+            <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 h-9 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
+              <ExternalLink className="w-3.5 h-3.5" /> View PR
+            </a>
+          )}
           <button onClick={() => setShowLogs(!showLogs)}
             className="flex items-center gap-2 w-full h-8 px-3 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all">
             <Terminal className="w-3.5 h-3.5" /> {showLogs ? "Hide Logs" : "Show Logs"}
           </button>
+          <Link href="/" className="flex items-center justify-center h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-sm font-medium transition-colors">
+            Build Another
+          </Link>
         </div>
-        {isComplete && (
-          <div className="px-4 pb-4 flex flex-col gap-2">
-            {task?.pull_request_link && (
-              <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 h-9 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
-                <ExternalLink className="w-3.5 h-3.5" /> View PR
-              </a>
-            )}
-            <Link href="/" className="flex items-center justify-center h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-sm font-medium transition-colors">
-              Build Another
-            </Link>
+        <div className="px-4 py-3 border-t border-slate-700">
+          <label className="text-xs font-medium text-slate-400 mb-2 block">Edit current page</label>
+          <div className="flex gap-2">
+            <input
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
+              placeholder="e.g. Make the hero section taller"
+              disabled={!isComplete}
+              className="flex-1 h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+            />
+            <button
+              onClick={() => { if (editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
+              disabled={!editPrompt.trim() || !isComplete}
+              className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
+              Apply
+            </button>
           </div>
-        )}
+        </div>
       </div>
       {showLogs && (
         <div className="absolute inset-0 z-50 bg-black/60 flex items-end justify-center pb-6 px-6">
@@ -210,6 +424,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         </div>
       )}
+      {showAddPage && <AddPageModal onSubmit={handleAddPage} onClose={() => { setShowAddPage(false); setAddPageError(null) }} isLoading={addingPage} error={addPageError} />}
     </div>
   )
 }
