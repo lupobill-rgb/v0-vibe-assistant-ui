@@ -58,6 +58,16 @@ export interface VibeTask {
   preflight_seconds?: number;
   total_job_seconds?: number;
   files_changed_count?: number;
+  agent_results?: AgentResultSummary[];
+}
+
+// Canonical definition — keep in sync with apps/api/src/storage.ts
+export interface AgentResultSummary {
+  agent: string;
+  status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix';
+  summary?: string;
+  duration_ms: number;
+  fixes?: { category: string; description: string }[];
 }
 
 export interface VibeEvent {
@@ -91,6 +101,7 @@ interface JobRow {
   last_diff: string | null;
   initiated_at: string;
   last_modified: string;
+  agent_results: AgentResultSummary[] | null;
 }
 
 interface JobEventRow {
@@ -124,6 +135,7 @@ function jobRowToVibeTask(row: JobRow): VibeTask {
     preflight_seconds: row.preflight_seconds ?? undefined,
     total_job_seconds: row.total_job_seconds ?? undefined,
     files_changed_count: row.files_changed_count ?? undefined,
+    agent_results: row.agent_results ?? undefined,
   };
 }
 
@@ -360,6 +372,17 @@ class ExecutorStorage {
       .update(updates)
       .eq('id', taskId);
     if (error) throw new Error(`Failed to update usage metrics: ${error.message}`);
+  }
+
+  async updateTaskAgentResults(taskId: string, agentResults: AgentResultSummary[]): Promise<void> {
+    const { error } = await this.sb
+      .from('jobs')
+      .update({
+        agent_results: agentResults,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', taskId);
+    if (error) throw new Error(`Failed to update agent results: ${error.message}`);
   }
 }
 
