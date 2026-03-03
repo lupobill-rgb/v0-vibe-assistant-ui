@@ -1,9 +1,9 @@
 "use client"
 
-import { use, useEffect, useMemo, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@supabase/supabase-js"
-import { ExternalLink, Terminal, X } from "lucide-react"
+import { ExternalLink, Loader2, Plus, Terminal, X } from "lucide-react"
 import { fetchJob, type Task } from "@/lib/api"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
@@ -14,6 +14,8 @@ const supabase = createClient(
 )
 
 interface PageData { name: string; filename: string; html: string }
+
+const EDGE_FN_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co') + '/functions/v1/generate-diff'
 
 function parseDiff(raw: string): PageData[] {
   const trimmed = raw.trim()
@@ -64,6 +66,35 @@ function buildBlobUrl(pages: PageData[], activeFile: string): string | null {
   return URL.createObjectURL(blob)
 }
 
+function AddPageModal({ onSubmit, onClose, isLoading }: { onSubmit: (desc: string) => void; onClose: () => void; isLoading: boolean }) {
+  const [desc, setDesc] = useState('')
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl">
+        <h3 className="text-sm font-semibold text-white mb-3">Add a new page</h3>
+        <input
+          autoFocus
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && desc.trim()) onSubmit(desc.trim()) }}
+          placeholder="e.g. A careers page with open positions and an apply form"
+          className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+        />
+        <div className="flex items-center justify-end gap-2 mt-4">
+          <button onClick={onClose} disabled={isLoading}
+            className="h-9 px-4 rounded-lg text-sm text-slate-400 hover:text-white transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => { if (desc.trim()) onSubmit(desc.trim()) }} disabled={isLoading || !desc.trim()}
+            className="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium transition-colors flex items-center gap-2">
+            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</> : 'Generate Page'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface BuildingPageProps { params: Promise<{ id: string }> }
 
 export default function BuildingPage({ params }: BuildingPageProps) {
@@ -72,6 +103,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [diff, setDiff] = useState<string | null>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [activeFile, setActiveFile] = useState('index.html')
+  const [showAddPage, setShowAddPage] = useState(false)
+  const [addingPage, setAddingPage] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -128,6 +161,32 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
+
+  const handleAddPage = useCallback(async (description: string) => {
+    setAddingPage(true)
+    try {
+      const res = await fetch(EDGE_FN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'}`,
+        },
+        body: JSON.stringify({ prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' }),
+      })
+      const data = await res.json()
+      const raw = data.html || data.diff || ''
+      const newPages = parseDiff(raw)
+      if (!newPages.length) throw new Error('No page generated')
+      const merged = [...pages, newPages[0]]
+      setDiff(JSON.stringify(merged))
+      setActiveFile(newPages[0].filename)
+      setShowAddPage(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to generate page')
+    } finally {
+      setAddingPage(false)
+    }
+  }, [pages])
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 relative">
@@ -189,9 +248,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             </div>
             <button
               type="button"
-              className="flex items-center justify-center h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+              onClick={() => setShowAddPage(true)}
+              className="flex items-center justify-center gap-1.5 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
             >
-              Add Page
+              <Plus className="w-4 h-4" /> Add Page
             </button>
             {task?.pull_request_link && (
               <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
@@ -219,6 +279,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         </div>
       )}
+      {showAddPage && <AddPageModal onSubmit={handleAddPage} onClose={() => setShowAddPage(false)} isLoading={addingPage} />}
     </div>
   )
 }
