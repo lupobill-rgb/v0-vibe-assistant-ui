@@ -40,7 +40,7 @@ const originalFetch = globalThis.fetch;
 (globalThis as any).fetch = async (url: string, init: any) => {
   fetchCalls.push({ url, init });
   const body = JSON.parse(init.body);
-  if (body.model === 'openai') {
+  if (body.model === 'gpt') {
     return makeFetchResponse(OPENAI_RESPONSE);
   }
   return makeFetchResponse(CLAUDE_RESPONSE);
@@ -116,11 +116,11 @@ describe('llm-router: edge function call (claude)', () => {
 });
 
 describe('llm-router: edge function call (gpt)', () => {
-  it('maps model "gpt" to "openai" in the request body', async () => {
+  it('sends model "gpt" in the request body', async () => {
     reset();
     await generateDiff('add types', 'ctx', { model: 'gpt', taskId: 't4' });
     const body = JSON.parse(fetchCalls[0].init.body);
-    assert.strictEqual(body.model, 'openai');
+    assert.strictEqual(body.model, 'gpt');
   });
 
   it('returns diff text and correct usage tokens', async () => {
