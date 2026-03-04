@@ -43,7 +43,7 @@ async function callLLM(system: string, userMsg: string, taskId: string, model: '
     system,
     max_tokens: 4096,
   });
-  storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
+  await storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
   return res.diff.trim();
 }
 
@@ -209,17 +209,13 @@ export async function runPipeline(
   storage.updateTaskState(jobId, 'building');
   storage.logEvent(jobId, `[PIPELINE] Phase: Building — executing ${state.plan.tasks.length} tasks`, 'info');
   const builderResult = await callAgent('builder', jobId, async () => {
-    const diffs: string[] = [];
-    for (const task of state.plan!.tasks) {
-      storage.logEvent(jobId, `[PIPELINE] Builder task: ${task.slice(0, 80)}`, 'info');
-      const ctxResult = await buildContext(worktreeDir, task);
-      const res = await generateDiff(task, formatContext(ctxResult.files), { model: config.model, taskId: jobId });
-      if (!res.diff || res.diff === 'NO_CHANGES') continue;
-      const apply = await applyDiffToRepo(res.diff, worktreeDir);
-      if (!apply.ok) return { status: 'needs_fix' as const, output: `Apply failed: ${task}`, diffs, errors: [apply.error || 'Unknown'] };
-      diffs.push(res.diff);
-      const build = await runCmd(BUILD(), worktreeDir);
-      if (!build.ok) return { status: 'needs_fix' as const, output: `Build failed after: ${task}`, diffs, errors: [build.output] };
+    const result = await runBuilderAgent(jobId, worktreeDir, state.plan!.tasks);
+    if (!result.success) {
+      return {
+        status: 'needs_fix' as const,
+        output: result.summary,
+        errors: result.failedTask ? [result.failedTask] : undefined,
+      };
     }
     return {
       status: 'passed',
