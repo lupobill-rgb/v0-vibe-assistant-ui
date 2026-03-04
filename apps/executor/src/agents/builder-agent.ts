@@ -144,9 +144,10 @@ export async function runBuilderAgent(
   const summary = diffsApplied.length === 0
     ? 'No changes applied — all tasks skipped or produced no diff.'
     : `${diffsApplied.length} of ${tasks.length} task(s) applied and verified.`;
-  await storage.logEvent(taskId, `[BUILDER] Complete: ${summary}`, 'success');
+  const success = diffsApplied.length > 0;
+  await storage.logEvent(taskId, `[BUILDER] Complete: ${summary}`, success ? 'success' : 'warning');
   return {
-    success: true,
+    success,
     diffsApplied: diffsApplied.length,
     summary,
   };

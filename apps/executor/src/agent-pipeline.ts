@@ -38,7 +38,7 @@ async function callLLM(system: string, userMsg: string, taskId: string, model: '
     system,
     max_tokens: 4096,
   });
-  storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
+  await storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
   return res.diff.trim();
 }
 
