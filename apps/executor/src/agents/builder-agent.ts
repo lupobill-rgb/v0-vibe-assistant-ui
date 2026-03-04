@@ -14,6 +14,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 const execAsync = promisify(exec);
 const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
+const BUILD_TIMEOUT = parseInt(process.env.BUILD_TIMEOUT_MS || '300000', 10);
 const BUILDER_SYSTEM = `You are VIBE's Builder Agent. You own code generation quality end-to-end — both engineering correctness AND visual excellence.
 
 ENGINEERING RULES:
@@ -121,6 +122,7 @@ export async function runBuilderAgent(
       fs.writeFileSync(patchPath, extracted, 'utf-8');
       await git.raw(['apply', '--verbose', '.vibe-builder.patch']);
       await storage.logEvent(taskId, `[BUILDER] Task ${i + 1} patch applied`, 'success');
+      diffsApplied.push(extracted);
     } catch (err: any) {
       await storage.logEvent(taskId, `[BUILDER] Task ${i + 1} patch failed — rolling back to ${headSha}: ${err.message}`, 'error');
       try { await git.raw(['checkout', headSha, '--', '.']); } catch { /* best effort */ }
@@ -133,26 +135,25 @@ export async function runBuilderAgent(
     } finally {
       try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore */ }
     }
-    // Build check after every task — catch regressions immediately
-    await storage.logEvent(taskId, `[BUILDER] Task ${i + 1} verifying build: ${BUILD_COMMAND}`, 'info');
+  }
+  // Build check once after all tasks — avoids N redundant builds
+  if (diffsApplied.length > 0) {
+    await storage.logEvent(taskId, `[BUILDER] Verifying build after ${diffsApplied.length} task(s): ${BUILD_COMMAND}`, 'info');
     try {
       const { stdout, stderr } = await execAsync(BUILD_COMMAND, {
         cwd: repoPath,
-        timeout: 300000,
+        timeout: BUILD_TIMEOUT,
         maxBuffer: 10 * 1024 * 1024,
       });
       const output = (stdout + stderr).slice(0, 500);
-      await storage.logEvent(taskId, `[BUILDER] Task ${i + 1} build passed:\n${output}`, 'success');
-      diffsApplied.push(extracted);
+      await storage.logEvent(taskId, `[BUILDER] Build passed:\n${output}`, 'success');
     } catch (err: any) {
       const output = ((err.stdout || '') + (err.stderr || '')).slice(0, 500);
-      await storage.logEvent(taskId, `[BUILDER] Task ${i + 1} build failed — rolling back to ${headSha}:\n${output}`, 'error');
-      try { await git.raw(['checkout', headSha, '--', '.']); } catch { /* best effort */ }
+      await storage.logEvent(taskId, `[BUILDER] Build failed after all tasks:\n${output}`, 'error');
       return {
         success: false,
         diffsApplied: diffsApplied.length,
-        summary: `Build failed after task ${i + 1} of ${tasks.length}: ${task.slice(0, 100)}. Last error: ${output.slice(0, 200)}`,
-        failedTask: task,
+        summary: `Build failed after applying ${diffsApplied.length} task(s). Last error: ${output.slice(0, 200)}`,
       };
     }
   }
