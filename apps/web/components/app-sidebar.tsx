@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useParams, useRouter } from "next/navigation"
 import {
   Home,
   FolderKanban,
@@ -42,6 +42,9 @@ const bottomItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
+  const params = useParams<{ id?: string }>()
+  const router = useRouter()
+  const activeProjectId = pathname.startsWith("/projects/") ? (params?.id as string | undefined) : undefined
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const openSearch = () => {
@@ -53,6 +56,7 @@ export function AppSidebar() {
     <CreateProjectDialog
       open={dialogOpen}
       onOpenChange={setDialogOpen}
+      onCreated={(id) => router.push(`/chat?project=${id}`)}
     />
     <TooltipProvider delayDuration={0}>
       <aside
@@ -136,7 +140,8 @@ export function AppSidebar() {
             Navigation
           </span>
           {navItems.map((item) => {
-            const isActive = pathname === item.href
+            const isActive = pathname === item.href ||
+              (item.href === "/projects" && !!activeProjectId)
             const linkContent = (
               <Link
                 key={item.href}

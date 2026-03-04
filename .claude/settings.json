@@ -1,0 +1,58 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build)",
+      "Bash(npm run test:*)",
+      "Bash(npx tsx --test *)",
+      "Bash(make up)",
+      "Bash(make down)",
+      "Bash(make health)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git branch*)",
+      "Bash(git checkout*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git tag *)",
+      "Bash(ls *)",
+      "Bash(cat package.json)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(npm install*)",
+      "Bash(npm ls*)",
+      "Bash(docker compose *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh api *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(* SUPABASE_SERVICE_KEY*)",
+      "Bash(* ENCRYPTION_KEY*)",
+      "Bash(* ANTHROPIC_API_KEY*)",
+      "Bash(* OPENAI_API_KEY*)",
+      "Bash(* GITHUB_TOKEN*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

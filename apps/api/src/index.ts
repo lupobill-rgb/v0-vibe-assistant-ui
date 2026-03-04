@@ -5,44 +5,67 @@ import { v4 as uuidv4 } from 'uuid';
 import { storage } from './storage';
 import path from 'path';
 import fs from 'fs';
-import { execSync, execFileSync } from 'child_process';
+import { exec, execSync, execFileSync } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
 import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
+import {
+  INITIAL_BUILD_BUDGETS,
+  MAX_INITIAL_PAGES,
+  StarterSitePlan,
+  buildStarterSitePlan,
+  mapWithConcurrency,
+  validateStarterSiteQuality,
+  writePagePlanArtifact,
+} from './starter-site';
 
 // Load .env from the repository root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const PORT = process.env.API_PORT || 3001;
-const REPOS_BASE_DIR = process.env.REPOS_BASE_DIR || '/data/repos';
-const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/data/previews';
-const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/data/published';
+const REPOS_BASE_DIR = process.env.REPOS_PATH || '/tmp/repos';
+const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
+const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/tmp/published';
 
 // Ensure repos directory exists
-if (!fs.existsSync(REPOS_BASE_DIR)) {
-  fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(REPOS_BASE_DIR)) {
+    fs.mkdirSync(REPOS_BASE_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create repos directory at ${REPOS_BASE_DIR}: ${(err as Error).message}`);
 }
 
 // Ensure previews directory exists
-if (!fs.existsSync(PREVIEWS_DIR)) {
-  fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(PREVIEWS_DIR)) {
+    fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create previews directory at ${PREVIEWS_DIR}: ${(err as Error).message}`);
 }
 
 // Ensure published directory exists
-if (!fs.existsSync(PUBLISHED_DIR)) {
-  fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(PUBLISHED_DIR)) {
+    fs.mkdirSync(PUBLISHED_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create published directory at ${PUBLISHED_DIR}: ${(err as Error).message}`);
 }
 
-// Startup sanity check: verify git is available
+// Startup sanity check: verify git is available (optional on serverless)
 try {
   const gitVersion = execSync('git --version', { encoding: 'utf-8' }).trim();
   console.log(`Git is available: ${gitVersion}`);
-} catch (error) {
-  console.error('ERROR: git command not found. The API service requires git to be installed.');
-  console.error('  Please ensure git is installed in the container. See README.md for troubleshooting.');
+} catch {
+  console.warn('Git not available — git-dependent routes will degrade gracefully.');
 }
 
 // ── Default team for local development ──
@@ -212,23 +235,34 @@ async function bootstrap() {
       const projectId = uuidv4();
       const repoDir = path.join(REPOS_BASE_DIR, team.org_id, team_id, projectId);
 
-      // Create directory structure
-      fs.mkdirSync(repoDir, { recursive: true });
+      // Create directory structure — may fail on read-only filesystems (e.g. Vercel)
+      try {
+        fs.mkdirSync(repoDir, { recursive: true });
+      } catch (fsErr: any) {
+        console.warn(`Cannot create repo directory (serverless?): ${fsErr.message}`);
+        // Still create the project in DB without local git repo
+      }
 
-      // Initialize git repository
-      execSync('git init', { cwd: repoDir });
-      execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
-      execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
-      execSync('git config commit.gpgsign false', { cwd: repoDir });
+      // Initialize git repository (only if directory was created)
+      if (fs.existsSync(repoDir)) {
+        try {
+          execSync('git init', { cwd: repoDir });
+          execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
+          execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+          execSync('git config commit.gpgsign false', { cwd: repoDir });
 
-      // Create initial README for template
-      const readmePath = path.join(repoDir, 'README.md');
-      fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
+          // Create initial README for template
+          const readmePath = path.join(repoDir, 'README.md');
+          fs.writeFileSync(readmePath, `# ${name}\n\nProject created from ${template} template.\n`);
 
-      // Initial commit
-      execSync('git add .', { cwd: repoDir });
-      execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
-      execSync('git branch -M main', { cwd: repoDir });
+          // Initial commit
+          execSync('git add .', { cwd: repoDir });
+          execSync('git commit -m "Initial commit from template"', { cwd: repoDir });
+          execSync('git branch -M main', { cwd: repoDir });
+        } catch (gitErr: any) {
+          console.warn(`Git init skipped (serverless?): ${gitErr.message}`);
+        }
+      }
 
       const project = await storage.createProject({
         id: projectId,
@@ -285,7 +319,13 @@ async function bootstrap() {
         cloneUrl = repo_url.replace('https://', `https://${githubToken}@`);
       }
 
-      execFileSync('git', ['clone', cloneUrl, repoDir], { env: cloneEnv });
+      try {
+        execFileSync('git', ['clone', cloneUrl, repoDir], { env: cloneEnv });
+      } catch (cloneErr: any) {
+        console.warn(`Git clone failed (serverless?): ${cloneErr.message}`);
+        // Create the directory so the project record can still be created
+        try { fs.mkdirSync(repoDir, { recursive: true }); } catch {}
+      }
 
       const repoName = repo_url.split('/').pop()?.replace('.git', '') || 'imported-repo';
 
@@ -376,7 +416,11 @@ async function bootstrap() {
       await storage.deleteProject(req.params.id);
       // Best-effort cleanup of the on-disk repo directory
       if (localPath && fs.existsSync(localPath)) {
-        fs.rmSync(localPath, { recursive: true, force: true });
+        try {
+          fs.rmSync(localPath, { recursive: true, force: true });
+        } catch (rmErr: any) {
+          console.warn(`Could not remove repo directory: ${rmErr.message}`);
+        }
       }
       res.json({ message: 'Project deleted successfully' });
     } catch (error) {
@@ -417,8 +461,12 @@ async function bootstrap() {
       }
 
       const destDir = path.join(PUBLISHED_DIR, projectId);
-      if (fs.existsSync(destDir)) {
-        fs.rmSync(destDir, { recursive: true, force: true });
+      try {
+        if (fs.existsSync(destDir)) {
+          fs.rmSync(destDir, { recursive: true, force: true });
+        }
+      } catch (rmErr: any) {
+        console.warn(`Could not clean published dir: ${rmErr.message}`);
       }
 
       const copyRecursive = (src: string, dest: string) => {
@@ -431,7 +479,11 @@ async function bootstrap() {
           else fs.copyFileSync(srcPath, destPath);
         }
       };
-      copyRecursive(sourceDir, destDir);
+      try {
+        copyRecursive(sourceDir, destDir);
+      } catch (copyErr: any) {
+        return res.status(500).json({ error: `Failed to copy preview files: ${copyErr.message}` });
+      }
 
       const publishedUrl = `/published/${projectId}/index.html`;
       await storage.publishProject(projectId, job_id, publishedUrl);
@@ -520,84 +572,155 @@ async function bootstrap() {
             'Authorization': `Bearer ${supabaseKey}`,
             'Content-Type': 'application/json',
           };
+          let fallbacks = 0;
+          let retries = 0;
 
-          // ── Step 1: Plan call — ask the LLM for a page plan ──
-          let plan: { name: string; title: string; description: string }[] | null = null;
-          let totalTokens = 0;
-
-          try {
-            await storage.logEvent(taskId, 'Generating plan...', 'info');
-            const planResponse = await fetch(edgeFunctionUrl, {
+          const edgeCall = async (payload: any) => {
+            const attempt = async (model: string) => fetch(edgeFunctionUrl, {
               method: 'POST',
               headers,
-              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'plan' }),
+              body: JSON.stringify({ ...payload, model }),
             });
+            let response = await attempt(payload.model || resolvedModel);
+            if (response.ok) return response;
+            const text = await response.text();
+            if (/rate limit|overload|429/i.test(text)) {
+              retries += 1;
+              await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
+              response = await attempt(payload.model || resolvedModel);
+              if (response.ok) return response;
+              fallbacks += 1;
+              const fallbackModel = (payload.model || resolvedModel) === 'claude' ? 'gpt' : 'claude';
+              response = await attempt(fallbackModel);
+            }
+            return response;
+          };
+
+          // ── Step 1: Plan call — ask the LLM for a page plan ──
+          let plan: StarterSitePlan | null = null;
+          let totalTokens = 0;
+          let modelCalls = 0;
+          const startedAtMs = Date.now();
+          const timeline: any[] = [];
+
+          const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security', fn: () => Promise<T>): Promise<T> => {
+            const start = Date.now();
+            try {
+              const result = await Promise.race([
+                fn(),
+                new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${name} deadline exceeded`)), INITIAL_BUILD_BUDGETS.stepDeadlinesMs[name])),
+              ]);
+              timeline.push({ step: name, startedAt: new Date(start).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - start, status: 'completed' });
+              return result;
+            } catch (err: any) {
+              const status = name === 'security' ? 'deferred' : 'failed';
+              timeline.push({ step: name, startedAt: new Date(start).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - start, status });
+              if (name === 'security') {
+                await storage.logEvent(taskId, 'Security scan deferred (deadline exceeded)', 'warning');
+                return undefined as T;
+              }
+              throw err;
+            }
+          };
+
+          try {
+            plan = await runStep('planning', async () => {
+            await storage.logEvent(taskId, 'Generating plan...', 'info');
+            const planResponse = await edgeCall({ prompt, model: resolvedModel, mode: 'plan' });
+            modelCalls += 1;
             const planRawText = await planResponse.text();
             if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
             const planData = JSON.parse(planRawText);
             if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
             // Edge Function returns { diff: "<JSON string of pages array>", mode: "plan", usage }
-            const planPages = typeof planData.diff === 'string'
+            let planPages = typeof planData.diff === 'string'
               ? JSON.parse(planData.diff)
               : planData.diff;
-            if (Array.isArray(planPages) && planPages.length > 0) {
-              plan = planPages;
-              await storage.logEvent(taskId, `Plan received: ${plan!.length} page(s) — ${plan!.map((p: { name: string }) => p.name).join(', ')}`, 'info');
-            } else {
-              throw new Error('Plan response missing valid pages array');
-            }
+            const result = buildStarterSitePlan(Array.isArray(planPages) ? planPages : null, prompt);
+            if (result.notes.length > 0) await storage.logEvent(taskId, result.notes.join(' '), 'info');
+            await storage.logEvent(taskId, `Plan received: ${result.pages.length} page(s) — ${result.pages.map((p) => p.name).join(', ')}`, 'info');
+            return result;
+            });
           } catch (planErr: any) {
             // Plan call failed — fall back to single-page build
             await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'warning');
             plan = null;
           }
 
-          const previewDir = path.join('/data/previews', taskId);
-          fs.mkdirSync(previewDir, { recursive: true });
+          const previewDir = path.join(PREVIEWS_DIR, taskId);
+          try {
+            fs.mkdirSync(previewDir, { recursive: true });
+            if (plan) writePagePlanArtifact(previewDir, plan);
+          } catch (mkErr: any) {
+            console.warn(`Could not create preview directory: ${mkErr.message}`);
+          }
 
           let pageNames: string[] = [];
 
           if (plan) {
-            // ── Step 2: Page loop — build pages sequentially ──
-            for (let i = 0; i < plan.length; i++) {
-              const page = plan[i];
-              const safeName = page.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-              await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + plan.length + ': ' + page.name + '...', 'info');
-
-              try {
-                const pageResponse = await fetch(edgeFunctionUrl, {
-                  method: 'POST',
-                  headers,
-                  body: JSON.stringify({ prompt: page.description, model: resolvedModel, mode: 'page', context: 'Original request: ' + prompt + '. All pages: ' + plan.map(p => p.name).join(', ') + '. Maintain consistent design across all pages.' }),
+            const currentPlan = plan;
+            await runStep('building', async () => {
+              const builtPages = await mapWithConcurrency(currentPlan.pages, INITIAL_BUILD_BUDGETS.buildConcurrency, async (page, i) => {
+                const safeName = page.route === '/' ? 'index' : page.route.slice(1);
+                await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
+                const pageResponse = await edgeCall({
+                  prompt: page.description,
+                  model: resolvedModel,
+                  mode: 'page',
+                  context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
                 });
+                modelCalls += 1;
                 const pageRawText = await pageResponse.text();
                 if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
                 const pageData = JSON.parse(pageRawText);
                 if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
                 fs.writeFileSync(path.join(previewDir, safeName + '.html'), pageData.diff);
-                pageNames.push(page.name);
-              } catch (pageErr: any) {
-                await storage.logEvent(taskId, 'Page ' + page.name + ' failed: ' + pageErr.message + ' — skipping', 'info');
-              }
+                return page;
+              });
+              pageNames = builtPages.map((p) => (p.route === '/' ? 'index' : p.route.slice(1)));
+            });
 
-              if (i < plan.length - 1) await new Promise(r => setTimeout(r, 60000));
+            if (pageNames.length < Math.min(2, currentPlan.pages.length)) {
+              throw new Error(`pages generated check failed (${pageNames.length}/${currentPlan.pages.length})`);
             }
 
+            await runStep('validating', async () => {
+              const htmlFiles = pageNames.map((name) => ({
+                route: name === 'index' ? '/' : `/${name}`,
+                html: fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8'),
+              }));
+              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt));
+              if (!quality.ok) {
+                await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
+                for (const failingRoute of quality.failingRoutes.slice(0, 1)) {
+                  const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
+                  const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
+                  const repair = await edgeCall({ prompt: `Repair this page to include h1, >=2 sections, CTA, navbar, title and description metadata, no lorem ipsum.\n${existing}`, model: resolvedModel, mode: 'page' });
+                  modelCalls += 1;
+                  const repairText = await repair.text();
+                  if (repair.ok) {
+                    const repairData = JSON.parse(repairText);
+                    fs.writeFileSync(path.join(previewDir, `${fileName}.html`), repairData.diff);
+                    if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
+                  }
+                }
+              }
+            });
+
+            await runStep('security', async () => new Promise((r) => setTimeout(r, 5)));
+
             // Save generated pages to jobs table so the frontend can read last_diff
-            const pagesArray = plan.filter(p => pageNames.includes(p.name)).map((p) => {
-              const safeName = p.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const pagesArray = currentPlan.pages.filter((p) => pageNames.includes(p.route === '/' ? 'index' : p.route.slice(1))).map((p) => {
+              const safeName = p.route === '/' ? 'index' : p.route.slice(1);
               const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
-              return { name: p.name, filename: `${safeName}.html`, html };
+              return { name: p.name, filename: `${safeName}.html`, route: p.route, html };
             });
             await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
           } else {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
-            const response = await fetch(edgeFunctionUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ prompt, model: resolvedModel, mode: 'html' }),
-            });
+            const response = await edgeCall({ prompt, model: resolvedModel, mode: 'html' });
+            modelCalls += 1;
             const rawText = await response.text();
             if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
 
@@ -619,10 +742,15 @@ async function bootstrap() {
 
           // ── Step 3: Write manifest and finalize ──
           fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
+          fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
           const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
           await storage.setPreviewUrl(taskId, `/previews/${taskId}/${firstPage}.html`);
           await storage.logEvent(taskId, 'Preview generated', 'info');
           await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
+          await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
+          if (modelCalls > INITIAL_BUILD_BUDGETS.maxModelCalls || totalTokens > INITIAL_BUILD_BUDGETS.maxTokensOut || (Date.now() - startedAtMs) > INITIAL_BUILD_BUDGETS.maxWallTimeMs) {
+            await storage.logEvent(taskId, 'Starter build budget exceeded', 'warning');
+          }
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
         } catch (err: any) {
@@ -644,7 +772,16 @@ async function bootstrap() {
       if (!task) {
         return res.status(404).json({ error: 'Task not found' });
       }
-      res.json(task);
+      let job_timeline: unknown = null;
+      const timelinePath = path.join(PREVIEWS_DIR, req.params.id, 'timeline.json');
+      if (fs.existsSync(timelinePath)) {
+        try {
+          job_timeline = JSON.parse(fs.readFileSync(timelinePath, 'utf8'));
+        } catch {
+          job_timeline = null;
+        }
+      }
+      res.json({ ...task, job_timeline });
     } catch (error) {
       console.error('Error fetching task:', error);
       res.status(500).json({ error: 'Failed to fetch task' });
@@ -682,14 +819,91 @@ async function bootstrap() {
 
   app.post('/jobs/:id/diff/apply', async (req: Request, res: Response) => {
     try {
-      const { diff } = req.body;
-      if (!diff) return res.status(400).json({ error: 'diff is required' });
+      const { fix_index } = req.body as { fix_index?: number };
+      if (fix_index === undefined || typeof fix_index !== 'number') {
+        return res.status(400).json({ error: 'fix_index (number) is required' });
+      }
+
       const task = await storage.getTask(req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
-      await storage.setTaskDiff(req.params.id, diff);
-      res.json({ message: 'Diff updated successfully' });
+
+      // Only allow fix application on terminal jobs
+      if (task.execution_state !== 'failed' && task.execution_state !== 'completed') {
+        return res.status(409).json({ error: 'Fix can only be applied to completed or failed jobs' });
+      }
+
+      // Locate the fix in agent_results
+      const allFixes = (task.agent_results ?? []).flatMap((r) => r.fixes ?? []);
+      const fix = allFixes[fix_index];
+      if (!fix) {
+        return res.status(404).json({ error: `No fix at index ${fix_index}` });
+      }
+      if (!fix.diff) {
+        return res.status(400).json({ error: 'Fix has no diff payload' });
+      }
+
+      // Locate worktree — executor convention: /data/worktrees/{task_id}
+      const worktreePath = path.join('/data/worktrees', req.params.id);
+      if (!fs.existsSync(worktreePath)) {
+        return res.status(404).json({
+          error: 'Worktree not found. The executor environment may have been cleaned up.',
+        });
+      }
+
+      // Validate diff before applying
+      const patchPath = path.join(worktreePath, '.vibe-fix-apply.patch');
+      try {
+        fs.writeFileSync(patchPath, fix.diff, 'utf-8');
+      } catch (err: any) {
+        return res.status(500).json({ error: `Failed to write patch: ${err.message}` });
+      }
+
+      // git apply --check first — dry run
+      try {
+        await execAsync(`git apply --check ${patchPath}`, { cwd: worktreePath });
+      } catch (err: any) {
+        fs.existsSync(patchPath) && fs.unlinkSync(patchPath);
+        return res.status(422).json({
+          error: 'Fix diff cannot be applied cleanly — the codebase may have changed.',
+          detail: err.stderr?.slice(0, 500),
+        });
+      }
+
+      // Apply
+      try {
+        await execAsync(`git apply --verbose ${patchPath}`, { cwd: worktreePath });
+      } catch (err: any) {
+        fs.existsSync(patchPath) && fs.unlinkSync(patchPath);
+        return res.status(500).json({ error: `Failed to apply fix: ${err.message}` });
+      } finally {
+        fs.existsSync(patchPath) && fs.unlinkSync(patchPath);
+      }
+
+      // Verify with build
+      const buildCmd = process.env.BUILD_COMMAND || 'npm run build';
+      let buildOutput = '';
+      let buildPassed = false;
+      try {
+        const { stdout, stderr } = await execAsync(buildCmd, {
+          cwd: worktreePath,
+          timeout: 300000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        buildOutput = (stdout + stderr).slice(0, 2000);
+        buildPassed = true;
+      } catch (err: any) {
+        buildOutput = ((err.stdout || '') + (err.stderr || '')).slice(0, 2000);
+      }
+
+      res.json({
+        success: buildPassed,
+        summary: buildPassed
+          ? `Fix applied and build passed: ${fix.description}`
+          : `Fix applied but build failed. Manual review required.`,
+        buildOutput,
+      });
     } catch (error: any) {
-      res.status(500).json({ error: 'Failed to apply diff' });
+      res.status(500).json({ error: `Unexpected error: ${error.message}` });
     }
   });
 
@@ -787,9 +1001,13 @@ async function bootstrap() {
     }
   });
 
-  // Health check
+  // Root and health checks
+  app.get('/', (_req: Request, res: Response) => {
+    res.json({ ok: true, service: 'vibe-api' });
+  });
+
   app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
+    res.json({ ok: true });
   });
 
   // Start the NestJS server
