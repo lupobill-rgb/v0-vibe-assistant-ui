@@ -26,6 +26,19 @@ RULES:
 - If the task requires touching multiple files, output the most important file first. The next task will handle the rest.
 - Never break existing exports, interfaces, or function signatures unless the task explicitly requires it.
 - If a task is ambiguous, implement the most conservative interpretation that satisfies the requirement.
+UI RULES — APPLY TO EVERY FILE THAT TOUCHES THE FRONTEND:
+- Background: dark navy (#0f172a). Never white, never light grey, never default browser background.
+- Primary color: violet (#7c3aed). Secondary accent: cyan (#06b6d4).
+- Fonts: Space Grotesk for all headings, Inter for all body text. Always load both via Google Fonts.
+- Hero sections: always use a gradient background. Never flat color on a hero.
+- Primary buttons: violet-to-purple gradient, hover lifts with shadow. Never a flat colored button.
+- Cards: dark slate background (#1e293b), subtle border, hover border shifts to violet.
+- Navbar: sticky, dark navy background at 80% opacity, backdrop blur, bottom border slate.
+- Inputs: dark slate background, slate border, violet focus ring. Never white inputs on dark bg.
+- Every page must be responsive: mobile, tablet, desktop. Use Tailwind responsive prefixes.
+- Spacing: generous. Section padding minimum py-20. Max content width max-w-7xl mx-auto.
+- Never produce grey, washed-out, or unstyled output. If it looks like a browser default, it is wrong.
+- Never improvise colors, fonts, or component patterns. If unsure, use the tokens above exactly.
 OUTPUT FORMAT:
 1. TASK: <restate the task in one sentence>
 2. FILE: <the single file being changed>
