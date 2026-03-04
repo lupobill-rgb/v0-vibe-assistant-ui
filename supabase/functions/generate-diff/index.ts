@@ -95,6 +95,9 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
 
+  // gpt-4-turbo supports max 4096 completion tokens
+  const clampedTokens = Math.min(maxTokens, 4096);
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -103,7 +106,7 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
     },
     body: JSON.stringify({
       model: "gpt-4-turbo",
-      max_tokens: maxTokens,
+      max_tokens: clampedTokens,
       messages: [
         { role: "system", content: systemMsg },
         { role: "user", content: prompt },
