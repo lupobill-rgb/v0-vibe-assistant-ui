@@ -79,8 +79,8 @@ describe('Clean Working Directory Per Iteration', () => {
       const statusAfter = execSync('git status --porcelain', { cwd: tempDir, encoding: 'utf-8' });
       assert.strictEqual(statusAfter.trim(), '', 'Repository should be clean');
       
-      // Verify file content is restored
-      const restoredContent = fs.readFileSync(testFile, 'utf-8');
+      // Verify file content is restored (normalize line endings for Windows)
+      const restoredContent = fs.readFileSync(testFile, 'utf-8').replace(/\r\n/g, '\n');
       assert.strictEqual(restoredContent, 'original content\n', 'File content should be restored');
       
     } finally {
@@ -192,15 +192,17 @@ describe('Clean Working Directory Per Iteration', () => {
         assert.ok(fs.existsSync(worktreeDir), 'Worktree directory should exist');
         
         // List worktrees to verify it was created
+        // Normalize paths for cross-platform comparison (git uses forward slashes on Windows)
         const worktreeList = execSync('git worktree list', { cwd: tempDir, encoding: 'utf-8' });
-        assert.ok(worktreeList.includes(worktreeDir), 'Worktree should be listed');
-        
+        const toForward = (p: string) => p.replace(/\\/g, '/');
+        assert.ok(toForward(worktreeList).includes(toForward(worktreeDir)), 'Worktree should be listed');
+
         // Clean up worktree
         execSync(`git worktree remove --force "${worktreeDir}"`, { cwd: tempDir });
-        
+
         // Verify worktree is removed from git
         const worktreeListAfter = execSync('git worktree list', { cwd: tempDir, encoding: 'utf-8' });
-        assert.ok(!worktreeListAfter.includes(worktreeDir), 'Worktree should be removed from list');
+        assert.ok(!toForward(worktreeListAfter).includes(toForward(worktreeDir)), 'Worktree should be removed from list');
         
       } finally {
         // Clean up worktree directory if it still exists

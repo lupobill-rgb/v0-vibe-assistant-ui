@@ -27,6 +27,14 @@ export interface Project {
   created_at: number
 }
 
+export interface AgentResultSummary {
+  agent: string
+  status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix'
+  summary?: string
+  duration_ms: number
+  fixes?: { category: string; description: string; diff?: string }[]
+}
+
 export interface Task {
   task_id: string
   user_prompt: string
@@ -47,6 +55,7 @@ export interface Task {
   preflight_seconds?: number
   total_job_seconds?: number
   files_changed_count?: number
+  agent_results?: AgentResultSummary[]
 }
 
 export interface HealthStatus {
@@ -285,6 +294,7 @@ Requirements:
  */
 export async function generateDashboard(
   prompt: string,
+  projectId?: string,
 ): Promise<GeneratedPage[]> {
   const res = await fetch(GENERATE_URL, {
     method: 'POST',
@@ -292,6 +302,7 @@ export async function generateDashboard(
     body: JSON.stringify({
       prompt: `${DASHBOARD_SYSTEM_PROMPT}\n\nUser request: ${prompt}`,
       model: 'claude',
+      ...(projectId && { projectId }),
     }),
   })
 
@@ -311,6 +322,7 @@ export async function generateDashboard(
  */
 export async function generateMultiPageSite(
   prompt: string,
+  projectId?: string,
 ): Promise<GeneratedPage[]> {
   const pages = [
     { name: 'Home', instruction: 'Create the main landing / home page.' },
@@ -326,6 +338,7 @@ export async function generateMultiPageSite(
         body: JSON.stringify({
           prompt: `You are VIBE, an AI website builder. Return ONLY a complete, self-contained HTML page (no markdown fences, no explanation). Use a modern dark theme with clean typography.\n\nSite brief: ${prompt}\nPage: ${page.name} — ${page.instruction}`,
           model: 'claude',
+          ...(projectId && { projectId }),
         }),
       })
 

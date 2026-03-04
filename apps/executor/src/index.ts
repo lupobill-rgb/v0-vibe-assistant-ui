@@ -5,7 +5,6 @@ import { buildContext, formatContext } from './context-builder';
 import { createGitHubPr } from './github-client';
 import { buildCredentialedUrl } from './git-url';
 import { generateHtmlPage } from './llm';
-import { runUxAgent } from './agents/ux-agent';
 import { runPipeline } from './agent-pipeline';
 import fs from 'fs';
 import path from 'path';
@@ -245,7 +244,7 @@ class VibeExecutor {
         'info'
       );
 
-      // Run the full agent pipeline: Planner → Builder → QA → Debug → Security
+      // Run the full agent pipeline: Planner → Security → Builder → Validating → UX → QA
       const pipelineResult = await runPipeline(
         task.task_id,
         task.user_prompt,
@@ -259,7 +258,7 @@ class VibeExecutor {
         const totalJobSeconds = (Date.now() - jobStartTime) / 1000;
         storage.updateTaskUsageMetrics(task.task_id, { total_job_seconds: totalJobSeconds });
       } else {
-        // Pipeline passed — commit changes, run UX review, then create PR
+        // Pipeline passed — commit changes and create PR
         const worktreeGit = simpleGit(worktreeDir);
         const status = await worktreeGit.status();
 
@@ -268,9 +267,6 @@ class VibeExecutor {
           await worktreeGit.commit(`VIBE pipeline: ${task.user_prompt.slice(0, 50)}`);
           storage.logEvent(task.task_id, 'Pipeline changes committed', 'success');
         }
-
-        // Run UX agent (not covered by pipeline)
-        await runUxAgent(task.task_id, worktreeDir);
 
         // Generate preview after successful build
         await this.generatePreview(task, worktreeDir);

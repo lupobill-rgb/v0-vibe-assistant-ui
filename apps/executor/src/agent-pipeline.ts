@@ -3,20 +3,33 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import simpleGit from 'simple-git';
-import { storage } from './storage';
+import { storage, AgentResultSummary } from './storage';
+import { VIBE_SYSTEM_RULES } from './llm';
 import { generateDiff, callEdgeFunction } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
 import { sanitizeUnifiedDiff, extractDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runSecurityAgent } from './agents/security-agent';
+import { runDebugAgent } from './agents/debug-agent';
+import { runQaAgent } from './agents/qa-agent';
+import { runUxAgent } from './agents/ux-agent';
+import { runBuilderAgent } from './agents/builder-agent';
+import { DESIGN_PHASE, DesignPhaseKey } from './agent-prompts';
 
 const execAsync = promisify(exec);
 
-export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security';
+export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security' | 'design';
 
 export interface AgentResult {
-  agent: AgentType; status: 'passed' | 'failed' | 'needs_fix'; output: string;
-  diffs?: string[]; errors?: string[]; duration_ms: number;
+  agent: AgentType;
+  status: 'passed' | 'failed' | 'needs_fix';
+  output: string;
+  summary?: string;
+  fixes?: { category: string; description: string; diff: string }[];
+  diffs?: string[];
+  errors?: string[];
+  duration_ms: number;
 }
+
 export interface PipelineState {
   job_id: string; current_agent: AgentType; results: AgentResult[];
   plan?: { tasks: string[]; files: string[]; acceptance_criteria: string[] };
@@ -34,7 +47,7 @@ async function callLLM(system: string, userMsg: string, taskId: string, model: '
     system,
     max_tokens: 4096,
   });
-  storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
+  await storage.logEvent(taskId, `[PIPELINE] LLM: ${res.usage.input_tokens}+${res.usage.output_tokens} tokens`, 'info');
   return res.diff.trim();
 }
 
@@ -81,11 +94,30 @@ async function runCmd(cmd: string, cwd: string): Promise<{ ok: boolean; output: 
 
 const BUILD = () => process.env.BUILD_COMMAND || 'npm run build';
 
+/** Map pipeline AgentResult[] → AgentResultSummary[] for DB persistence. */
+function toAgentResultSummaries(results: AgentResult[]): AgentResultSummary[] {
+  return results.map((r) => ({
+    agent: r.agent,
+    status: r.status === 'needs_fix' ? 'needs_fix' : r.status,
+    summary: r.output,
+    duration_ms: r.duration_ms,
+    fixes: r.fixes?.map((f) => ({ category: f.category, description: f.description })),
+  }));
+}
+
+/** Persist agent results — fire and forget, never block pipeline return. */
+async function persistAgentResults(jobId: string, results: AgentResult[]): Promise<void> {
+  try {
+    await storage.updateTaskAgentResults(jobId, toAgentResultSummaries(results));
+  } catch (err: any) {
+    storage.logEvent(jobId, `[PIPELINE] Failed to persist agent results: ${err.message}`, 'warning');
+  }
+}
+
 /**
- * Orchestrates the full agent pipeline: Planner → Builder → QA → Debug → Security.
+ * Orchestrates the full agent pipeline: Security → Planner → Builder → QA → Security → UX.
  * Uses llm-router.ts for all LLM calls.
- * Reports state transitions for SSE log streaming:
- *   planning → building → validating → testing → (caller handles completed/creating_pr)
+ * Reports state transitions for SSE log streaming.
  *
  * Does NOT set 'completed' or 'creating_pr' — the caller handles PR creation and final state.
  */
@@ -98,21 +130,55 @@ export async function runPipeline(
     success: false,
   };
 
+  // ── SECURITY (PRE-BUILD — blocks pipeline on critical pre-existing findings) ──
+  state.current_agent = 'security';
+  storage.updateTaskState(jobId, 'security');
+  storage.logEvent(jobId, '[PIPELINE] Phase: Security — scanning before build', 'info');
+  const preSecResult = await callAgent('security', jobId, async () => {
+    const scan = await runSecurityAgent(jobId, worktreeDir);
+    const summary = `${scan.criticalCount} critical, ${scan.warnCount} warnings`;
+    if (scan.blocked) {
+      return {
+        status: 'failed' as const,
+        output: summary,
+        summary,
+        fixes: scan.fixes,
+        errors: [summary],
+      };
+    }
+    return {
+      status: 'passed' as const,
+      output: `Security clean (${scan.warnCount} warnings)`,
+      summary: `Security clean (${scan.warnCount} warnings)`,
+      fixes: scan.fixes,
+    };
+  });
+  state.results.push(preSecResult);
+  if (preSecResult.status === 'failed') {
+    await persistAgentResults(jobId, state.results);
+    await storage.updateTaskState(jobId, 'failed'); return state;
+  }
+
   // ── PLANNER ───────────────────────────────────────────────────────────────
   storage.updateTaskState(jobId, 'planning');
   storage.logEvent(jobId, '[PIPELINE] Phase: Planning — decomposing prompt into tasks', 'info');
   const planResult = await callAgent('planner', jobId, async () => {
     const msg = `${context}\n\n---\nAnalyze this request and return ONLY a JSON object with keys: tasks (string[]), files (string[]), acceptance_criteria (string[]). No markdown.\n\nRequest: ${prompt}`;
-    const raw = await callLLM('You are a planning assistant. Return ONLY valid JSON, no markdown.', msg, jobId, config.model);
+    const raw = await callLLM(`${VIBE_SYSTEM_RULES}\n\nYou are a planning assistant. Return ONLY valid JSON, no markdown.`, msg, jobId, config.model);
     try {
       state.plan = JSON.parse(raw);
-      return { status: 'passed', output: `Plan: ${state.plan!.tasks.length} tasks, ${state.plan!.files.length} files` };
+      return {
+        status: 'passed',
+        output: `Plan: ${state.plan!.tasks.length} tasks, ${state.plan!.files.length} files`,
+        summary: `Planned ${state.plan!.tasks.length} tasks across ${state.plan!.files.length} files`,
+      };
     } catch {
       return { status: 'failed', output: 'Invalid JSON plan', errors: [raw.slice(0, 500)] };
     }
   });
   state.results.push(planResult);
   if (planResult.status === 'failed' || !state.plan) {
+    await persistAgentResults(jobId, state.results);
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
@@ -121,104 +187,151 @@ export async function runPipeline(
   storage.updateTaskState(jobId, 'building');
   storage.logEvent(jobId, `[PIPELINE] Phase: Building — executing ${state.plan.tasks.length} tasks`, 'info');
   const builderResult = await callAgent('builder', jobId, async () => {
-    const diffs: string[] = [];
-    for (const task of state.plan!.tasks) {
-      storage.logEvent(jobId, `[PIPELINE] Builder task: ${task.slice(0, 80)}`, 'info');
-      const ctxResult = await buildContext(worktreeDir, task);
-      const res = await generateDiff(task, formatContext(ctxResult.files), { model: config.model, taskId: jobId });
-      if (!res.diff || res.diff === 'NO_CHANGES') continue;
-      const apply = await applyDiffToRepo(res.diff, worktreeDir);
-      if (!apply.ok) return { status: 'needs_fix' as const, output: `Apply failed: ${task}`, diffs, errors: [apply.error || 'Unknown'] };
-      diffs.push(res.diff);
-      const build = await runCmd(BUILD(), worktreeDir);
-      if (!build.ok) return { status: 'needs_fix' as const, output: `Build failed after: ${task}`, diffs, errors: [build.output] };
+    const result = await runBuilderAgent(jobId, worktreeDir, state.plan!.tasks);
+    if (!result.success) {
+      return {
+        status: 'needs_fix' as const,
+        output: result.summary,
+        summary: result.summary,
+        errors: result.failedTask ? [result.failedTask] : undefined,
+      };
     }
-    return { status: 'passed', output: `Applied ${diffs.length} diffs`, diffs };
+    return {
+      status: 'passed' as const,
+      output: result.summary,
+      summary: result.summary,
+    };
   });
   state.results.push(builderResult);
   if (builderResult.status === 'needs_fix') {
-    if (!await runDebugLoop(state, 'builder', builderResult.errors?.[0] || '', worktreeDir, config)) {
+    if (!await runDebugLoop(state, 'builder', builderResult.errors?.[0] || '', worktreeDir, jobId)) {
+      await persistAgentResults(jobId, state.results);
       await storage.updateTaskState(jobId, 'failed'); return state;
     }
   } else if (builderResult.status === 'failed') {
+    await persistAgentResults(jobId, state.results);
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
-  // ── QA (VALIDATING) ──────────────────────────────────────────────────────
+  // ── QA ───────────────────────────────────────────────────────────────────
   state.current_agent = 'qa';
   storage.updateTaskState(jobId, 'validating');
-  storage.logEvent(jobId, '[PIPELINE] Phase: Validating — running build, lint, and tests', 'info');
+  storage.logEvent(jobId, '[PIPELINE] Phase: QA — generating and running tests', 'info');
   const qaResult = await callAgent('qa', jobId, async () => {
-    const build = await runCmd(BUILD(), worktreeDir);
-    if (!build.ok) return { status: 'needs_fix', output: 'Build failed', errors: [build.output] };
-    const lint = await runCmd('npm run lint', worktreeDir);
-    if (!lint.ok) return { status: 'needs_fix', output: 'Lint failed', errors: [lint.output] };
-    const test = await runCmd('npm test', worktreeDir);
-    if (!test.ok) return { status: 'needs_fix', output: 'Tests failed', errors: [test.output] };
+    const result = await runQaAgent(jobId, worktreeDir);
     for (const c of state.plan?.acceptance_criteria || [])
       await storage.logEvent(jobId, `[QA] Criteria: ${c}`, 'info');
-    return { status: 'passed', output: 'All QA checks passed' };
+    if (!result.success) {
+      return {
+        status: 'needs_fix' as const,
+        output: result.testOutput.slice(0, 500),
+        summary: result.summary,
+        errors: [result.testOutput.slice(0, 500)],
+      };
+    }
+    return { status: 'passed' as const, output: 'All QA checks passed', summary: result.summary };
   });
   state.results.push(qaResult);
   if (qaResult.status === 'needs_fix') {
-    if (!await runDebugLoop(state, 'qa', qaResult.errors?.[0] || '', worktreeDir, config)) {
+    if (!await runDebugLoop(state, 'qa', qaResult.errors?.[0] || '', worktreeDir, jobId)) {
+      await persistAgentResults(jobId, state.results);
       await storage.updateTaskState(jobId, 'failed'); return state;
     }
   } else if (qaResult.status === 'failed') {
+    await persistAgentResults(jobId, state.results);
     await storage.updateTaskState(jobId, 'failed'); return state;
   }
 
-  // ── SECURITY (TESTING) ────────────────────────────────────────────────────
+  // ── SECURITY (POST-BUILD — catches new issues introduced by changes) ────
   state.current_agent = 'security';
   storage.updateTaskState(jobId, 'testing');
-  storage.logEvent(jobId, '[PIPELINE] Phase: Testing — running security scan', 'info');
-  const secResult = await callAgent('security', jobId, async () => {
+  storage.logEvent(jobId, '[PIPELINE] Phase: Security — post-build scan', 'info');
+  const postSecResult = await callAgent('security', jobId, async () => {
     const scan = await runSecurityAgent(jobId, worktreeDir);
-    if (scan.blocked)
-      return { status: 'failed', output: `Blocked: ${scan.criticalCount} critical findings`,
-        errors: [`${scan.criticalCount} critical, ${scan.warnCount} warnings`] };
-    return { status: 'passed', output: `Security clean (${scan.warnCount} warnings)` };
+    const summary = `${scan.criticalCount} critical, ${scan.warnCount} warnings`;
+    if (scan.blocked) {
+      return {
+        status: 'failed' as const,
+        output: summary,
+        summary,
+        fixes: scan.fixes,
+        errors: [summary],
+      };
+    }
+    return {
+      status: 'passed' as const,
+      output: `Security clean (${scan.warnCount} warnings)`,
+      summary: `Security passed: ${scan.warnCount} warnings${scan.fixes.length > 0 ? `, ${scan.fixes.length} auto-fixed` : ''}`,
+      fixes: scan.fixes,
+    };
   });
-  state.results.push(secResult);
-  if (secResult.status === 'failed') {
+  state.results.push(postSecResult);
+  if (postSecResult.status === 'failed') {
+    await persistAgentResults(jobId, state.results);
     await storage.updateTaskState(jobId, 'failed'); return state;
+  }
+
+  // ── UX ────────────────────────────────────────────────────────────────────
+  state.current_agent = 'qa';
+  storage.updateTaskState(jobId, 'ux');
+  storage.logEvent(jobId, '[PIPELINE] Phase: UX — checking and fixing design consistency', 'info');
+  const uxResult = await callAgent('qa', jobId, async () => {
+    const result = await runUxAgent(jobId, worktreeDir);
+    const summary = `${result.passed.length} passed, ${result.failed.length} failed, ${result.fixed.length} fixed`;
+    const status = result.failed.length === 0 ? 'passed' : 'needs_fix';
+    return {
+      status: status as 'passed' | 'needs_fix',
+      output: summary,
+      summary,
+      errors: result.failed.length > 0 ? result.failed : undefined,
+    };
+  });
+  state.results.push(uxResult);
+  // UX failures are non-blocking — logged but pipeline continues
+  if (uxResult.status === 'needs_fix') {
+    await storage.logEvent(jobId, `[PIPELINE] UX issues remain after auto-fix — continuing: ${uxResult.errors?.join('; ')}`, 'warning');
   }
 
   // Pipeline succeeded — caller handles PR creation and final 'completed' state
   state.success = true;
+  await persistAgentResults(jobId, state.results);
   storage.logEvent(jobId, '[PIPELINE] All agents passed — ready for PR creation', 'success');
   return state;
 }
 
-async function runDebugLoop( // resumes from the failing agent, not from scratch
+export async function runDesignPhase(phase: DesignPhaseKey): Promise<string> {
+  const prompt = DESIGN_PHASE[phase];
+  const result = await generateDiff(prompt, '', { model: 'claude', taskId: 'design-phase' });
+  return result.diff;
+}
+
+async function runDebugLoop(
   state: PipelineState, failedAgent: AgentType, errorLog: string,
-  worktreeDir: string, config: RouterConfig,
+  worktreeDir: string, jobId: string,
 ): Promise<boolean> {
-  const { job_id: jobId } = state;
-  while (state.retry_count < state.max_retries) {
-    state.retry_count++;
-    state.current_agent = 'debug';
-    storage.logEvent(jobId, `[PIPELINE] Debug attempt ${state.retry_count}/${state.max_retries} for ${failedAgent}`, 'warning');
-    const result = await callAgent('debug', jobId, async () => {
-      const ctxResult = await buildContext(worktreeDir, 'Fix errors');
-      const enriched = `${formatContext(ctxResult.files)}\n\n---\nERROR LOG:\n${errorLog.slice(0, 5000)}`;
-      const res = await generateDiff(
-        'Analyze the error log and generate a unified diff to fix the failures. Only fix errors shown.',
-        enriched, { model: config.model, taskId: jobId });
-      if (!res.diff || res.diff === 'NO_CHANGES') return { status: 'failed' as const, output: 'No fix produced' };
-      const apply = await applyDiffToRepo(res.diff, worktreeDir);
-      if (!apply.ok) return { status: 'failed' as const, output: `Fix failed: ${apply.error}` };
-      const verify = await runCmd(BUILD(), worktreeDir);
-      if (!verify.ok) return { status: 'failed' as const, output: 'Still failing', errors: [verify.output] };
-      return { status: 'passed', output: 'Fix applied and verified', diffs: [res.diff] };
-    });
-    state.results.push(result);
-    if (result.status === 'passed') {
-      await storage.logEvent(jobId, `[PIPELINE] Debug fixed ${failedAgent} (retry ${state.retry_count})`, 'success');
-      return true;
+  state.current_agent = 'debug';
+  storage.logEvent(jobId, `[PIPELINE] Debug triggered for ${failedAgent}`, 'warning');
+  const result = await callAgent('debug', jobId, async () => {
+    const debugResult = await runDebugAgent(jobId, worktreeDir, errorLog);
+    if (debugResult.success) {
+      return {
+        status: 'passed' as const,
+        output: 'Debug fix applied and verified',
+        summary: debugResult.summary,
+      };
     }
-    errorLog = result.errors?.[0] || result.output;
+    return {
+      status: 'failed' as const,
+      output: debugResult.buildOutput.slice(0, 500),
+      summary: debugResult.summary,
+      errors: [debugResult.buildOutput.slice(0, 500)],
+    };
+  });
+  state.results.push(result);
+  if (result.status === 'passed') {
+    await storage.logEvent(jobId, `[PIPELINE] Debug resolved ${failedAgent}`, 'success');
+    return true;
   }
-  await storage.logEvent(jobId, `[PIPELINE] Debug exhausted ${state.max_retries} retries for ${failedAgent}`, 'error');
+  await storage.logEvent(jobId, `[PIPELINE] Debug could not resolve ${failedAgent}: ${result.output}`, 'error');
   return false;
 }

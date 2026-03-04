@@ -11,7 +11,9 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { fetchJob, subscribeToJobUpdates, type Task } from "@/lib/api"
+import { fetchJob, subscribeToJobUpdates, type Task, API_URL } from "@/lib/api"
+import type { AgentResultSummary } from "@/lib/api"
+import { extractFixes } from "@/lib/pipeline-utils"
 
 export type StepStatus = "done" | "active" | "pending" | "error"
 
@@ -21,6 +23,7 @@ export interface PipelineStep {
   description: string
   status: StepStatus
   duration?: string
+  agentSummary?: string
 }
 
 function buildStepsFromTask(task: Task | null): PipelineStep[] {
@@ -34,18 +37,23 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
     state === "creating_pr" ? "pr" :
     state
 
-  const stateOrder = ["queued", "planning", "building", "validating", "testing", "pr", "completed"]
+  const stateOrder = ["queued", "planning", "security", "building", "validating", "ux", "testing", "pr", "completed"]
   const stateIdx = stateOrder.indexOf(normalizedState)
 
   const stepDefs = [
     { id: "1", key: "queued",      label: "Queued",           description: "Waiting for executor" },
     { id: "2", key: "planning",    label: "Planning",         description: "Decomposing prompt into tasks" },
-    { id: "3", key: "building",    label: "Building",         description: "Generating and applying diffs" },
-    { id: "4", key: "validating",  label: "Validating",       description: "Running build, lint, and tests" },
-    { id: "5", key: "testing",     label: "Security Scan",    description: "Running security analysis" },
-    { id: "6", key: "pr",          label: "Pull Request",     description: "Creating GitHub PR" },
-    { id: "7", key: "completed",   label: "Complete",         description: "Job finished successfully" },
+    { id: "3", key: "security",    label: "Security",         description: "RLS coverage and secrets scan" },
+    { id: "4", key: "building",    label: "Building",         description: "Generating and applying diffs" },
+    { id: "5", key: "validating",  label: "Validating",       description: "Running build and tests" },
+    { id: "6", key: "ux",          label: "UX",               description: "Design consistency and accessibility" },
+    { id: "7", key: "testing",     label: "QA",               description: "Test generation and verification" },
+    { id: "8", key: "pr",          label: "Pull Request",     description: "Creating GitHub PR" },
+    { id: "9", key: "completed",   label: "Complete",         description: "Job finished successfully" },
   ]
+
+  // Attach agent summaries from persisted results
+  const agentResults: AgentResultSummary[] = task?.agent_results ?? []
 
   return stepDefs.map((def) => {
     const idx = stateOrder.indexOf(def.key)
@@ -54,12 +62,21 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
     if (state === "failed") {
       if (idx < stateIdx) status = "done"
       else if (idx === stateIdx) status = "error"
+    } else if (normalizedState === "completed") {
+      status = "done"
     } else {
       if (idx < stateIdx) status = "done"
       else if (idx === stateIdx) status = "active"
     }
 
-    return { ...def, status }
+    // Match agent result to step by key name
+    const agentResult = agentResults.find((r) => r.agent === def.key)
+
+    return {
+      ...def,
+      status,
+      agentSummary: agentResult?.summary,
+    }
   })
 }
 
@@ -83,6 +100,9 @@ interface PipelineTrackerProps {
 export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const [task, setTask] = useState<Task | null>(null)
   const [steps, setSteps] = useState<PipelineStep[]>(buildStepsFromTask(null))
+  const [expandedStep, setExpandedStep] = useState<string | null>(null)
+  const [applyingFix, setApplyingFix] = useState<number | null>(null)
+  const [fixResult, setFixResult] = useState<{ success: boolean; summary: string } | null>(null)
 
   useEffect(() => {
     fetchJob(taskId).then((t) => {
@@ -104,8 +124,28 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
   const totalCount = steps.length
   const progress = (completedCount / totalCount) * 100
 
+  const allFixes = extractFixes(task)
+
   const isTerminal =
     task?.execution_state === "completed" || task?.execution_state === "failed"
+
+  const applyFix = async (fixIndex: number) => {
+    setApplyingFix(fixIndex)
+    setFixResult(null)
+    try {
+      const res = await fetch(`${API_URL}/jobs/${taskId}/diff/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fix_index: fixIndex }),
+      })
+      const data = await res.json()
+      setFixResult({ success: data.success, summary: data.summary })
+    } catch (err) {
+      setFixResult({ success: false, summary: 'Request failed — check network connection.' })
+    } finally {
+      setApplyingFix(null)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full bg-card border-r border-border">
@@ -184,6 +224,14 @@ export function PipelineTracker({ taskId }: PipelineTrackerProps) {
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                   {step.description}
                 </p>
+                {step.agentSummary && (
+                  <p className={cn(
+                    "text-[10px] mt-0.5 leading-relaxed font-mono",
+                    step.status === "error" ? "text-red-400/80" : "text-emerald-400/70"
+                  )}>
+                    {step.agentSummary}
+                  </p>
+                )}
               </div>
             </div>
           ))}

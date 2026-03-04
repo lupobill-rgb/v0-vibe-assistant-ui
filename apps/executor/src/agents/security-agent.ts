@@ -1,17 +1,110 @@
 import fs from 'fs';
 import path from 'path';
 import { storage } from '../storage';
+import { generateDiff } from '../llm-router';
 
 export interface SecurityAgentResult {
   criticalCount: number;
   warnCount: number;
   blocked: boolean;
+  summary: string;
+  fixes: SecurityFix[];
+}
+
+export interface SecurityFix {
+  category: string;
+  description: string;
+  diff: string; // unified diff ready for applyDiff
 }
 
 interface Finding {
   severity: 'critical' | 'warn';
   category: string;
   detail: string; // internal only — never written to SSE stream
+}
+
+// ---------------------------------------------------------------------------
+// RLS Coverage — dominant capability
+// ---------------------------------------------------------------------------
+
+const MIGRATION_SEARCH_PATHS = [
+  'supabase/migrations',
+  'apps/api/supabase/migrations',
+];
+
+function findMigrationsDir(repoPath: string): string | null {
+  for (const candidate of MIGRATION_SEARCH_PATHS) {
+    const full = path.join(repoPath, candidate);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+/** Extract table names from CREATE TABLE statements in migration files. */
+function extractTablesFromMigrations(migrationsDir: string): Set<string> {
+  const tables = new Set<string>();
+  let files: string[];
+  try {
+    files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
+  } catch {
+    return tables;
+  }
+  const createTablePattern = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?/gi;
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+    let match: RegExpExecArray | null;
+    createTablePattern.lastIndex = 0;
+    while ((match = createTablePattern.exec(content)) !== null) {
+      const tableName = match[2];
+      // Skip Supabase internal tables
+      if (!tableName.startsWith('_') && tableName !== 'schema_migrations') {
+        tables.add(tableName);
+      }
+    }
+  }
+  return tables;
+}
+
+/** Extract tables that have RLS explicitly enabled or have policies defined. */
+function extractRlsCoveredTables(migrationsDir: string): Set<string> {
+  const covered = new Set<string>();
+  let files: string[];
+  try {
+    files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
+  } catch {
+    return covered;
+  }
+  const enableRlsPattern = /ALTER\s+TABLE\s+(?:"?(\w+)"?\.)?"?(\w+)"?\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/gi;
+  const createPolicyPattern = /CREATE\s+POLICY\s+\S+\s+ON\s+(?:"?(\w+)"?\.)?"?(\w+)"?/gi;
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+    let match: RegExpExecArray | null;
+    enableRlsPattern.lastIndex = 0;
+    while ((match = enableRlsPattern.exec(content)) !== null) covered.add(match[2]);
+    createPolicyPattern.lastIndex = 0;
+    while ((match = createPolicyPattern.exec(content)) !== null) covered.add(match[2]);
+  }
+  return covered;
+}
+
+/** Build a safe default RLS migration for uncovered tables. */
+function buildRlsFixMigration(uncoveredTables: string[]): string {
+  const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+  const filename = `${timestamp}_vibe_rls_fix.sql`;
+  const statements = uncoveredTables.map((table) => `
+-- VIBE Security Agent: enable RLS on ${table}
+ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY;
+
+-- Default deny-all policy — replace with your access rules
+CREATE POLICY "${table}_deny_all" ON "${table}"
+  AS RESTRICTIVE
+  USING (false);
+`).join('\n');
+
+  return `--- /dev/null
++++ b/supabase/migrations/${filename}
+@@ -0,0 +1 @@
++${statements.replace(/\n/g, '\n+')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +137,10 @@ const RLS_DISABLED_PATTERNS: RegExp[] = [
 // A "warn" rather than critical because auth may be applied upstream.
 const UNPROTECTED_ROUTE_PATTERN =
   /(?:router|app)\.(get|post|put|patch|delete)\s*\(\s*['"`](\/(?!health\b|ping\b|favicon)[^'"`]+)['"`]\s*,\s*(?:async\s*)?\((?!.*(?:auth|guard|verify|protect|require|middleware))[^)]*\)\s*(?:=>|\{)/gi;
+
+// RLS coverage: CREATE TABLE without ENABLE ROW LEVEL SECURITY nearby
+const CREATE_TABLE_PATTERN = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)/gi;
+const ENABLE_RLS_PATTERN = /ALTER\s+TABLE\s+(?:public\.)?(\w+)\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/gi;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -128,18 +225,86 @@ function walkDir(dir: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// RLS coverage scan — checks that all CREATE TABLE statements have matching
+// ENABLE ROW LEVEL SECURITY. Tables without RLS are critical findings.
+// ---------------------------------------------------------------------------
+
+interface RlsCoverage {
+  tablesWithoutRls: string[];
+  totalTables: number;
+}
+
+function scanRlsCoverage(files: string[], repoPath: string): RlsCoverage {
+  const definedTables = new Set<string>();
+  const rlsEnabledTables = new Set<string>();
+
+  for (const filePath of files) {
+    if (!filePath.endsWith('.sql')) continue;
+    let content: string;
+    try {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    // Collect all CREATE TABLE names
+    CREATE_TABLE_PATTERN.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = CREATE_TABLE_PATTERN.exec(content)) !== null) {
+      definedTables.add(match[1].toLowerCase());
+    }
+
+    // Collect all ENABLE RLS table names
+    ENABLE_RLS_PATTERN.lastIndex = 0;
+    while ((match = ENABLE_RLS_PATTERN.exec(content)) !== null) {
+      rlsEnabledTables.add(match[1].toLowerCase());
+    }
+  }
+
+  const tablesWithoutRls = [...definedTables].filter((t) => !rlsEnabledTables.has(t));
+  return { tablesWithoutRls, totalTables: definedTables.size };
+}
+
+// ---------------------------------------------------------------------------
+// Auto-fix: generate migration to enable RLS on uncovered tables
+// ---------------------------------------------------------------------------
+
+function generateRlsMigration(tablesWithoutRls: string[], repoPath: string): string | null {
+  if (tablesWithoutRls.length === 0) return null;
+
+  const statements = tablesWithoutRls
+    .map((t) => `ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY;`)
+    .join('\n');
+
+  const migration = `-- Auto-generated by VIBE security agent\n-- Enable RLS on tables missing coverage\n\n${statements}\n`;
+
+  // Write to supabase/migrations if the directory exists
+  const migrationsDir = path.join(repoPath, 'supabase', 'migrations');
+  if (!fs.existsSync(migrationsDir)) {
+    // No supabase migrations directory — skip auto-fix
+    return null;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const migrationFile = path.join(migrationsDir, `${timestamp}_enable_rls.sql`);
+  fs.writeFileSync(migrationFile, migration, 'utf-8');
+  return migrationFile;
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
 export async function runSecurityAgent(taskId: string, repoPath: string): Promise<SecurityAgentResult> {
-  // Internal-only logging — findings are never written to the SSE event stream
   const internal = (msg: string) => console.log(`[SECURITY][${taskId}] ${msg}`);
 
   internal('Starting security scan');
 
   const allFindings: Finding[] = [];
+  const fixes: SecurityFix[] = [];
   const files = walkDir(repoPath);
 
+  // Static file scan
   for (const filePath of files) {
     let content: string;
     try {
@@ -154,33 +319,96 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
     }
   }
 
+  // RLS coverage check via migrations directory
+  const migrationsDir = findMigrationsDir(repoPath);
+  if (migrationsDir) {
+    internal(`Migrations dir found: ${migrationsDir}`);
+    const allTables = extractTablesFromMigrations(migrationsDir);
+    const coveredTables = extractRlsCoveredTables(migrationsDir);
+    const uncovered = [...allTables].filter((t) => !coveredTables.has(t));
+
+    internal(`Tables found: ${[...allTables].join(', ') || 'none'}`);
+    internal(`RLS covered: ${[...coveredTables].join(', ') || 'none'}`);
+    internal(`RLS gaps: ${uncovered.join(', ') || 'none'}`);
+
+    if (uncovered.length > 0) {
+      for (const table of uncovered) {
+        allFindings.push({
+          severity: 'critical',
+          category: 'rls_not_enabled',
+          detail: table,
+        });
+      }
+
+      const fixDiff = buildRlsFixMigration(uncovered);
+      fixes.push({
+        category: 'rls_not_enabled',
+        description: `Enable RLS on ${uncovered.length} table(s): ${uncovered.join(', ')}. Deny-all policy scaffolded — replace with your access rules.`,
+        diff: fixDiff,
+      });
+
+      await storage.logEvent(taskId, `[SECURITY] RLS not enabled on ${uncovered.length} table(s) — fix generated`, 'warning');
+    } else if (allTables.size > 0) {
+      internal('RLS coverage: all tables covered');
+      await storage.logEvent(taskId, '[SECURITY] RLS coverage: all tables covered', 'success');
+    }
+  } else {
+    // Also try inline SQL scan as fallback
+    const rlsCoverage = scanRlsCoverage(files, repoPath);
+    if (rlsCoverage.tablesWithoutRls.length > 0) {
+      internal(`RLS coverage (inline scan): ${rlsCoverage.tablesWithoutRls.length}/${rlsCoverage.totalTables} tables missing RLS`);
+      for (const table of rlsCoverage.tablesWithoutRls) {
+        allFindings.push({
+          severity: 'critical',
+          category: 'rls_missing',
+          detail: `Table '${table}' has no ENABLE ROW LEVEL SECURITY`,
+        });
+      }
+
+      const migrationFile = generateRlsMigration(rlsCoverage.tablesWithoutRls, repoPath);
+      if (migrationFile) {
+        const relPath = path.relative(repoPath, migrationFile);
+        internal(`Auto-fix: generated RLS migration at ${relPath}`);
+        fixes.push({
+          category: 'rls_missing',
+          description: `Generated RLS migration for ${rlsCoverage.tablesWithoutRls.length} table(s): ${relPath}`,
+          diff: '',
+        });
+        await storage.logEvent(taskId, `[SECURITY] Auto-fix: RLS migration generated for ${rlsCoverage.tablesWithoutRls.length} table(s)`, 'success');
+      }
+    } else if (rlsCoverage.totalTables > 0) {
+      internal(`RLS coverage: all ${rlsCoverage.totalTables} tables have RLS enabled`);
+    }
+  }
+
   const criticalFindings = allFindings.filter((f) => f.severity === 'critical');
   const warnFindings = allFindings.filter((f) => f.severity === 'warn');
 
   internal(`Scan complete: ${criticalFindings.length} critical, ${warnFindings.length} warnings across ${files.length} files`);
 
-  // Only severity counts go to SSE — no finding details, file paths, or secret values
   if (criticalFindings.length > 0) {
     await storage.logEvent(
       taskId,
-      `[SECURITY] ${criticalFindings.length} critical finding(s) — job blocked`,
+      `[SECURITY] ${criticalFindings.length} critical finding(s) — job blocked. ${fixes.length} fix(es) available.`,
       'error'
     );
   }
   if (warnFindings.length > 0) {
-    await storage.logEvent(
-      taskId,
-      `[SECURITY] ${warnFindings.length} warning(s) detected`,
-      'warning'
-    );
+    await storage.logEvent(taskId, `[SECURITY] ${warnFindings.length} warning(s) detected`, 'warning');
   }
   if (criticalFindings.length === 0 && warnFindings.length === 0) {
     await storage.logEvent(taskId, '[SECURITY] Scan complete: no findings', 'success');
   }
 
+  const summary = criticalFindings.length === 0 && warnFindings.length === 0
+    ? 'Security scan passed. No findings.'
+    : `${criticalFindings.length} critical finding(s), ${warnFindings.length} warning(s). ${fixes.length > 0 ? fixes.map((f) => f.description).join(' ') : 'No auto-fixes available.'}`;
+
   return {
     criticalCount: criticalFindings.length,
     warnCount: warnFindings.length,
     blocked: criticalFindings.length > 0,
+    summary,
+    fixes,
   };
 }
