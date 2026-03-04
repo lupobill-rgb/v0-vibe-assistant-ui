@@ -78,15 +78,6 @@ export interface VibeEvent {
   event_time: string;
 }
 
-/** Lightweight summary of an agent run, persisted as JSON on the jobs row. */
-export interface AgentResultSummary {
-  agent: string;
-  status: string;
-  summary: string;
-  duration_ms: number;
-  fixes?: Array<{ category: string; description: string }>;
-}
-
 // ── Row types from Supabase (DB column names) ──
 
 interface JobRow {
