@@ -545,7 +545,7 @@ async function bootstrap() {
         project_id,
         source_branch: finalBaseBranch,
         destination_branch: finalTargetBranch,
-        execution_state: 'queued',
+        execution_state: 'calling_llm',
         initiated_at: now,
         last_modified: now,
         llm_model: resolvedModel,
