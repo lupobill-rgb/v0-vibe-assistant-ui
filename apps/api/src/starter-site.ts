@@ -10,7 +10,7 @@ export const INITIAL_BUILD_BUDGETS = {
   stepDeadlinesMs: {
     planning: 20_000,
     building: 120_000,
-    validating: 30_000,
+    validating: 120_000,
     security: 20_000,
   },
   buildConcurrency: 3,
