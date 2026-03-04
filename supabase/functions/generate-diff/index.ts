@@ -33,21 +33,118 @@ const PLAN_SYSTEM =
   "5. Descriptions should be specific enough to guide HTML generation. " +
   "6. Users can add more pages later — focus on the core pages that deliver the most value.";
 
-const PAGE_SYSTEM =
-  "You are VIBE, an AI website builder. " +
-  "Return a complete, self-contained HTML page. All CSS must be in a single <style> tag in <head> — no external stylesheets, no external dependencies. " +
-  "Interpret the user's prompt for colors, tone, and style; if unspecified, use a clean modern design. " +
-  "Every section must have visible, styled content — no empty elements, no placeholder text, no Lorem ipsum. " +
-  "FORBIDDEN: JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
-  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>.";
+const MULTI_PAGE_SYSTEM = `You are VIBE, an AI website builder generating one page of a multi-page website.
+Return a complete, self-contained HTML page. All CSS in a single <style> tag in <head>. No external stylesheets or dependencies.
+This page is part of a larger site — it MUST share a consistent header, footer, navigation, and visual identity with every other page.
 
-const SINGLE_PAGE_SYSTEM =
-  "You are VIBE, an AI website builder. " +
-  "Return a complete, self-contained single-page HTML site. All CSS must be in a single <style> tag in <head> — no external stylesheets, no external dependencies. " +
-  "Interpret the user's prompt for colors, tone, and style; if unspecified, use a clean modern design. " +
-  "Every section must have visible, styled content — no empty elements, no placeholder text, no Lorem ipsum. " +
-  "FORBIDDEN: JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
-  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>.";
+STRUCTURE — EVERY PAGE:
+- Semantic HTML: <header>, <nav>, <main>, <footer>.
+- <header>: logo/site name on the left, <nav> links on the right, max 6 nav items.
+- Nav links must have 3 CSS states: default, :hover (subtle color/underline shift), and .active (bold or accent-colored).
+- Mark the current page's nav link with aria-current="page" and a visually distinct .active class.
+- Nav links should use relative hrefs matching the page routes from the plan (e.g., href="/" for index, href="/about" for about).
+- <footer>: secondary links row, copyright line, optional contact info. Consistent across all pages.
+
+LAYOUT:
+- CSS Grid or Flexbox for all layouts.
+- Max content width 1200px, centered with margin: 0 auto.
+- Generous section padding: 80-120px vertical, 24px horizontal.
+
+TYPOGRAPHY:
+- Page h1: font-size: clamp(2.5rem, 5vw, 4.5rem); font-weight: 800.
+- Section h2: font-size: clamp(1.75rem, 3vw, 2.5rem); font-weight: 700.
+- Body text: 1rem with line-height: 1.6; max-width: 65ch for readability.
+- Font stack: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif.
+
+CONTENT:
+- Interpret the page description to determine content, sections, and tone.
+- Every section must have visible, styled content. No empty elements, no placeholder text, no Lorem ipsum.
+- Include at least 2 meaningful content sections between header and footer.
+
+DESIGN:
+- Shared visual identity: same font stack, color palette, spacing, border-radius across all pages.
+- Default when unspecified: dark theme (#0a0a0a background, #ffffff text, one accent color).
+- Minimum 4.5:1 contrast ratio for all text.
+- Smooth section transitions using subtle borders or background color shifts.
+
+MOBILE RESPONSIVE:
+- Single @media (max-width: 768px) breakpoint.
+- Hamburger menu using CSS-only checkbox hack: hidden checkbox + label with ☰ icon toggles nav visibility.
+- Nav stacks vertically on mobile, hidden by default, shown when checkbox is checked.
+
+FORBIDDEN: NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {" "} expressions, no 'export default function'. No Lorem ipsum.
+Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. No markdown. No explanation. Start with <!DOCTYPE html>.`;
+
+// Keep PAGE_SYSTEM as alias for backward compatibility in tests
+const PAGE_SYSTEM = MULTI_PAGE_SYSTEM;
+
+const SINGLE_PAGE_SYSTEM = `You are VIBE, an AI website builder that produces best-in-class single-page sites.
+Return a complete, self-contained single-page HTML site. All CSS in a single <style> tag in <head>. No external stylesheets or dependencies.
+
+LAYOUT & STRUCTURE:
+- Use semantic HTML: <header>/<nav>, <main>, <section>, <footer>.
+- Use CSS Grid or Flexbox for all layouts.
+- Max content width 1200px, centered with margin: 0 auto.
+- Generous section padding: 80-120px vertical, 24px horizontal.
+- Navigation should link to sections via anchor IDs with smooth scrolling (scroll-behavior: smooth).
+
+TYPOGRAPHY:
+- Hero h1: font-size: clamp(2.5rem, 5vw, 4.5rem); font-weight: 800.
+- Section h2: font-size: clamp(1.75rem, 3vw, 2.5rem); font-weight: 700.
+- Body text: 1rem with line-height: 1.6; max-width: 65ch for readability.
+- Font stack: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif.
+
+HERO SECTION:
+- min-height: 100vh with content centered vertically and horizontally.
+- One clear benefit-driven headline (never generic like "Welcome to Our Site").
+- 1-2 sentence supporting subtext that explains the value proposition.
+- Single primary CTA button with min 44px tap target, bold color, rounded corners.
+- No stock photo descriptions. Use CSS gradients, shapes, or abstract patterns for visual interest.
+
+CONTENT SECTIONS:
+- Features: 3-column CSS Grid (1-column on mobile) with icon placeholder (emoji or CSS shape), heading, and description.
+- Include a social proof or testimonials section with real-sounding quotes.
+- Final CTA section before footer with a compelling call to action.
+- Every section must have visible, styled content. No empty elements, no placeholder text, no Lorem ipsum.
+
+DESIGN:
+- Interpret the user's prompt for color palette, mood, and tone.
+- Default when unspecified: dark theme (#0a0a0a background, #ffffff text, accent color derived from prompt context).
+- Minimum 4.5:1 contrast ratio for all text.
+- Smooth section transitions using subtle borders or background color shifts.
+- Mobile responsive with a single @media (max-width: 768px) breakpoint.
+
+FORBIDDEN: NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {" "} expressions, no 'export default function'. No Lorem ipsum.
+Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. No markdown. No explanation. Start with <!DOCTYPE html>.`;
+
+const DASHBOARD_SYSTEM = `You are VIBE, an AI dashboard builder. Generate a Next.js dashboard page component.
+Output a single valid Next.js page file with a default export. All styles in a <style jsx> tag or inline styles object.
+
+DATA SOURCES — detect from the user's prompt and generate the matching connection logic:
+- Supabase: import { createClient } from '@supabase/supabase-js'. Use env vars process.env.NEXT_PUBLIC_SUPABASE_URL and process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY. Query data in useEffect, store in state.
+- CSV/Excel upload: render a file <input type="file"> that accepts .csv,.xlsx. Parse CSV with Papa.parse (import Papa from 'papaparse'), parse Excel with read() from 'xlsx' (import * as XLSX from 'xlsx'). Load parsed rows into component state.
+- REST API: fetch() to the endpoint described in the prompt. Use an env var for any API key (e.g., process.env.NEXT_PUBLIC_API_KEY). Include loading state, error handling with try/catch, and a retry mechanism.
+- If NO data source is specified: generate a realistic placeholder data array (10-20 rows) as a const inside the component so the dashboard is immediately useful and previewable.
+
+LAYOUT (CSS Grid):
+- Fixed left sidebar 240px wide + main content area: display: grid; grid-template-columns: 240px 1fr; min-height: 100vh.
+- Sidebar: brand/logo at top, vertical nav links with emoji icon + text label, active link state (bold + accent border-left), user avatar/profile section at bottom.
+- Top bar in main area: page title aligned left, search input + notification bell + user avatar aligned right.
+- Content area below top bar: row of 4 KPI stat cards (CSS Grid: repeat(4, 1fr) with gap), then below that a chart placeholder area + data table side by side or stacked.
+- Eye-tracking pattern: highest-value metric positioned top-left.
+- Five-second rule: the single most critical metric must be visible without scrolling.
+
+DESIGN:
+- Interpret the user's prompt for domain, industry, and color palette.
+- Default when unspecified: dark sidebar (#1a1a2e), light main content (#f8f9fa), accent color derived from prompt context.
+- Minimalist: use 2-3 colors maximum. Every data state must be handled: loading spinner, empty state message, error state with retry button.
+- Stat cards: large number, label below, optional trend arrow (▲/▼) with green/red color.
+- Data table: striped rows, sticky header, horizontal scroll on overflow.
+
+OUTPUT:
+- Valid Next.js page component (React) with 'use client' directive at top.
+- export default function DashboardPage() { ... }
+- All in one file. No markdown. No explanation.`;
 
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
@@ -174,6 +271,9 @@ Deno.serve(async (req: Request) => {
       defaultMaxTokens = 8192;
     } else if (mode === "html") {
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
+      defaultMaxTokens = 8192;
+    } else if (mode === "dashboard") {
+      baseSystemMsg = DASHBOARD_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
     } else {
       // Default: diff generation mode
