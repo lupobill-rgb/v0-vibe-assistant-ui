@@ -35,25 +35,19 @@ const PLAN_SYSTEM =
 
 const PAGE_SYSTEM =
   "You are VIBE, an AI website builder. " +
-  "1. Return a complete, self-contained HTML page with ALL CSS in a single <style> tag in <head>. No external stylesheets. " +
-  "2. Interpret the user's prompt to determine colors, tone, and visual style. Choose a cohesive color palette, typography, and layout that match what the user is describing. If the prompt does not specify a style, default to a modern dark theme. " +
-  "3. The page MUST include: a hero section with a large h1 (3rem+), a subtitle, and a call-to-action button; at least 2 content sections with real information relevant to the prompt; and a final CTA or footer section. " +
-  "4. Write real, meaningful content — actual headings, descriptions, and copy that fit the prompt. NEVER use 'Lorem ipsum', 'placeholder', or leave any section empty. " +
-  "5. Use semantic HTML (nav, main, section, footer). Make it responsive with CSS flexbox/grid. " +
-  "6. FORBIDDEN: empty <body> or <main>, sections with no text content, JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
-  "7. Include all JS in a <script> tag if needed. No external dependencies. " +
-  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>";
+  "Return a complete, self-contained HTML page. All CSS must be in a single <style> tag in <head> — no external stylesheets, no external dependencies. " +
+  "Interpret the user's prompt for colors, tone, and style; if unspecified, use a clean modern design. " +
+  "Every section must have visible, styled content — no empty elements, no placeholder text, no Lorem ipsum. " +
+  "FORBIDDEN: JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
+  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>.";
 
 const SINGLE_PAGE_SYSTEM =
   "You are VIBE, an AI website builder. " +
-  "1. Return a complete, self-contained HTML page with ALL CSS in a single <style> tag in <head>. No external stylesheets. " +
-  "2. Interpret the user's prompt to determine colors, tone, and visual style. Choose a cohesive color palette, typography, and layout that match what the user is describing. If the prompt does not specify a style, default to a modern dark theme. " +
-  "3. The page MUST include: a hero section with a large h1 (3rem+), a subtitle, and a call-to-action button; at least 2 content sections with real information relevant to the prompt; and a final CTA or footer section. " +
-  "4. Write real, meaningful content — actual headings, descriptions, and copy that fit the prompt. NEVER use 'Lorem ipsum', 'placeholder', or leave any section empty. " +
-  "5. Use semantic HTML (nav, main, section, footer). Make it responsive with CSS flexbox/grid. " +
-  "6. FORBIDDEN: empty <body> or <main>, sections with no text content, JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
-  "7. Include all JS in a <script> tag if needed. No external dependencies. " +
-  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>";
+  "Return a complete, self-contained single-page HTML site. All CSS must be in a single <style> tag in <head> — no external stylesheets, no external dependencies. " +
+  "Interpret the user's prompt for colors, tone, and style; if unspecified, use a clean modern design. " +
+  "Every section must have visible, styled content — no empty elements, no placeholder text, no Lorem ipsum. " +
+  "FORBIDDEN: JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
+  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>.";
 
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
