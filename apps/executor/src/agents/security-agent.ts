@@ -296,15 +296,15 @@ function generateRlsMigration(tablesWithoutRls: string[], repoPath: string): str
 // ---------------------------------------------------------------------------
 
 export async function runSecurityAgent(taskId: string, repoPath: string): Promise<SecurityAgentResult> {
-  // Internal-only logging — findings are never written to the SSE event stream
   const internal = (msg: string) => console.log(`[SECURITY][${taskId}] ${msg}`);
 
   internal('Starting security scan');
 
   const allFindings: Finding[] = [];
-  const fixes: string[] = [];
+  const fixes: SecurityFix[] = [];
   const files = walkDir(repoPath);
 
+  // Static file scan
   for (const filePath of files) {
     let content: string;
     try {
@@ -319,37 +319,8 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
     }
   }
 
-  // RLS coverage scan
-  const rlsCoverage = scanRlsCoverage(files, repoPath);
-  if (rlsCoverage.tablesWithoutRls.length > 0) {
-    internal(`RLS coverage: ${rlsCoverage.tablesWithoutRls.length}/${rlsCoverage.totalTables} tables missing RLS`);
-    for (const table of rlsCoverage.tablesWithoutRls) {
-      allFindings.push({
-        severity: 'critical',
-        category: 'rls_missing',
-        detail: `Table '${table}' has no ENABLE ROW LEVEL SECURITY`,
-      });
-    }
-
-    // Auto-fix: generate migration
-    const migrationFile = generateRlsMigration(rlsCoverage.tablesWithoutRls, repoPath);
-    if (migrationFile) {
-      const relPath = path.relative(repoPath, migrationFile);
-      internal(`Auto-fix: generated RLS migration at ${relPath}`);
-      fixes.push(`Generated RLS migration for ${rlsCoverage.tablesWithoutRls.length} table(s): ${relPath}`);
-      await storage.logEvent(taskId, `[SECURITY] Auto-fix: RLS migration generated for ${rlsCoverage.tablesWithoutRls.length} table(s)`, 'success');
-    }
-  } else if (rlsCoverage.totalTables > 0) {
-    internal(`RLS coverage: all ${rlsCoverage.totalTables} tables have RLS enabled`);
-  }
-
-  const criticalFindings = allFindings.filter((f) => f.severity === 'critical');
-  const warnFindings = allFindings.filter((f) => f.severity === 'warn');
-
-  // --- RLS Coverage Check ---
-  const fixes: SecurityFix[] = [];
+  // RLS coverage check via migrations directory
   const migrationsDir = findMigrationsDir(repoPath);
-
   if (migrationsDir) {
     internal(`Migrations dir found: ${migrationsDir}`);
     const allTables = extractTablesFromMigrations(migrationsDir);
@@ -361,16 +332,14 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
     internal(`RLS gaps: ${uncovered.join(', ') || 'none'}`);
 
     if (uncovered.length > 0) {
-      // Each uncovered table is a critical finding
       for (const table of uncovered) {
-        criticalFindings.push({
+        allFindings.push({
           severity: 'critical',
           category: 'rls_not_enabled',
           detail: table,
         });
       }
 
-      // Generate fix migration
       const fixDiff = buildRlsFixMigration(uncovered);
       fixes.push({
         category: 'rls_not_enabled',
@@ -378,19 +347,42 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
         diff: fixDiff,
       });
 
-      await storage.logEvent(
-        taskId,
-        `[SECURITY] RLS not enabled on ${uncovered.length} table(s) — job blocked`,
-        'error'
-      );
-    } else {
+      await storage.logEvent(taskId, `[SECURITY] RLS not enabled on ${uncovered.length} table(s) — fix generated`, 'warning');
+    } else if (allTables.size > 0) {
       internal('RLS coverage: all tables covered');
       await storage.logEvent(taskId, '[SECURITY] RLS coverage: all tables covered', 'success');
     }
   } else {
-    internal('No migrations directory found — skipping RLS coverage check');
-    await storage.logEvent(taskId, '[SECURITY] No migrations dir found — RLS coverage check skipped', 'warning');
+    // Also try inline SQL scan as fallback
+    const rlsCoverage = scanRlsCoverage(files, repoPath);
+    if (rlsCoverage.tablesWithoutRls.length > 0) {
+      internal(`RLS coverage (inline scan): ${rlsCoverage.tablesWithoutRls.length}/${rlsCoverage.totalTables} tables missing RLS`);
+      for (const table of rlsCoverage.tablesWithoutRls) {
+        allFindings.push({
+          severity: 'critical',
+          category: 'rls_missing',
+          detail: `Table '${table}' has no ENABLE ROW LEVEL SECURITY`,
+        });
+      }
+
+      const migrationFile = generateRlsMigration(rlsCoverage.tablesWithoutRls, repoPath);
+      if (migrationFile) {
+        const relPath = path.relative(repoPath, migrationFile);
+        internal(`Auto-fix: generated RLS migration at ${relPath}`);
+        fixes.push({
+          category: 'rls_missing',
+          description: `Generated RLS migration for ${rlsCoverage.tablesWithoutRls.length} table(s): ${relPath}`,
+          diff: '',
+        });
+        await storage.logEvent(taskId, `[SECURITY] Auto-fix: RLS migration generated for ${rlsCoverage.tablesWithoutRls.length} table(s)`, 'success');
+      }
+    } else if (rlsCoverage.totalTables > 0) {
+      internal(`RLS coverage: all ${rlsCoverage.totalTables} tables have RLS enabled`);
+    }
   }
+
+  const criticalFindings = allFindings.filter((f) => f.severity === 'critical');
+  const warnFindings = allFindings.filter((f) => f.severity === 'warn');
 
   internal(`Scan complete: ${criticalFindings.length} critical, ${warnFindings.length} warnings across ${files.length} files`);
 
@@ -400,27 +392,9 @@ export async function runSecurityAgent(taskId: string, repoPath: string): Promis
       `[SECURITY] ${criticalFindings.length} critical finding(s) — job blocked. ${fixes.length} fix(es) available.`,
       'error'
     );
-
-    if (unfixedCritical.length > 0) {
-      await storage.logEvent(
-        taskId,
-        `[SECURITY] ${unfixedCritical.length} critical finding(s) — job blocked`,
-        'error'
-      );
-    } else {
-      await storage.logEvent(
-        taskId,
-        `[SECURITY] ${criticalFindings.length} critical finding(s) auto-fixed`,
-        'success'
-      );
-    }
   }
   if (warnFindings.length > 0) {
-    await storage.logEvent(
-      taskId,
-      `[SECURITY] ${warnFindings.length} warning(s) detected`,
-      'warning'
-    );
+    await storage.logEvent(taskId, `[SECURITY] ${warnFindings.length} warning(s) detected`, 'warning');
   }
   if (criticalFindings.length === 0 && warnFindings.length === 0) {
     await storage.logEvent(taskId, '[SECURITY] Scan complete: no findings', 'success');

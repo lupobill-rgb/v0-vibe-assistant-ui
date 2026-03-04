@@ -99,7 +99,7 @@ export interface AgentResultSummary {
   status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix';
   summary?: string;
   duration_ms: number;
-  fixes?: { category: string; description: string }[];
+  fixes?: { category: string; description: string; diff?: string }[];
 }
 
 export interface VibeEvent {

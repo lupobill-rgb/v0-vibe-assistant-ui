@@ -28,7 +28,7 @@ import {
 // Load .env from the repository root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-const PORT = process.env.API_PORT || 3001;
+const PORT = process.env.PORT || process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_PATH || '/tmp/repos';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
 const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/tmp/published';

@@ -12,27 +12,9 @@ import {
   validateUnifiedDiffEnhanced,
   validateDiffApplicability,
 } from '../diff-validator';
-import { DESIGN_PHASE } from '../templates/design-phases';
-
 const execAsync = promisify(exec);
 
 const MAX_DEBUG_ITERATIONS = parseInt(process.env.MAX_DEBUG_ITERATIONS || '3', 10);
-
-const DEBUG_SYSTEM = `${DESIGN_PHASE.BUILD_TRANSLATOR}
-When fixing build errors, always output atomic single-file diffs.
-Never rewrite whole files. Rollback on patch failure.`;
-
-const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
-const MAX_DEBUG_RETRIES = 3;
-
-// ── Debug Agent ────────────────────────────────────────────
-export interface DebugAgentResult {
-  success: boolean;
-  cannotFix: boolean;
-  buildOutput: string;
-  summary: string;
-  iterations: number;
-}
 
 const DEBUG_SYSTEM = `You are a build-error repair engine.
 You receive the full repository context and an error log.
@@ -43,6 +25,17 @@ Rules:
 - The diff must be directly applicable via: git apply --index
 - Paths in the diff must be relative to the repo root
 - If you cannot fix the errors, output exactly: CANNOT_FIX`;
+
+const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
+
+// ── Debug Agent ────────────────────────────────────────────
+export interface DebugAgentResult {
+  success: boolean;
+  cannotFix?: boolean;
+  buildOutput: string;
+  summary: string;
+  iterations: number;
+}
 
 export async function runDebugAgent(
   taskId: string,

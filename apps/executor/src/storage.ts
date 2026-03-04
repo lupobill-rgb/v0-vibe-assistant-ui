@@ -387,16 +387,6 @@ class ExecutorStorage {
     if (error) throw new Error(`Failed to update usage metrics: ${error.message}`);
   }
 
-  async updateTaskAgentResults(taskId: string, agentResults: AgentResultSummary[]): Promise<void> {
-    const { error } = await this.sb
-      .from('jobs')
-      .update({
-        agent_results: agentResults,
-        last_modified: new Date().toISOString(),
-      })
-      .eq('id', taskId);
-    if (error) throw new Error(`Failed to update agent results: ${error.message}`);
-  }
 }
 
 export const storage = new ExecutorStorage();

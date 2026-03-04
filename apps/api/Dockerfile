@@ -7,17 +7,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     wget \
     && rm -rf /var/lib/apt/lists/*
-# Verify git installation: docker compose exec api git --version
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
+# Copy package files (including lockfile for deterministic installs)
+COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
 
 # Install dependencies
-RUN npm install
-RUN npm install --workspace=apps/api
+RUN npm ci
+RUN npm ci --workspace=apps/api
 
 # Copy source
 COPY apps/api ./apps/api
@@ -25,6 +24,7 @@ COPY apps/api ./apps/api
 # Build
 RUN npm run build --workspace=apps/api
 
+# Railway sets PORT dynamically; the API reads PORT || API_PORT || 3001
 EXPOSE 3001
 
 CMD ["npm", "start", "--workspace=apps/api"]
