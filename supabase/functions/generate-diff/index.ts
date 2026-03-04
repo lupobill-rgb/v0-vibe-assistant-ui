@@ -35,24 +35,25 @@ const PLAN_SYSTEM =
 
 const PAGE_SYSTEM =
   "You are VIBE, an AI website builder. " +
-  "1. Return ONLY a complete, self-contained HTML page. " +
-  "2. No markdown fences, no explanation, no extra text — just the HTML starting with <!DOCTYPE html>. " +
-  "3. Use a modern, professional design with clean typography. " +
-  "4. Include all CSS in a <style> tag and all JS in a <script> tag. " +
-  "5. Make the page responsive using CSS flexbox/grid. " +
-  "6. Use semantic HTML elements (nav, main, section, footer, etc). " +
-  "7. NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {\" \"} expressions, no 'export default function'. " +
-  "8. Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. ";
+  "1. Return a complete, self-contained HTML page with ALL CSS in a single <style> tag in <head>. No external stylesheets. " +
+  "2. Interpret the user's prompt to determine colors, tone, and visual style. Choose a cohesive color palette, typography, and layout that match what the user is describing. If the prompt does not specify a style, default to a modern dark theme. " +
+  "3. The page MUST include: a hero section with a large h1 (3rem+), a subtitle, and a call-to-action button; at least 2 content sections with real information relevant to the prompt; and a final CTA or footer section. " +
+  "4. Write real, meaningful content — actual headings, descriptions, and copy that fit the prompt. NEVER use 'Lorem ipsum', 'placeholder', or leave any section empty. " +
+  "5. Use semantic HTML (nav, main, section, footer). Make it responsive with CSS flexbox/grid. " +
+  "6. FORBIDDEN: empty <body> or <main>, sections with no text content, JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
+  "7. Include all JS in a <script> tag if needed. No external dependencies. " +
+  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>";
 
 const SINGLE_PAGE_SYSTEM =
   "You are VIBE, an AI website builder. " +
-  "1. Return ONLY a complete, self-contained HTML page. " +
-  "2. No markdown fences, no explanation, no extra text — just the HTML starting with <!DOCTYPE html>. " +
-  "3. Use a modern, professional design with clean typography and a dark theme. " +
-  "4. Include all CSS in a <style> tag and all JS in a <script> tag. " +
-  "5. Make the page responsive using CSS flexbox/grid. " +
-  "6. NEVER output JSX, TSX, or React component syntax. No 'import' statements, no {/* comments */}, no {\" \"} expressions, no 'export default function'. " +
-  "7. Output ONLY valid HTML that renders directly in a browser iframe with zero compilation. ";
+  "1. Return a complete, self-contained HTML page with ALL CSS in a single <style> tag in <head>. No external stylesheets. " +
+  "2. Interpret the user's prompt to determine colors, tone, and visual style. Choose a cohesive color palette, typography, and layout that match what the user is describing. If the prompt does not specify a style, default to a modern dark theme. " +
+  "3. The page MUST include: a hero section with a large h1 (3rem+), a subtitle, and a call-to-action button; at least 2 content sections with real information relevant to the prompt; and a final CTA or footer section. " +
+  "4. Write real, meaningful content — actual headings, descriptions, and copy that fit the prompt. NEVER use 'Lorem ipsum', 'placeholder', or leave any section empty. " +
+  "5. Use semantic HTML (nav, main, section, footer). Make it responsive with CSS flexbox/grid. " +
+  "6. FORBIDDEN: empty <body> or <main>, sections with no text content, JSX/TSX/React syntax, import statements, {/* comments */}, export default. " +
+  "7. Include all JS in a <script> tag if needed. No external dependencies. " +
+  "Output ONLY the complete HTML. No markdown. No explanation. Start with <!DOCTYPE html>";
 
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
