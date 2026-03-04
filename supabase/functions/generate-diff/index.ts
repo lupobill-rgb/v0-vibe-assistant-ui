@@ -97,7 +97,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, context, model = "claude" } = await req.json();
+    const { prompt, context, model = "claude", mode } = await req.json();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -112,9 +112,25 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemMsg =
-      "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
-      (context ? "\nProject context:\n" + context : "");
+    let systemMsg: string;
+    if (mode === "plan") {
+      systemMsg =
+        "You are VIBE, an AI website builder. Return ONLY a JSON array of page objects. " +
+        "Each object has: name (string), route (string), description (string). " +
+        "No markdown, no code fences, no explanation. Pure JSON array only. " +
+        'Example: [{"name":"Home","route":"/","description":"Landing page with hero section"}]' +
+        (context ? "\nProject context:\n" + context : "");
+    } else if (mode === "page") {
+      systemMsg =
+        "You are VIBE, an AI website builder. Return ONLY a complete HTML page. " +
+        "Include inline CSS styling. Make it modern and responsive. " +
+        "No markdown fences, no explanation. Return raw HTML only." +
+        (context ? "\nProject context:\n" + context : "");
+    } else {
+      systemMsg =
+        "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
+        (context ? "\nProject context:\n" + context : "");
+    }
 
     // Try the requested model first
     let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
