@@ -15,6 +15,7 @@ import {
 const execAsync = promisify(exec);
 
 const MAX_DEBUG_ITERATIONS = parseInt(process.env.MAX_DEBUG_ITERATIONS || '3', 10);
+const MAX_HEAL_ITERATIONS = parseInt(process.env.MAX_HEAL_ITERATIONS || '3', 10);
 
 const DEBUG_SYSTEM = `You are a build-error repair engine.
 You receive the full repository context and an error log.
@@ -26,7 +27,85 @@ Rules:
 - Paths in the diff must be relative to the repo root
 - If you cannot fix the errors, output exactly: CANNOT_FIX`;
 
+const HEAL_SYSTEM = `You are VIBE's self-healing component repair engine.
+You receive the full repository context and a list of broken interactive components.
+Output ONLY a valid unified diff (git diff format) that fixes the issues.
+
+Rules:
+- Fix exactly ONE issue per diff — the first issue in the list.
+- For buttons/links with no onClick handler: add a working handler that performs the action implied by the button label (e.g. a "Filter" button should toggle a filter state).
+- For empty chart sections (canvas with no data): wire up Chart.js with sample/placeholder data using the existing chart pattern in the codebase.
+- For filters/configurators with no state: add useState hooks and wire onChange handlers.
+- Preserve existing styling, class names, and component structure.
+- The diff must be directly applicable via: git apply --index
+- Paths in the diff must be relative to the repo root
+- If you cannot fix the issue, output exactly: CANNOT_FIX: <reason>`;
+
 const BUILD_COMMAND = process.env.BUILD_COMMAND || 'npm run build';
+
+// ── Component Health Scanner ───────────────────────────────
+export interface ComponentIssue {
+  file: string;
+  line: number;
+  type: 'dead_button' | 'empty_chart' | 'dead_filter' | 'dead_input';
+  description: string;
+}
+
+function scanComponentHealth(repoPath: string): ComponentIssue[] {
+  const issues: ComponentIssue[] = [];
+  const extensions = ['.tsx', '.jsx'];
+
+  function walk(dir: string) {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(fullPath); continue; }
+      if (!extensions.some(ext => entry.name.endsWith(ext))) continue;
+
+      let content: string;
+      try { content = fs.readFileSync(fullPath, 'utf-8'); } catch { continue; }
+      const lines = content.split('\n');
+      const relPath = path.relative(repoPath, fullPath);
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineNum = i + 1;
+
+        // Dead buttons: <button without onClick (not type="submit" inside a form)
+        if (/<button\b/.test(line) && !line.includes('onClick') && !line.includes('type="submit"')) {
+          // Check next 3 lines for onClick (multi-line JSX)
+          const chunk = lines.slice(i, i + 4).join(' ');
+          if (!chunk.includes('onClick') && !chunk.includes('onSubmit') && !chunk.includes('type="submit"')) {
+            issues.push({ file: relPath, line: lineNum, type: 'dead_button', description: `Button without onClick handler: ${line.trim().slice(0, 80)}` });
+          }
+        }
+
+        // Dead filters: <select or <input type="range" without onChange
+        if ((/<select\b/.test(line) || /input.*type=["']range["']/.test(line)) && !line.includes('onChange')) {
+          const chunk = lines.slice(i, i + 4).join(' ');
+          if (!chunk.includes('onChange') && !chunk.includes('onInput')) {
+            const elType = /<select/.test(line) ? 'dead_filter' : 'dead_input';
+            issues.push({ file: relPath, line: lineNum, type: elType, description: `Interactive element without onChange handler: ${line.trim().slice(0, 80)}` });
+          }
+        }
+
+        // Empty chart: <canvas with no data setup nearby
+        if (/<canvas\b/.test(line)) {
+          // Check surrounding 20 lines for Chart.js initialization
+          const surrounding = lines.slice(Math.max(0, i - 10), i + 10).join('\n');
+          if (!surrounding.includes('new Chart') && !surrounding.includes('useEffect') && !surrounding.includes('chartRef')) {
+            issues.push({ file: relPath, line: lineNum, type: 'empty_chart', description: `Canvas element with no Chart.js initialization nearby: ${line.trim().slice(0, 80)}` });
+          }
+        }
+      }
+    }
+  }
+
+  walk(repoPath);
+  return issues;
+}
 
 // ── Debug Agent ────────────────────────────────────────────
 export interface DebugAgentResult {
@@ -35,6 +114,7 @@ export interface DebugAgentResult {
   buildOutput: string;
   summary: string;
   iterations: number;
+  healedIssues?: number;
 }
 
 export async function runDebugAgent(
@@ -131,11 +211,16 @@ Iteration ${iteration} of ${MAX_DEBUG_ITERATIONS}. Previous fixes may already be
       });
       const output = ((stdout || '') + (stderr || '')).slice(0, 2000);
       await storage.logEvent(taskId, `[DEBUG] Build passed on iteration ${iteration}:\n${output}`, 'success');
+
+      // Build passed — now run self-healing scan
+      const healResult = await runSelfHealingScan(taskId, repoPath);
+
       return {
         success: true,
         buildOutput: output,
-        summary: llmSummary || `Build fixed on iteration ${iteration}.`,
+        summary: llmSummary || `Build fixed on iteration ${iteration}.${healResult.healed > 0 ? ` ${healResult.healed} component issue(s) auto-healed.` : ''}`,
         iterations: iteration,
+        healedIssues: healResult.healed,
       };
     } catch (err: any) {
       const output = ((err.stdout || '') + (err.stderr || '')).slice(0, 2000);
@@ -154,3 +239,115 @@ Iteration ${iteration} of ${MAX_DEBUG_ITERATIONS}. Previous fixes may already be
     iterations: MAX_DEBUG_ITERATIONS,
   };
 }
+
+// ── Self-Healing Scan ──────────────────────────────────────
+// Runs after build passes. Detects and repairs broken interactive components.
+
+async function applyHealPatch(
+  taskId: string, rawDiff: string, repoPath: string, git: ReturnType<typeof simpleGit>,
+): Promise<boolean> {
+  const sanitized = sanitizeUnifiedDiff(rawDiff);
+  if (!sanitized) { await storage.logEvent(taskId, '[HEAL] Diff sanitization failed', 'warning'); return false; }
+  const diff = extractDiff(sanitized);
+  const v = validateUnifiedDiffEnhanced(diff);
+  if (!v.ok) { await storage.logEvent(taskId, `[HEAL] Diff validation failed: ${v.errors.join('; ')}`, 'warning'); return false; }
+  const a = validateDiffApplicability(diff, repoPath);
+  if (!a.valid) { await storage.logEvent(taskId, `[HEAL] Diff not applicable: ${a.error}`, 'warning'); return false; }
+
+  const headSha = (await git.revparse(['HEAD'])).trim();
+  const patchPath = path.join(repoPath, '.vibe-heal.patch');
+  try {
+    fs.writeFileSync(patchPath, diff, 'utf-8');
+    await git.raw(['apply', '--verbose', '.vibe-heal.patch']);
+    return true;
+  } catch (err: any) {
+    await storage.logEvent(taskId, `[HEAL] Patch apply failed — rolling back: ${err.message}`, 'warning');
+    try { await git.raw(['checkout', headSha, '--', '.']); } catch { /* best effort */ }
+    return false;
+  } finally {
+    try { if (fs.existsSync(patchPath)) fs.unlinkSync(patchPath); } catch { /* ignore */ }
+  }
+}
+
+async function runSelfHealingScan(
+  taskId: string,
+  repoPath: string,
+): Promise<{ healed: number; remaining: ComponentIssue[] }> {
+  await storage.logEvent(taskId, '[HEAL] Running component health scan...', 'info');
+  const issues = scanComponentHealth(repoPath);
+
+  if (issues.length === 0) {
+    await storage.logEvent(taskId, '[HEAL] No broken components detected', 'success');
+    return { healed: 0, remaining: [] };
+  }
+
+  await storage.logEvent(taskId, `[HEAL] Found ${issues.length} issue(s): ${issues.map(i => i.type).join(', ')}`, 'warning');
+  for (const issue of issues) {
+    await storage.logEvent(taskId, `[HEAL]   ${issue.file}:${issue.line} — ${issue.description}`, 'warning');
+  }
+
+  const git = simpleGit(repoPath);
+  let healed = 0;
+  const remaining: ComponentIssue[] = [];
+
+  for (const issue of issues.slice(0, MAX_HEAL_ITERATIONS)) {
+    await storage.logEvent(taskId, `[HEAL] Healing: ${issue.file}:${issue.line} (${issue.type})`, 'info');
+
+    const contextResult = await buildContext(repoPath, `Fix broken component in ${issue.file}`);
+    const context = formatContext(contextResult.files);
+    const issueDesc = `FILE: ${issue.file}\nLINE: ${issue.line}\nTYPE: ${issue.type}\nDESCRIPTION: ${issue.description}`;
+
+    let fixDiff: string;
+    try {
+      const result = await generateDiff(
+        `Fix this broken interactive component:\n${issueDesc}`,
+        context,
+        { model: 'claude', taskId, systemPrompt: HEAL_SYSTEM },
+      );
+      fixDiff = result.diff;
+    } catch (err: any) {
+      await storage.logEvent(taskId, `[HEAL] LLM call failed for ${issue.file}: ${err.message}`, 'error');
+      remaining.push(issue);
+      continue;
+    }
+
+    if (!fixDiff || fixDiff === 'NO_CHANGES' || fixDiff.startsWith('CANNOT_FIX:')) {
+      const reason = fixDiff?.startsWith('CANNOT_FIX:') ? fixDiff.slice(11).trim() : 'No fix generated.';
+      await storage.logEvent(taskId, `[HEAL] Cannot fix ${issue.file}:${issue.line}: ${reason}`, 'warning');
+      remaining.push(issue);
+      continue;
+    }
+
+    const applied = await applyHealPatch(taskId, fixDiff, repoPath, git);
+    if (applied) {
+      // Verify the fix didn't break the build
+      try {
+        await execAsync(BUILD_COMMAND, { cwd: repoPath, timeout: 300000, maxBuffer: 10 * 1024 * 1024 });
+        await storage.logEvent(taskId, `[HEAL] Fixed and verified: ${issue.file}:${issue.line}`, 'success');
+        healed++;
+      } catch (err: any) {
+        await storage.logEvent(taskId, `[HEAL] Fix broke the build — rolling back: ${issue.file}:${issue.line}`, 'warning');
+        const headSha = (await git.revparse(['HEAD'])).trim();
+        try { await git.raw(['checkout', headSha, '--', '.']); } catch { /* best effort */ }
+        remaining.push(issue);
+      }
+    } else {
+      remaining.push(issue);
+    }
+  }
+
+  // Report any issues beyond MAX_HEAL_ITERATIONS as remaining
+  if (issues.length > MAX_HEAL_ITERATIONS) {
+    remaining.push(...issues.slice(MAX_HEAL_ITERATIONS));
+  }
+
+  const summary = healed > 0
+    ? `${healed} of ${issues.length} component issue(s) auto-healed.`
+    : `${issues.length} component issue(s) detected but could not be auto-healed.`;
+  await storage.logEvent(taskId, `[HEAL] ${summary}`, healed > 0 ? 'success' : 'warning');
+
+  return { healed, remaining };
+}
+
+// Export for standalone use (e.g., from pipeline)
+export { scanComponentHealth, runSelfHealingScan };
