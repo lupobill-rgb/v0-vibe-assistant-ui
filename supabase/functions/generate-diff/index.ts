@@ -194,21 +194,26 @@ SIDEBAR:
 - Nav items: emoji icon + text label, padding px-4 py-3 rounded-xl
 - Active state: bg-violet-600/10 text-violet-400 border-l-2 border-violet-500
 - User avatar + name + role pinned to bottom
-TOPBAR:
-- Page title left: Space Grotesk font-bold text-xl text-white
-- Search input center: bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-slate-300
-- Notification bell + user avatar right
-- Never render a mobile nav dropdown or hamburger menu. Desktop layout only. No checkbox hack. No mobile menu toggle. Single horizontal navbar always visible.
+TOPBAR — single navbar only, no duplicates:
+- One <nav> element total per page. Never two.
+- Page title or brand name left
+- Nav links center using exact .html filenames
+- CTA button right: bg-violet-600 text-white px-6 py-2 rounded-xl
+- No hamburger. No mobile dropdown. No checkbox hack.
+- position: sticky; top: 0; z-index: 50; background: rgba(2,6,23,0.8); backdrop-filter: blur(12px)
 KPI STAT CARDS — 4 cards:
 - Large metric number: Space Grotesk text-3xl font-bold text-white
 - Label: text-slate-400 text-sm mt-1
 - Trend: top-right corner, ▲ text-emerald-400 or ▼ text-red-400 text-sm
 - Detect domain from prompt and use contextually relevant metrics
 CHARTS — exactly 2 using Chart.js:
-- Wrap ALL Chart.js initialization in document.addEventListener('DOMContentLoaded', function() { /* all new Chart() calls here */ }); Never initialize charts outside this wrapper. Never use window.onload.
+- Give each canvas a unique explicit id: <canvas id="chart1"></canvas> and <canvas id="chart2"></canvas>
+- In the DOMContentLoaded script, reference charts by those exact ids:
+  document.getElementById('chart1') and document.getElementById('chart2')
+- Never use querySelector for chart canvas elements
 - Chart 1: Line or Bar for primary time-series (12 months of data)
 - Chart 2: Doughnut or Bar for breakdown/distribution
-- Domain detection: sales→revenue+pipeline; finance→cashflow+allocation; analytics→traffic+conversion; HR→headcount+performance
+- Domain detection: sales→revenue+pipeline; finance→cashflow+allocation; analytics→traffic+conversion; marketing→campaigns+CAC; HR→headcount+performance
 - Colors: primary #7c3aed, accent #06b6d4, success #10b981, warning #f59e0b
 - Chart container: bg-slate-900 border border-slate-800 rounded-2xl p-6
 - Grid lines: rgba(148,163,184,0.1). Chart background: transparent.
