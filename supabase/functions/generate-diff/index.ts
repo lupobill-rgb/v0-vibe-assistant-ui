@@ -268,6 +268,32 @@ FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export stat
 Output MUST start with <!DOCTYPE html> and end with </html>.
 Any other output format causes a blank page for the customer.`;
 
+const DESIGN_PHASE_VISUAL = `You are a Global Design Director building a scalable design system for VIBE.
+Brand personality: MODERN / TECHNICAL / BOLD.
+Deliver:
+1. Color tokens — primary, secondary, semantic, neutral + dark mode (JSON)
+2. Typography — 9-step scale, font pairing rationale
+3. Spatial system — 8px grid, spacing tokens
+4. Component inventory — 30+ components with interaction states
+5. Responsive breakpoints — mobile/tablet/desktop adaptive rules
+6. Motion principles — transition curves, durations, micro-interaction rules
+7. Accessibility — WCAG AA contrast ratios
+Output format: THREE blocks — design-tokens.json, globals.css variables, component-registry.md.
+No prose. Structured output only.`;
+
+const DESIGN_PHASE_SYSTEMS = `You are a Senior Platform Architect at a world-class web infrastructure company.
+Stack: Next.js frontend, NestJS API, Supabase (auth/db/storage), Vercel deployment.
+For the given [WEBSITE_TYPE] and [AUDIENCE], produce:
+1. Information architecture — sitemap with page hierarchy
+2. User journey mapping — 3 critical conversion paths
+3. Data architecture — entity relationships, Supabase schema models
+4. API surface — required endpoints, auth logic, RLS rules
+5. Component inventory — minimum 30 UI components with purpose
+6. Page blueprints — structural wireframe descriptions per template
+7. Performance targets — Core Web Vitals thresholds
+8. SEO framework — URL conventions, meta structure, schema markup
+Output as structured JSON suitable for direct use by Builder Agent.`;
+
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -351,6 +377,12 @@ function flipModel(model: string): string {
   return model === "claude" ? "gpt" : "claude";
 }
 
+/** Internal helper: call Claude for sequential design-phase LLM calls, returns text. */
+async function callLLM(systemMsg: string, userPrompt: string, maxTokens = 2048): Promise<string> {
+  const result = await callClaude(systemMsg, userPrompt, maxTokens);
+  return result.diff;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -395,7 +427,31 @@ Deno.serve(async (req: Request) => {
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
     } else if (mode === "dashboard") {
-      baseSystemMsg = DASHBOARD_SYSTEM + (context ? "\nContext:\n" + context : "");
+      // Phase 1: Visual System — establish design tokens for this domain
+      const visualSpec = await callLLM(
+        DESIGN_PHASE_VISUAL + "\n\nDashboard request: " + prompt,
+        'Return only JSON: {"colors":{},"typography":{},"layout":"sidebar|topbar","domain":""}',
+        2048
+      );
+      // Phase 2: Systems Architect — define data model and chart types
+      const systemSpec = await callLLM(
+        DESIGN_PHASE_SYSTEMS + "\n\nDashboard request: " + prompt,
+        'Return only JSON: {"pages":[],"charts":[],"kpis":[],"table":{"columns":[]}}',
+        2048
+      );
+      // Phase 3: Build — generate HTML from spec
+      baseSystemMsg = DASHBOARD_SYSTEM + `
+DESIGN SPEC (follow exactly):
+Visual: ${visualSpec}
+Structure: ${systemSpec}
+Rules:
+- Use the exact colors from the visual spec
+- Use the exact chart types from the structure spec
+- Use the exact KPI names from the structure spec
+- Use the exact table columns from the structure spec
+- Never use alert(), confirm(), or prompt()
+- Never generate React or JSX
+- Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
     } else {
       // Default: diff generation mode
