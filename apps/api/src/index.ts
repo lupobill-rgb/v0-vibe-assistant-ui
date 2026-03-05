@@ -677,9 +677,9 @@ async function bootstrap() {
               const builtPages = await mapWithConcurrency(currentPlan.pages, budgets.buildConcurrency, async (page, i) => {
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
                 await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
-                console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
+                console.log('[KERNEL] page prompt prefix:', page.description.slice(0, 300));
                 const pageResponse = await edgeCall({
-                  prompt: page.description,
+                  prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
                   mode: 'page',
                   context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
