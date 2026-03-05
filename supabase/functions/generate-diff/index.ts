@@ -440,7 +440,20 @@ Deno.serve(async (req: Request) => {
         2048
       );
       // Phase 3: Build — generate HTML from spec
-      baseSystemMsg = DASHBOARD_SYSTEM + `
+      const HARD_BLOCK = `
+ABSOLUTE HARD STOP: This file will be rendered in a plain browser iframe.
+It has NO build system, NO Node.js, NO React, NO webpack, NO Next.js.
+The output MUST be a single self-contained HTML file.
+If you generate ANY of the following the page will be completely blank:
+- import or export statements
+- React, ReactDOM, JSX, TSX
+- Next.js, Vite, webpack references
+- alert(), confirm(), prompt()
+- Any module bundler syntax
+Every interactive feature MUST use vanilla JavaScript only.
+The file MUST start with <!DOCTYPE html> and end with </html>.
+`;
+      baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
 DESIGN SPEC (follow exactly):
 Visual: ${visualSpec}
 Structure: ${systemSpec}
