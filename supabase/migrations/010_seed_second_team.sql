@@ -1,14 +1,14 @@
 -- Seed a Sales team in the same org
-INSERT INTO teams (id, org_id, name, slug)
+INSERT INTO teams (id, org_id, name, description)
 VALUES (
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   '3de82e57-4813-4ad6-83bd-2adb461604f0',
   'Sales',
-  'sales'
+  'Sales team — owns deals, contacts, and pipeline'
 );
 
 -- Sales owns: deals, contacts, pipeline
-INSERT INTO data_scopes (team_id, scope_name, scope_type)
+INSERT INTO data_scopes (team_id, scope_name, access_type)
 VALUES
   ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'deals', 'owned'),
   ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'contacts', 'owned'),
