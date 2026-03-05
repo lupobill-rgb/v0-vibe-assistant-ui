@@ -436,7 +436,9 @@ Deno.serve(async (req: Request) => {
       // Phase 2: Systems Architect — define data model and chart types
       const systemSpec = await callLLM(
         DESIGN_PHASE_SYSTEMS + "\n\nDashboard request: " + prompt,
-        'Return only JSON: {"pages":[],"charts":[],"kpis":[],"table":{"columns":[]}}',
+        `Return only JSON: {"pages":[],"charts":[],"kpis":[],"table":{"columns":[]}}
+The table must use static HTML only — no sorting, no filtering, no JS interaction.
+Plain <table> with <thead> and <tbody> rows. No dynamic features.`,
         2048
       );
       // Phase 3: Build — generate HTML from spec
