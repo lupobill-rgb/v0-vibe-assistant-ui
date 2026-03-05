@@ -170,7 +170,16 @@ RESPONSIVE:
 
 FORBIDDEN: No JSX. No React. No import statements. No markdown fences. No explanation before <!DOCTYPE html>.`;
 
-const DASHBOARD_SYSTEM = `You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
+const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLANK PAGE:
+1. Output ONLY plain HTML. Never React. Never JSX. Never TypeScript.
+2. If you find yourself writing: import, useState, useMemo, export default,
+   const App =, interface, or type definitions — STOP. Delete everything.
+   Start over with plain HTML.
+3. Every interactive feature must use vanilla JavaScript only.
+4. The file must start with <!DOCTYPE html> and end with </html>.
+5. Zero React. Zero JSX. Zero TypeScript. Zero component syntax. Ever.
+
+You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
 Return a complete, self-contained HTML dashboard. All styling via Tailwind CDN.
 ALWAYS inject these in <head>:
 <script src="https://cdn.tailwindcss.com"></script>
@@ -255,8 +264,9 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - At least one button containing: Export, Connect, Upload, Get, or Start
 - Zero lorem ipsum in any field
 - Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
-FORBIDDEN: No JSX. No React. No import statements. No markdown fences. No explanation text.
-Output ONLY valid HTML starting with <!DOCTYPE html>.`;
+FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks.
+Output MUST start with <!DOCTYPE html> and end with </html>.
+Any other output format causes a blank page for the customer.`;
 
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
