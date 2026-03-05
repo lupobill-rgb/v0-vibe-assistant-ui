@@ -290,18 +290,30 @@ Deliver:
 Output format: THREE blocks — design-tokens.json, globals.css variables, component-registry.md.
 No prose. Structured output only.`;
 
-const DESIGN_PHASE_SYSTEMS = `You are a Senior Platform Architect at a world-class web infrastructure company.
-Stack: Next.js frontend, NestJS API, Supabase (auth/db/storage), Vercel deployment.
-For the given [WEBSITE_TYPE] and [AUDIENCE], produce:
-1. Information architecture — sitemap with page hierarchy
-2. User journey mapping — 3 critical conversion paths
-3. Data architecture — entity relationships, Supabase schema models
-4. API surface — required endpoints, auth logic, RLS rules
-5. Component inventory — minimum 30 UI components with purpose
-6. Page blueprints — structural wireframe descriptions per template
-7. Performance targets — Core Web Vitals thresholds
-8. SEO framework — URL conventions, meta structure, schema markup
-Output as structured JSON suitable for direct use by Builder Agent.`;
+const DESIGN_PHASE_SYSTEMS = `You are a Dashboard Data Architect.
+For the given dashboard request, produce a JSON spec that the Builder Agent
+will use to generate Chart.js implementations.
+Rules:
+- Every page MUST have at least 2 charts with explicit chart types
+- Each chart MUST have a unique canvasId, chartType, labels array (6+ items),
+  and datasets array with data values
+- Chart types allowed: bar, line, doughnut, pie
+- KPIs must have realistic numeric values and units
+- Table columns must match the dashboard domain
+Output ONLY this JSON structure, no other text:
+{
+  "pages": [{"name": string, "route": string, "description": string}],
+  "charts": [{
+    "pageRoute": string,
+    "canvasId": string,
+    "chartType": "bar"|"line"|"doughnut"|"pie",
+    "title": string,
+    "labels": string[],
+    "datasets": [{"label": string, "data": number[]}]
+  }],
+  "kpis": [{"pageRoute": string, "label": string, "value": string, "unit": string}],
+  "table": {"columns": string[]}
+}`;
 
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
