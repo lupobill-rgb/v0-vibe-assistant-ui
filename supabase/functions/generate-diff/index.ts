@@ -194,13 +194,16 @@ SIDEBAR:
 - Nav items: emoji icon + text label, padding px-4 py-3 rounded-xl
 - Active state: bg-violet-600/10 text-violet-400 border-l-2 border-violet-500
 - User avatar + name + role pinned to bottom
-TOPBAR — single navbar only, no duplicates:
-- One <nav> element total per page. Never two.
-- Page title or brand name left
-- Nav links center using exact .html filenames
-- CTA button right: bg-violet-600 text-white px-6 py-2 rounded-xl
-- No hamburger. No mobile dropdown. No checkbox hack.
-- position: sticky; top: 0; z-index: 50; background: rgba(2,6,23,0.8); backdrop-filter: blur(12px)
+TOPBAR — inline styles only, no Tailwind on nav:
+<nav style="position:sticky;top:0;z-index:50;background:rgba(2,6,23,0.85);backdrop-filter:blur(12px);border-bottom:1px solid #1e293b;padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px;font-family:'Inter',sans-serif;">
+  <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.1rem;color:#a78bfa;">[BRAND]</span>
+  <div style="display:flex;gap:28px;">
+    [LINKS: <a href="pagename.html" style="color:#94a3b8;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
+  </div>
+  <a href="#" style="background:#7c3aed;color:white;padding:9px 22px;border-radius:8px;font-weight:600;font-size:0.9rem;text-decoration:none;">Get Started</a>
+</nav>
+This is the COMPLETE nav. No other nav markup anywhere in the file.
+No Tailwind classes on any nav element. No ul/li. No hidden divs. No responsive variants.
 KPI STAT CARDS — 4 cards:
 - Large metric number: Space Grotesk text-3xl font-bold text-white
 - Label: text-slate-400 text-sm mt-1
@@ -230,6 +233,13 @@ INTERACTIVITY — vanilla JS only:
 - Active button: bg-violet-600 text-white. Inactive: bg-slate-800 text-slate-400
 - Table search input filters rows in real time
 - Export CSV button downloads table data as .csv file
+- Export CSV button must use this exact pattern:
+  const rows = [headers, ...dataRows];
+  const csv = rows.map(r => r.join(',')).join('\\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'export.csv'; a.click();
 - Sidebar nav active state updates on click
 DATA SOURCE UI:
 - Supabase in prompt: show "Connect Supabase" button that opens a modal
@@ -244,6 +254,7 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - <meta name="description"> set
 - At least one button containing: Export, Connect, Upload, Get, or Start
 - Zero lorem ipsum in any field
+- Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
 FORBIDDEN: No JSX. No React. No import statements. No markdown fences. No explanation text.
 Output ONLY valid HTML starting with <!DOCTYPE html>.`;
 
