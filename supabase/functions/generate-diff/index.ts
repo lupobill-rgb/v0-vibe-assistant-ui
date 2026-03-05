@@ -198,13 +198,14 @@ TOPBAR:
 - Page title left: Space Grotesk font-bold text-xl text-white
 - Search input center: bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-slate-300
 - Notification bell + user avatar right
+- Never render a mobile nav dropdown or hamburger menu. Desktop layout only. No checkbox hack. No mobile menu toggle. Single horizontal navbar always visible.
 KPI STAT CARDS — 4 cards:
 - Large metric number: Space Grotesk text-3xl font-bold text-white
 - Label: text-slate-400 text-sm mt-1
 - Trend: top-right corner, ▲ text-emerald-400 or ▼ text-red-400 text-sm
 - Detect domain from prompt and use contextually relevant metrics
 CHARTS — exactly 2 using Chart.js:
-- Initialize in <script> tag at bottom of <body> using new Chart()
+- Wrap ALL Chart.js initialization in document.addEventListener('DOMContentLoaded', function() { /* all new Chart() calls here */ }); Never initialize charts outside this wrapper. Never use window.onload.
 - Chart 1: Line or Bar for primary time-series (12 months of data)
 - Chart 2: Doughnut or Bar for breakdown/distribution
 - Domain detection: sales→revenue+pipeline; finance→cashflow+allocation; analytics→traffic+conversion; HR→headcount+performance
