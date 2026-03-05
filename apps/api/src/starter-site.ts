@@ -87,13 +87,17 @@ export function validateStarterSiteQuality(files: Array<{ route: string; html: s
     if (!allowPlaceholders && /lorem ipsum/i.test(file.html)) reasons.push(`${file.route}: placeholder text found`);
   }
 
+  const normalizeHref = (h: string) => h.replace(/^\//, '').replace(/\.html$/, '') || 'index';
   const requiredRoutes = ['/', ...[...routeSet].filter(r => r !== '/')];
   for (const route of requiredRoutes) {
     for (const checkRoute of requiredRoutes) {
       if (route === checkRoute) continue;
-      const href = checkRoute === '/' ? 'index.html' : `${checkRoute.slice(1)}.html`;
+      const expected = normalizeHref(checkRoute === '/' ? 'index' : checkRoute);
       const page = files.find(f => f.route === route);
-      if (page && !page.html.includes(`href="${href}"`)) reasons.push(`${route}: missing nav link to ${checkRoute}`);
+      if (page) {
+        const hrefs = [...page.html.matchAll(/href="([^"]*?)"/gi)].map(m => normalizeHref(m[1]));
+        if (!hrefs.some(h => h === expected)) reasons.push(`${route}: missing nav link to ${checkRoute}`);
+      }
     }
   }
 
