@@ -9,7 +9,7 @@ import { generateDiff, callEdgeFunction } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
 import { sanitizeUnifiedDiff, extractDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runSecurityAgent } from './agents/security-agent';
-import { runDebugAgent } from './agents/debug-agent';
+import { runDebugAgent, runSelfHealingScan } from './agents/debug-agent';
 import { runQaAgent } from './agents/qa-agent';
 import { runUxAgent } from './agents/ux-agent';
 import { runBuilderAgent } from './agents/builder-agent';
@@ -290,6 +290,16 @@ export async function runPipeline(
   // UX failures are non-blocking — logged but pipeline continues
   if (uxResult.status === 'needs_fix') {
     await storage.logEvent(jobId, `[PIPELINE] UX issues remain after auto-fix — continuing: ${uxResult.errors?.join('; ')}`, 'warning');
+  }
+
+  // ── SELF-HEALING SCAN ────────────────────────────────────────────────────
+  storage.logEvent(jobId, '[PIPELINE] Phase: Self-Healing — scanning for broken interactive components', 'info');
+  const healResult = await runSelfHealingScan(jobId, worktreeDir);
+  if (healResult.healed > 0) {
+    storage.logEvent(jobId, `[PIPELINE] Self-healing fixed ${healResult.healed} component issue(s)`, 'success');
+  }
+  if (healResult.remaining.length > 0) {
+    storage.logEvent(jobId, `[PIPELINE] ${healResult.remaining.length} component issue(s) remain — non-blocking`, 'warning');
   }
 
   // Pipeline succeeded — caller handles PR creation and final 'completed' state

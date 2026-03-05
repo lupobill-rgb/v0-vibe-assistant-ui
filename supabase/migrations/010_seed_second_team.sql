@@ -8,7 +8,7 @@ VALUES (
 );
 
 -- Sales owns: deals, contacts, pipeline
-INSERT INTO data_scopes (team_id, scope_name, access_type)
+INSERT INTO data_scopes (team_id, scope_name, scope_type)
 VALUES
   ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'deals', 'owned'),
   ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'contacts', 'owned'),

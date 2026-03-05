@@ -126,6 +126,19 @@ async function bootstrap() {
   // Serve static published files
   app.use('/published', express.static(PUBLISHED_DIR));
 
+  // ── Kernel diagnostic (Layer 3 verification) ──
+  app.get('/api/kernel-context/:userId/:orgId', async (req: Request, res: Response) => {
+    try {
+      const ctx = await resolveKernelContext(req.params.userId, req.params.orgId);
+      res.json({
+        context: ctx,
+        hasVisibleTeamData: ctx.includes('VISIBLE TEAM DATA'),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ── Organization routes ──
 
   // POST /orgs - Create a new organization
@@ -532,6 +545,8 @@ async function bootstrap() {
         const kernelContext = await resolveKernelContext(user_id, org.id);
         if (kernelContext) {
           enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
+          console.log('[KERNEL] Full kernel context:\n' + kernelContext);
+          console.log('[KERNEL] VISIBLE TEAM DATA present:', kernelContext.includes('VISIBLE TEAM DATA'));
         }
       }
 
