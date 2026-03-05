@@ -17,6 +17,7 @@ import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
 import {
   INITIAL_BUILD_BUDGETS,
+  DASHBOARD_BUILD_BUDGETS,
   MAX_INITIAL_PAGES,
   StarterSitePlan,
   buildStarterSitePlan,
@@ -504,7 +505,8 @@ async function bootstrap() {
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', async (req: Request, res: Response) => {
     try {
-      const { prompt, project_id, base_branch = 'main', target_branch, model } = req.body;
+      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter' } = req.body;
+      const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
       const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
 
       if (!prompt) {
@@ -608,7 +610,7 @@ async function bootstrap() {
             try {
               const result = await Promise.race([
                 fn(),
-                new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${name} deadline exceeded`)), INITIAL_BUILD_BUDGETS.stepDeadlinesMs[name])),
+                new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${name} deadline exceeded`)), budgets.stepDeadlinesMs[name])),
               ]);
               timeline.push({ step: name, startedAt: new Date(start).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - start, status: 'completed' });
               return result;
@@ -660,7 +662,7 @@ async function bootstrap() {
           if (plan) {
             const currentPlan = plan;
             await runStep('building', async () => {
-              const builtPages = await mapWithConcurrency(currentPlan.pages, INITIAL_BUILD_BUDGETS.buildConcurrency, async (page, i) => {
+              const builtPages = await mapWithConcurrency(currentPlan.pages, budgets.buildConcurrency, async (page, i) => {
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
                 await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
                 const pageResponse = await edgeCall({
@@ -749,7 +751,7 @@ async function bootstrap() {
           await storage.logEvent(taskId, 'Preview generated', 'info');
           await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
           await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
-          if (modelCalls > INITIAL_BUILD_BUDGETS.maxModelCalls || totalTokens > INITIAL_BUILD_BUDGETS.maxTokensOut || (Date.now() - startedAtMs) > INITIAL_BUILD_BUDGETS.maxWallTimeMs) {
+          if (modelCalls > budgets.maxModelCalls || totalTokens > budgets.maxTokensOut || (Date.now() - startedAtMs) > budgets.maxWallTimeMs) {
             await storage.logEvent(taskId, 'Starter build budget exceeded', 'warning');
           }
           await storage.updateTaskState(taskId, 'completed');

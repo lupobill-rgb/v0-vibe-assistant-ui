@@ -16,6 +16,19 @@ export const INITIAL_BUILD_BUDGETS = {
   buildConcurrency: 3,
 } as const;
 
+export const DASHBOARD_BUILD_BUDGETS = {
+  maxWallTimeMs: 360_000,       // 6 min total (3-phase pipeline is slower)
+  maxModelCalls: 24,
+  maxTokensOut: 30_000,
+  stepDeadlinesMs: {
+    planning: 30_000,           // 30s
+    building: 180_000,          // 3 min (includes 2 design phase calls)
+    validating: 120_000,        // 2 min
+    security: 20_000,           // 20s
+  },
+  buildConcurrency: 2,
+} as const;
+
 export type PlannedPage = { name: string; title: string; description: string; route: string };
 export type StarterSitePlan = { pages: PlannedPage[]; notes: string[] };
 export type JobTimelineStep = {
