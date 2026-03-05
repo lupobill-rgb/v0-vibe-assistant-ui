@@ -17,7 +17,7 @@ export const INITIAL_BUILD_BUDGETS = {
 } as const;
 
 export const DASHBOARD_BUILD_BUDGETS = {
-  maxWallTimeMs: 360_000,       // 6 min total (3-phase pipeline is slower)
+  maxWallTimeMs: 240_000,       // 4 min total (3-phase pipeline is slower)
   maxModelCalls: 24,
   maxTokensOut: 30_000,
   stepDeadlinesMs: {

@@ -700,6 +700,8 @@ async function bootstrap() {
             }
 
             await runStep('validating', async () => {
+              const MAX_REPAIR_ATTEMPTS = 2;
+              let repairAttempts = 0;
               const htmlFiles = pageNames.map((name) => ({
                 route: name === 'index' ? '/' : `/${name}`,
                 html: fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8'),
@@ -709,6 +711,11 @@ async function bootstrap() {
                 await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
                 await storage.logEvent(taskId, `[QA REASONS] ${quality.reasons.join(' | ')}`, 'warn');
                 for (const failingRoute of quality.failingRoutes.slice(0, 1)) {
+                  if (repairAttempts >= MAX_REPAIR_ATTEMPTS) {
+                    await storage.logEvent(taskId, `Max repair attempts (${MAX_REPAIR_ATTEMPTS}) reached — accepting current output`, 'warning');
+                    break;
+                  }
+                  repairAttempts += 1;
                   const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
                   const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
                   const repair = await edgeCall({ prompt: `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`, model: resolvedModel, mode: 'page' });
