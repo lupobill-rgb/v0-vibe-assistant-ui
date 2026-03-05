@@ -692,6 +692,7 @@ async function bootstrap() {
               const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt));
               if (!quality.ok) {
                 await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
+                await storage.logEvent(taskId, `[QA REASONS] ${quality.reasons.join(' | ')}`, 'warn');
                 for (const failingRoute of quality.failingRoutes.slice(0, 1)) {
                   const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
                   const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
