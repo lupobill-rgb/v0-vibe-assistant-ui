@@ -6,6 +6,7 @@ import { storage } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
+import { resolveKernelContext } from './kernel/context-injector';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
@@ -505,7 +506,7 @@ async function bootstrap() {
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', async (req: Request, res: Response) => {
     try {
-      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter' } = req.body;
+      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id } = req.body;
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
       const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
 
@@ -524,6 +525,16 @@ async function bootstrap() {
 
       // Budget enforcement via org
       const org = await storage.getOrgForProject(project_id);
+
+      // Kernel context injection: prepend team/role/brand identity to prompt
+      let enrichedPrompt = prompt;
+      if (user_id && org) {
+        const kernelContext = await resolveKernelContext(user_id, org.id);
+        if (kernelContext) {
+          enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
+        }
+      }
+
       if (org) {
         const budgetLimit = await storage.getTenantBudget(org.id);
         if (budgetLimit !== null) {
@@ -628,7 +639,7 @@ async function bootstrap() {
           try {
             plan = await runStep('planning', async () => {
             await storage.logEvent(taskId, 'Generating plan...', 'info');
-            const planResponse = await edgeCall({ prompt, model: resolvedModel, mode: 'plan' });
+            const planResponse = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'plan' });
             modelCalls += 1;
             const planRawText = await planResponse.text();
             if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
@@ -722,7 +733,7 @@ async function bootstrap() {
           } else {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
-            const response = await edgeCall({ prompt, model: resolvedModel, mode: 'html' });
+            const response = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html' });
             modelCalls += 1;
             const rawText = await response.text();
             if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
