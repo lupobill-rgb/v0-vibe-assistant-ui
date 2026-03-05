@@ -639,6 +639,7 @@ async function bootstrap() {
           try {
             plan = await runStep('planning', async () => {
             await storage.logEvent(taskId, 'Generating plan...', 'info');
+            console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
             const planResponse = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'plan' });
             modelCalls += 1;
             const planRawText = await planResponse.text();
@@ -676,6 +677,7 @@ async function bootstrap() {
               const builtPages = await mapWithConcurrency(currentPlan.pages, budgets.buildConcurrency, async (page, i) => {
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
                 await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
+                console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
                 const pageResponse = await edgeCall({
                   prompt: page.description,
                   model: resolvedModel,
@@ -733,6 +735,7 @@ async function bootstrap() {
           } else {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
+            console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
             const response = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html' });
             modelCalls += 1;
             const rawText = await response.text();
