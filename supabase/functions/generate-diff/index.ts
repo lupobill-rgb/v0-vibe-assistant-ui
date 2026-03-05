@@ -188,6 +188,15 @@ VALIDATOR REQUIREMENTS:
 - Button containing: Start, Get, Contact, Book, Learn, Export, or Connect
 - Zero lorem ipsum
 FORBIDDEN: No JSX. No React. No import statements. No markdown fences.
+FORBIDDEN: Multi-page nav links. Dashboards are SINGLE PAGE APPS.
+  All navigation must use JavaScript tab switching — clicking a nav item
+  shows/hides content sections via display:block/none. Never href to
+  other pages.
+FORBIDDEN: Any text before <!DOCTYPE html>. Output starts with
+  <!DOCTYPE html> and nothing else.
+REQUIRED: Every layout must use CSS that works at 320px, 768px, and
+  1280px. Sidebar collapses to a hamburger menu on mobile. Cards stack
+  to single column below 768px. Charts resize to full width on mobile.
 Output ONLY valid HTML starting with <!DOCTYPE html>.`;
 
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
