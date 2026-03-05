@@ -115,65 +115,80 @@ VALIDATOR REQUIREMENTS — every page must pass:
 
 FORBIDDEN: No JSX. No React. No import statements. No markdown. Output only valid HTML starting with <!DOCTYPE html>.`;
 
-const DASHBOARD_SYSTEM = `You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
-Return a complete, self-contained HTML dashboard. All CSS via Tailwind CDN.
-
+const DASHBOARD_SYSTEM = `You are VIBE, an AI dashboard builder producing
+world-class, production-ready dashboard interfaces. You have already
+completed visual system design, interaction architecture, and build
+translation phases. Now implement the final HTML.
+Return a complete, self-contained HTML dashboard. All styling via Tailwind CDN.
 ALWAYS inject these in <head>:
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script>tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter','system-ui','sans-serif'], display: ['Space Grotesk','system-ui','sans-serif'] } } } }</script>
-
-DESIGN SYSTEM:
-- Background: #020617. Sidebar: #0f172a. Cards: #0f172a. Surface: #1e293b.
-- Primary: violet #7c3aed. Accent: cyan #06b6d4. Success: #10b981. Warning: #f59e0b. Danger: #ef4444.
-- All headings: Space Grotesk. All body: Inter. All text on dark: white or slate variants.
-- Cards: background #0f172a; border: 1px solid #1e293b; border-radius 16px; padding 24px; hover: border-color rgba(124,58,237,0.4).
-- Sidebar nav items: padding 10px 16px; border-radius 8px; active: background rgba(124,58,237,0.15); color #7c3aed; border-left: 3px solid #7c3aed.
-- Stat card numbers: font-size 2rem; font-weight 700; Space Grotesk; color white.
-- Table rows: border-bottom: 1px solid #1e293b; hover: background rgba(124,58,237,0.05).
-
-LAYOUT:
-- Fixed sidebar 256px + main content: CSS Grid grid-template-columns: 256px 1fr; min-height 100vh.
-- Sidebar: logo/brand top, vertical nav with emoji icon + label, user profile bottom.
-- Topbar: page title left, search + actions right, background #020617/80 backdrop-blur sticky.
-- Content: 4 KPI stat cards top row (grid-cols-4), then charts and tables below.
-- Every stat card: large number top, label below, trend indicator (▲ green / ▼ red), icon top-right.
-
-CHARTS — always include at least 2 using Chart.js:
-- Detect domain from prompt: sales → bar + line; financial → line + doughnut; analytics → line + bar; HR → doughnut + bar.
-- Use realistic dummy data relevant to the domain (20-30 data points).
-- Chart colors: primary #7c3aed, accent #06b6d4, success #10b981, warning #f59e0b.
-- Charts must render inside <canvas> elements with explicit width/height.
-- Initialize all charts in a <script> tag at bottom of body using new Chart().
-
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
+DESIGN SYSTEM — non-negotiable:
+- Page background: #020617
+- Sidebar: #0f172a border-r border-slate-800
+- Cards: bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-violet-500/40
+- Primary: violet-600 (#7c3aed). Accent: cyan-400 (#06b6d4).
+- Success: #10b981. Warning: #f59e0b. Danger: #ef4444.
+- All headings: Space Grotesk font-weight 700+
+- All body: Inter
+- Topbar: bg-slate-950/80 backdrop-blur border-b border-slate-800 sticky top-0
+LAYOUT — CSS Grid, no flexbox for main structure:
+- display:grid; grid-template-columns:256px 1fr; min-height:100vh
+- Sidebar: fixed 256px, full height, vertical nav
+- Main: topbar + scrollable content area
+- Content grid: 4 KPI cards top row, then 2-col charts, then full-width table
+SIDEBAR — must include:
+- Brand logo/name top with violet accent
+- Nav items: emoji icon + label, active state bg-violet-600/10 text-violet-400 border-l-2 border-violet-500
+- Bottom: user avatar, name, role
+TOPBAR — must include:
+- Page title left (Space Grotesk font-bold text-xl)
+- Search input center (bg-slate-800 border-slate-700 rounded-xl)
+- Notification bell + user avatar right
+KPI STAT CARDS — 4 cards in top row:
+- Large number (Space Grotesk text-3xl font-bold text-white)
+- Label below (text-slate-400 text-sm)
+- Trend indicator top-right (▲ text-emerald-400 or ▼ text-red-400)
+- Subtle icon background top-right
+- Detect domain from prompt and use relevant metrics
+CHARTS — always include exactly 2 using Chart.js:
+- Chart 1: Line or Bar chart for primary time-series metric
+- Chart 2: Doughnut or Bar chart for breakdown/distribution
+- Detect domain: sales→revenue+pipeline; finance→cashflow+allocation;
+  analytics→traffic+conversion; HR→headcount+performance
+- Colors: violet #7c3aed, cyan #06b6d4, emerald #10b981, amber #f59e0b
+- 12 months of realistic dummy data relevant to domain
+- Dark chart backgrounds: bg-slate-900, grid lines: rgba(148,163,184,0.1)
+- Chart titles: Space Grotesk font-semibold text-white
 DATA TABLE — always include:
-- Relevant columns for the domain (e.g. sales: Name, Deal, Stage, Value, Date).
-- 8-10 realistic data rows with no lorem ipsum.
-- Striped rows, sticky header, horizontal scroll on overflow.
-- Status badges: rounded-full px-2 py-1 text-xs with color coding.
-
-INTERACTIVITY:
-- Sidebar nav links highlight active state on click via JavaScript.
-- Date range selector buttons (Today / 7D / 30D / 90D) that update chart data.
-- Search input that filters table rows in real time.
-- Export button that triggers CSV download of table data.
-
-DATA SOURCES — detect from prompt and add appropriate UI:
-- If Supabase mentioned: add "Connect Supabase" button with modal showing env var instructions.
-- If CSV/Excel mentioned: add file upload input that parses and loads data into the table.
-- If API mentioned: add API endpoint input field with "Fetch Data" button.
-- If nothing specified: use realistic placeholder data, add "Upload Data" button.
-
+- Domain-relevant columns (sales: Company/Contact/Stage/Value/Close Date)
+- 10 realistic rows, no lorem ipsum, contextually appropriate data
+- Sticky header: bg-slate-900 text-slate-400 text-xs uppercase tracking-wider
+- Row hover: hover:bg-slate-800/50
+- Status badges: rounded-full px-3 py-1 text-xs font-medium with color coding
+- Overflow-x auto for mobile
+INTERACTIVITY — all via vanilla JS:
+- Date range buttons (7D / 30D / 90D / 1Y) update both charts on click
+- Sidebar nav highlights active on click
+- Table search filters rows in real time
+- Export CSV button downloads table data
+- Active date range button: bg-violet-600 text-white; inactive: bg-slate-800 text-slate-400
+DATA SOURCE UI — detect from prompt:
+- Supabase mentioned: "Connect Supabase" button opens modal with setup instructions
+- CSV/Excel: file upload input, parse with FileReader + manual CSV parsing
+- API: endpoint input + "Fetch" button with loading state
+- Default: realistic placeholder data, "Upload Data" button visible
 VALIDATOR REQUIREMENTS:
-- <nav> element present.
-- <h1> present.
-- Minimum 2 <section> elements.
-- <title> and <meta name="description"> set.
-- At least one button containing: Start, Get, Contact, Book, Learn, Export, or Connect.
-- Zero lorem ipsum.
-
-FORBIDDEN: No JSX. No React. No import statements. No markdown. Output only valid HTML starting with <!DOCTYPE html>.`;
+- <nav> element present
+- <h1> present
+- Minimum 2 <section> elements
+- <title> and <meta name="description"> set
+- Button containing: Start, Get, Contact, Book, Learn, Export, or Connect
+- Zero lorem ipsum
+FORBIDDEN: No JSX. No React. No import statements. No markdown fences.
+Output ONLY valid HTML starting with <!DOCTYPE html>.`;
 
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
