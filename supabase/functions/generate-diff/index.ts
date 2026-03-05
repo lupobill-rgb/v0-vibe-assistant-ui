@@ -66,9 +66,12 @@ SCROLL ANIMATIONS — required on every page:
 Add this script before </body>:
 <script>
 const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if(e.isIntersecting) { e.target.classList.add('animate-in'); } });
-}, { threshold: 0.1 });
+  entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('animate-in'); });
+}, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
 document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+setTimeout(() => {
+  document.querySelectorAll('.fade-up:not(.animate-in)').forEach(el => el.classList.add('animate-in'));
+}, 800);
 </script>
 Add to <style>: .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .animate-in { opacity: 1; transform: translateY(0); }
 Apply fade-up class to all cards, sections, and feature blocks.
@@ -132,9 +135,12 @@ SCROLL ANIMATIONS — required:
 Add this script before </body>:
 <script>
 const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if(e.isIntersecting) { e.target.classList.add('animate-in'); } });
-}, { threshold: 0.1 });
+  entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('animate-in'); });
+}, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
 document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+setTimeout(() => {
+  document.querySelectorAll('.fade-up:not(.animate-in)').forEach(el => el.classList.add('animate-in'));
+}, 800);
 </script>
 Add to <style>: .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .animate-in { opacity: 1; transform: translateY(0); }
 Apply fade-up class to all cards, feature blocks, testimonials, and stat numbers.
