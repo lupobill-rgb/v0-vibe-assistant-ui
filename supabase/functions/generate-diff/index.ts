@@ -238,6 +238,7 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - <meta name="description"> set
 - At least one button containing: Export, Connect, Upload, Get, or Start
 - Zero lorem ipsum in any field
+- Nav links must use exact filenames matching the other pages (e.g. href="index.html", href="expenses.html", href="budgets.html"). Never use href="#", href="/", or href="page-name" without .html extension.
 FORBIDDEN: No JSX. No React. No import statements. No markdown fences. No explanation text.
 Output ONLY valid HTML starting with <!DOCTYPE html>.`;
 
