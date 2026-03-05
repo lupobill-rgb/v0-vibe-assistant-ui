@@ -69,23 +69,33 @@ function scanComponentHealth(repoPath: string): ComponentIssue[] {
       const lines = content.split('\n');
       const relPath = path.relative(repoPath, fullPath);
 
+      // Extract the full opening tag for an element starting at line i
+      // (handles multi-line JSX attributes up to 5 lines)
+      const getOpeningTag = (startIdx: number): string => {
+        let tag = '';
+        for (let j = startIdx; j < Math.min(startIdx + 5, lines.length); j++) {
+          tag += lines[j] + ' ';
+          if (lines[j].includes('>')) break;
+        }
+        return tag;
+      };
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const lineNum = i + 1;
 
         // Dead buttons: <button without onClick (not type="submit" inside a form)
         if (/<button\b/.test(line) && !line.includes('onClick') && !line.includes('type="submit"')) {
-          // Check next 3 lines for onClick (multi-line JSX)
-          const chunk = lines.slice(i, i + 4).join(' ');
-          if (!chunk.includes('onClick') && !chunk.includes('onSubmit') && !chunk.includes('type="submit"')) {
+          const tag = getOpeningTag(i);
+          if (!tag.includes('onClick') && !tag.includes('onSubmit') && !tag.includes('type="submit"')) {
             issues.push({ file: relPath, line: lineNum, type: 'dead_button', description: `Button without onClick handler: ${line.trim().slice(0, 80)}` });
           }
         }
 
         // Dead filters: <select or <input type="range" without onChange
         if ((/<select\b/.test(line) || /input.*type=["']range["']/.test(line)) && !line.includes('onChange')) {
-          const chunk = lines.slice(i, i + 4).join(' ');
-          if (!chunk.includes('onChange') && !chunk.includes('onInput')) {
+          const tag = getOpeningTag(i);
+          if (!tag.includes('onChange') && !tag.includes('onInput')) {
             const elType = /<select/.test(line) ? 'dead_filter' : 'dead_input';
             issues.push({ file: relPath, line: lineNum, type: elType, description: `Interactive element without onChange handler: ${line.trim().slice(0, 80)}` });
           }
@@ -93,9 +103,9 @@ function scanComponentHealth(repoPath: string): ComponentIssue[] {
 
         // Empty chart: <canvas with no data setup nearby
         if (/<canvas\b/.test(line)) {
-          // Check surrounding 20 lines for Chart.js initialization
-          const surrounding = lines.slice(Math.max(0, i - 10), i + 10).join('\n');
-          if (!surrounding.includes('new Chart') && !surrounding.includes('useEffect') && !surrounding.includes('chartRef')) {
+          // Check surrounding 30 lines for Chart.js initialization patterns
+          const surrounding = lines.slice(Math.max(0, i - 15), i + 15).join('\n');
+          if (!surrounding.includes('new Chart') && !surrounding.includes('useEffect') && !surrounding.includes('chartRef') && !surrounding.includes('getContext')) {
             issues.push({ file: relPath, line: lineNum, type: 'empty_chart', description: `Canvas element with no Chart.js initialization nearby: ${line.trim().slice(0, 80)}` });
           }
         }
