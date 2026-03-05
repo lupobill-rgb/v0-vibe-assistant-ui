@@ -40,6 +40,10 @@ UI RULES — MANDATORY FOR EVERY FILE THAT TOUCHES THE FRONTEND:
 - Landing pages must include: navbar, hero, trust bar, features, social proof, stats, CTA, footer.
 - Dashboards must include: sidebar, topbar, stat cards, main content area, empty states.
 - If the output looks like a browser default or generic template, it is wrong. Fix it before submitting.
+- Every page must include: <nav> element, at least one <h1>, minimum 2 <section> elements, a <title> tag, and a <meta name="description"> tag.
+- CTA buttons must use <button> or <a> tags containing one of these words: Start, Get, Contact, Book, Learn.
+- Multi-page sites: every page must link to every other page via <a href="pagename.html">.
+- Never use lorem ipsum text under any circumstances.
 
 OUTPUT FORMAT:
 1. TASK: <restate the task in one sentence>

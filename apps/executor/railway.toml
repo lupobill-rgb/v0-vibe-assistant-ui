@@ -1,0 +1,8 @@
+[build]
+dockerfilePath = "apps/executor/Dockerfile"
+buildCommand = "npm run build --workspace=apps/executor"
+
+[deploy]
+startCommand = "npm start --workspace=apps/executor"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
