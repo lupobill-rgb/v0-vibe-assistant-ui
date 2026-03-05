@@ -16,9 +16,23 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
     .limit(1)
     .single();
 
-  const teamId = (membership?.teams as any)?.id ?? null;
-  const teamName = (membership?.teams as any)?.name ?? 'unknown';
-  const role = membership?.role ?? 'unknown';
+  let teamId = (membership?.teams as any)?.id ?? null;
+  let teamName = (membership?.teams as any)?.name ?? 'unknown';
+  let role = membership?.role ?? 'unknown';
+
+  // Fallback: if no team_member row, pick the first team in the org
+  if (!teamId) {
+    const { data: fallbackTeam } = await sb
+      .from('teams')
+      .select('id, name')
+      .eq('org_id', orgId)
+      .limit(1)
+      .single();
+
+    teamId = fallbackTeam?.id ?? null;
+    teamName = fallbackTeam?.name ?? 'unknown';
+    role = 'Admin';
+  }
 
   // 2. Query data_scopes for owned and readable scopes
   let ownedScopes: string[] = [];
