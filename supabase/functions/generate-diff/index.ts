@@ -230,6 +230,13 @@ CHARTS — exactly 2 using Chart.js:
 - Chart container: bg-slate-900 border border-slate-800 rounded-2xl p-6
 - Grid lines: rgba(148,163,184,0.1). Chart background: transparent.
 - All data must be realistic and domain-appropriate. Zero lorem ipsum.
+CHART CODE MANDATE — non-negotiable:
+- Every page that contains a chart section MUST include:
+  1. A <canvas> element with a unique id
+  2. A complete Chart.js configuration inside a DOMContentLoaded event listener
+  3. At least 6 realistic data points — no empty datasets
+  4. Charts must use these colors: primary #7c3aed, secondary #06b6d4
+- If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
 - 10 realistic rows, no lorem ipsum
@@ -264,6 +271,8 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - At least one button containing: Export, Connect, Upload, Get, or Start
 - Zero lorem ipsum in any field
 - Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
+REPAIR RULE — chart preservation:
+- If repairing a page with chart sections, preserve all existing Chart.js code — do not remove or replace canvas elements.
 FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks.
 Output MUST start with <!DOCTYPE html> and end with </html>.
 Any other output format causes a blank page for the customer.`;
