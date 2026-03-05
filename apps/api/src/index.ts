@@ -545,8 +545,6 @@ async function bootstrap() {
         const kernelContext = await resolveKernelContext(user_id, org.id);
         if (kernelContext) {
           enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
-          console.log('[KERNEL] Full kernel context:\n' + kernelContext);
-          console.log('[KERNEL] VISIBLE TEAM DATA present:', kernelContext.includes('VISIBLE TEAM DATA'));
         }
       }
 
