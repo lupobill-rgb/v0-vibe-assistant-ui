@@ -695,7 +695,7 @@ async function bootstrap() {
                 for (const failingRoute of quality.failingRoutes.slice(0, 1)) {
                   const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
                   const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
-                  const repair = await edgeCall({ prompt: `Repair this page to include h1, >=2 sections, CTA, navbar, title and description metadata, no lorem ipsum.\n${existing}`, model: resolvedModel, mode: 'page' });
+                  const repair = await edgeCall({ prompt: `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`, model: resolvedModel, mode: 'page' });
                   modelCalls += 1;
                   const repairText = await repair.text();
                   if (repair.ok) {
