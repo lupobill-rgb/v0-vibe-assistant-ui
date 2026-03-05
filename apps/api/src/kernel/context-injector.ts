@@ -65,6 +65,8 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
   const fontHeading = brand?.font_heading ?? '';
 
   // 4. Format and return
+  const visibleTeams = teamId ? await resolveVisibleTeams(sb, teamId) : '';
+
   return `TEAM CONTEXT:
 Org: ${companyName}
 Team: ${teamName}
@@ -73,5 +75,20 @@ Data owned: ${ownedScopes.join(', ') || 'none'}
 Data readable: ${readScopes.join(', ') || 'none'}
 Brand voice: ${brandVoice}
 Primary color: ${primaryColor}
-Font: ${fontHeading}`;
+Font: ${fontHeading}` + visibleTeams;
+}
+
+async function resolveVisibleTeams(supabase: ReturnType<typeof getPlatformSupabaseClient>, teamId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('team_visibility')
+    .select('target_team_id, visibility_level, teams!target_team_id(name, data_scopes(scope_name, access_type))')
+    .eq('source_team_id', teamId)
+    .neq('target_team_id', teamId); // exclude self
+  if (error || !data || data.length === 0) return '';
+  const lines = data.map((row: any) => {
+    const name = row.teams?.name ?? row.target_team_id;
+    const scopes = row.teams?.data_scopes?.map((s: any) => s.scope_name).join(', ') ?? 'unknown';
+    return `- ${name}: ${scopes} (${row.visibility_level})`;
+  });
+  return `\nVISIBLE TEAM DATA:\n${lines.join('\n')}`;
 }
