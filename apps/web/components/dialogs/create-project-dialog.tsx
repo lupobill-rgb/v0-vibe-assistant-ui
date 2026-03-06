@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import { createProject } from "@/lib/api"
+import { useTeam } from "@/contexts/TeamContext"
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ export function CreateProjectDialog({
   onOpenChange,
   onCreated,
 }: CreateProjectDialogProps) {
+  const { currentTeam } = useTeam()
   const [name, setName] = useState("")
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,7 +40,7 @@ export function CreateProjectDialog({
     setCreating(true)
     setError(null)
     try {
-      const result = await createProject(name.trim())
+      const result = await createProject(name.trim(), undefined, currentTeam?.id)
       if (result.error) {
         setError(result.error)
       } else {

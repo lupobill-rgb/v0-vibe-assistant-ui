@@ -108,9 +108,11 @@ export async function fetchProjects(): Promise<Project[]> {
 export async function createProject(
   name: string,
   repositoryUrl?: string,
+  teamId?: string,
 ): Promise<{ id?: string; error?: string }> {
   const body: Record<string, string> = { name }
   if (repositoryUrl) body.repository_url = repositoryUrl
+  if (teamId) body.team_id = teamId
   const response = await fetch(`${API_URL}/projects`, {
     method: 'POST',
     headers: baseHeaders(),
