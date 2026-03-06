@@ -16,11 +16,10 @@ import {
   Search,
   CreditCard,
   HelpCircle,
-  User,
   Check,
   Building2,
 } from "lucide-react"
-import type { Team } from "@/contexts/TeamContext"
+import type { Team, Org } from "@/contexts/TeamContext"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -44,17 +43,18 @@ const bottomItems = [
 ]
 
 interface AppSidebarProps {
+  currentOrg: Org | null
   currentTeam: Team | null
   userRole: string | null
-  allTeams: Team[]
-  onTeamChange: (team: Team) => void
+  availableTeams: Team[]
+  onTeamChange: (teamId: string) => Promise<void>
   teamLoading: boolean
 }
 
 function roleBadge(role: string | null) {
-  const label = (role ?? "ic").toUpperCase()
-  const isHighRank = ["admin", "director"].includes((role ?? "").toLowerCase())
-  const isMidRank = ["lead", "manager"].includes((role ?? "").toLowerCase())
+  const label = (role ?? "IC").toUpperCase()
+  const isHighRank = ["ADMIN", "DIRECTOR"].includes(label)
+  const isMidRank = ["LEAD", "MANAGER"].includes(label)
   const color = isHighRank
     ? "bg-[#7c3aed]/20 text-[#a78bfa]"
     : isMidRank
@@ -67,7 +67,7 @@ function roleBadge(role: string | null) {
   )
 }
 
-export function AppSidebar({ currentTeam, userRole, allTeams, onTeamChange, teamLoading }: AppSidebarProps) {
+export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, onTeamChange, teamLoading }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const switcherRef = useRef<HTMLDivElement>(null)
@@ -128,9 +128,16 @@ export function AppSidebar({ currentTeam, userRole, allTeams, onTeamChange, team
             >
               <div className="flex items-center gap-2 min-w-0">
                 <Building2 className="h-4 w-4 flex-shrink-0 text-[#7c3aed]" />
-                <span className="truncate text-sm font-medium text-sidebar-foreground">
-                  {currentTeam?.name ?? "Personal Workspace"}
-                </span>
+                <div className="flex flex-col min-w-0">
+                  {currentOrg && (
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {currentOrg.name}
+                    </span>
+                  )}
+                  <span className="truncate text-sm font-medium text-sidebar-foreground">
+                    {currentTeam?.name ?? "Personal Workspace"}
+                  </span>
+                </div>
               </div>
               <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", switcherOpen && "rotate-180")} />
             </button>
@@ -138,10 +145,10 @@ export function AppSidebar({ currentTeam, userRole, allTeams, onTeamChange, team
             {/* Dropdown */}
             {switcherOpen && (
               <div className="mt-1 rounded-lg border border-white/10 bg-[#0f0f23] py-1 shadow-lg">
-                {allTeams.map((team) => (
+                {availableTeams.map((team) => (
                   <button
                     key={team.id}
-                    onClick={() => { onTeamChange(team); setSwitcherOpen(false) }}
+                    onClick={() => { onTeamChange(team.id); setSwitcherOpen(false) }}
                     className={cn(
                       "flex w-full items-center gap-2 px-3 py-1.5 text-sm transition-colors hover:bg-white/5",
                       team.id === currentTeam?.id ? "text-[#7c3aed]" : "text-gray-300"
@@ -173,11 +180,6 @@ export function AppSidebar({ currentTeam, userRole, allTeams, onTeamChange, team
               {currentTeam ? (
                 <div className="flex items-center gap-2">
                   {roleBadge(userRole)}
-                  {currentTeam.org_name && (
-                    <span className="truncate text-[10px] text-muted-foreground">
-                      {currentTeam.org_name}
-                    </span>
-                  )}
                 </div>
               ) : (
                 <span className="text-[10px] text-muted-foreground">Personal Workspace</span>
@@ -307,22 +309,6 @@ export function AppSidebar({ currentTeam, userRole, allTeams, onTeamChange, team
             }
             return linkContent
           })}
-
-          {/* User Avatar */}
-          <div className={cn(
-            "flex items-center gap-3 px-3 h-10 rounded-lg mt-1",
-            collapsed && "justify-center px-0"
-          )}>
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center flex-shrink-0">
-              <User className="w-3.5 h-3.5 text-primary-foreground" />
-            </div>
-            {!collapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-medium text-sidebar-foreground truncate">Demo User</span>
-                <span className="text-[10px] text-muted-foreground truncate">Free Plan</span>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Collapse Toggle */}
