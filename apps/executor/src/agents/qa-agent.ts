@@ -29,6 +29,10 @@ RULES:
 - Each test must have a clear, descriptive name that states what it verifies.
 - Cover: happy path, edge cases, and error conditions for every exported function.
 - Do not mock what you can test directly. Only mock external I/O (DB, HTTP, filesystem).
+- Tests must assert user-visible behavior, not implementation details.
+  Every test must include at least one assertion on a return value, thrown error,
+  or observable side effect. Tests that only call a function without asserting
+  its output are invalid and must not be generated.
 - Place test file alongside the source file with .test.ts extension.
 - Output one atomic unified diff. Single file only. Max 200 lines.
 
@@ -53,11 +57,21 @@ OUTPUT FORMAT:
 2. FIX: <one sentence>
 3. DIFF: <unified diff>`;
 
+export interface QaReport {
+  filesChanged: string[];
+  testsGenerated: number;
+  assertionCount: number;
+  passed: boolean;
+  failureSummary: string | null;
+  regressionRisk: 'none' | 'low' | 'high';
+}
+
 export interface QaAgentResult {
   success: boolean;
   cannotFix?: boolean;
   testOutput: string;
   summary: string;
+  qaReport?: QaReport;
 }
 
 export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAgentResult> {
@@ -83,11 +97,29 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
     return { success: true, testOutput: 'No changed source files', summary: 'No changed source files — test generation skipped.' };
   }
 
+  // Regression baseline — read existing test files so the LLM preserves them
+  let existingTestContext = '';
+  for (const srcFile of changedFiles) {
+    const ext = path.extname(srcFile);
+    const testFile = srcFile.replace(new RegExp(`\\${ext}$`), `.test${ext}`);
+    const testPath = path.join(repoPath, testFile);
+    if (fs.existsSync(testPath)) {
+      try {
+        const contents = fs.readFileSync(testPath, 'utf-8');
+        existingTestContext += `\nEXISTING TESTS (do not regress these — all must still pass):\n--- ${testFile} ---\n${contents}\n`;
+        await storage.logEvent(taskId, `[QA] Found existing test file: ${testFile}`, 'info');
+      } catch { /* skip unreadable */ }
+    }
+  }
+
   // Build context focused on changed files
   const contextResult = await buildContext(repoPath, `Generate tests for changed files: ${changedFiles.join(', ')}`);
-  const context = formatContext(contextResult.files);
+  let context = formatContext(contextResult.files);
+  if (existingTestContext) {
+    context = existingTestContext + '\n' + context;
+  }
 
-  const prompt = `Generate tests for these changed source files: ${changedFiles.join(', ')}.`;
+  const prompt = `Generate tests for these changed source files: ${changedFiles.join(', ')}.${existingTestContext ? ' Existing tests are shown in context — do not remove or weaken any existing assertion.' : ''}`;
 
   await storage.logEvent(taskId, '[QA] Calling LLM to generate test diff...', 'info');
 
@@ -122,12 +154,15 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
 
     if (testRun.ok) {
       await storage.logEvent(taskId, `[QA] Tests passed on iteration ${iteration}:\n${testRun.output}`, 'success');
+      const qaReport = buildQaReport(changedFiles, repoPath, true, null);
+      await storage.logEvent(taskId, `[QA] Report: ${qaReport.testsGenerated} tests, ${qaReport.assertionCount} assertions, risk=${qaReport.regressionRisk}`, 'info');
       return {
         success: true,
         testOutput: testRun.output,
         summary: iteration === 1
           ? 'Tests generated and passed.'
           : `Tests passed after ${iteration - 1} fix iteration(s).`,
+        qaReport,
       };
     }
 
@@ -166,11 +201,15 @@ export async function runQaAgent(taskId: string, repoPath: string): Promise<QaAg
   }
 
   await storage.logEvent(taskId, `[QA] Tests still failing after ${MAX_QA_FIX_ITERATIONS} fix iteration(s)`, 'error');
+  const failSummary = currentTestOutput.split('\n').find(l => /fail|error/i.test(l))?.trim() || 'Tests failed — see output for details.';
+  const qaReport = buildQaReport(changedFiles, repoPath, false, failSummary);
+  await storage.logEvent(taskId, `[QA] Report: ${qaReport.testsGenerated} tests, ${qaReport.assertionCount} assertions, risk=${qaReport.regressionRisk}`, 'info');
   return {
     success: false,
     cannotFix: true,
     testOutput: currentTestOutput,
     summary: `Tests generated but still failing after ${MAX_QA_FIX_ITERATIONS} fix attempt(s). Manual review required.`,
+    qaReport,
   };
 }
 
@@ -218,4 +257,42 @@ async function runTests(repoPath: string): Promise<{ ok: boolean; output: string
   } catch (err: any) {
     return { ok: false, output: ((err.stdout || '') + (err.stderr || '')).slice(0, 3000) };
   }
+}
+
+function buildQaReport(
+  changedFiles: string[],
+  repoPath: string,
+  passed: boolean,
+  failureSummary: string | null,
+): QaReport {
+  let testsGenerated = 0;
+  let assertionCount = 0;
+
+  for (const srcFile of changedFiles) {
+    const ext = path.extname(srcFile);
+    const testFile = srcFile.replace(new RegExp(`\\${ext}$`), `.test${ext}`);
+    const testPath = path.join(repoPath, testFile);
+    if (fs.existsSync(testPath)) {
+      try {
+        const contents = fs.readFileSync(testPath, 'utf-8');
+        const testBlocks = contents.match(/\bit\s*\(/g) || contents.match(/\btest\s*\(/g) || [];
+        testsGenerated += testBlocks.length;
+        const assertions = contents.match(/\bassert\.\w+/g) || [];
+        assertionCount += assertions.length;
+      } catch { /* skip unreadable */ }
+    }
+  }
+
+  const avgAssertions = testsGenerated > 0 ? assertionCount / testsGenerated : 0;
+  const regressionRisk: QaReport['regressionRisk'] =
+    testsGenerated === 0 ? 'high' : avgAssertions < 3 ? 'high' : avgAssertions < 5 ? 'low' : 'none';
+
+  return {
+    filesChanged: changedFiles,
+    testsGenerated,
+    assertionCount,
+    passed,
+    failureSummary,
+    regressionRisk,
+  };
 }
