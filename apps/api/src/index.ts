@@ -799,7 +799,7 @@ async function bootstrap() {
             pageNames = ['index'];
 
             // Save single-page HTML to jobs table so the frontend can read last_diff
-            await storage.setTaskDiff(taskId, data.diff);
+            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
           }
 
           // ── Step 3: Write manifest and finalize ──
