@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createProject, createJob } from "@/lib/api"
+import { useTeam } from "@/contexts/TeamContext"
 
 const suggestions = [
   { icon: Globe, label: "Build a landing page" },
@@ -15,6 +16,7 @@ const suggestions = [
 
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
+  const { currentTeam } = useTeam()
   const [prompt, setPrompt] = useState("")
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -29,7 +31,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       let projectId = selectedProjectId
 
       if (!projectId) {
-        const project = await createProject(prompt.trim().slice(0, 60))
+        const project = await createProject(prompt.trim().slice(0, 60), undefined, currentTeam?.id)
         if (project.error || !project.id) {
           throw new Error(project.error || "Failed to create project")
         }
