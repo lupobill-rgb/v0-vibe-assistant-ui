@@ -10,6 +10,7 @@ import {
   validateUnifiedDiffEnhanced,
   validateDiffApplicability,
 } from '../diff-validator';
+import { readProjectSchema } from '../schema-reader';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 const execAsync = promisify(exec);
@@ -62,10 +63,28 @@ export async function runBuilderAgent(
   taskId: string,
   repoPath: string,
   tasks: string[],
+  projectId?: string,
 ): Promise<BuilderAgentResult> {
   await storage.logEvent(taskId, `[BUILDER] Starting builder agent — ${tasks.length} task(s)`, 'info');
   const git = simpleGit(repoPath);
   const diffsApplied: string[] = [];
+
+  // Read existing Supabase schema once (shared across all tasks)
+  let schemaBlock = '';
+  if (projectId) {
+    try {
+      const schema = await readProjectSchema(projectId);
+      if (schema && schema.formatted) {
+        schemaBlock = schema.formatted;
+        await storage.logEvent(taskId, `[BUILDER] Schema loaded: ${schema.tables.length} table(s), ${schema.policies.length} RLS policy/policies`, 'info');
+      } else {
+        await storage.logEvent(taskId, '[BUILDER] No Supabase connection or empty schema — skipping schema context', 'info');
+      }
+    } catch (err: any) {
+      await storage.logEvent(taskId, `[BUILDER] Schema read failed (non-fatal): ${err.message}`, 'warning');
+    }
+  }
+
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
     await storage.logEvent(taskId, `[BUILDER] Task ${i + 1}/${tasks.length}: ${task.slice(0, 80)}`, 'info');
@@ -73,7 +92,11 @@ export async function runBuilderAgent(
     const headSha = (await git.revparse(['HEAD'])).trim();
     // Build context fresh for each task — picks up prior diffs
     const ctxResult = await buildContext(repoPath, task);
-    const context = formatContext(ctxResult.files);
+    let context = formatContext(ctxResult.files);
+    // Prepend schema context so the LLM knows existing tables/RLS
+    if (schemaBlock) {
+      context = schemaBlock + '\n' + context;
+    }
     // Generate diff
     let diff: string;
     try {

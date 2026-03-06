@@ -123,7 +123,7 @@ async function persistAgentResults(jobId: string, results: AgentResult[]): Promi
  */
 export async function runPipeline(
   jobId: string, prompt: string, context: string, config: RouterConfig,
-  worktreeDir: string,
+  worktreeDir: string, projectId?: string,
 ): Promise<PipelineState> {
   const state: PipelineState = {
     job_id: jobId, current_agent: 'planner', results: [], retry_count: 0, max_retries: 3,
@@ -187,7 +187,7 @@ export async function runPipeline(
   storage.updateTaskState(jobId, 'building');
   storage.logEvent(jobId, `[PIPELINE] Phase: Building — executing ${state.plan.tasks.length} tasks`, 'info');
   const builderResult = await callAgent('builder', jobId, async () => {
-    const result = await runBuilderAgent(jobId, worktreeDir, state.plan!.tasks);
+    const result = await runBuilderAgent(jobId, worktreeDir, state.plan!.tasks, projectId);
     if (!result.success) {
       return {
         status: 'needs_fix' as const,

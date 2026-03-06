@@ -251,6 +251,7 @@ class VibeExecutor {
         context,
         { model: (task.llm_model as 'claude' | 'gpt') || 'claude' },
         worktreeDir,
+        projectId ?? undefined,
       );
 
       if (!pipelineResult.success) {
