@@ -122,6 +122,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         const t = await fetchJob(id)
         if (!t) break
         setTask(t)
+        if (t.last_diff) setDiff(t.last_diff)
         if (t.execution_state === "completed" || t.execution_state === "failed") break
         await new Promise((r) => setTimeout(r, 2000))
       }

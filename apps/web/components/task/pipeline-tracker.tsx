@@ -85,13 +85,21 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
             : `${tlEntry.durationMs}ms`
         }
       } else {
-        // Step not in timeline yet — check if it's the current active step
-        if (!["completed", "failed"].includes(state) && idx === stateIdx) {
-          status = "active"
+        // Step not in timeline yet
+        if (state === "completed") {
+          // All steps done when job completed
+          status = "done"
+        } else if (state === "failed") {
+          if (idx < stateIdx) status = "done"
+          else if (idx === stateIdx) status = "error"
+        } else {
+          // Check if it's the current active step
+          if (idx === stateIdx) {
+            status = "active"
+          }
+          // "queued" is a virtual step not in timeline
+          if (def.key === "queued" && stateIdx > 0) status = "done"
         }
-        // "queued" and "completed" are virtual steps not in timeline
-        if (def.key === "queued" && stateIdx > 0) status = "done"
-        if (def.key === "completed" && state === "completed") status = "done"
       }
     } else {
       // Fallback: infer from execution_state (original logic)
