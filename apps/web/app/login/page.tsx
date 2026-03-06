@@ -17,7 +17,7 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -30,6 +30,24 @@ export default function LoginPage() {
       )
       setLoading(false)
       return
+    }
+
+    // Check how many teams the user belongs to
+    try {
+      const userId = authData.user?.id
+      if (userId) {
+        const { data: memberships } = await supabase
+          .from("team_members")
+          .select("team_id")
+          .eq("user_id", userId)
+
+        if (memberships && memberships.length > 1) {
+          router.push("/select-team")
+          return
+        }
+      }
+    } catch {
+      // Tables don't exist or query failed — continue to home
     }
 
     router.push("/")
