@@ -90,6 +90,7 @@ export interface VibeTask {
   preflight_seconds?: number;
   total_job_seconds?: number;
   files_changed_count?: number;
+  last_diff?: string;
   agent_results?: AgentResultSummary[];
 }
 
@@ -167,6 +168,7 @@ function jobRowToVibeTask(row: JobRow): VibeTask {
     preflight_seconds: row.preflight_seconds ?? undefined,
     total_job_seconds: row.total_job_seconds ?? undefined,
     files_changed_count: row.files_changed_count ?? undefined,
+    last_diff: row.last_diff ?? undefined,
     agent_results: row.agent_results ?? undefined,
   };
 }

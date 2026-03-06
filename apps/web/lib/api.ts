@@ -41,6 +41,14 @@ export interface AgentResultSummary {
   fixes?: { category: string; description: string; diff?: string }[]
 }
 
+export interface JobTimelineStep {
+  step: string
+  startedAt: string
+  endedAt: string
+  durationMs: number
+  status: 'completed' | 'failed' | 'deferred'
+}
+
 export interface Task {
   task_id: string
   user_prompt: string
@@ -63,6 +71,7 @@ export interface Task {
   total_job_seconds?: number
   files_changed_count?: number
   agent_results?: AgentResultSummary[]
+  job_timeline?: JobTimelineStep[]
 }
 
 export interface HealthStatus {
