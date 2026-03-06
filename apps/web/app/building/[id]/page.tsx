@@ -121,10 +121,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           .eq('id', id)
           .maybeSingle()
 
+        console.log('[poll]', data)
         if (data) {
           setTask({ ...data, task_id: data.id ?? id } as Task)
-          if (data.last_diff) setDiff(data.last_diff)
-          if (data.execution_state === 'completed' || data.execution_state === 'failed') break
+          console.log('[task set]', data.execution_state)
+          if (data.last_diff) { setDiff(data.last_diff); console.log('[diff set]', data.last_diff?.slice(0, 100)) }
+          if (data.execution_state === 'completed' || data.execution_state === 'failed') { console.log('[poll complete]', data.execution_state); break }
         }
         await new Promise(r => setTimeout(r, 2000))
       }

@@ -195,6 +195,7 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
     }
   }, [taskId, taskProp])
 
+  console.log('[tracker render]', task?.execution_state, steps.length)
   const completedCount = steps.filter((s) => s.status === "done").length
   const totalCount = steps.length
   const progress = (completedCount / totalCount) * 100
