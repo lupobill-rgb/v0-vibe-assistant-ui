@@ -132,7 +132,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   useEffect(() => {
     if (task?.execution_state !== "completed") return
-    supabase.from("jobs").select("last_diff").eq("id", id).single().then(({ data }) => {
+    supabase.from("jobs").select("last_diff").eq("id", id).limit(1).single().then(({ data }) => {
       if (data?.last_diff) setDiff(data.last_diff)
     })
   }, [task?.execution_state, id])

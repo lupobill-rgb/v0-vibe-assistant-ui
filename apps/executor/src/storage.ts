@@ -206,6 +206,7 @@ class ExecutorStorage {
       .from('jobs')
       .select('*')
       .eq('id', taskId)
+      .limit(1)
       .single();
     if (error) return undefined;
     return jobRowToVibeTask(data as JobRow);
@@ -228,6 +229,7 @@ class ExecutorStorage {
       .from('jobs')
       .select('iteration_count')
       .eq('id', taskId)
+      .limit(1)
       .single();
     if (readErr) throw new Error(`Failed to read iteration count: ${readErr.message}`);
 

@@ -411,6 +411,7 @@ class VibeStorage {
       .from('jobs')
       .select('*')
       .eq('id', taskId)
+      .limit(1)
       .single();
     if (error) return undefined;
     return jobRowToVibeTask(data as JobRow);
@@ -438,6 +439,7 @@ class VibeStorage {
       .from('jobs')
       .select('iteration_count')
       .eq('id', taskId)
+      .limit(1)
       .single();
     if (readErr) throw new Error(`Failed to read iteration count: ${readErr.message}`);
 
@@ -618,6 +620,7 @@ class VibeStorage {
       .from('jobs')
       .select('last_diff')
       .eq('id', taskId)
+      .limit(1)
       .single();
     if (error) return undefined;
     return (data as { last_diff: string | null })?.last_diff ?? undefined;
