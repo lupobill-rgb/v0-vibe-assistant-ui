@@ -629,7 +629,7 @@ async function bootstrap() {
           const startedAtMs = Date.now();
           const timeline: any[] = [];
 
-          const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security', fn: () => Promise<T>): Promise<T> => {
+          const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security' | 'ux' | 'self-healing', fn: () => Promise<T>): Promise<T> => {
             const start = Date.now();
             try {
               const result = await Promise.race([

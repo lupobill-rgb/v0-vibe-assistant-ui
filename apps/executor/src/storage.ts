@@ -22,6 +22,7 @@ export type ExecutionState =
   | 'building'
   | 'validating'
   | 'ux'
+  | 'self-healing'
   | 'testing';
 
 export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
