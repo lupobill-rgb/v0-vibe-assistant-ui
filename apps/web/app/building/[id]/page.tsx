@@ -4,7 +4,6 @@ import { use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@supabase/supabase-js"
 import { ExternalLink, Loader2, Pencil, Plus, Terminal, X } from "lucide-react"
-import { fetchJob, type Task } from "@/lib/api"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 
@@ -12,6 +11,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
 )
+
+interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string }
 
 interface PageData { name: string; filename: string; html: string }
 
@@ -119,23 +120,28 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     let cancelled = false
     const poll = async () => {
       while (!cancelled) {
-        const t = await fetchJob(id)
-        if (!t) break
-        setTask(t)
-        if (t.execution_state === "completed" || t.execution_state === "failed") break
+        const { data } = await supabase
+          .from("jobs")
+          .select("execution_state, last_diff, pull_request_link, preview_url")
+          .eq("id", id)
+          .limit(1)
+          .maybeSingle()
+        if (!data) break
+        setTask((prev) => ({
+          ...prev,
+          task_id: id,
+          execution_state: data.execution_state,
+          pull_request_link: data.pull_request_link ?? undefined,
+          preview_url: data.preview_url ?? undefined,
+        }) as Task)
+        if (data.last_diff) setDiff(data.last_diff)
+        if (data.execution_state === "completed" || data.execution_state === "failed") break
         await new Promise((r) => setTimeout(r, 2000))
       }
     }
     poll()
     return () => { cancelled = true }
   }, [id])
-
-  useEffect(() => {
-    if (task?.execution_state !== "completed") return
-    supabase.from("jobs").select("last_diff").eq("id", id).limit(1).maybeSingle().then(({ data }) => {
-      if (data?.last_diff) setDiff(data.last_diff)
-    })
-  }, [task?.execution_state, id])
 
   useEffect(() => {
     const channel = supabase.channel("build-" + id)
