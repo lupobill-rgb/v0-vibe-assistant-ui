@@ -2,21 +2,16 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { createClient } from "@supabase/supabase-js"
 import { ExternalLink, Loader2, Pencil, Plus, Terminal, X } from "lucide-react"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
-)
-
-interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string }
+interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; [key: string]: unknown }
 
 interface PageData { name: string; filename: string; html: string }
 
-const EDGE_FN_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co') + '/functions/v1/generate-diff'
+const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
 
 function parseDiff(raw: string): PageData[] {
   const trimmed = raw.trim()
@@ -122,17 +117,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       while (!cancelled) {
         const { data } = await supabase
           .from('jobs')
-          .select('execution_state, last_diff, preview_url')
+          .select('*')
           .eq('id', id)
           .maybeSingle()
 
         if (data) {
-          setTask(prev => prev ? { ...prev, ...data, task_id: id } : {
-            task_id: id,
-            execution_state: data.execution_state,
-            last_diff: data.last_diff,
-            preview_url: data.preview_url
-          } as any)
+          setTask({ ...data, task_id: data.id ?? id } as Task)
           if (data.last_diff) setDiff(data.last_diff)
           if (data.execution_state === 'completed' || data.execution_state === 'failed') break
         }
@@ -181,16 +171,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     setAddingPage(true)
     setAddPageError(null)
     try {
-      const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
-      const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
-      const url = SUPABASE_URL + '/functions/v1/generate-diff'
+      const url = EDGE_FN_URL
       const body = { prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' }
 
       console.log("[VIBE] Add Page request:", url, body)
 
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_KEY },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_ANON_KEY },
         body: JSON.stringify(body),
       })
 
@@ -286,7 +274,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       <div className="w-[340px] flex-shrink-0 flex flex-col bg-slate-900">
         {/* ── PROGRESS SECTION ── */}
         <div className="flex-shrink-0 border-b border-slate-700">
-          <PipelineTracker taskId={id} />
+          <PipelineTracker taskId={id} task={task as any} />
           {isComplete && (
             <div className="px-4 pb-3">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
