@@ -121,22 +121,22 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     const poll = async () => {
       while (!cancelled) {
         const { data } = await supabase
-          .from("jobs")
-          .select("execution_state, last_diff, pull_request_link, preview_url")
-          .eq("id", id)
-          .limit(1)
+          .from('jobs')
+          .select('execution_state, last_diff, preview_url')
+          .eq('id', id)
           .maybeSingle()
-        if (!data) break
-        setTask((prev) => ({
-          ...prev,
-          task_id: id,
-          execution_state: data.execution_state,
-          pull_request_link: data.pull_request_link ?? undefined,
-          preview_url: data.preview_url ?? undefined,
-        }) as Task)
-        if (data.last_diff) setDiff(data.last_diff)
-        if (data.execution_state === "completed" || data.execution_state === "failed") break
-        await new Promise((r) => setTimeout(r, 2000))
+
+        if (data) {
+          setTask(prev => prev ? { ...prev, ...data, task_id: id } : {
+            task_id: id,
+            execution_state: data.execution_state,
+            last_diff: data.last_diff,
+            preview_url: data.preview_url
+          } as any)
+          if (data.last_diff) setDiff(data.last_diff)
+          if (data.execution_state === 'completed' || data.execution_state === 'failed') break
+        }
+        await new Promise(r => setTimeout(r, 2000))
       }
     }
     poll()
