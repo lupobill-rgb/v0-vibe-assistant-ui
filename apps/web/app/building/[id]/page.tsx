@@ -121,9 +121,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           .eq('id', id)
           .maybeSingle()
 
+        console.log('[poll result]', data?.execution_state, !!data?.last_diff)
         if (data) {
           setTask({ ...data, task_id: data.id ?? id } as Task)
-          if (data.last_diff) setDiff(data.last_diff)
+          if (data.last_diff) { setDiff(data.last_diff); console.log('[diff set]', typeof data.last_diff, data.last_diff?.slice(0, 80)) }
           if (data.execution_state === 'completed' || data.execution_state === 'failed') break
         }
         await new Promise(r => setTimeout(r, 2000))
@@ -157,7 +158,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const pages = useMemo(() => diff ? parseDiff(diff) : [], [diff])
   const previewUrl = useMemo(() => {
     if (pages.length === 0) return null
-    return buildBlobUrl(pages, activeFile)
+    const url = buildBlobUrl(pages, activeFile)
+    console.log('[preview url]', url)
+    return url
   }, [pages, activeFile])
 
   useEffect(() => {

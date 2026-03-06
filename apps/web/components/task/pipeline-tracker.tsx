@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { fetchJob, subscribeToJobUpdates, type Task, type JobTimelineStep, API_URL } from "@/lib/api"
+import { fetchJob, subscribeToJobUpdates, type Task, API_URL } from "@/lib/api"
 import type { AgentResultSummary } from "@/lib/api"
 import { extractFixes } from "@/lib/pipeline-utils"
 
@@ -22,13 +22,11 @@ export interface PipelineStep {
   label: string
   description: string
   status: StepStatus
-  duration?: string
   agentSummary?: string
 }
 
 function buildStepsFromTask(task: Task | null): PipelineStep[] {
   const state = task?.execution_state ?? "queued"
-  const timeline: JobTimelineStep[] = task?.job_timeline ?? []
 
   // Map legacy/intermediate states to canonical pipeline states
   const normalizedState =
@@ -56,54 +54,18 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
   // Attach agent summaries from persisted results
   const agentResults: AgentResultSummary[] = task?.agent_results ?? []
 
-  // Build a lookup from timeline step name → timeline entry
-  const timelineMap = new Map<string, JobTimelineStep>()
-  for (const entry of timeline) {
-    timelineMap.set(entry.step, entry)
-  }
-  const useTimeline = timelineMap.size > 0
-
   return stepDefs.map((def) => {
     const idx = stateOrder.indexOf(def.key)
     let status: StepStatus = "pending"
-    let duration: string | undefined
 
-    // If we have a real timeline from the backend, use it for step status
-    if (useTimeline) {
-      const tlEntry = timelineMap.get(def.key)
-      if (tlEntry) {
-        if (tlEntry.status === "completed") {
-          status = "done"
-        } else if (tlEntry.status === "failed") {
-          status = "error"
-        } else if (tlEntry.status === "deferred") {
-          status = "done" // deferred steps show as completed (non-blocking)
-        }
-        if (tlEntry.durationMs > 0) {
-          duration = tlEntry.durationMs >= 1000
-            ? `${(tlEntry.durationMs / 1000).toFixed(1)}s`
-            : `${tlEntry.durationMs}ms`
-        }
-      } else {
-        // Step not in timeline yet — check if it's the current active step
-        if (!["completed", "failed"].includes(state) && idx === stateIdx) {
-          status = "active"
-        }
-        // "queued" and "completed" are virtual steps not in timeline
-        if (def.key === "queued" && stateIdx > 0) status = "done"
-        if (def.key === "completed" && state === "completed") status = "done"
-      }
+    if (state === "failed") {
+      if (idx < stateIdx) status = "done"
+      else if (idx === stateIdx) status = "error"
+    } else if (normalizedState === "completed") {
+      status = "done"
     } else {
-      // Fallback: infer from execution_state (original logic)
-      if (state === "failed") {
-        if (idx < stateIdx) status = "done"
-        else if (idx === stateIdx) status = "error"
-      } else if (normalizedState === "completed") {
-        status = "done"
-      } else {
-        if (idx < stateIdx) status = "done"
-        else if (idx === stateIdx) status = "active"
-      }
+      if (idx < stateIdx) status = "done"
+      else if (idx === stateIdx) status = "active"
     }
 
     // Match agent result to step by key name
@@ -112,7 +74,6 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
     return {
       ...def,
       status,
-      duration,
       agentSummary: agentResult?.summary,
     }
   })
@@ -195,6 +156,7 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
     }
   }, [taskId, taskProp])
 
+  console.log('[tracker render]', task?.execution_state, steps.length)
   const completedCount = steps.filter((s) => s.status === "done").length
   const totalCount = steps.length
   const progress = (completedCount / totalCount) * 100
@@ -295,11 +257,6 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
                   >
                     {step.label}
                   </span>
-                  {step.duration && (
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {step.duration}
-                    </span>
-                  )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                   {step.description}
