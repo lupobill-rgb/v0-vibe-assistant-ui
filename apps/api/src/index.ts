@@ -758,6 +758,18 @@ async function bootstrap() {
 
             await runStep('security', async () => new Promise((r) => setTimeout(r, 5)));
 
+            const uxResult = await runStep('ux', async () => {
+              // UX check is handled in the executor pipeline
+              // This step records timing only — executor drives actual UX agent
+              await new Promise(r => setTimeout(r, 0));
+            });
+
+            const selfHealResult = await runStep('self-healing', async () => {
+              // Self-healing scan is handled in the executor pipeline
+              // This step records timing only
+              await new Promise(r => setTimeout(r, 0));
+            });
+
             // Save generated pages to jobs table so the frontend can read last_diff
             const pagesArray = currentPlan.pages.filter((p) => pageNames.includes(p.route === '/' ? 'index' : p.route.slice(1))).map((p) => {
               const safeName = p.route === '/' ? 'index' : p.route.slice(1);
