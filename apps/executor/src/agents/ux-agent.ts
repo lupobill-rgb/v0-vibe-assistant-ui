@@ -17,9 +17,29 @@ export interface UxAgentResult {
   failed: string[];
   fixed: string[];
   summary: string;
+  unresolvedIssues: string[];
+  postFixCheckRan: boolean;
 }
 
-const UX_CHECK_SYSTEM = `You are a UX code reviewer. Analyze the provided codebase context and evaluate these four areas:
+const BRAND_TOKENS = `
+BRAND TOKENS (enforce these — do not invent alternatives):
+- Primary: #7c3aed (violet)
+- Accent: #06b6d4 (cyan)
+- Background: #020617 / #0f172a (dark)
+- Font display: Space Grotesk (headings)
+- Font body: Inter (body text)
+- Spacing grid: 8px base unit
+- Border radius: 0.5rem default
+- Breakpoints: mobile <768px, tablet 768–1024px, desktop >1024px
+ENFORCEMENT RULES:
+- Any color not in this palette is a UX failure.
+- Any font not in this list is a UX failure.
+- Spacing not on the 8px grid is a UX failure.
+- Report each violation as a separate item in the failed array.
+`;
+
+const UX_CHECK_SYSTEM = `${BRAND_TOKENS}
+You are a UX code reviewer. Analyze the provided codebase context and evaluate these four areas:
 
 1. Responsive breakpoints — Are mobile/tablet/desktop breakpoints properly implemented using media queries or responsive utility classes?
 2. Empty states — Are empty states handled with appropriate UI (messages, placeholders, or illustrations) for lists and async data?
@@ -48,7 +68,9 @@ OUTPUT FORMAT:
 2. FIX: <one sentence describing what you changed>
 3. DIFF: <unified diff>
 
-If you cannot fix the issue without a larger refactor, output: CANNOT_FIX: <plain English explanation>.`;
+If you cannot fix the issue without a larger refactor, output: CANNOT_FIX: <plain English explanation>.
+
+Before generating any fix diff, apply all rules in .claude/FRONTEND_SKILL.md if present in the repo. Never override FRONTEND_SKILL rules.`;
 
 const MAX_FIX_ATTEMPTS = 2;
 
@@ -74,7 +96,7 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
     }
   } catch (err: any) {
     await storage.logEvent(taskId, `[UX] LLM check failed: ${err.message}`, 'error');
-    return { passed: [], failed: [], fixed: [], summary: `UX check failed: ${err.message}` };
+    return { passed: [], failed: [], fixed: [], summary: `UX check failed: ${err.message}`, unresolvedIssues: [], postFixCheckRan: false };
   }
 
   await storage.logEvent(taskId, `[UX] Report: ${report.passed.length} passed, ${report.failed.length} failed`, 'info');
@@ -92,6 +114,8 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
       failed: [],
       fixed: [],
       summary: `All ${report.passed.length} UX check(s) passed.`,
+      unresolvedIssues: [],
+      postFixCheckRan: false,
     };
   }
 
@@ -169,9 +193,37 @@ export async function runUxAgent(taskId: string, repoPath: string): Promise<UxAg
 
   const stillFailed = report.failed.filter((f) => !fixed.includes(f));
 
+  // Post-fix re-check — verify fixes actually resolved the issues
+  let unresolvedIssues: string[] = [];
+  let postFixCheckRan = false;
+  if (fixed.length > 0) {
+    await storage.logEvent(taskId, '[UX] Running post-fix verification check...', 'info');
+    try {
+      const postContext = formatContext((await buildContext(repoPath, 'UX review post-fix')).files);
+      const postData = await callEdgeFunction({
+        prompt: postContext,
+        model: 'claude',
+        system: UX_CHECK_SYSTEM,
+        max_tokens: 1024,
+      });
+      const postText = postData.diff || '';
+      const postReport = JSON.parse(postText) as { passed: string[]; failed: string[] };
+      if (Array.isArray(postReport.failed)) {
+        unresolvedIssues = postReport.failed;
+        postFixCheckRan = true;
+        await storage.logEvent(taskId, `[UX] Post-fix check: ${postReport.passed?.length ?? 0} passed, ${unresolvedIssues.length} still failing`, 'info');
+        for (const issue of unresolvedIssues) {
+          await storage.logEvent(taskId, `[UX] UNRESOLVED: ${issue}`, 'warning');
+        }
+      }
+    } catch (err: any) {
+      await storage.logEvent(taskId, `[UX] Post-fix check failed (non-fatal): ${err.message}`, 'warning');
+    }
+  }
+
   const summary = fixed.length === report.failed.length
     ? `All ${report.failed.length} UX issue(s) fixed automatically.`
     : `${fixed.length} of ${report.failed.length} UX issue(s) fixed. ${stillFailed.length} require manual attention: ${stillFailed.join('; ')}`;
 
-  return { passed: report.passed, failed: stillFailed, fixed, summary };
+  return { passed: report.passed, failed: stillFailed, fixed, summary, unresolvedIssues, postFixCheckRan };
 }
