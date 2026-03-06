@@ -618,8 +618,21 @@ async function bootstrap() {
               fallbacks += 1;
               const fallbackModel = (payload.model || resolvedModel) === 'claude' ? 'gpt' : 'claude';
               response = await attempt(fallbackModel);
+              if (response.ok) return response;
+              // Fallback response body not yet consumed — wrap it so callers can read
+              const fallbackText = await response.text();
+              return new Response(fallbackText, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: response.headers,
+              });
             }
-            return response;
+            // Non-rate-limit error: body already consumed by .text() above — re-wrap it
+            return new Response(text, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            });
           };
 
           // ── Step 1: Plan call — ask the LLM for a page plan ──
