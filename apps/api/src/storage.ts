@@ -412,8 +412,8 @@ class VibeStorage {
       .select('*')
       .eq('id', taskId)
       .limit(1)
-      .single();
-    if (error) return undefined;
+      .maybeSingle();
+    if (error || !data) return undefined;
     return jobRowToVibeTask(data as JobRow);
   }
 
@@ -530,8 +530,8 @@ class VibeStorage {
       .eq('execution_state', 'queued')
       .order('initiated_at', { ascending: true })
       .limit(1)
-      .single();
-    if (error) return undefined;
+      .maybeSingle();
+    if (error || !data) return undefined;
     return jobRowToVibeTask(data as JobRow);
   }
 
@@ -621,8 +621,8 @@ class VibeStorage {
       .select('last_diff')
       .eq('id', taskId)
       .limit(1)
-      .single();
-    if (error) return undefined;
+      .maybeSingle();
+    if (error || !data) return undefined;
     return (data as { last_diff: string | null })?.last_diff ?? undefined;
   }
 

@@ -207,8 +207,8 @@ class ExecutorStorage {
       .select('*')
       .eq('id', taskId)
       .limit(1)
-      .single();
-    if (error) return undefined;
+      .maybeSingle();
+    if (error || !data) return undefined;
     return jobRowToVibeTask(data as JobRow);
   }
 
@@ -294,8 +294,8 @@ class ExecutorStorage {
       .eq('execution_state', 'queued')
       .order('initiated_at', { ascending: true })
       .limit(1)
-      .single();
-    if (error) return undefined;
+      .maybeSingle();
+    if (error || !data) return undefined;
     return jobRowToVibeTask(data as JobRow);
   }
 
