@@ -4,7 +4,8 @@
 -- VIBE Marketing team sees itself (record-level visibility)
 INSERT INTO team_visibility (source_team_id, target_team_id, visibility_level)
 VALUES
-  ('2a68d841-a6f0-4abd-8cfa-947767378684', '2a68d841-a6f0-4abd-8cfa-947767378684', 'record');
+  ('2a68d841-a6f0-4abd-8cfa-947767378684', '2a68d841-a6f0-4abd-8cfa-947767378684', 'record')
+ON CONFLICT DO NOTHING;
 
 -- TODO: Add cross-team visibility rows once additional teams are seeded.
 -- Planned rows (blocked on team seeds):

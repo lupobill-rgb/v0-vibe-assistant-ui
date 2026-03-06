@@ -21,7 +21,8 @@ VALUES (
   '2a68d841-a6f0-4abd-8cfa-947767378684',
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   'aggregate'
-);
+)
+ON CONFLICT DO NOTHING;
 
 -- Sales can see Marketing campaigns (aggregate)
 INSERT INTO team_visibility (source_team_id, target_team_id, visibility_level)
@@ -29,4 +30,5 @@ VALUES (
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   '2a68d841-a6f0-4abd-8cfa-947767378684',
   'aggregate'
-);
+)
+ON CONFLICT DO NOTHING;
