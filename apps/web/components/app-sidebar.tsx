@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useParams, useRouter } from "next/navigation"
 import {
@@ -11,12 +11,16 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Plus,
   Search,
   CreditCard,
   HelpCircle,
   User,
+  Check,
+  Building2,
 } from "lucide-react"
+import type { Team } from "@/contexts/TeamContext"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -39,13 +43,50 @@ const bottomItems = [
   { icon: CreditCard, label: "Billing", href: "/billing" },
 ]
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  currentTeam: Team | null
+  userRole: string | null
+  allTeams: Team[]
+  onTeamChange: (team: Team) => void
+  teamLoading: boolean
+}
+
+function roleBadge(role: string | null) {
+  const label = (role ?? "ic").toUpperCase()
+  const isHighRank = ["admin", "director"].includes((role ?? "").toLowerCase())
+  const isMidRank = ["lead", "manager"].includes((role ?? "").toLowerCase())
+  const color = isHighRank
+    ? "bg-[#7c3aed]/20 text-[#a78bfa]"
+    : isMidRank
+      ? "bg-cyan-500/20 text-cyan-400"
+      : "bg-white/10 text-gray-400"
+  return (
+    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ${color}`}>
+      {label}
+    </span>
+  )
+}
+
+export function AppSidebar({ currentTeam, userRole, allTeams, onTeamChange, teamLoading }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  const switcherRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
   const params = useParams<{ id?: string }>()
   const router = useRouter()
   const activeProjectId = pathname.startsWith("/projects/") ? (params?.id as string | undefined) : undefined
   const [dialogOpen, setDialogOpen] = useState(false)
+
+  // Close switcher on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
+        setSwitcherOpen(false)
+      }
+    }
+    if (switcherOpen) document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [switcherOpen])
 
   const openSearch = () => {
     window.dispatchEvent(new Event("open-command-palette"))
@@ -76,6 +117,74 @@ export function AppSidebar() {
             </span>
           )}
         </div>
+
+        {/* Team Switcher + Context Bar */}
+        {!collapsed && !teamLoading && (
+          <div className="px-3 pt-3 pb-1 flex-shrink-0" ref={switcherRef}>
+            {/* Switcher trigger */}
+            <button
+              onClick={() => setSwitcherOpen(!switcherOpen)}
+              className="flex w-full items-center justify-between rounded-lg border border-transparent px-3 py-2 text-left transition-colors hover:border-white/10 hover:bg-white/5"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Building2 className="h-4 w-4 flex-shrink-0 text-[#7c3aed]" />
+                <span className="truncate text-sm font-medium text-sidebar-foreground">
+                  {currentTeam?.name ?? "Personal Workspace"}
+                </span>
+              </div>
+              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", switcherOpen && "rotate-180")} />
+            </button>
+
+            {/* Dropdown */}
+            {switcherOpen && (
+              <div className="mt-1 rounded-lg border border-white/10 bg-[#0f0f23] py-1 shadow-lg">
+                {allTeams.map((team) => (
+                  <button
+                    key={team.id}
+                    onClick={() => { onTeamChange(team); setSwitcherOpen(false) }}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-1.5 text-sm transition-colors hover:bg-white/5",
+                      team.id === currentTeam?.id ? "text-[#7c3aed]" : "text-gray-300"
+                    )}
+                  >
+                    {team.id === currentTeam?.id && <Check className="h-3.5 w-3.5 flex-shrink-0" />}
+                    {team.id !== currentTeam?.id && <span className="w-3.5" />}
+                    <span className="truncate">{team.name}</span>
+                  </button>
+                ))}
+                <div className="mx-2 my-1 border-t border-white/5" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      disabled
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground opacity-50 cursor-not-allowed"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>New Team</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Contact admin to create a team</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+
+            {/* Team context info */}
+            <div className="mt-1 px-3 pb-1">
+              {currentTeam ? (
+                <div className="flex items-center gap-2">
+                  {roleBadge(userRole)}
+                  {currentTeam.org_name && (
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {currentTeam.org_name}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">Personal Workspace</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* New Project Button */}
         <div className="px-3 pt-4 pb-2 flex-shrink-0">
