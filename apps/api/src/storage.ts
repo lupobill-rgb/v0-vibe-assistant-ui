@@ -90,6 +90,7 @@ export interface VibeTask {
   preflight_seconds?: number;
   total_job_seconds?: number;
   files_changed_count?: number;
+  last_diff?: string;
   agent_results?: AgentResultSummary[];
 }
 
@@ -167,6 +168,7 @@ function jobRowToVibeTask(row: JobRow): VibeTask {
     preflight_seconds: row.preflight_seconds ?? undefined,
     total_job_seconds: row.total_job_seconds ?? undefined,
     files_changed_count: row.files_changed_count ?? undefined,
+    last_diff: row.last_diff ?? undefined,
     agent_results: row.agent_results ?? undefined,
   };
 }
@@ -409,8 +411,9 @@ class VibeStorage {
       .from('jobs')
       .select('*')
       .eq('id', taskId)
-      .single();
-    if (error) return undefined;
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return undefined;
     return jobRowToVibeTask(data as JobRow);
   }
 
@@ -436,6 +439,7 @@ class VibeStorage {
       .from('jobs')
       .select('iteration_count')
       .eq('id', taskId)
+      .limit(1)
       .single();
     if (readErr) throw new Error(`Failed to read iteration count: ${readErr.message}`);
 
@@ -526,8 +530,8 @@ class VibeStorage {
       .eq('execution_state', 'queued')
       .order('initiated_at', { ascending: true })
       .limit(1)
-      .single();
-    if (error) return undefined;
+      .maybeSingle();
+    if (error || !data) return undefined;
     return jobRowToVibeTask(data as JobRow);
   }
 
@@ -616,8 +620,23 @@ class VibeStorage {
       .from('jobs')
       .select('last_diff')
       .eq('id', taskId)
-      .single();
-    if (error) return undefined;
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return undefined;
+    return (data as { last_diff: string | null })?.last_diff ?? undefined;
+  }
+
+  async getPriorDiffForProject(projectId: string): Promise<string | undefined> {
+    const { data, error } = await this.sb
+      .from('jobs')
+      .select('last_diff')
+      .eq('project_id', projectId)
+      .eq('execution_state', 'completed')
+      .not('last_diff', 'is', null)
+      .order('initiated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return undefined;
     return (data as { last_diff: string | null })?.last_diff ?? undefined;
   }
 

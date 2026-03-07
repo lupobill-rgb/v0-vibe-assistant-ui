@@ -9,7 +9,7 @@ import { generateDiff, callEdgeFunction } from './llm-router';
 import { buildContext, formatContext } from './context-builder';
 import { sanitizeUnifiedDiff, extractDiff, validateUnifiedDiffEnhanced, validateDiffApplicability } from './diff-validator';
 import { runSecurityAgent } from './agents/security-agent';
-import { runDebugAgent } from './agents/debug-agent';
+import { runDebugAgent, runSelfHealingScan } from './agents/debug-agent';
 import { runQaAgent } from './agents/qa-agent';
 import { runUxAgent } from './agents/ux-agent';
 import { runBuilderAgent } from './agents/builder-agent';
@@ -17,14 +17,14 @@ import { DESIGN_PHASE, DesignPhaseKey } from './agent-prompts';
 
 const execAsync = promisify(exec);
 
-export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security' | 'design';
+export type AgentType = 'planner' | 'builder' | 'qa' | 'debug' | 'security' | 'ux' | 'self-healing';
 
 export interface AgentResult {
   agent: AgentType;
-  status: 'passed' | 'failed' | 'needs_fix';
+  status: 'passed' | 'failed' | 'needs_fix' | 'cannot_fix';
   output: string;
   summary?: string;
-  fixes?: { category: string; description: string; diff: string }[];
+  fixes?: string[] | { category: string; description: string; diff: string }[];
   diffs?: string[];
   errors?: string[];
   duration_ms: number;
@@ -101,7 +101,7 @@ function toAgentResultSummaries(results: AgentResult[]): AgentResultSummary[] {
     status: r.status === 'needs_fix' ? 'needs_fix' : r.status,
     summary: r.output,
     duration_ms: r.duration_ms,
-    fixes: r.fixes?.map((f) => ({ category: f.category, description: f.description })),
+    fixes: r.fixes?.map((f) => typeof f === 'string' ? { category: 'general', description: f } : { category: f.category, description: f.description }),
   }));
 }
 
@@ -123,7 +123,7 @@ async function persistAgentResults(jobId: string, results: AgentResult[]): Promi
  */
 export async function runPipeline(
   jobId: string, prompt: string, context: string, config: RouterConfig,
-  worktreeDir: string,
+  worktreeDir: string, projectId?: string,
 ): Promise<PipelineState> {
   const state: PipelineState = {
     job_id: jobId, current_agent: 'planner', results: [], retry_count: 0, max_retries: 3,
@@ -187,7 +187,7 @@ export async function runPipeline(
   storage.updateTaskState(jobId, 'building');
   storage.logEvent(jobId, `[PIPELINE] Phase: Building — executing ${state.plan.tasks.length} tasks`, 'info');
   const builderResult = await callAgent('builder', jobId, async () => {
-    const result = await runBuilderAgent(jobId, worktreeDir, state.plan!.tasks);
+    const result = await runBuilderAgent(jobId, worktreeDir, state.plan!.tasks, projectId);
     if (!result.success) {
       return {
         status: 'needs_fix' as const,
@@ -272,10 +272,10 @@ export async function runPipeline(
   }
 
   // ── UX ────────────────────────────────────────────────────────────────────
-  state.current_agent = 'qa';
+  state.current_agent = 'ux';
   storage.updateTaskState(jobId, 'ux');
   storage.logEvent(jobId, '[PIPELINE] Phase: UX — checking and fixing design consistency', 'info');
-  const uxResult = await callAgent('qa', jobId, async () => {
+  const uxResult = await callAgent('ux', jobId, async () => {
     const result = await runUxAgent(jobId, worktreeDir);
     const summary = `${result.passed.length} passed, ${result.failed.length} failed, ${result.fixed.length} fixed`;
     const status = result.failed.length === 0 ? 'passed' : 'needs_fix';
@@ -291,6 +291,31 @@ export async function runPipeline(
   if (uxResult.status === 'needs_fix') {
     await storage.logEvent(jobId, `[PIPELINE] UX issues remain after auto-fix — continuing: ${uxResult.errors?.join('; ')}`, 'warning');
   }
+
+  // ── SELF-HEALING SCAN ────────────────────────────────────────────────────
+  state.current_agent = 'self-healing';
+  storage.updateTaskState(jobId, 'self-healing');
+  storage.logEvent(jobId, '[PIPELINE] Phase: Self-Healing — scanning for broken interactive components', 'info');
+  const healStart = Date.now();
+  const healResult = await runSelfHealingScan(jobId, worktreeDir);
+  const healDurationMs = Date.now() - healStart;
+  if (healResult.healed > 0) {
+    storage.logEvent(jobId, `[PIPELINE] Self-healing fixed ${healResult.healed} component issue(s)`, 'success');
+  }
+  if (healResult.remaining.length > 0) {
+    storage.logEvent(jobId, `[PIPELINE] ${healResult.remaining.length} component issue(s) remain — non-blocking`, 'warning');
+  }
+  const issuesFound = healResult.healed + healResult.remaining.length;
+  const healStatus: AgentResult['status'] = issuesFound === 0 ? 'passed' : healResult.remaining.length === 0 ? 'passed' : 'needs_fix';
+  state.results.push({
+    agent: 'self-healing',
+    status: healStatus,
+    output: `${issuesFound} issues found, ${healResult.healed} fixed`,
+    summary: `${issuesFound} issues found, ${healResult.healed} fixed`,
+    fixes: [],
+    errors: healResult.remaining.length > 0 ? healResult.remaining.map(r => `${r.file}:${r.line} — ${r.description}`) : [],
+    duration_ms: healDurationMs,
+  });
 
   // Pipeline succeeded — caller handles PR creation and final 'completed' state
   state.success = true;

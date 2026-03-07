@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { CommandPalette } from '@/components/command-palette'
+import { AuthGuard } from '@/components/auth-guard'
+import { TeamProvider } from '@/contexts/TeamContext'
 
 export const metadata: Metadata = {
   title: 'VIBE - AI Coding Assistant',
@@ -26,7 +28,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <AuthGuard>
+            <TeamProvider>
+              {children}
+            </TeamProvider>
+          </AuthGuard>
           <CommandPalette />
         </ThemeProvider>
       </body>

@@ -12,6 +12,8 @@ export const INITIAL_BUILD_BUDGETS = {
     building: 120_000,
     validating: 120_000,
     security: 20_000,
+    ux: 30_000,
+    'self-healing': 20_000,
   },
   buildConcurrency: 3,
 } as const;
@@ -25,6 +27,8 @@ export const DASHBOARD_BUILD_BUDGETS = {
     building: 180_000,          // 3 min (includes 2 design phase calls)
     validating: 120_000,        // 2 min
     security: 20_000,           // 20s
+    ux: 30_000,                 // 30s
+    'self-healing': 20_000,     // 20s
   },
   buildConcurrency: 2,
 } as const;
@@ -32,7 +36,7 @@ export const DASHBOARD_BUILD_BUDGETS = {
 export type PlannedPage = { name: string; title: string; description: string; route: string };
 export type StarterSitePlan = { pages: PlannedPage[]; notes: string[] };
 export type JobTimelineStep = {
-  step: 'planning' | 'building' | 'validating' | 'security';
+  step: 'planning' | 'building' | 'validating' | 'security' | 'ux' | 'self-healing';
   startedAt: string;
   endedAt: string;
   durationMs: number;

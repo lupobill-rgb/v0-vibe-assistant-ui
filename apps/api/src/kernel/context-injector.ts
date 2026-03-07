@@ -81,7 +81,7 @@ Font: ${fontHeading}` + visibleTeams;
 async function resolveVisibleTeams(supabase: ReturnType<typeof getPlatformSupabaseClient>, teamId: string): Promise<string> {
   const { data, error } = await supabase
     .from('team_visibility')
-    .select('target_team_id, visibility_level, teams(name, data_scopes(scope_name, scope_type))')
+    .select('target_team_id, visibility_level, teams!target_team_id(name, data_scopes(scope_name, scope_type))')
     .eq('source_team_id', teamId)
     .neq('target_team_id', teamId); // exclude self
   if (error || !data || data.length === 0) return '';
