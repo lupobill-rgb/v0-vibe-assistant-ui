@@ -102,6 +102,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const { id } = use(params)
   const [task, setTask] = useState<Task | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [activeFile, setActiveFile] = useState('index.html')
   const [showAddPage, setShowAddPage] = useState(false)
@@ -118,12 +119,28 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   useEffect(() => {
     let cancelled = false
+
+    async function resolveJobId(): Promise<string | null> {
+      // Always treat id as a project_id, get latest job
+      const { data: latest } = await supabase
+        .from('jobs')
+        .select('id')
+        .eq('project_id', id)
+        .order('initiated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      return latest?.id ?? null
+    }
+
     const poll = async () => {
+      const resolvedId = await resolveJobId()
+      if (!resolvedId || cancelled) return
+      setJobId(resolvedId)
       while (!cancelled) {
         const { data } = await supabase
           .from('jobs')
           .select('execution_state, last_diff, project_id')
-          .eq('id', id)
+          .eq('id', resolvedId)
           .maybeSingle()
         if (data) {
           setTask(prev => ({ ...(prev ?? {}), task_id: id, ...data } as Task))
@@ -151,7 +168,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         }
       ).subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [id])
+  }, [jobId])
 
   // Listen for navigation messages from iframe
   useEffect(() => {
