@@ -15,6 +15,7 @@ import {
   Search,
   CreditCard,
   HelpCircle,
+  LogOut,
   User,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -26,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
+import { supabase } from "@/lib/supabase"
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
@@ -198,6 +200,34 @@ export function AppSidebar() {
             }
             return linkContent
           })}
+
+          {/* Sign Out */}
+          {(() => {
+            const signOutContent = (
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut()
+                  router.replace("/login")
+                }}
+                className={cn(
+                  "flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors w-full",
+                  collapsed && "justify-center px-0"
+                )}
+              >
+                <LogOut className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span>Sign Out</span>}
+              </button>
+            )
+            if (collapsed) {
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>{signOutContent}</TooltipTrigger>
+                  <TooltipContent side="right">Sign Out</TooltipContent>
+                </Tooltip>
+              )
+            }
+            return signOutContent
+          })()}
 
           {/* User Avatar */}
           <div className={cn(
