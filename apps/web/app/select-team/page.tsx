@@ -34,6 +34,10 @@ export default function SelectTeamPage() {
           .in("id", teamIds)
         if (teamErr) throw teamErr
         if (!data || data.length === 0) return router.replace("/chat")
+        if (data.length === 1) {
+          localStorage.setItem("vibe_active_team", data[0].id)
+          return router.replace("/chat")
+        }
         setTeams(data as Team[])
       } catch {
         setError("Could not load teams.")
