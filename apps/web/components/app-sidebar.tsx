@@ -29,6 +29,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
+import { supabase } from "@/lib/supabase"
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
