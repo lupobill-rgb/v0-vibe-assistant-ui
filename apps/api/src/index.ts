@@ -548,6 +548,20 @@ async function bootstrap() {
         }
       }
 
+      // Prior-job context: inject existing pages so the LLM patches instead of rebuilding
+      const priorDiff = await storage.getPriorDiffForProject(project_id);
+      if (priorDiff) {
+        try {
+          const pages = JSON.parse(priorDiff) as { name: string; html: string }[];
+          if (Array.isArray(pages) && pages.length > 0) {
+            const pagesContext = pages.map(p => `PAGE: ${p.name}\n${p.html}`).join('\n---\n');
+            enrichedPrompt = `EXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
+          }
+        } catch {
+          // last_diff not valid JSON array — skip context injection
+        }
+      }
+
       if (org) {
         const budgetLimit = await storage.getTenantBudget(org.id);
         if (budgetLimit !== null) {

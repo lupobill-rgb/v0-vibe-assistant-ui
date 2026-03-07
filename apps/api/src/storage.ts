@@ -626,6 +626,20 @@ class VibeStorage {
     return (data as { last_diff: string | null })?.last_diff ?? undefined;
   }
 
+  async getPriorDiffForProject(projectId: string): Promise<string | undefined> {
+    const { data, error } = await this.sb
+      .from('jobs')
+      .select('last_diff')
+      .eq('project_id', projectId)
+      .eq('execution_state', 'completed')
+      .not('last_diff', 'is', null)
+      .order('initiated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return undefined;
+    return (data as { last_diff: string | null })?.last_diff ?? undefined;
+  }
+
   // ── Analytics ──
 
   async getAnalyticsOverview(orgId: string): Promise<{
