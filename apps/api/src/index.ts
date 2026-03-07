@@ -683,9 +683,13 @@ async function bootstrap() {
           const startedAtMs = Date.now();
           const timeline: any[] = [];
 
+          // Steps that represent real forward progress in the tracker UI
+          const forwardSteps = new Set(['planning', 'building', 'validating', 'ux']);
           const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security' | 'ux' | 'self-healing', fn: () => Promise<T>): Promise<T> => {
             const start = Date.now();
-            await storage.updateTaskState(taskId, name);
+            if (forwardSteps.has(name)) {
+              await storage.updateTaskState(taskId, name);
+            }
             try {
               const result = await Promise.race([
                 fn(),
