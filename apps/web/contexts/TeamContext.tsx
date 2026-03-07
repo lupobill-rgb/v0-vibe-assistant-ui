@@ -38,7 +38,7 @@ export function useTeam() {
   return useContext(TeamContext)
 }
 
-const STORAGE_KEY = "vibe_last_team_id"
+const STORAGE_KEY = "vibe_active_team"
 
 function normalizeRole(raw: string | null | undefined): UserRole {
   if (!raw) return null
