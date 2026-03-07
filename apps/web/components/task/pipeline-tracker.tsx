@@ -47,8 +47,7 @@ function buildStepsFromTask(task: Task | null): PipelineStep[] {
     { id: "5", key: "validating",  label: "Validating",       description: "Running build and tests" },
     { id: "6", key: "ux",          label: "UX",               description: "Design consistency and accessibility" },
     { id: "7", key: "testing",     label: "QA",               description: "Test generation and verification" },
-    { id: "8", key: "pr",          label: "Pull Request",     description: "Creating GitHub PR" },
-    { id: "9", key: "completed",   label: "Complete",         description: "Job finished successfully" },
+    { id: "8", key: "completed",   label: "Complete",         description: "Job finished successfully" },
   ]
 
   // Attach agent summaries from persisted results
