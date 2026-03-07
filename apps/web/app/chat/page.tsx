@@ -7,8 +7,8 @@ import { AppShell } from "@/components/app-shell"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
 import { ImportGithubDialog } from "@/components/dialogs/import-github-dialog"
-import { fetchJobs, fetchProjects, type Task, type Project } from "@/lib/api"
-import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink, FolderOpen, Plus, Github } from "lucide-react"
+import { fetchProjectJobs, fetchProjects, type Task, type Project } from "@/lib/api"
+import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink, Plus, Github } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
@@ -76,12 +76,63 @@ function JobRow({ task }: { task: Task }) {
   )
 }
 
+function ProjectCard({
+  project,
+  selected,
+  lastJob,
+  onClick,
+}: {
+  project: Project
+  selected: boolean
+  lastJob?: Task
+  onClick: () => void
+}) {
+  const initial = project.name.charAt(0).toUpperCase()
+  const date = new Date(project.created_at).toLocaleDateString()
+  const lastState = lastJob ? (STATE_CONFIG[lastJob.execution_state] ?? STATE_CONFIG["queued"]) : null
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex flex-col rounded-xl border bg-card p-4 text-left transition-all duration-200 hover:bg-card/80",
+        selected
+          ? "border-[#A855F7] ring-1 ring-[#A855F7]/30"
+          : "border-border hover:border-primary/30"
+      )}
+    >
+      {/* Thumbnail placeholder */}
+      <div className="w-full aspect-[16/10] rounded-lg bg-secondary/60 flex items-center justify-center mb-3 overflow-hidden">
+        <span className="text-2xl font-bold text-muted-foreground/40 select-none">{initial}</span>
+      </div>
+      {/* Name + date */}
+      <p className="text-sm font-medium text-foreground truncate">{project.name}</p>
+      <p className="text-[11px] text-muted-foreground mt-0.5">{date}</p>
+      {/* Last job badge */}
+      {lastState && lastJob && (
+        <span
+          className={cn(
+            "mt-2 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md w-fit",
+            lastJob.execution_state === "completed" && "bg-emerald-500/10 text-emerald-400",
+            lastJob.execution_state === "failed" && "bg-red-500/10 text-red-400",
+            lastJob.execution_state === "queued" && "bg-amber-500/10 text-amber-400",
+            !["completed", "failed", "queued"].includes(lastJob.execution_state) && "bg-[#4F8EFF]/10 text-[#4F8EFF]",
+          )}
+        >
+          {lastState.label}
+        </span>
+      )}
+    </button>
+  )
+}
+
 function ChatContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialProjectId = searchParams.get("project") ?? undefined
 
   const [jobs, setJobs] = useState<Task[]>([])
+  const [allJobs, setAllJobs] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -102,17 +153,8 @@ function ChatContent() {
     })
   }
 
+  // Load projects on mount
   useEffect(() => {
-    fetchJobs()
-      .then((data) => {
-        setJobs(data.slice(0, 20))
-        setLoading(false)
-      })
-      .catch(() => {
-        setError(true)
-        setLoading(false)
-      })
-
     fetchProjects().then((data) => {
       setProjects(data)
       if (initialProjectId && data.some((p) => p.id === initialProjectId)) {
@@ -122,6 +164,37 @@ function ChatContent() {
       }
     })
   }, [])
+
+  // Load jobs for selected project
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setJobs([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError(false)
+    fetchProjectJobs(selectedProjectId)
+      .then((data) => {
+        setJobs(data.slice(0, 20))
+        setAllJobs((prev) => {
+          const map = new Map(prev.map((j) => [j.task_id, j]))
+          data.forEach((j) => map.set(j.task_id, j))
+          return Array.from(map.values())
+        })
+        setLoading(false)
+      })
+      .catch(() => {
+        setError(true)
+        setLoading(false)
+      })
+  }, [selectedProjectId])
+
+  // Helper: get latest job for a project from cached allJobs
+  const latestJobFor = (projectId: string) =>
+    allJobs
+      .filter((j) => j.project_id === projectId)
+      .sort((a, b) => b.initiated_at - a.initiated_at)[0]
 
   return (
     <AppShell>
@@ -141,47 +214,47 @@ function ChatContent() {
         </div>
       </div>
 
-        {/* Project Selector */}
+        {/* Project Gallery */}
         <div className="px-6 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-shrink-0">
-              <FolderOpen className="w-4 h-4" />
-              <span>Project</span>
-            </div>
-            {projects.length > 0 ? (
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="flex-1 bg-secondary text-foreground text-sm rounded-lg px-3 py-2 border border-border outline-none focus:border-primary/40 transition-colors"
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-foreground">Projects</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCreateDialogOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
+                title="New Project"
               >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-sm text-muted-foreground italic">
-                No projects yet.
-              </span>
-            )}
-            <button
-              onClick={() => setCreateDialogOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 flex-shrink-0"
-              title="New Project"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              New
-            </button>
-            <button
-              onClick={() => setImportDialogOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200 flex-shrink-0"
-              title="Import from GitHub"
-            >
-              <Github className="w-3.5 h-3.5" />
-              Import
-            </button>
+                <Plus className="w-3.5 h-3.5" />
+                New
+              </button>
+              <button
+                onClick={() => setImportDialogOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
+                title="Import from GitHub"
+              >
+                <Github className="w-3.5 h-3.5" />
+                Import
+              </button>
+            </div>
           </div>
+
+          {projects.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {projects.map((p) => (
+                <ProjectCard
+                  key={p.id}
+                  project={p}
+                  selected={p.id === selectedProjectId}
+                  lastJob={latestJobFor(p.id)}
+                  onClick={() => setSelectedProjectId(p.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground italic py-4">
+              No projects yet. Create one or import from GitHub.
+            </div>
+          )}
         </div>
 
         {/* Prompt Card */}
@@ -189,7 +262,9 @@ function ChatContent() {
 
       {/* Recent Jobs */}
       <div className="px-6 py-8">
-        <h2 className="text-base font-semibold text-foreground mb-4">Recent Jobs</h2>
+        <h2 className="text-base font-semibold text-foreground mb-4">
+          {selectedProjectId ? "Project Jobs" : "Recent Jobs"}
+        </h2>
 
         {loading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
