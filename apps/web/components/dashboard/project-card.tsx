@@ -122,7 +122,7 @@ export function ProjectCard({ project }: { project: Project }) {
           )}
         >
           <Link
-            href={`/projects/${project.id}`}
+            href={`/building/${project.id}`}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-sm font-medium text-white hover:bg-white/25 transition-colors"
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -179,7 +179,7 @@ export function ProjectCard({ project }: { project: Project }) {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => router.push(`/projects/${project.id}`)}>
+                <DropdownMenuItem onClick={() => router.push(`/building/${project.id}`)}>
                   <FolderOpen className="w-4 h-4 mr-2" />
                   Open Project
                 </DropdownMenuItem>
