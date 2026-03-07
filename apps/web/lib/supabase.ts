@@ -19,3 +19,14 @@ export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 export const supabase = typeof window !== 'undefined'
   ? getSupabase()
   : (null as unknown as SupabaseClient)
+
+// Restore persisted session on startup
+if (typeof window !== 'undefined') {
+  const saved = localStorage.getItem('sb-session')
+  if (saved) {
+    try {
+      const session = JSON.parse(saved)
+      supabase.auth.setSession(session)
+    } catch { /* corrupt data — ignore */ }
+  }
+}

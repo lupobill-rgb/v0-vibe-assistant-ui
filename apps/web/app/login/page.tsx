@@ -12,8 +12,11 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); return }
+    if (data.session) {
+      localStorage.setItem('sb-session', JSON.stringify(data.session))
+    }
     router.push('/select-team')
   }
 
