@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Check,
   Building2,
+  LogOut,
 } from "lucide-react"
 import type { Team, Org } from "@/contexts/TeamContext"
 import { cn } from "@/lib/utils"
@@ -310,6 +311,35 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
             }
             return linkContent
           })}
+
+          {/* Sign Out */}
+          {(() => {
+            const signOut = async () => {
+              await supabase.auth.signOut()
+              window.location.href = "/login"
+            }
+            const btn = (
+              <button
+                onClick={signOut}
+                className={cn(
+                  "flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors w-full",
+                  collapsed && "justify-center px-0"
+                )}
+              >
+                <LogOut className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span>Sign Out</span>}
+              </button>
+            )
+            if (collapsed) {
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>{btn}</TooltipTrigger>
+                  <TooltipContent side="right">Sign Out</TooltipContent>
+                </Tooltip>
+              )
+            }
+            return btn
+          })()}
         </div>
 
         {/* Collapse Toggle */}
