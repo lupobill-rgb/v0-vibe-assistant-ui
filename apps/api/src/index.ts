@@ -685,6 +685,7 @@ async function bootstrap() {
 
           const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security' | 'ux' | 'self-healing', fn: () => Promise<T>): Promise<T> => {
             const start = Date.now();
+            await storage.updateTaskState(taskId, name);
             try {
               const result = await Promise.race([
                 fn(),
