@@ -222,4 +222,38 @@ describe('Pipeline Tracker - Status Assignment', () => {
     assert.strictEqual(steps[7].status, 'pending'); // pr
     assert.strictEqual(steps[8].status, 'pending'); // completed
   });
+
+  it('API starter-site state sequence always advances forward', () => {
+    // This is the sequence the API writes to execution_state after the fix.
+    // security/self-healing are skipped because they are no-ops that would cause backwards jumps.
+    const apiStateSequence = ['planning', 'building', 'validating', 'ux', 'completed'];
+    const stateOrder = ['queued', 'planning', 'security', 'building', 'validating', 'ux', 'testing', 'pr', 'completed'];
+
+    let prevDoneCount = 0;
+    for (const state of apiStateSequence) {
+      const steps = buildStepsFromTask({ execution_state: state });
+      const doneCount = steps.filter((s) => s.status === 'done').length;
+
+      // Progress must never go backwards
+      assert.ok(
+        doneCount >= prevDoneCount,
+        `State '${state}': done count ${doneCount} < previous ${prevDoneCount} — tracker went backwards!`
+      );
+
+      // Verify the current state is either active or all-done
+      const idx = stateOrder.indexOf(state);
+      if (state !== 'completed') {
+        assert.strictEqual(steps[idx].status, 'active', `Step '${state}' should be active`);
+      }
+
+      prevDoneCount = doneCount;
+    }
+
+    // Final state: completed is at index 8, so 8 steps are done and completed itself is active
+    // (The real React component has an extra branch for completed → all done,
+    //  but this test replica uses the general idx < stateIdx logic)
+    const finalSteps = buildStepsFromTask({ execution_state: 'completed' });
+    assert.strictEqual(finalSteps.filter((s) => s.status === 'done').length, 8);
+    assert.strictEqual(finalSteps[8].status, 'active'); // completed step
+  });
 });
