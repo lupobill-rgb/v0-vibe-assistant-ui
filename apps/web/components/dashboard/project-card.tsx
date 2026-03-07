@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase"
 import { Star, ExternalLink, Clock, Trash2, FolderOpen, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { deleteProject } from "@/lib/api"
@@ -39,7 +40,34 @@ export function ProjectCard({ project }: { project: Project }) {
   const [hovering, setHovering] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchPreview() {
+      const { data, error } = await supabase
+        .from("jobs")
+        .select("last_diff")
+        .eq("project_id", project.id)
+        .eq("execution_state", "completed")
+        .order("initiated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error || cancelled || !data?.last_diff) return
+      let html: string | null = null
+      try {
+        const parsed = JSON.parse(data.last_diff)
+        if (Array.isArray(parsed) && parsed[0]?.html) html = parsed[0].html
+      } catch {
+        const raw = data.last_diff.trim()
+        if (raw.startsWith("<!") || raw.startsWith("<html")) html = raw
+      }
+      if (html && !cancelled) setPreviewHtml(html)
+    }
+    fetchPreview()
+    return () => { cancelled = true }
+  }, [project.id])
 
   const statusColors = {
     active: "bg-[#4F8EFF]/20 text-[#4F8EFF]",
@@ -69,23 +97,22 @@ export function ProjectCard({ project }: { project: Project }) {
       >
         {/* Thumbnail */}
         <div className="relative aspect-[16/10] bg-secondary overflow-hidden">
-          <div
-            className="absolute inset-0 bg-gradient-to-br from-[#4F8EFF]/20 via-[#A855F7]/20 to-[#EC4899]/20"
-            style={{
-              backgroundImage: `url(${project.thumbnail})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          />
-          {/* Grid pattern overlay */}
-          <div
-            className="absolute inset-0 opacity-10"
-            style={{
-              backgroundImage:
-                "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
-              backgroundSize: "20px 20px",
-            }}
-          />
+          {previewHtml ? (
+            <iframe
+              srcDoc={previewHtml}
+              sandbox="allow-scripts"
+              title={`${project.name} preview`}
+              className="absolute inset-0 border-none pointer-events-none"
+              style={{
+                width: "400%",
+                height: "400%",
+                transform: "scale(0.25)",
+                transformOrigin: "top left",
+              }}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#4F8EFF]/20 via-[#A855F7]/20 to-[#EC4899]/20" />
+          )}
 
         {/* Hover overlay */}
         <div
