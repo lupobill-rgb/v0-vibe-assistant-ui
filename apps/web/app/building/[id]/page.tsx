@@ -143,7 +143,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "jobs", filter: "id=eq." + id },
         (payload) => {
           const row = payload.new as Record<string, unknown>
-          if (row.execution_state) setTask((prev) => prev ? { ...prev, execution_state: row.execution_state as string } : prev)
+          if (row.execution_state) setTask((prev) => {
+            const base = prev ?? { task_id: id } as Task
+            return { ...base, execution_state: row.execution_state as string }
+          })
           if (row.last_diff) setDiff(row.last_diff as string)
         }
       ).subscribe()
@@ -159,7 +162,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     return () => window.removeEventListener('message', handler)
   }, [])
 
-  const pages = useMemo(() => diff ? parseDiff(diff) : [], [diff])
+  const effectiveDiff = diff ?? (task?.last_diff as string | undefined) ?? null
+  const pages = useMemo(() => effectiveDiff ? parseDiff(effectiveDiff) : [], [effectiveDiff])
   const previewUrl = useMemo(() => {
     if (pages.length === 0) return null
     const url = buildBlobUrl(pages, activeFile)
