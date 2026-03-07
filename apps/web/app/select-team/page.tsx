@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@supabase/supabase-js"
 
 type Team = { id: string; name: string; slug: string }
 
 export default function SelectTeamPage() {
   const router = useRouter()
-  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -16,6 +14,11 @@ export default function SelectTeamPage() {
   useEffect(() => {
     const loadTeams = async () => {
       try {
+        const { createClient } = await import("@supabase/supabase-js")
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
         const { data: auth } = await supabase.auth.getUser()
         if (!auth.user) return router.replace("/login")
         const { data: memberships, error: memberErr } = await supabase
