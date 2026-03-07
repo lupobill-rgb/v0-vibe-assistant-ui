@@ -16,6 +16,7 @@ import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
 import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
+import { getPlatformSupabaseClient } from './supabase/client';
 import {
   INITIAL_BUILD_BUDGETS,
   DASHBOARD_BUILD_BUDGETS,
@@ -532,6 +533,32 @@ async function bootstrap() {
         const kernelContext = await resolveKernelContext(user_id, org.id);
         if (kernelContext) {
           enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
+        }
+      }
+      const { data: priorJob } = await getPlatformSupabaseClient()
+        .from('jobs')
+        .select('last_diff')
+        .eq('project_id', project_id)
+        .eq('execution_state', 'completed')
+        .not('last_diff', 'is', null)
+        .order('initiated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (priorJob?.last_diff) {
+        try {
+          const pages = JSON.parse(priorJob.last_diff) as Array<{ name?: string; html?: string }>;
+          if (Array.isArray(pages) && pages.length > 0) {
+            const existingPages = pages
+              .filter((p) => typeof p?.name === 'string' && typeof p?.html === 'string')
+              .map((p) => `PAGE: ${p.name}\n${p.html}`)
+              .join('\n---\n');
+            if (existingPages) {
+              enrichedPrompt =
+                `EXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\n${enrichedPrompt}`;
+            }
+          }
+        } catch {
+          // Ignore malformed historical last_diff payloads and continue as first build.
         }
       }
 
