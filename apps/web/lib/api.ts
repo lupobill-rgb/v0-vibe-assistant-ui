@@ -24,6 +24,7 @@ export interface Project {
   id: string
   name: string
   team_id?: string
+  is_private?: boolean
   repository_url?: string
   local_path?: string
   last_synced?: number
@@ -103,7 +104,7 @@ export async function fetchProjects(): Promise<Project[]> {
 
   const { data, error } = await supabase
     .from('projects')
-    .select('id, name, team_id, created_at')
+    .select('id, name, team_id, created_at, is_private')
     .eq('team_id', teamId)
     .order('created_at', { ascending: false })
 
