@@ -119,17 +119,18 @@ function ProjectCard({
         .limit(1)
         .maybeSingle()
 
-      if (error) {
-        console.log("Preview fetch RLS error:", error)
-        return
-      }
-      if (cancelled || !data?.last_diff) return
+      if (error || cancelled || !data?.last_diff) return
+      // last_diff is either JSON array [{ html }] or raw HTML string
+      let html: string | null = null
       try {
-        const pages = JSON.parse(data.last_diff)
-        if (Array.isArray(pages) && pages[0]?.html) {
-          setPreviewHtml(pages[0].html)
-        }
-      } catch { /* invalid JSON — ignore */ }
+        const parsed = JSON.parse(data.last_diff)
+        if (Array.isArray(parsed) && parsed[0]?.html) html = parsed[0].html
+      } catch {
+        // Not JSON — treat as raw HTML if it looks like markup
+        const raw = data.last_diff.trim()
+        if (raw.startsWith("<!") || raw.startsWith("<html")) html = raw
+      }
+      if (html && !cancelled) setPreviewHtml(html)
     }
     fetchPreview()
     return () => { cancelled = true }
@@ -149,13 +150,13 @@ function ProjectCard({
       )}
     >
       {/* Thumbnail — iframe preview or initial letter */}
-      <div className="w-full aspect-[16/10] rounded-lg bg-secondary/60 flex items-center justify-center mb-3 overflow-hidden relative">
+      <div className="w-full aspect-[16/10] rounded-lg bg-secondary/60 mb-3 overflow-hidden relative">
         {previewHtml ? (
           <iframe
             srcDoc={previewHtml}
-            sandbox=""
+            sandbox="allow-scripts"
             title={`${project.name} preview`}
-            className="absolute top-0 left-0 border-none pointer-events-none"
+            className="absolute inset-0 border-none pointer-events-none"
             style={{
               width: "400%",
               height: "400%",
