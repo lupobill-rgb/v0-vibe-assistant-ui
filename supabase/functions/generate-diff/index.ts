@@ -444,6 +444,13 @@ Deno.serve(async (req: Request) => {
     } else if (mode === "page") {
       baseSystemMsg = PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
+    } else if (mode === "edit") {
+      baseSystemMsg = `You are an expert web developer editing an existing HTML page.
+The user will provide the current HTML and a description of changes to make.
+Make ONLY the requested changes. Preserve all existing structure, styles, and content that is not mentioned.
+Return the complete updated HTML starting with <!DOCTYPE html>. No explanations, no markdown fences — raw HTML only.
+Current page HTML:\n${context ?? ""}`;
+      defaultMaxTokens = 8192;
     } else if (mode === "html") {
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;

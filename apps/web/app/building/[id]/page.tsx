@@ -112,6 +112,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [editingHtml, setEditingHtml] = useState('')
   const [editPrompt, setEditPrompt] = useState('')
   const [successToast, setSuccessToast] = useState<string | null>(null)
+  const [editInput, setEditInput] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
   const [updatePrompt, setUpdatePrompt] = useState('')
   const [updatingJob, setUpdatingJob] = useState(false)
   const router = useRouter()
@@ -196,6 +198,46 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
+
+  const handleEdit = async () => {
+    if (!editInput.trim() || !diff || isEditing) return
+    setIsEditing(true)
+    try {
+      const currentPages = parseDiff(diff)
+      const currentHtml = currentPages[0]?.html ?? ''
+      const res = await fetch(EDGE_FN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          prompt: editInput,
+          context: currentHtml,
+          mode: 'edit',
+        }),
+      })
+      const json = await res.json()
+      if (json.diff) {
+        // Merge edited page back into existing pages array
+        const updatedPages = currentPages.map((p, i) =>
+          i === 0 ? { ...p, html: json.diff } : p
+        )
+        const newDiff = JSON.stringify(updatedPages)
+        setDiff(newDiff)
+        // Persist to Supabase
+        if (jobId) {
+          await supabase
+            .from('jobs')
+            .update({ last_diff: newDiff })
+            .eq('id', jobId)
+        }
+        setEditInput('')
+      }
+    } finally {
+      setIsEditing(false)
+    }
+  }
 
   const handleAddPage = useCallback(async (description: string) => {
     setAddingPage(true)
@@ -316,6 +358,25 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             <p className="text-slate-500 text-sm">Preview will appear here when ready</p>
           </div>
         )}
+        {/* Edit prompt bar — pinned to bottom of preview */}
+        <div className="flex-shrink-0 border-t border-slate-700 p-3 flex gap-2">
+          <input
+            type="text"
+            value={editInput}
+            onChange={e => setEditInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleEdit()}
+            placeholder="Describe a change... e.g. make the header dark blue"
+            disabled={isEditing}
+            className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary disabled:opacity-50"
+          />
+          <button
+            onClick={handleEdit}
+            disabled={isEditing || !editInput.trim() || !diff}
+            className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors"
+          >
+            {isEditing ? '...' : 'Edit'}
+          </button>
+        </div>
       </div>
       <div className="w-[340px] flex-shrink-0 flex flex-col bg-slate-900">
         {/* ── PROGRESS SECTION ── */}
