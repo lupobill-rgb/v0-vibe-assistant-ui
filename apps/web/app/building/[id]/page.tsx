@@ -9,7 +9,10 @@ import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
 import { createJob } from "@/lib/api"
 
-interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; [key: string]: unknown }
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface PageData { name: string; filename: string; html: string }
 
@@ -122,15 +125,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       while (!cancelled) {
         const { data } = await supabase
           .from('jobs')
-          .select('*')
+          .select('execution_state, last_diff, project_id')
           .eq('id', id)
           .maybeSingle()
-
-        console.log('[poll result]', data?.execution_state, !!data?.last_diff)
         if (data) {
-          setTask({ ...data, task_id: data.id ?? id } as Task)
-          if (data.last_diff) { setDiff(data.last_diff); console.log('[diff set]', typeof data.last_diff, data.last_diff?.slice(0, 80)) }
-          if (data.execution_state === 'completed' || data.execution_state === 'failed') break
+          setTask(prev => ({ ...(prev ?? {}), task_id: id, ...data } as Task))
+          if (data.last_diff) setDiff(data.last_diff)
+          if (data.execution_state === 'completed' ||
+              data.execution_state === 'failed') break
         }
         await new Promise(r => setTimeout(r, 2000))
       }
