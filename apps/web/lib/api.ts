@@ -23,8 +23,9 @@ export interface LogEvent {
 export interface Project {
   id: string
   name: string
-  repository_url: string
-  local_path: string
+  team_id?: string
+  repository_url?: string
+  local_path?: string
   last_synced?: number
   created_at: number
 }
@@ -94,15 +95,20 @@ function getHeaders(): Record<string, string> {
 // ── Projects ───────────────────────────────────────────────────────────────
 
 export async function fetchProjects(): Promise<Project[]> {
-  try {
-    const response = await fetch(`${API_URL}/projects`, {
-      headers: getHeaders(),
-    })
-    if (!response.ok) return []
-    return response.json()
-  } catch {
-    return []
-  }
+  const teamId = typeof window !== 'undefined'
+    ? localStorage.getItem('vibe_active_team')
+    : null
+
+  if (!teamId) return []
+
+  const { data, error } = await supabase
+    .from('projects')
+    .select('id, name, team_id, created_at')
+    .eq('team_id', teamId)
+    .order('created_at', { ascending: false })
+
+  if (error) return []
+  return data ?? []
 }
 
 export async function createProject(
