@@ -22,7 +22,6 @@ export interface PipelineStep {
   label: string
   description: string
   status: StepStatus
-  duration?: string
   agentSummary?: string
 }
 
@@ -94,31 +93,69 @@ function StatusIcon({ status }: { status: StepStatus }) {
 
 interface PipelineTrackerProps {
   taskId: string
+  task?: Task | null
 }
 
-export function PipelineTracker({ taskId }: PipelineTrackerProps) {
-  const [task, setTask] = useState<Task | null>(null)
+export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps) {
+  const [internalTask, setInternalTask] = useState<Task | null>(null)
+  const task = taskProp ?? internalTask
   const [steps, setSteps] = useState<PipelineStep[]>(buildStepsFromTask(null))
   const [expandedStep, setExpandedStep] = useState<string | null>(null)
   const [applyingFix, setApplyingFix] = useState<number | null>(null)
   const [fixResult, setFixResult] = useState<{ success: boolean; summary: string } | null>(null)
 
+  // When parent passes task prop, just rebuild steps from it
   useEffect(() => {
+    if (taskProp) {
+      setSteps(buildStepsFromTask(taskProp))
+    }
+  }, [taskProp])
+
+  // When no task prop: fetch on mount + realtime + polling fallback
+  useEffect(() => {
+    if (taskProp) return // parent controls state
+
+    let pollTimer: ReturnType<typeof setInterval> | null = null
+    let realtimeFired = false
+
     fetchJob(taskId).then((t) => {
       if (t) {
-        setTask(t)
+        setInternalTask(t)
         setSteps(buildStepsFromTask(t))
       }
     })
 
     const unsubscribe = subscribeToJobUpdates(taskId, (t) => {
-      setTask(t)
+      realtimeFired = true
+      setInternalTask(t)
       setSteps(buildStepsFromTask(t))
+      // Stop polling once realtime is working
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     })
 
-    return () => unsubscribe()
-  }, [taskId])
+    // Polling fallback: start after 5s if realtime hasn't fired
+    const fallbackTimeout = setTimeout(() => {
+      if (realtimeFired) return
+      pollTimer = setInterval(async () => {
+        const t = await fetchJob(taskId)
+        if (t) {
+          setInternalTask(t)
+          setSteps(buildStepsFromTask(t))
+          if (t.execution_state === 'completed' || t.execution_state === 'failed') {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+          }
+        }
+      }, 3000)
+    }, 5000)
 
+    return () => {
+      unsubscribe()
+      clearTimeout(fallbackTimeout)
+      if (pollTimer) clearInterval(pollTimer)
+    }
+  }, [taskId, taskProp])
+
+  console.log('[tracker render]', task?.execution_state, steps.length)
   const completedCount = steps.filter((s) => s.status === "done").length
   const totalCount = steps.length
   const progress = (completedCount / totalCount) * 100

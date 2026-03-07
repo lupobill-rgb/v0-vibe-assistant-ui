@@ -127,6 +127,19 @@ async function bootstrap() {
   // Serve static published files
   app.use('/published', express.static(PUBLISHED_DIR));
 
+  // ── Kernel diagnostic (Layer 3 verification) ──
+  app.get('/api/kernel-context/:userId/:orgId', async (req: Request, res: Response) => {
+    try {
+      const ctx = await resolveKernelContext(req.params.userId, req.params.orgId);
+      res.json({
+        context: ctx,
+        hasVisibleTeamData: ctx.includes('VISIBLE TEAM DATA'),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ── Organization routes ──
 
   // POST /orgs - Create a new organization
@@ -562,6 +575,20 @@ async function bootstrap() {
         }
       }
 
+      // Prior-job context: inject existing pages so the LLM patches instead of rebuilding
+      const priorDiff = await storage.getPriorDiffForProject(project_id);
+      if (priorDiff) {
+        try {
+          const pages = JSON.parse(priorDiff) as { name: string; html: string }[];
+          if (Array.isArray(pages) && pages.length > 0) {
+            const pagesContext = pages.map(p => `PAGE: ${p.name}\n${p.html}`).join('\n---\n');
+            enrichedPrompt = `EXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
+          }
+        } catch {
+          // last_diff not valid JSON array — skip context injection
+        }
+      }
+
       if (org) {
         const budgetLimit = await storage.getTenantBudget(org.id);
         if (budgetLimit !== null) {
@@ -632,8 +659,21 @@ async function bootstrap() {
               fallbacks += 1;
               const fallbackModel = (payload.model || resolvedModel) === 'claude' ? 'gpt' : 'claude';
               response = await attempt(fallbackModel);
+              if (response.ok) return response;
+              // Fallback response body not yet consumed — wrap it so callers can read
+              const fallbackText = await response.text();
+              return new Response(fallbackText, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: response.headers,
+              });
             }
-            return response;
+            // Non-rate-limit error: body already consumed by .text() above — re-wrap it
+            return new Response(text, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            });
           };
 
           // ── Step 1: Plan call — ask the LLM for a page plan ──
@@ -643,8 +683,13 @@ async function bootstrap() {
           const startedAtMs = Date.now();
           const timeline: any[] = [];
 
-          const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security', fn: () => Promise<T>): Promise<T> => {
+          // Steps that represent real forward progress in the tracker UI
+          const forwardSteps = new Set(['planning', 'building', 'validating', 'ux']);
+          const runStep = async <T>(name: 'planning' | 'building' | 'validating' | 'security' | 'ux' | 'self-healing', fn: () => Promise<T>): Promise<T> => {
             const start = Date.now();
+            if (forwardSteps.has(name)) {
+              await storage.updateTaskState(taskId, name);
+            }
             try {
               const result = await Promise.race([
                 fn(),
@@ -759,6 +804,18 @@ async function bootstrap() {
 
             await runStep('security', async () => new Promise((r) => setTimeout(r, 5)));
 
+            const uxResult = await runStep('ux', async () => {
+              // UX check is handled in the executor pipeline
+              // This step records timing only — executor drives actual UX agent
+              await new Promise(r => setTimeout(r, 0));
+            });
+
+            const selfHealResult = await runStep('self-healing', async () => {
+              // Self-healing scan is handled in the executor pipeline
+              // This step records timing only
+              await new Promise(r => setTimeout(r, 0));
+            });
+
             // Save generated pages to jobs table so the frontend can read last_diff
             const pagesArray = currentPlan.pages.filter((p) => pageNames.includes(p.route === '/' ? 'index' : p.route.slice(1))).map((p) => {
               const safeName = p.route === '/' ? 'index' : p.route.slice(1);
@@ -788,7 +845,7 @@ async function bootstrap() {
             pageNames = ['index'];
 
             // Save single-page HTML to jobs table so the frontend can read last_diff
-            await storage.setTaskDiff(taskId, data.diff);
+            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
           }
 
           // ── Step 3: Write manifest and finalize ──
