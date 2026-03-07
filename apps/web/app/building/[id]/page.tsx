@@ -2,12 +2,14 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ExternalLink, Loader2, Pencil, Plus, Terminal, X } from "lucide-react"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
+import { createJob } from "@/lib/api"
 
-interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; [key: string]: unknown }
+interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; [key: string]: unknown }
 
 interface PageData { name: string; filename: string; html: string }
 
@@ -109,6 +111,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [editingHtml, setEditingHtml] = useState('')
   const [editPrompt, setEditPrompt] = useState('')
   const [successToast, setSuccessToast] = useState<string | null>(null)
+  const [updatePrompt, setUpdatePrompt] = useState('')
+  const [updatingJob, setUpdatingJob] = useState(false)
+  const router = useRouter()
 
 
   useEffect(() => {
@@ -228,6 +233,22 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       setAddingPage(false)
 }
   }, [pages])
+
+  const handleUpdate = useCallback(async () => {
+    const projectId = task?.project_id
+    if (!updatePrompt.trim() || !projectId || updatingJob) return
+    setUpdatingJob(true)
+    try {
+      const result = await createJob({ prompt: updatePrompt.trim(), project_id: projectId, base_branch: 'main' })
+      if (result.task_id) {
+        router.push(`/building/${result.task_id}`)
+      }
+    } catch (err) {
+      console.error('[VIBE] Update job failed:', err)
+    } finally {
+      setUpdatingJob(false)
+    }
+  }, [task?.project_id, updatePrompt, updatingJob, router])
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 relative">
@@ -405,6 +426,29 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             </button>
           </div>
         </div>
+        {task?.execution_state === 'completed' && task?.project_id && (
+          <div className="px-4 py-3 border-t border-slate-700">
+            <label className="text-xs font-medium text-slate-400 mb-2 block">Iterate on this build</label>
+            <div className="flex gap-2">
+              <input
+                value={updatePrompt}
+                onChange={(e) => setUpdatePrompt(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && updatePrompt.trim() && !updatingJob) handleUpdate() }}
+                placeholder="Describe what to change..."
+                disabled={updatingJob}
+                className="flex-1 h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+              />
+              <button
+                onClick={handleUpdate}
+                disabled={!updatePrompt.trim() || updatingJob}
+                className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors flex items-center gap-1.5"
+              >
+                {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Update
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       {showLogs && (
         <div className="absolute inset-0 z-50 bg-black/60 flex items-end justify-center pb-6 px-6">
