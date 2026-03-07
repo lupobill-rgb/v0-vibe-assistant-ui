@@ -162,8 +162,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     return () => window.removeEventListener('message', handler)
   }, [])
 
-  const effectiveDiff = diff ?? (task?.last_diff as string | undefined) ?? null
-  const pages = useMemo(() => effectiveDiff ? parseDiff(effectiveDiff) : [], [effectiveDiff])
+  const pages = useMemo(() => {
+    const raw = diff || (typeof task?.last_diff === 'string' ? task.last_diff : null)
+    return raw ? parseDiff(raw) : []
+  }, [diff, task?.last_diff])
   const previewUrl = useMemo(() => {
     if (pages.length === 0) return null
     const url = buildBlobUrl(pages, activeFile)
