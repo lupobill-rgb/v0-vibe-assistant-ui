@@ -45,6 +45,9 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   const { id } = use(params)
   const router = useRouter()
 
+  // Redirect legacy /projects/[id] → /building/[id]
+  router.replace(`/building/${id}`)
+  return null
   const [project, setProject] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [jobs, setJobs] = useState<Task[]>([])

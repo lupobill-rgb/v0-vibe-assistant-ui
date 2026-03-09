@@ -315,8 +315,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   }, [task?.project_id, updatePrompt, updatingJob, router])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-900 relative">
-      <div className="flex-[2] flex flex-col min-w-0 border-r border-slate-700">
+    <div className="flex h-screen overflow-hidden bg-slate-900 relative flex-row-reverse">
+      <div className="flex-[2] flex flex-col min-w-0 border-l border-slate-700">
         {isMultiPage && (
           <div className="flex items-center gap-1 px-3 h-10 border-b border-slate-700 bg-slate-800 overflow-x-auto">
             {pages.map((p) => (
@@ -331,7 +331,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         )}
         {previewUrl ? (
-          <>
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="flex items-center gap-2 px-4 h-11 border-b border-slate-700 flex-shrink-0 bg-slate-800">
               <span className="text-xs font-medium text-slate-400">Preview</span>
               <div className="w-2 h-2 rounded-full bg-emerald-400" />
@@ -343,14 +343,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             </div>
             <iframe src={previewUrl} sandbox="allow-scripts allow-same-origin"
               className="flex-1 w-full border-0 bg-white" title="Generated website preview" />
-          </>
+          </div>
         ) : isComplete ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-4">
             <p className="text-slate-400 font-medium">{task?.execution_state === "failed" ? "Build failed" : "Build complete"}</p>
             <p className="text-slate-500 text-sm">No preview available</p>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
               <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
             </div>

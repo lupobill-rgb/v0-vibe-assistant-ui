@@ -97,7 +97,7 @@ export function CommandPalette() {
                 <CommandItem
                   key={project.id}
                   onSelect={() =>
-                    runCommand(() => router.push(`/projects/${project.id}`))
+                    runCommand(() => router.push(`/building/${project.id}`))
                   }
                 >
                   <Folder className="w-4 h-4 mr-2" />
