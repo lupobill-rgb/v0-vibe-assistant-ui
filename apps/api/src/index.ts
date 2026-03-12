@@ -24,6 +24,8 @@ import {
   MAX_INITIAL_PAGES,
   StarterSitePlan,
   buildStarterSitePlan,
+  resolveColorScheme,
+  buildColorBlock,
   mapWithConcurrency,
   validateStarterSiteQuality,
   writePagePlanArtifact,
@@ -819,11 +821,14 @@ async function bootstrap() {
             if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
             const planData = JSON.parse(planRawText);
             if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
-            // Edge Function returns { diff: "<JSON string of pages array>", mode: "plan", usage }
+            // Edge Function returns { diff: "<JSON string with pages + color_scheme>", mode: "plan", usage }
             let planPages = typeof planData.diff === 'string'
               ? JSON.parse(planData.diff)
               : planData.diff;
-            const result = buildStarterSitePlan(Array.isArray(planPages) ? planPages : null, prompt);
+            // planPages may be { pages: [...], color_scheme: {...} } or a raw array
+            const pagesArray = Array.isArray(planPages) ? planPages : planPages?.pages ?? null;
+            const llmColorScheme = Array.isArray(planPages) ? null : planPages?.color_scheme ?? null;
+            const result = buildStarterSitePlan(Array.isArray(pagesArray) ? pagesArray : null, prompt, llmColorScheme);
             if (result.notes.length > 0) await storage.logEvent(taskId, result.notes.join(' '), 'info');
             await storage.logEvent(taskId, `Plan received: ${result.pages.length} page(s) — ${result.pages.map((p) => p.name).join(', ')}`, 'info');
             return result;
@@ -844,6 +849,11 @@ async function bootstrap() {
 
           let pageNames: string[] = [];
 
+          // Resolve color scheme: from the plan if available, otherwise from the prompt
+          const colorScheme = plan?.colorScheme ?? resolveColorScheme(prompt);
+          const colorBlock = buildColorBlock(colorScheme);
+          console.log('[KERNEL] resolved color scheme:', JSON.stringify(colorScheme));
+
           if (plan) {
             const currentPlan = plan;
             await runStep('building', async () => {
@@ -856,6 +866,7 @@ async function bootstrap() {
                   model: resolvedModel,
                   mode: 'page',
                   context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
+                  color_block: colorBlock,
                 });
                 modelCalls += 1;
                 const pageRawText = await pageResponse.text();
@@ -891,7 +902,7 @@ async function bootstrap() {
                   repairAttempts += 1;
                   const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
                   const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
-                  const repair = await edgeCall({ prompt: `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`, model: resolvedModel, mode: 'page' });
+                  const repair = await edgeCall({ prompt: `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`, model: resolvedModel, mode: 'page', color_block: colorBlock });
                   modelCalls += 1;
                   const repairText = await repair.text();
                   if (repair.ok) {
@@ -928,7 +939,7 @@ async function bootstrap() {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
             console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
-            const response = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html' });
+            const response = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html', color_block: colorBlock });
             modelCalls += 1;
             const rawText = await response.text();
             if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);

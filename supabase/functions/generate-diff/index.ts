@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.4.0"; // 2026-03-12
+const EDGE_FUNCTION_VERSION = "1.5.0"; // 2026-03-12 — server-side color injection
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,15 +115,15 @@ ALWAYS inject in <head>:
 <meta property="og:type" content="website">
 
 DESIGN SYSTEM — non-negotiable:
-- Background: #020617. Never white. Never light grey.
-- Primary: violet #7c3aed. Accent: cyan #06b6d4.
+- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
+- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
 - All headings: Space Grotesk font-weight 700+. All body: Inter.
-- Navbar: sticky top-0 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 z-50
-- Active nav link: text-violet-400 border-b-2 border-violet-500
-- Cards: bg-slate-900 border border-slate-800 rounded-2xl p-8 hover:border-violet-500/50 transition-all duration-300
-- Primary buttons: bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-violet-500/25
-- Secondary buttons: border border-slate-600 text-slate-300 hover:border-violet-500 hover:text-white px-8 py-3 rounded-xl transition-all duration-200
-- Inputs: bg-slate-800 border border-slate-700 rounded-xl text-white px-4 py-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20
+- Navbar: sticky top-0 bg-[var(--surface)] backdrop-blur-md border-b border-[var(--border)] z-50
+- Active nav link: text-[var(--primary)] border-b-2 border-[var(--primary)]
+- Cards: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--primary)] transition-all duration-300
+- Primary buttons: bg-[var(--primary)] text-[var(--bg)] px-8 py-3 rounded-xl font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg
+- Secondary buttons: border border-[var(--border)] text-[var(--text)] hover:border-[var(--primary)] px-8 py-3 rounded-xl transition-all duration-200
+- Inputs: bg-[var(--surface)] border border-[var(--border)] rounded-xl text-[var(--text)] px-4 py-3 focus:border-[var(--primary)] focus:outline-none focus:ring-2
 - Max content width 1200px centered. Section padding py-24 px-6.
 - Every page shares identical navbar and footer.
 
@@ -184,15 +184,15 @@ ALWAYS inject in <head>:
 <meta property="og:type" content="website">
 
 DESIGN SYSTEM — non-negotiable:
-- Background: #020617. Never white. Never light grey.
-- Primary: violet #7c3aed. Accent: cyan #06b6d4.
+- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
+- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
 - All headings: Space Grotesk font-weight 700+. All body: Inter.
-- Hero: min-h-screen flex items-center justify-center background: linear-gradient(135deg, #0f0728 0%, #1e0a4a 50%, #020617 100%)
-- Navbar: sticky top-0 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 z-50
-- Cards: bg-slate-900 border border-slate-800 rounded-2xl p-8 hover:border-violet-500/50 transition-all duration-300
-- Primary buttons: bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/30
-- Secondary buttons: border border-slate-600 text-slate-300 hover:border-violet-500 hover:text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200
-- Inputs: bg-slate-800 border border-slate-700 rounded-xl text-white px-4 py-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 w-full
+- Hero: min-h-screen flex items-center justify-center background: var(--bg)
+- Navbar: sticky top-0 bg-[var(--surface)] backdrop-blur-md border-b border-[var(--border)] z-50
+- Cards: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--primary)] transition-all duration-300
+- Primary buttons: bg-[var(--primary)] text-[var(--bg)] px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl
+- Secondary buttons: border border-[var(--border)] text-[var(--text)] hover:border-[var(--primary)] px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200
+- Inputs: bg-[var(--surface)] border border-[var(--border)] rounded-xl text-[var(--text)] px-4 py-3 focus:border-[var(--primary)] focus:outline-none focus:ring-2 w-full
 - Max content width 1200px centered. Section padding py-24 px-6.
 
 SCROLL ANIMATIONS — required:
@@ -257,35 +257,36 @@ ALWAYS inject these in <head>:
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
 DESIGN SYSTEM — non-negotiable:
-- Page background: #020617
-- Sidebar: bg-slate-900 border-r border-slate-800
-- Cards: bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-violet-500/40 transition-all
-- Primary: violet #7c3aed. Accent: cyan #06b6d4. Success: #10b981. Warning: #f59e0b. Danger: #ef4444.
+- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
+- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class for backgrounds/text.
+- Sidebar: bg-[var(--surface)] border-r border-[var(--border)]
+- Cards: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--primary)] transition-all
+- Semantic colors allowed for status only: Success: #10b981. Warning: #f59e0b. Danger: #ef4444.
 - All headings: Space Grotesk font-bold. All body: Inter.
-- Topbar: bg-slate-950/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50
+- Topbar: bg-[var(--surface)] backdrop-blur-md border-b border-[var(--border)] sticky top-0 z-50
 LAYOUT:
 - CSS Grid: grid grid-cols-[256px_1fr] min-h-screen
 - Sidebar: fixed 256px wide, full height, vertical nav
 - Main area: topbar sticky + scrollable content below
 - Content: 4 KPI cards top row (grid grid-cols-4 gap-6), then 2-col charts (grid grid-cols-2 gap-6), then full-width table
 SIDEBAR:
-- Brand logo/name top with violet accent color
+- Brand logo/name top with var(--primary) accent color
 - Nav items: emoji icon + text label, padding px-4 py-3 rounded-xl
-- Active state: bg-violet-600/10 text-violet-400 border-l-2 border-violet-500
+- Active state: bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)] border-l-2 border-[var(--primary)]
 - User avatar + name + role pinned to bottom
 TOPBAR — inline styles only, no Tailwind on nav:
-<nav style="position:sticky;top:0;z-index:50;background:rgba(2,6,23,0.85);backdrop-filter:blur(12px);border-bottom:1px solid #1e293b;padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px;font-family:'Inter',sans-serif;">
-  <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.1rem;color:#a78bfa;">[BRAND]</span>
+<nav style="position:sticky;top:0;z-index:50;background:var(--surface);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px;font-family:'Inter',sans-serif;">
+  <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.1rem;color:var(--primary);">[BRAND]</span>
   <div style="display:flex;gap:28px;">
-    [LINKS: <a href="pagename.html" style="color:#94a3b8;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
+    [LINKS: <a href="pagename.html" style="color:var(--text);opacity:0.7;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
   </div>
-  <a href="#" style="background:#7c3aed;color:white;padding:9px 22px;border-radius:8px;font-weight:600;font-size:0.9rem;text-decoration:none;">Get Started</a>
+  <a href="#" style="background:var(--primary);color:var(--bg);padding:9px 22px;border-radius:8px;font-weight:600;font-size:0.9rem;text-decoration:none;">Get Started</a>
 </nav>
 This is the COMPLETE nav. No other nav markup anywhere in the file.
 No Tailwind classes on any nav element. No ul/li. No hidden divs. No responsive variants.
 KPI STAT CARDS — 4 cards:
-- Large metric number: Space Grotesk text-3xl font-bold text-white
-- Label: text-slate-400 text-sm mt-1
+- Large metric number: Space Grotesk text-3xl font-bold text-[var(--text)]
+- Label: text-[var(--text)] opacity-60 text-sm mt-1
 - Trend: top-right corner, ▲ text-emerald-400 or ▼ text-red-400 text-sm
 - Detect domain from prompt and use contextually relevant metrics
 CHARTS — exactly 2 using Chart.js:
@@ -296,8 +297,8 @@ CHARTS — exactly 2 using Chart.js:
 - Chart 1: Line or Bar for primary time-series (12 months of data)
 - Chart 2: Doughnut or Bar for breakdown/distribution
 - Domain detection: sales→revenue+pipeline; finance→cashflow+allocation; analytics→traffic+conversion; marketing→campaigns+CAC; HR→headcount+performance
-- Colors: primary #7c3aed, accent #06b6d4, success #10b981, warning #f59e0b
-- Chart container: bg-slate-900 border border-slate-800 rounded-2xl p-6
+- Colors: primary var(--primary), accent #06b6d4, success #10b981, warning #f59e0b
+- Chart container: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6
 - Grid lines: rgba(148,163,184,0.1). Chart background: transparent.
 - All data must be realistic and domain-appropriate. Zero lorem ipsum.
 CHART CODE MANDATE — non-negotiable:
@@ -305,18 +306,18 @@ CHART CODE MANDATE — non-negotiable:
   1. A <canvas> element with a unique id
   2. A complete Chart.js configuration inside a DOMContentLoaded event listener
   3. At least 6 realistic data points — no empty datasets
-  4. Charts must use these colors: primary #7c3aed, secondary #06b6d4
+  4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
 - 10 realistic rows, no lorem ipsum
-- Sticky header: bg-slate-900 text-slate-400 text-xs uppercase tracking-wider
-- Row hover: hover:bg-slate-800/50
+- Sticky header: bg-[var(--surface)] text-[var(--text)] opacity-60 text-xs uppercase tracking-wider
+- Row hover: hover:bg-[var(--border)]
 - Status badges: rounded-full px-3 py-1 text-xs font-medium color-coded by status
 - overflow-x-auto wrapper for mobile
 INTERACTIVITY — vanilla JS only:
 - Date range buttons (7D / 30D / 90D / 1Y) update chart data on click
-- Active button: bg-violet-600 text-white. Inactive: bg-slate-800 text-slate-400
+- Active button: bg-[var(--primary)] text-[var(--bg)]. Inactive: bg-[var(--surface)] text-[var(--text)]
 - Table search input filters rows in real time
 - Export CSV button downloads table data as .csv file
 - Export CSV button must use this exact pattern:
@@ -486,7 +487,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, context, model = "claude", system, max_tokens, mode } = await req.json();
+    const { prompt, context, model = "claude", system, max_tokens, mode, color_block } = await req.json();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -572,7 +573,11 @@ Rules:
         (context ? "\nProject context:\n" + context : "");
     }
 
-    const systemMsg = VIBE_SYSTEM_RULES + "\n" + baseSystemMsg;
+    // Inject the server-resolved color block so the LLM never decides colors
+    const colorInjection = color_block
+      ? `\n\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\nThe HTML file already contains this block in <head> — do not remove it, do not override it, do not add competing color declarations:\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
+      : "";
+    const systemMsg = VIBE_SYSTEM_RULES + "\n" + baseSystemMsg + colorInjection;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
 
     // Try the requested model first

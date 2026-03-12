@@ -34,7 +34,8 @@ export const DASHBOARD_BUILD_BUDGETS = {
 } as const;
 
 export type PlannedPage = { name: string; title: string; description: string; route: string };
-export type StarterSitePlan = { pages: PlannedPage[]; notes: string[] };
+export type ColorScheme = { bg: string; text: string; primary: string; surface: string; border: string; mode: 'light' | 'dark' };
+export type StarterSitePlan = { pages: PlannedPage[]; notes: string[]; colorScheme: ColorScheme };
 export type JobTimelineStep = {
   step: 'planning' | 'building' | 'validating' | 'security' | 'ux' | 'self-healing';
   startedAt: string;
@@ -50,7 +51,47 @@ const DEFAULT_PAGES: PlannedPage[] = [
   { name: 'Contact', title: 'Contact', description: 'Provide contact options, form section, and clear CTA.', route: '/contact' },
 ];
 
-export function buildStarterSitePlan(rawPlan: Array<{ name: string; title: string; description: string }> | null, prompt: string): StarterSitePlan {
+const LIGHT_DEFAULTS: ColorScheme = { bg: '#ffffff', text: '#111827', primary: '#7c3aed', surface: '#f8fafc', border: '#e2e8f0', mode: 'light' };
+const DARK_DEFAULTS: ColorScheme = { bg: '#0f172a', text: '#f8fafc', primary: '#7c3aed', surface: '#1e293b', border: '#334155', mode: 'dark' };
+
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Deterministic, server-side color scheme resolution.
+ * Priority: LLM plan color_scheme > prompt keyword detection > light defaults.
+ */
+export function resolveColorScheme(
+  prompt: string,
+  llmScheme?: Partial<ColorScheme> | null,
+): ColorScheme {
+  // Start from defaults based on mode detection
+  const wantsDark = /\bdark\s*(mode|theme)?\b/i.test(prompt);
+  const base: ColorScheme = { ...(wantsDark ? DARK_DEFAULTS : LIGHT_DEFAULTS) };
+
+  // If the plan LLM returned a color_scheme, overlay valid hex values
+  if (llmScheme) {
+    for (const key of ['bg', 'text', 'primary', 'surface', 'border'] as const) {
+      if (typeof llmScheme[key] === 'string' && HEX_RE.test(llmScheme[key]!)) {
+        base[key] = llmScheme[key]!;
+      }
+    }
+    if (llmScheme.mode === 'dark' || llmScheme.mode === 'light') {
+      base.mode = llmScheme.mode;
+    }
+  }
+
+  return base;
+}
+
+/**
+ * Build the literal <style> block that the LLM must not modify.
+ * This is injected server-side so the LLM never decides colors.
+ */
+export function buildColorBlock(scheme: ColorScheme): string {
+  return `<style>:root{--bg:${scheme.bg};--text:${scheme.text};--primary:${scheme.primary};--surface:${scheme.surface};--border:${scheme.border}}body{background:var(--bg);color:var(--text)}</style>`;
+}
+
+export function buildStarterSitePlan(rawPlan: Array<{ name: string; title: string; description: string }> | null, prompt: string, llmColorScheme?: Partial<ColorScheme> | null): StarterSitePlan {
   const notes: string[] = [];
   const multiIntent = /multi[ -]?page|multiple pages|website|site|pages/i.test(prompt);
   let normalized = (rawPlan ?? []).map((p) => normalizePage(p.name, p.title, p.description)).filter(Boolean) as PlannedPage[];
@@ -63,7 +104,8 @@ export function buildStarterSitePlan(rawPlan: Array<{ name: string; title: strin
     notes.push('Initial build limited to 4 pages; add more pages after.');
   }
 
-  return { pages: normalized, notes };
+  const colorScheme = resolveColorScheme(prompt, llmColorScheme);
+  return { pages: normalized, notes, colorScheme };
 }
 
 function normalizePage(name: string, title: string, description: string): PlannedPage | null {
