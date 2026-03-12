@@ -192,6 +192,8 @@ export async function createJob(params: {
   target_branch?: string
   llm_provider?: string
   llm_model?: string
+  type?: 'standard' | 'debug'
+  debug_job_id?: string
 }): Promise<{ task_id?: string; error?: string }> {
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',

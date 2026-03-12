@@ -333,6 +333,30 @@ class VibeExecutor {
     }
   }
 
+  private async savePreviewDiff(taskId: string): Promise<void> {
+    try {
+      const previewDir = path.join(PREVIEWS_DIR, taskId);
+      const manifestPath = path.join(previewDir, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        const pageNames: string[] = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        const pagesArray = pageNames.map((name) => {
+          const html = fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8');
+          const route = name === 'index' ? '/' : `/${name}`;
+          return { name, filename: `${name}.html`, route, html };
+        });
+        await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
+      } else {
+        const indexPath = path.join(previewDir, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          const html = fs.readFileSync(indexPath, 'utf8');
+          await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html }]));
+        }
+      }
+    } catch (err: any) {
+      await storage.logEvent(taskId, `Warning: could not save last_diff: ${err.message}`, 'warning');
+    }
+  }
+
   private async createPullRequest(task: VibeTask, mainGit: SimpleGit, repoUrl: string | null): Promise<void> {
     try {
       await storage.updateTaskState(task.task_id, 'creating_pr');
@@ -341,6 +365,7 @@ class VibeExecutor {
       if (!repoUrl) {
         await storage.logEvent(task.task_id, 'Local-only project - no remote push or PR creation', 'info');
         await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
+        await this.savePreviewDiff(task.task_id);
         await storage.updateTaskState(task.task_id, 'completed');
         await storage.logEvent(task.task_id, '✓ Task completed successfully (local changes only)', 'success');
         return;
@@ -362,12 +387,14 @@ class VibeExecutor {
           } else {
             await storage.logEvent(task.task_id, 'No remote repository configured (local-only project). Changes committed locally, PR creation skipped.', 'info');
             await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
+            await this.savePreviewDiff(task.task_id);
             await storage.updateTaskState(task.task_id, 'completed');
             return;
           }
         } catch (error: any) {
           await storage.logEvent(task.task_id, `Could not get remote URL: ${error.message}. Changes committed locally, PR creation skipped.`, 'warning');
           await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
+          await this.savePreviewDiff(task.task_id);
           await storage.updateTaskState(task.task_id, 'completed');
           return;
         }
@@ -385,6 +412,7 @@ class VibeExecutor {
       if (prResult.success && prResult.prUrl) {
         await storage.setPrUrl(task.task_id, prResult.prUrl);
         await this.createCheckpointTag(mainGit, task.task_id, task.destination_branch);
+        await this.savePreviewDiff(task.task_id);
         await storage.updateTaskState(task.task_id, 'completed');
         await storage.logEvent(task.task_id, `✓ Pull request created: ${prResult.prUrl}`, 'success');
       } else {
@@ -414,6 +442,7 @@ class VibeExecutor {
 
       const previewUrl = `/previews/${task.task_id}/index.html`;
       await storage.setPreviewUrl(task.task_id, previewUrl);
+      await storage.setTaskDiff(task.task_id, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html }]));
       await storage.updateTaskState(task.task_id, 'completed');
       await storage.logEvent(task.task_id, `✅ Website generated! Preview at: ${previewUrl}`, 'success');
     } catch (error: any) {

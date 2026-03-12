@@ -192,9 +192,11 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
     setDebugLoading(true)
     try {
       const result = await createJob({
-        prompt: `[DEBUG] The previous job failed. Original prompt: "${task.user_prompt}". Diagnose the failure and generate a corrected version.`,
+        prompt: task.user_prompt,
         project_id: task.project_id,
         base_branch: 'main',
+        type: 'debug',
+        debug_job_id: taskId,
       })
       if (result.task_id) {
         router.push(`/building/${task.project_id}`)

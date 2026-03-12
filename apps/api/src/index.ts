@@ -6,6 +6,7 @@ import { storage } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
+import crypto from 'crypto';
 import { resolveKernelContext } from './kernel/context-injector';
 import { promisify } from 'util';
 
@@ -35,6 +36,32 @@ const PORT = process.env.PORT || process.env.API_PORT || 3001;
 const REPOS_BASE_DIR = process.env.REPOS_PATH || '/tmp/repos';
 const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
 const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/tmp/published';
+const PREVIEW_TOKEN_SECRET = process.env.PREVIEW_TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+const PREVIEW_TOKEN_EXPIRY_MS = 72 * 60 * 60 * 1000; // 72 hours
+
+function signPreviewToken(jobId: string): string {
+  const payload = JSON.stringify({ jobId, exp: Date.now() + PREVIEW_TOKEN_EXPIRY_MS });
+  const payloadB64 = Buffer.from(payload).toString('base64url');
+  const sig = crypto.createHmac('sha256', PREVIEW_TOKEN_SECRET).update(payloadB64).digest('base64url');
+  return `${payloadB64}.${sig}`;
+}
+
+function verifyPreviewToken(token: string, requestedJobId: string): boolean {
+  const [payloadB64, sig] = token.split('.');
+  if (!payloadB64 || !sig) return false;
+  const expectedSig = crypto.createHmac('sha256', PREVIEW_TOKEN_SECRET).update(payloadB64).digest('base64url');
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) return false;
+  try {
+    const { jobId, exp } = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+    if (jobId !== requestedJobId) return false;
+    if (Date.now() > exp) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Ensure repos directory exists
 try {
@@ -121,14 +148,19 @@ async function bootstrap() {
   // Billing routes
   app.use('/api/billing', billingRouter);
 
-  // Serve static preview files (require auth token via query param or Bearer header)
+  // Serve static preview files (require signed preview token)
   app.use('/previews', (req: Request, res: Response, next) => {
-    const token = req.query.token as string | undefined;
-    const authHeader = req.headers.authorization;
-    if (token || authHeader?.startsWith('Bearer ')) {
-      return next();
+    const token = (req.query.token as string | undefined)
+      || req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required to view previews' });
     }
-    return res.status(401).json({ error: 'Authentication required to view previews' });
+    // Extract job ID from the URL path: /previews/:jobId/...
+    const jobId = req.path.split('/')[1];
+    if (!jobId || !verifyPreviewToken(token, jobId)) {
+      return res.status(403).json({ error: 'Invalid or expired preview token' });
+    }
+    return next();
   }, express.static(PREVIEWS_DIR));
 
   // Serve static published files
@@ -527,10 +559,13 @@ async function bootstrap() {
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', async (req: Request, res: Response) => {
     try {
-      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id } = req.body;
+      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id } = req.body;
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
       const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
 
+      if (!user_id) {
+        return res.status(401).json({ error: 'Authentication required: user_id is missing' });
+      }
       if (!prompt) {
         return res.status(400).json({ error: 'Missing required field: prompt' });
       }
@@ -636,6 +671,61 @@ async function bootstrap() {
       // Fire-and-forget: process the job asynchronously
       (async () => {
         try {
+          // ── Debug job routing ──
+          if (type === 'debug' && debug_job_id) {
+            await storage.updateTaskState(taskId, 'building');
+            await storage.logEvent(taskId, `[DEBUG] Debug job for failed task ${debug_job_id}`, 'info');
+
+            // Fetch error logs from the failed job
+            const failedEvents = await storage.getTaskEvents(debug_job_id);
+            const errorLogs = failedEvents
+              .filter((e) => e.severity === 'error' || e.severity === 'warning')
+              .map((e) => `[${e.severity}] ${e.event_message}`)
+              .join('\n');
+
+            await storage.logEvent(taskId, `[DEBUG] Collected ${failedEvents.length} events, ${errorLogs.length} chars of error context`, 'info');
+
+            // Route to Edge Function with debug system prompt
+            const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
+            const supabaseKey = process.env.SUPABASE_ANON_KEY;
+            if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
+            const edgeFunctionUrl = `${supabaseUrl}/functions/v1/generate-diff`;
+
+            const debugPrompt = `You are the VIBE Debug Agent. A previous build failed.\n\nOriginal prompt: "${prompt}"\n\nError logs from failed job:\n${errorLogs.slice(0, 8000)}\n\nDiagnose the root cause and generate a corrected version. Fix the errors while preserving the original intent.`;
+
+            const response = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: debugPrompt, model: resolvedModel, mode: 'html', system: 'debug' }),
+            });
+
+            const rawText = await response.text();
+            if (!response.ok) throw new Error(rawText || `Debug edge call returned ${response.status}`);
+
+            let data: { diff: string; usage?: { total_tokens: number } };
+            try {
+              data = JSON.parse(rawText);
+            } catch {
+              throw new Error(`Debug edge returned invalid JSON (${rawText.length} chars)`);
+            }
+
+            const injectSupabaseCredentials = (html: string): string =>
+              html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey!);
+
+            const previewDir = path.join(PREVIEWS_DIR, taskId);
+            fs.mkdirSync(previewDir, { recursive: true });
+            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(data.diff));
+            fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
+
+            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
+            const previewToken = signPreviewToken(taskId);
+            await storage.setPreviewUrl(taskId, `/previews/${taskId}/index.html?token=${previewToken}`);
+            await storage.logEvent(taskId, `[DEBUG] Fix generated (${data.usage?.total_tokens ?? '?'} tokens)`, 'success');
+            await storage.updateTaskState(taskId, 'completed');
+            await storage.logEvent(taskId, '[DEBUG] Debug job completed successfully', 'info');
+            return;
+          }
+
           await storage.updateTaskState(taskId, 'calling_llm');
           const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
           const supabaseKey = process.env.SUPABASE_ANON_KEY;
@@ -863,7 +953,8 @@ async function bootstrap() {
           fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
           fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
           const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
-          await storage.setPreviewUrl(taskId, `/previews/${taskId}/${firstPage}.html`);
+          const previewToken = signPreviewToken(taskId);
+          await storage.setPreviewUrl(taskId, `/previews/${taskId}/${firstPage}.html?token=${previewToken}`);
           await storage.logEvent(taskId, 'Preview generated', 'info');
           await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
           await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
@@ -1034,8 +1125,11 @@ async function bootstrap() {
       if (!preview_url) return res.status(400).json({ error: 'preview_url is required' });
       const task = await storage.getTask(req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
-      await storage.setPreviewUrl(req.params.id, preview_url);
-      res.json({ message: 'Preview URL updated successfully' });
+      const token = signPreviewToken(req.params.id);
+      const separator = preview_url.includes('?') ? '&' : '?';
+      const signedUrl = `${preview_url}${separator}token=${token}`;
+      await storage.setPreviewUrl(req.params.id, signedUrl);
+      res.json({ message: 'Preview URL updated successfully', preview_token: token });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to set preview URL' });
     }
