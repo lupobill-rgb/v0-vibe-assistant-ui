@@ -1,5 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
+// Edge Function version — bump on every deploy
+const EDGE_FUNCTION_VERSION = "1.4.0"; // 2026-03-12
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -18,9 +21,44 @@ Rules — apply to every output:
 5. No raw stack traces in user-facing output. Ever.
 6. OSS patterns first. No custom primitives when a standard approach exists.
 7. Every change must be scoped, minimal, and purposeful.
-8. Every generated HTML page must include: favicon, OG meta tags, working forms via Formspree, scroll animations, hover/active/focus states on all interactive elements.
-9. Never generate a form that submits nowhere. Use action="https://formspree.io/f/demo" on all forms.
-10. Output starts with <!DOCTYPE html> and nothing else. No explanation. No preamble. No markdown.`;
+8. Every generated HTML page must include: favicon, OG meta tags, working forms that POST to Supabase, scroll animations, hover/active/focus states on all interactive elements.
+9. Never generate a form that submits nowhere. All forms MUST POST to the project's Supabase instance using the injected SUPABASE_URL and SUPABASE_ANON_KEY (see SUPABASE FORM INTEGRATION below).
+10. Output starts with <!DOCTYPE html> and nothing else. No explanation. No preamble. No markdown.
+
+SUPABASE FORM INTEGRATION — required on every page with a form:
+Inject this script in <head> (the API server will replace __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ with real values):
+<script>
+window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";
+window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";
+</script>
+Every <form> must use this pattern instead of action="...formspree...":
+<form onsubmit="return vibeSubmitForm(event, this)">
+Add this script before </body>:
+<script>
+async function vibeSubmitForm(e, form) {
+  e.preventDefault();
+  const btn = form.querySelector('[type=submit]');
+  const origText = btn.textContent;
+  btn.textContent = 'Sending...'; btn.disabled = true;
+  const data = Object.fromEntries(new FormData(form));
+  try {
+    const res = await fetch(window.__VIBE_SUPABASE_URL__ + '/rest/v1/form_submissions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': window.__VIBE_SUPABASE_ANON_KEY__,
+        'Authorization': 'Bearer ' + window.__VIBE_SUPABASE_ANON_KEY__,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ project_id: document.body.dataset.projectId || '', page_route: location.pathname, form_name: form.dataset.formName || 'contact', payload: data })
+    });
+    if (res.ok) { form.reset(); const msg = form.querySelector('.form-success'); if (msg) msg.classList.remove('hidden'); }
+    else { alert('Something went wrong. Please try again.'); }
+  } catch { alert('Network error. Please try again.'); }
+  finally { btn.textContent = origText; btn.disabled = false; }
+  return false;
+}
+</script>`;
 
 // ── Mode-specific system prompts ─────────────────────────────────────────
 
@@ -73,11 +111,12 @@ document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
 Add to <style>: .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .animate-in { opacity: 1; transform: translateY(0); }
 Apply fade-up class to all cards, sections, and feature blocks.
 
-FORMS — every form must work:
-- Use <form action="https://formspree.io/f/demo" method="POST">
-- Include name, email fields minimum
-- Submit button with loading state via onclick="this.textContent='Sending...'"
-- Success message div hidden by default, shown on submit via JS
+FORMS — every form must work via Supabase (see SUPABASE FORM INTEGRATION in VIBE_SYSTEM_RULES):
+- Use <form onsubmit="return vibeSubmitForm(event, this)" data-form-name="contact">
+- Include name, email fields minimum with required attribute
+- Submit button type="submit" with descriptive text
+- Add <div class="form-success hidden">Thank you! We'll be in touch.</div> after the submit button
+- Include the vibeSubmitForm script before </body> (see VIBE_SYSTEM_RULES)
 
 STRUCTURE — include all sections:
 1. Sticky navbar: logo left, page nav center (mark current page active with aria-current="page"), CTA button right.
@@ -139,11 +178,12 @@ document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
 Add to <style>: .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .animate-in { opacity: 1; transform: translateY(0); }
 Apply fade-up class to all cards, feature blocks, testimonials, and stat numbers.
 
-FORMS — every form must work:
-- Use <form action="https://formspree.io/f/demo" method="POST">
-- Include name and email fields minimum
-- Submit button: onclick="this.textContent='Sending...';this.disabled=true"
-- Show success message after submit via JS
+FORMS — every form must work via Supabase (see SUPABASE FORM INTEGRATION in VIBE_SYSTEM_RULES):
+- Use <form onsubmit="return vibeSubmitForm(event, this)" data-form-name="contact">
+- Include name and email fields minimum with required attribute
+- Submit button type="submit" with descriptive text
+- Add <div class="form-success hidden">Thank you! We'll be in touch.</div> after the submit button
+- Include the vibeSubmitForm script before </body> (see VIBE_SYSTEM_RULES)
 
 STRUCTURE — include all sections in order:
 1. Sticky glassmorphism navbar: logo left, anchor links center, CTA right.
@@ -537,6 +577,7 @@ Rules:
         mode: mode || "diff",
         fallback_used: fallbackUsed,
         original_model: fallbackUsed ? originalModel : undefined,
+        version: EDGE_FUNCTION_VERSION,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

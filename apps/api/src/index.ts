@@ -121,8 +121,15 @@ async function bootstrap() {
   // Billing routes
   app.use('/api/billing', billingRouter);
 
-  // Serve static preview files
-  app.use('/previews', express.static(PREVIEWS_DIR));
+  // Serve static preview files (require auth token via query param or Bearer header)
+  app.use('/previews', (req: Request, res: Response, next) => {
+    const token = req.query.token as string | undefined;
+    const authHeader = req.headers.authorization;
+    if (token || authHeader?.startsWith('Bearer ')) {
+      return next();
+    }
+    return res.status(401).json({ error: 'Authentication required to view previews' });
+  }, express.static(PREVIEWS_DIR));
 
   // Serve static published files
   app.use('/published', express.static(PUBLISHED_DIR));
@@ -634,6 +641,10 @@ async function bootstrap() {
           const supabaseKey = process.env.SUPABASE_ANON_KEY;
           if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
 
+          // Replace Supabase placeholders in generated HTML so forms work
+          const injectSupabaseCredentials = (html: string): string =>
+            html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey);
+
           const edgeFunctionUrl = `${supabaseUrl}/functions/v1/generate-diff`;
           const headers = {
             'Authorization': `Bearer ${supabaseKey}`,
@@ -761,7 +772,7 @@ async function bootstrap() {
                 if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
                 const pageData = JSON.parse(pageRawText);
                 if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
-                fs.writeFileSync(path.join(previewDir, safeName + '.html'), pageData.diff);
+                fs.writeFileSync(path.join(previewDir, safeName + '.html'), injectSupabaseCredentials(pageData.diff));
                 return page;
               });
               pageNames = builtPages.map((p) => (p.route === '/' ? 'index' : p.route.slice(1)));
@@ -795,7 +806,7 @@ async function bootstrap() {
                   const repairText = await repair.text();
                   if (repair.ok) {
                     const repairData = JSON.parse(repairText);
-                    fs.writeFileSync(path.join(previewDir, `${fileName}.html`), repairData.diff);
+                    fs.writeFileSync(path.join(previewDir, `${fileName}.html`), injectSupabaseCredentials(repairData.diff));
                     if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
                   }
                 }
@@ -841,7 +852,7 @@ async function bootstrap() {
             }
 
             if (data.usage?.total_tokens) totalTokens += data.usage.total_tokens;
-            fs.writeFileSync(path.join(previewDir, 'index.html'), data.diff);
+            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(data.diff));
             pageNames = ['index'];
 
             // Save single-page HTML to jobs table so the frontend can read last_diff

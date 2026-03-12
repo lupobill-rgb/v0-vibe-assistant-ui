@@ -6,6 +6,7 @@ import { getPlatformSupabaseClient } from '../supabase/client';
  */
 export async function resolveKernelContext(userId: string, orgId: string): Promise<string> {
   const sb = getPlatformSupabaseClient();
+  console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}`);
 
   // 1. Find the user's team and role within this org
   const { data: membership } = await sb
@@ -22,6 +23,7 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
 
   // Fallback: if no team_member row, pick the first team in the org
   if (!teamId) {
+    console.log(`[KERNEL] No team_member row for user=${userId}, falling back to first org team`);
     const { data: fallbackTeam } = await sb
       .from('teams')
       .select('id, name')
@@ -66,6 +68,7 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
 
   // 4. Format and return
   const visibleTeams = teamId ? await resolveVisibleTeams(sb, teamId) : '';
+  console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
 
   return `TEAM CONTEXT:
 Org: ${companyName}
@@ -84,7 +87,11 @@ async function resolveVisibleTeams(supabase: ReturnType<typeof getPlatformSupaba
     .select('target_team_id, visibility_level, teams!target_team_id(name, data_scopes(scope_name, scope_type))')
     .eq('source_team_id', teamId)
     .neq('target_team_id', teamId); // exclude self
-  if (error || !data || data.length === 0) return '';
+  if (error) {
+    console.log(`[KERNEL] resolveVisibleTeams error for team=${teamId}: ${error.message}`);
+    return '';
+  }
+  if (!data || data.length === 0) return '';
   const lines = data.map((row: any) => {
     const name = row.teams?.name ?? row.target_team_id;
     const scopes = row.teams?.data_scopes?.map((s: any) => s.scope_name).join(', ') ?? 'unknown';

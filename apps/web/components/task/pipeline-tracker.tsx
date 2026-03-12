@@ -8,10 +8,12 @@ import {
   AlertCircle,
   ArrowLeft,
   ExternalLink,
+  Bug,
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { fetchJob, subscribeToJobUpdates, type Task, API_URL } from "@/lib/api"
+import { fetchJob, subscribeToJobUpdates, createJob, type Task, API_URL } from "@/lib/api"
 import type { AgentResultSummary } from "@/lib/api"
 import { extractFixes } from "@/lib/pipeline-utils"
 
@@ -103,6 +105,8 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
   const [expandedStep, setExpandedStep] = useState<string | null>(null)
   const [applyingFix, setApplyingFix] = useState<number | null>(null)
   const [fixResult, setFixResult] = useState<{ success: boolean; summary: string } | null>(null)
+  const [debugLoading, setDebugLoading] = useState(false)
+  const router = useRouter()
 
   // When parent passes task prop, just rebuild steps from it
   useEffect(() => {
@@ -180,6 +184,25 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
       setFixResult({ success: false, summary: 'Request failed — check network connection.' })
     } finally {
       setApplyingFix(null)
+    }
+  }
+
+  const triggerDebug = async () => {
+    if (!task?.project_id || !task?.user_prompt) return
+    setDebugLoading(true)
+    try {
+      const result = await createJob({
+        prompt: `[DEBUG] The previous job failed. Original prompt: "${task.user_prompt}". Diagnose the failure and generate a corrected version.`,
+        project_id: task.project_id,
+        base_branch: 'main',
+      })
+      if (result.task_id) {
+        router.push(`/building/${task.project_id}`)
+      }
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setDebugLoading(false)
     }
   }
 
@@ -286,12 +309,19 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
             <ExternalLink className="w-3.5 h-3.5" />
             View Pull Request
           </a>
+        ) : isTerminal && task?.execution_state === "failed" ? (
+          <button
+            onClick={triggerDebug}
+            disabled={debugLoading}
+            className="flex-1 flex items-center justify-center gap-2 h-9 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <Bug className="w-3.5 h-3.5" />
+            {debugLoading ? "Launching Debug Agent…" : "Debug & Retry"}
+          </button>
         ) : (
           <div className="flex-1 flex items-center justify-center h-9 text-xs text-muted-foreground font-mono">
             {isTerminal
-              ? task?.execution_state === "failed"
-                ? "Job failed"
-                : "Completed — no PR"
+              ? "Completed — no PR"
               : "Waiting for completion…"}
           </div>
         )}

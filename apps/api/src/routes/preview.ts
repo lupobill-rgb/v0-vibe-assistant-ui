@@ -3,8 +3,12 @@ import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import net from 'net';
 import { storage } from '../storage';
+import { extractTenantFromJwt } from '../middleware/tenant';
 
 const router = Router();
+
+// All preview routes require authenticated tenant context
+router.use(extractTenantFromJwt());
 
 const PREVIEWS_BASE_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
 
