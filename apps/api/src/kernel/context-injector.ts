@@ -77,7 +77,7 @@ Role: ${role}
 Data owned: ${ownedScopes.join(', ') || 'none'}
 Data readable: ${readScopes.join(', ') || 'none'}
 Brand voice: ${brandVoice}
-Primary color: ${primaryColor}
+Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
 Font: ${fontHeading}` + visibleTeams;
 }
 
