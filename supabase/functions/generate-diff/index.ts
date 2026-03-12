@@ -192,7 +192,7 @@ STRUCTURE — include all sections in order:
 4. Features: 3-column grid of fade-up cards, emoji/icon, bold title, description.
 5. Social proof: 3 testimonial cards with name, role, company, star rating ★★★★★.
 6. Stats: 3-4 large violet numbers with cyan accents, muted labels.
-7. Working form section: contact or signup form via Formspree.
+7. Working form section: contact or signup form via Supabase (see SUPABASE FORM INTEGRATION).
 8. Pricing: 3-tier pricing cards if relevant to prompt, with toggle monthly/annual.
 9. Final CTA: gradient strip, bold headline, single primary button.
 10. Footer: logo, nav columns, social links, copyright.
