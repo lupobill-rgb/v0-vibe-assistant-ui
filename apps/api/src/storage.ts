@@ -24,9 +24,10 @@ export type ExecutionState =
   | 'building'
   | 'validating'
   | 'ux'
-  | 'testing';
+  | 'testing'
+  | 'self-healing';
 
-export type EventSeverity = 'info' | 'error' | 'success' | 'warning';
+export type EventSeverity = 'info' | 'error' | 'success' | 'warning' | 'warn';
 
 // ── New hierarchical types ──
 
