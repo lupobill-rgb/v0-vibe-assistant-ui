@@ -4,12 +4,12 @@ import path from 'node:path';
 export const MAX_INITIAL_PAGES = 4;
 
 export const INITIAL_BUILD_BUDGETS = {
-  maxWallTimeMs: 180_000,
+  maxWallTimeMs: 420_000,
   maxModelCalls: 12,
   maxTokensOut: 12_000,
   stepDeadlinesMs: {
     planning: 20_000,
-    building: 120_000,
+    building: 360_000,
     validating: 120_000,
     security: 20_000,
     ux: 30_000,
