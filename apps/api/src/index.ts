@@ -136,11 +136,6 @@ async function bootstrap() {
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
 
-  // Add JSON body parser middleware for custom Express routes
-  // Note: NestJS has its own body parser for its controllers,
-  // but our custom routes added directly to the Express instance need this
-  app.use(express.json());
-
   // Supabase integration routes
   app.use('/api/supabase', supabaseRouter);
 
