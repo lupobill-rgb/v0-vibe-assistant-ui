@@ -98,20 +98,22 @@ export function ProjectCard({ project }: { project: Project }) {
         {/* Thumbnail */}
         <div className="relative aspect-[16/10] bg-secondary overflow-hidden">
           {previewHtml ? (
-            <iframe
-              srcDoc={previewHtml}
-              sandbox="allow-scripts"
-              title={`${project.name} preview`}
-              className="absolute border-none pointer-events-none"
-              style={{
-                top: 0,
-                left: 0,
-                width: "1280px",
-                height: "800px",
-                transform: "scale(0.25)",
-                transformOrigin: "top left",
-              }}
-            />
+            <div className="absolute inset-0 overflow-hidden">
+              <iframe
+                srcDoc={previewHtml}
+                sandbox="allow-scripts"
+                title={`${project.name} preview`}
+                className="absolute border-none pointer-events-none"
+                style={{
+                  top: 0,
+                  left: 0,
+                  width: "1280px",
+                  height: "800px",
+                  transform: "scale(0.25)",
+                  transformOrigin: "top left",
+                }}
+              />
+            </div>
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-[#4F8EFF]/20 via-[#A855F7]/20 to-[#EC4899]/20" />
           )}
