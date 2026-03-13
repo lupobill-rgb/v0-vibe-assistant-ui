@@ -136,14 +136,10 @@ async function bootstrap() {
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
 
-  // Supabase integration routes
-  app.use('/api/supabase', supabaseRouter);
-
-  // Preview deployment routes
-  app.use('/api/preview', previewRouter);
-
-  // Billing routes
-  app.use('/api/billing', billingRouter);
+  // Body parser for custom Express routes (NestJS handles its own controllers)
+  app.use('/api/supabase', express.json(), supabaseRouter);
+  app.use('/api/preview', express.json(), previewRouter);
+  app.use('/api/billing', express.json(), billingRouter);
 
   // Serve static preview files (require signed preview token)
   app.use('/previews', (req: Request, res: Response, next: NextFunction) => {
@@ -263,7 +259,7 @@ async function bootstrap() {
   // ── Project routes ──
 
   // POST /projects - Create a new project (team_id optional — falls back to default team)
-  app.post('/projects', async (req: Request, res: Response) => {
+  app.post('/projects', express.json(), async (req: Request, res: Response) => {
     try {
       const { name, team_id: rawTeamId, repository_url, template = 'empty' } = req.body;
 
@@ -335,7 +331,7 @@ async function bootstrap() {
   });
 
   // POST /projects/import/github - Import project from GitHub
-  app.post('/projects/import/github', async (req: Request, res: Response) => {
+  app.post('/projects/import/github', express.json(), async (req: Request, res: Response) => {
     try {
       const { repo_url, team_id: rawTeamId } = req.body;
 
@@ -482,7 +478,7 @@ async function bootstrap() {
   });
 
   // POST /projects/:id/publish - Publish a job's preview to the project
-  app.post('/projects/:id/publish', async (req: Request, res: Response) => {
+  app.post('/projects/:id/publish', express.json(), async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const { job_id } = req.body;
