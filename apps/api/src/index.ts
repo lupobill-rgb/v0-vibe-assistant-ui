@@ -846,7 +846,7 @@ async function bootstrap() {
           if (plan) {
             const currentPlan = plan;
             await runStep('building', async () => {
-              const builtPages = await mapWithConcurrency(currentPlan.pages, budgets.buildConcurrency, async (page, i) => {
+              const builtPages = await mapWithConcurrency(currentPlan.pages, 1, async (page, i) => {
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
                 await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
                 console.log('[KERNEL] page prompt prefix:', page.description.slice(0, 300));
