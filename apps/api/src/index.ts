@@ -745,15 +745,12 @@ async function bootstrap() {
           let fallbacks = 0;
           let retries = 0;
 
-          // Returns a plain object to avoid any Response body reuse issues.
-          // Each call reads the body exactly once and returns the text directly.
           const edgeCall = async (payload: any): Promise<{ text: string; ok: boolean; status: number }> => {
             const attempt = async (model: string): Promise<{ text: string; ok: boolean; status: number }> => {
-              const bodyStr = JSON.stringify({ ...payload, model });
               const res = await fetch(edgeFunctionUrl, {
                 method: 'POST',
                 headers: { ...headers },
-                body: bodyStr,
+                body: JSON.stringify({ ...payload, model }),
               });
               const text = await res.text();
               return { text, ok: res.ok, status: res.status };
