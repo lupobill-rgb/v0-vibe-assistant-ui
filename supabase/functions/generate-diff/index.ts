@@ -40,6 +40,7 @@ d) FORBIDDEN — never set background-color or color as raw hex values in CSS. O
 8. Every generated HTML page must include: favicon, OG meta tags, working forms that POST to Supabase, scroll animations, hover/active/focus states on all interactive elements.
 9. Never generate a form that submits nowhere. All forms MUST POST to the project's Supabase instance using the injected SUPABASE_URL and SUPABASE_ANON_KEY (see SUPABASE FORM INTEGRATION below).
 10. Output starts with <!DOCTYPE html> and nothing else. No explanation. No preamble. No markdown.
+11. ALL interactive elements (buttons, cards, nav links, dropdowns, filters, tabs, toggles, configurators) must have complete JavaScript event handlers — addEventListener or inline onclick. No placeholder comments. No TODO. No empty functions. Every handler must produce a visible change in the DOM when triggered (filter data, toggle visibility, update a value, navigate, submit). Zero non-functional interactive elements.
 
 SUPABASE FORM INTEGRATION — required on every page with a form:
 Inject this script in <head> (the API server will replace __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ with real values):
