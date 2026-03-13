@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
@@ -151,7 +151,7 @@ async function bootstrap() {
   app.use('/api/billing', billingRouter);
 
   // Serve static preview files (require signed preview token)
-  app.use('/previews', (req: Request, res: Response, next) => {
+  app.use('/previews', (req: Request, res: Response, next: NextFunction) => {
     const token = (req.query.token as string | undefined)
       || req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
