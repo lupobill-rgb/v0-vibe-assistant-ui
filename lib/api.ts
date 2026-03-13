@@ -1,3 +1,12 @@
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = typeof window !== 'undefined'
+  ? createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    )
+  : null
+
 // API base URL — must be set via NEXT_PUBLIC_API_URL for browser access
 const API_URL =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) ||
@@ -172,10 +181,11 @@ export async function createJob(params: {
   llm_provider?: string
   llm_model?: string
 }): Promise<{ task_id?: string; error?: string }> {
+  const user = supabase ? (await supabase.auth.getUser()).data.user : null
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',
     headers: baseHeaders(),
-    body: JSON.stringify(params),
+    body: JSON.stringify({ ...params, user_id: user?.id }),
   })
   return response.json()
 }

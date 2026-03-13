@@ -195,10 +195,11 @@ export async function createJob(params: {
   type?: 'standard' | 'debug'
   debug_job_id?: string
 }): Promise<{ task_id?: string; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser()
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',
     headers: baseHeaders(),
-    body: JSON.stringify(params),
+    body: JSON.stringify({ ...params, user_id: user?.id }),
   })
   return response.json()
 }
