@@ -596,15 +596,15 @@ async function bootstrap() {
         try {
           const pages = JSON.parse(priorJob.last_diff) as Array<{ name?: string; html?: string }>;
           if (Array.isArray(pages) && pages.length > 0) {
-            const validPages = pages.filter((p) => {
-              if (typeof p?.name !== 'string' || typeof p?.html !== 'string') return false;
-              const h = (p.html ?? '').trimStart();
-              return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
-            });
-            const existingPages = validPages
+            const existingPages = pages
+              .filter((p) => {
+                if (typeof p?.name !== 'string' || typeof p?.html !== 'string') return false;
+                const h = p.html.trimStart();
+                return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
+              })
               .map((p) => `PAGE: ${p.name}\n${p.html}`)
               .join('\n---\n');
-            if (validPages.length > 0 && existingPages) {
+            if (existingPages) {
               enrichedPrompt =
                 `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\n${enrichedPrompt}`;
             }
@@ -620,12 +620,14 @@ async function bootstrap() {
         try {
           const pages = JSON.parse(priorDiff) as { name: string; html: string }[];
           if (Array.isArray(pages) && pages.length > 0) {
-            const validPages = pages.filter((p) => {
-              const h = (p.html ?? '').trimStart();
-              return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
-            });
-            if (validPages.length > 0) {
-              const pagesContext = validPages.map(p => `PAGE: ${p.name}\n${p.html}`).join('\n---\n');
+            const pagesContext = pages
+              .filter((p) => {
+                const h = (p.html ?? '').trimStart();
+                return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
+              })
+              .map(p => `PAGE: ${p.name}\n${p.html}`)
+              .join('\n---\n');
+            if (pagesContext) {
               enrichedPrompt = `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
             }
           }
