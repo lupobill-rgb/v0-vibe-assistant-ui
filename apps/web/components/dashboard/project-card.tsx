@@ -98,16 +98,7 @@ export function ProjectCard({ project }: { project: Project }) {
         {/* Thumbnail */}
         <div className="relative aspect-[16/10] bg-secondary overflow-hidden">
           {previewHtml ? (
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                overflow: "hidden",
-              }}
-            >
+            <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
               <iframe
                 srcDoc={previewHtml}
                 sandbox="allow-scripts"
