@@ -745,29 +745,39 @@ async function bootstrap() {
           let fallbacks = 0;
           let retries = 0;
 
-          // Returns a plain object to avoid any Response body reuse issues.
-          // Each call reads the body exactly once and returns the text directly.
-          const edgeCall = async (payload: any): Promise<{ text: string; ok: boolean; status: number }> => {
-            const attempt = async (model: string): Promise<{ text: string; ok: boolean; status: number }> => {
+          const edgeCall = async (payload: any) => {
+            // Each attempt creates its own fresh body string to avoid body reuse
+            const attempt = async (model: string) => {
               const bodyStr = JSON.stringify({ ...payload, model });
-              const res = await fetch(edgeFunctionUrl, {
+              return fetch(edgeFunctionUrl, {
                 method: 'POST',
                 headers: { ...headers },
                 body: bodyStr,
               });
-              const text = await res.text();
-              return { text, ok: res.ok, status: res.status };
             };
-            let result = await attempt(payload.model || resolvedModel);
-            if (result.ok) return result;
-            if (/rate limit|overload|429/i.test(result.text)) {
+            // Helper: consume a response body and wrap it in a fresh Response
+            const consumeAndWrap = async (res: Response) => {
+              const bodyText = await res.text();
+              return new Response(bodyText, {
+                status: res.status,
+                statusText: res.statusText,
+                headers: res.headers,
+              });
+            };
+            let response = await attempt(payload.model || resolvedModel);
+            if (response.ok) return consumeAndWrap(response);
+            const text = await response.text();
+            if (/rate limit|overload|429/i.test(text)) {
               retries += 1;
               await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
-              result = await attempt(payload.model || resolvedModel);
-              if (result.ok) return result;
+              response = await attempt(payload.model || resolvedModel);
+              if (response.ok) return consumeAndWrap(response);
+              // Drain the failed retry body before making fallback attempt
+              await response.text();
               fallbacks += 1;
               const fallbackModel = (payload.model || resolvedModel) === 'claude' ? 'gpt' : 'claude';
-              return attempt(fallbackModel);
+              response = await attempt(fallbackModel);
+              return consumeAndWrap(response);
             }
             return result;
           };
