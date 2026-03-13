@@ -602,7 +602,7 @@ async function bootstrap() {
               .join('\n---\n');
             if (existingPages) {
               enrichedPrompt =
-                `EXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\n${enrichedPrompt}`;
+                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\n${enrichedPrompt}`;
             }
           }
         } catch {
@@ -617,7 +617,7 @@ async function bootstrap() {
           const pages = JSON.parse(priorDiff) as { name: string; html: string }[];
           if (Array.isArray(pages) && pages.length > 0) {
             const pagesContext = pages.map(p => `PAGE: ${p.name}\n${p.html}`).join('\n---\n');
-            enrichedPrompt = `EXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
+            enrichedPrompt = `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
           }
         } catch {
           // last_diff not valid JSON array — skip context injection
