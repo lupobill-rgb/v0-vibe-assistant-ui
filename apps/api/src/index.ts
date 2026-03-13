@@ -175,7 +175,7 @@ async function bootstrap() {
   // ── Organization routes ──
 
   // POST /orgs - Create a new organization
-  app.post('/orgs', async (req: Request, res: Response) => {
+  app.post('/orgs', express.json(), async (req: Request, res: Response) => {
     try {
       const { name, slug } = req.body;
       if (!name || !slug) {
@@ -215,7 +215,7 @@ async function bootstrap() {
   // ── Team routes ──
 
   // POST /orgs/:orgId/teams - Create a team within an organization
-  app.post('/orgs/:orgId/teams', async (req: Request, res: Response) => {
+  app.post('/orgs/:orgId/teams', express.json(), async (req: Request, res: Response) => {
     try {
       const { orgId } = req.params;
       const { name, slug } = req.body;
@@ -245,7 +245,7 @@ async function bootstrap() {
   });
 
   // POST /teams/:teamId/members - Add a team member
-  app.post('/teams/:teamId/members', async (req: Request, res: Response) => {
+  app.post('/teams/:teamId/members', express.json(), async (req: Request, res: Response) => {
     try {
       const { user_id, role } = req.body;
       if (!user_id) return res.status(400).json({ error: 'user_id is required' });
@@ -550,7 +550,7 @@ async function bootstrap() {
   // ── Job routes ──
 
   // POST /jobs - Create a new VIBE task
-  app.post('/jobs', async (req: Request, res: Response) => {
+  app.post('/jobs', express.json(), async (req: Request, res: Response) => {
     try {
       const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id } = req.body;
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
@@ -1017,7 +1017,7 @@ async function bootstrap() {
     }
   });
 
-  app.post('/jobs/:id/diff/apply', async (req: Request, res: Response) => {
+  app.post('/jobs/:id/diff/apply', express.json(), async (req: Request, res: Response) => {
     try {
       const { fix_index } = req.body as { fix_index?: number };
       if (fix_index === undefined || typeof fix_index !== 'number') {
@@ -1109,7 +1109,7 @@ async function bootstrap() {
 
   // ── Preview URL endpoint ──
 
-  app.post('/jobs/:id/preview', async (req: Request, res: Response) => {
+  app.post('/jobs/:id/preview', express.json(), async (req: Request, res: Response) => {
     try {
       const { preview_url } = req.body;
       if (!preview_url) return res.status(400).json({ error: 'preview_url is required' });
