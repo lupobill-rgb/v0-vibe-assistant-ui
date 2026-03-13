@@ -746,30 +746,38 @@ async function bootstrap() {
           let retries = 0;
 
           const edgeCall = async (payload: any) => {
-            const attempt = async (model: string) => fetch(edgeFunctionUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ ...payload, model }),
-            });
+            // Each attempt creates its own fresh body string to avoid body reuse
+            const attempt = async (model: string) => {
+              const bodyStr = JSON.stringify({ ...payload, model });
+              return fetch(edgeFunctionUrl, {
+                method: 'POST',
+                headers: { ...headers },
+                body: bodyStr,
+              });
+            };
+            // Helper: consume a response body and wrap it in a fresh Response
+            const consumeAndWrap = async (res: Response) => {
+              const bodyText = await res.text();
+              return new Response(bodyText, {
+                status: res.status,
+                statusText: res.statusText,
+                headers: res.headers,
+              });
+            };
             let response = await attempt(payload.model || resolvedModel);
-            if (response.ok) return response;
+            if (response.ok) return consumeAndWrap(response);
             const text = await response.text();
             if (/rate limit|overload|429/i.test(text)) {
               retries += 1;
               await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
               response = await attempt(payload.model || resolvedModel);
-              if (response.ok) return response;
+              if (response.ok) return consumeAndWrap(response);
+              // Drain the failed retry body before making fallback attempt
+              await response.text();
               fallbacks += 1;
               const fallbackModel = (payload.model || resolvedModel) === 'claude' ? 'gpt' : 'claude';
               response = await attempt(fallbackModel);
-              if (response.ok) return response;
-              // Fallback response body not yet consumed — wrap it so callers can read
-              const fallbackText = await response.text();
-              return new Response(fallbackText, {
-                status: response.status,
-                statusText: response.statusText,
-                headers: response.headers,
-              });
+              return consumeAndWrap(response);
             }
             // Non-rate-limit error: body already consumed by .text() above — re-wrap it
             return new Response(text, {
