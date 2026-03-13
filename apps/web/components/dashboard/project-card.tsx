@@ -102,10 +102,12 @@ export function ProjectCard({ project }: { project: Project }) {
               srcDoc={previewHtml}
               sandbox="allow-scripts"
               title={`${project.name} preview`}
-              className="absolute inset-0 border-none pointer-events-none"
+              className="absolute border-none pointer-events-none"
               style={{
-                width: "400%",
-                height: "400%",
+                top: 0,
+                left: 0,
+                width: "1280px",
+                height: "800px",
                 transform: "scale(0.25)",
                 transformOrigin: "top left",
               }}
