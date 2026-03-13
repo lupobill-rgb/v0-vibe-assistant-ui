@@ -800,6 +800,7 @@ async function bootstrap() {
             plan = await runStep('planning', async () => {
             await storage.logEvent(taskId, 'Generating plan...', 'info');
             console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
+            await storage.logEvent(taskId, `[KERNEL] enrichedPrompt prefix: ${enrichedPrompt.slice(0, 500)}`, 'info');
             const planResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'plan' });
             modelCalls += 1;
             if (!planResult.ok) throw new Error(planResult.text || `Plan call returned ${planResult.status}`);
@@ -921,6 +922,7 @@ async function bootstrap() {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
             console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
+            await storage.logEvent(taskId, `[KERNEL] enrichedPrompt prefix: ${enrichedPrompt.slice(0, 500)}`, 'info');
             const fallbackResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html', color_block: colorBlock });
             modelCalls += 1;
             if (!fallbackResult.ok) throw new Error(fallbackResult.text || `Edge Function returned ${fallbackResult.status}`);
