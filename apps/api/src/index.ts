@@ -779,12 +779,7 @@ async function bootstrap() {
               response = await attempt(fallbackModel);
               return consumeAndWrap(response);
             }
-            // Non-rate-limit error: body already consumed by .text() above — re-wrap it
-            return new Response(text, {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers,
-            });
+            return result;
           };
 
           // ── Step 1: Plan call — ask the LLM for a page plan ──
@@ -823,11 +818,10 @@ async function bootstrap() {
             plan = await runStep('planning', async () => {
             await storage.logEvent(taskId, 'Generating plan...', 'info');
             console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
-            const planResponse = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'plan' });
+            const planResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'plan' });
             modelCalls += 1;
-            const planRawText = await planResponse.text();
-            if (!planResponse.ok) throw new Error(planRawText || `Plan call returned ${planResponse.status}`);
-            const planData = JSON.parse(planRawText);
+            if (!planResult.ok) throw new Error(planResult.text || `Plan call returned ${planResult.status}`);
+            const planData = JSON.parse(planResult.text);
             if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
             // Edge Function returns { diff: "<JSON string with pages + color_scheme>", mode: "plan", usage }
             let planPages = typeof planData.diff === 'string'
@@ -869,7 +863,7 @@ async function bootstrap() {
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
                 await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
                 console.log('[KERNEL] page prompt prefix:', page.description.slice(0, 300));
-                const pageResponse = await edgeCall({
+                const pageResult = await edgeCall({
                   prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
                   mode: 'page',
@@ -877,9 +871,8 @@ async function bootstrap() {
                   color_block: colorBlock,
                 });
                 modelCalls += 1;
-                const pageRawText = await pageResponse.text();
-                if (!pageResponse.ok) throw new Error('Page ' + page.name + ' returned ' + pageResponse.status);
-                const pageData = JSON.parse(pageRawText);
+                if (!pageResult.ok) throw new Error('Page ' + page.name + ' returned ' + pageResult.status);
+                const pageData = JSON.parse(pageResult.text);
                 if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
                 fs.writeFileSync(path.join(previewDir, safeName + '.html'), injectSupabaseCredentials(pageData.diff));
                 return page;
@@ -910,11 +903,10 @@ async function bootstrap() {
                   repairAttempts += 1;
                   const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
                   const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
-                  const repair = await edgeCall({ prompt: `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`, model: resolvedModel, mode: 'page', color_block: colorBlock });
+                  const repairResult = await edgeCall({ prompt: `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`, model: resolvedModel, mode: 'page', color_block: colorBlock });
                   modelCalls += 1;
-                  const repairText = await repair.text();
-                  if (repair.ok) {
-                    const repairData = JSON.parse(repairText);
+                  if (repairResult.ok) {
+                    const repairData = JSON.parse(repairResult.text);
                     fs.writeFileSync(path.join(previewDir, `${fileName}.html`), injectSupabaseCredentials(repairData.diff));
                     if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
                   }
@@ -947,17 +939,16 @@ async function bootstrap() {
             // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
             console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
-            const response = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html', color_block: colorBlock });
+            const fallbackResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html', color_block: colorBlock });
             modelCalls += 1;
-            const rawText = await response.text();
-            if (!response.ok) throw new Error(rawText || `Edge Function returned ${response.status}`);
+            if (!fallbackResult.ok) throw new Error(fallbackResult.text || `Edge Function returned ${fallbackResult.status}`);
 
             let data: { diff: string; usage: { total_tokens: number } };
             try {
-              data = JSON.parse(rawText);
+              data = JSON.parse(fallbackResult.text);
             } catch {
-              console.error(`Job ${taskId} — raw response (${rawText.length} chars):`, rawText.slice(0, 500));
-              throw new Error(`Edge Function returned invalid JSON (${rawText.length} chars)`);
+              console.error(`Job ${taskId} — raw response (${fallbackResult.text.length} chars):`, fallbackResult.text.slice(0, 500));
+              throw new Error(`Edge Function returned invalid JSON (${fallbackResult.text.length} chars)`);
             }
 
             if (data.usage?.total_tokens) totalTokens += data.usage.total_tokens;
