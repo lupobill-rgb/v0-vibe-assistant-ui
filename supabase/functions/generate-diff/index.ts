@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.6.0"; // 2026-03-14 — fix chart init timing + single-file nav
+const EDGE_FUNCTION_VERSION = "1.7.0"; // 2026-03-14 — fix sidebar/topbar nav conflict + chart resize in hidden sections
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -289,12 +289,17 @@ SINGLE-FILE NAVIGATION — CRITICAL (nav breaks without this):
        document.querySelectorAll('[data-view]').forEach(s => s.style.display = 'none');
        document.getElementById(sectionId).style.display = 'block';
        document.querySelectorAll('[data-section]').forEach(a => a.classList.remove('active'));
-       e.currentTarget.classList.add('active');
+       document.querySelectorAll('[data-section="' + sectionId + '"]').forEach(a => a.classList.add('active'));
+       if (e.currentTarget) e.currentTarget.classList.add('active');
+       // Resize any Chart.js charts inside the newly visible section so they render correctly
+       if (typeof Chart !== 'undefined') {
+         Object.values(Chart.instances).forEach(c => c.resize());
+       }
      }
   5. Each section element must have the attribute data-view="true" for the selector to work.
   6. The first section (overview/main) should be visible by default; all others display:none.
 - This is the ONLY way nav works in a single-file dashboard. No exceptions.
-TOPBAR — inline styles only, no Tailwind on nav:
+TOPBAR — inline styles only, no Tailwind on <nav>:
 <nav style="position:sticky;top:0;z-index:50;background:var(--surface);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px;font-family:'Inter',sans-serif;">
   <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.1rem;color:var(--primary);">[BRAND]</span>
   <div style="display:flex;gap:28px;">
@@ -302,8 +307,11 @@ TOPBAR — inline styles only, no Tailwind on nav:
   </div>
   <a href="#" style="background:var(--primary);color:var(--bg);padding:9px 22px;border-radius:8px;font-weight:600;font-size:0.9rem;text-decoration:none;">Get Started</a>
 </nav>
-This is the COMPLETE nav. No other nav markup anywhere in the file.
-No Tailwind classes on any nav element. No ul/li. No hidden divs. No responsive variants.
+The dashboard has TWO navigation areas that must stay in sync:
+1. Sidebar nav (see SIDEBAR section above) — vertical nav links with emoji icons.
+2. Topbar nav — horizontal links shown above.
+Both MUST use the same onclick="switchView(event, 'view-name')" pattern with matching data-section attributes.
+Both MUST highlight the active link when a view is switched.
 KPI STAT CARDS — 4 cards:
 - Large metric number: Space Grotesk text-3xl font-bold text-[var(--text)]
 - Label: text-[var(--text)] opacity-60 text-sm mt-1
@@ -336,11 +344,14 @@ CHART INITIALIZATION — CRITICAL (charts break without this exact pattern):
       new Chart(ctx1, { /* config */ });
       const ctx2 = document.getElementById('chart2').getContext('2d');
       new Chart(ctx2, { /* config */ });
+      // After all charts are created, resize them in case any were in hidden sections
+      setTimeout(function() { Object.values(Chart.instances).forEach(c => c.resize()); }, 200);
     }
     initCharts();
   });
   </script>
 - This ensures Chart.js is fully loaded before any chart is created.
+- The trailing resize() call fixes charts inside initially hidden sections (display:none causes zero-size canvases).
 - Never put chart code inside DOMContentLoaded. Always use window 'load' + typeof Chart guard.
 CHART CODE MANDATE — non-negotiable:
 - Every page that contains a chart section MUST include:
