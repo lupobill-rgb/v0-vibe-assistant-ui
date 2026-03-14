@@ -748,28 +748,61 @@ async function bootstrap() {
           let fallbacks = 0;
           let retries = 0;
 
+          /** Classify whether an error is eligible for LLM fallback (429/529/timeout only). */
+          const isFallbackEligible = (status: number, text: string, err?: any): { eligible: boolean; reason: string } => {
+            if (status === 429) return { eligible: true, reason: `HTTP 429 rate limit` };
+            if (status === 529) return { eligible: true, reason: `HTTP 529 overloaded` };
+            if (err?.code === 'ETIMEDOUT') return { eligible: true, reason: `ETIMEDOUT` };
+            if (err?.type === 'request-timeout') return { eligible: true, reason: `request-timeout` };
+            return { eligible: false, reason: `HTTP ${status}: ${text.slice(0, 120)}` };
+          };
+
           const edgeCall = async (payload: any): Promise<{ text: string; ok: boolean; status: number }> => {
-            const attempt = async (model: string): Promise<{ text: string; ok: boolean; status: number }> => {
+            const model = payload.model || resolvedModel;
+            const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
               const res = await fetch(edgeFunctionUrl, {
                 method: 'POST',
                 headers: { ...headers },
-                body: JSON.stringify({ ...payload, model }),
+                body: JSON.stringify({ ...payload, model: m }),
               });
               const text = await res.text();
               return { text, ok: res.ok, status: res.status };
             };
-            let result = await attempt(payload.model || resolvedModel);
-            if (result.ok) return result;
-            if (/rate limit|overload|429/i.test(result.text)) {
-              retries += 1;
-              await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
-              result = await attempt(payload.model || resolvedModel);
-              if (result.ok) return result;
-              fallbacks += 1;
-              const fallbackModel = (payload.model || resolvedModel) === 'claude' ? 'gpt' : 'claude';
-              return attempt(fallbackModel);
+
+            let result: { text: string; ok: boolean; status: number };
+            try {
+              result = await attempt(model);
+            } catch (fetchErr: any) {
+              // Network-level error (timeout, DNS, etc.)
+              const classification = isFallbackEligible(0, '', fetchErr);
+              if (classification.eligible) {
+                console.log(`[LLM-FALLBACK] triggered on fetch error: ${classification.reason}`);
+                fallbacks += 1;
+                const fallbackModel = model === 'claude' ? 'gpt' : 'claude';
+                return attempt(fallbackModel);
+              }
+              throw fetchErr;
             }
-            return result;
+
+            if (result.ok) return result;
+
+            const classification = isFallbackEligible(result.status, result.text);
+            if (!classification.eligible) {
+              // Non-retriable error — fail fast, no fallback
+              return result;
+            }
+
+            // Retriable error — one retry with same model, then fallback
+            console.log(`[LLM-FALLBACK] retry triggered: ${classification.reason}`);
+            retries += 1;
+            await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
+            result = await attempt(model);
+            if (result.ok) return result;
+
+            console.log(`[LLM-FALLBACK] fallback triggered after retry: ${classification.reason}`);
+            fallbacks += 1;
+            const fallbackModel = model === 'claude' ? 'gpt' : 'claude';
+            return attempt(fallbackModel);
           };
 
           // ── Step 1: Plan call — ask the LLM for a page plan ──
