@@ -387,6 +387,17 @@ Output ONLY this JSON structure, no other text:
   "table": {"columns": string[]}
 }`;
 
+// ── Dashboard request detection ─────────────────────────────────────────
+const DASHBOARD_KEYWORDS = [
+  "dashboard", "analytics", "chart", "pipeline", "report",
+  "tracker", "metrics", "kpi", "visualiz",
+];
+
+function isDashboardRequest(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  return DASHBOARD_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -501,6 +512,38 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Unsupported model: " + model }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ── Direct dashboard fast path ──────────────────────────────────────
+    // Skip the planner entirely for dashboard requests — single Claude call
+    if (isDashboardRequest(prompt)) {
+      try {
+        const colorInjection = color_block
+          ? `\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
+          : "";
+        const directSystem = VIBE_SYSTEM_RULES + "\n" + DASHBOARD_SYSTEM + colorInjection;
+        const directResult = await PROVIDERS[model](directSystem, prompt, 8192);
+
+        // Validate we got HTML back
+        const html = directResult.diff.trim();
+        if (html.startsWith("<!DOCTYPE html>") || html.startsWith("<!doctype html>")) {
+          return new Response(
+            JSON.stringify({
+              diff: html,
+              usage: directResult.usage,
+              model,
+              mode: "dashboard",
+              fast_path: true,
+              version: EDGE_FUNCTION_VERSION,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        // If response isn't valid HTML, fall through to normal pipeline
+        console.warn("Dashboard fast path returned non-HTML, falling through to pipeline.");
+      } catch (fastPathErr) {
+        console.warn(`Dashboard fast path failed: ${(fastPathErr as Error).message}. Falling through to pipeline.`);
+      }
     }
 
     // Build system message: select prompt based on mode, always prepend VIBE_SYSTEM_RULES
