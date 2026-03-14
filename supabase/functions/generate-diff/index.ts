@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.7.1"; // 2026-03-14 — add concrete sidebar nav link examples to prevent href=pagename.html
+const EDGE_FUNCTION_VERSION = "1.7.2"; // 2026-03-14 — revert DASHBOARD_SYSTEM to pre-switchView version (91b1a1a)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,50 +272,19 @@ LAYOUT:
 - Content: 4 KPI cards top row (grid grid-cols-4 gap-6), then 2-col charts (grid grid-cols-2 gap-6), then full-width table
 SIDEBAR:
 - Brand logo/name top with var(--primary) accent color
-- Nav items use switchView — every sidebar link MUST follow this exact markup:
-  <a href="#" data-section="view-overview" onclick="switchView(event, 'view-overview')" class="nav-item">📊 Overview</a>
-  <a href="#" data-section="view-analytics" onclick="switchView(event, 'view-analytics')" class="nav-item">📈 Analytics</a>
-  NEVER use href="pagename.html" — those files do not exist.
-- Styling per nav item: padding px-4 py-3 rounded-xl, emoji icon + text label
+- Nav items: emoji icon + text label, padding px-4 py-3 rounded-xl
 - Active state: bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)] border-l-2 border-[var(--primary)]
 - User avatar + name + role pinned to bottom
-SINGLE-FILE NAVIGATION — CRITICAL (nav breaks without this):
-- Dashboards are served as a SINGLE HTML file. There are NO other files to link to.
-- NEVER use <a href="pagename.html"> — those files do not exist and links will 404.
-- Instead, use section-based navigation within the single file:
-  1. Each logical page/view is a <section id="view-overview">, <section id="view-analytics">, etc.
-  2. Only the active section is visible. All others are hidden with style="display:none".
-  3. Sidebar and topbar nav links use onclick handlers to switch sections:
-     <a href="#" data-section="view-overview" onclick="switchView(event, 'view-overview')">Overview</a>
-  4. Include this switchView function in the page script:
-     function switchView(e, sectionId) {
-       e.preventDefault();
-       document.querySelectorAll('[data-view]').forEach(s => s.style.display = 'none');
-       document.getElementById(sectionId).style.display = 'block';
-       document.querySelectorAll('[data-section]').forEach(a => a.classList.remove('active'));
-       document.querySelectorAll('[data-section="' + sectionId + '"]').forEach(a => a.classList.add('active'));
-       if (e.currentTarget) e.currentTarget.classList.add('active');
-       // Resize any Chart.js charts inside the newly visible section so they render correctly
-       if (typeof Chart !== 'undefined') {
-         Object.values(Chart.instances).forEach(c => c.resize());
-       }
-     }
-  5. Each section element must have the attribute data-view="true" for the selector to work.
-  6. The first section (overview/main) should be visible by default; all others display:none.
-- This is the ONLY way nav works in a single-file dashboard. No exceptions.
-TOPBAR — inline styles only, no Tailwind on <nav>:
+TOPBAR — inline styles only, no Tailwind on nav:
 <nav style="position:sticky;top:0;z-index:50;background:var(--surface);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px;font-family:'Inter',sans-serif;">
   <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.1rem;color:var(--primary);">[BRAND]</span>
   <div style="display:flex;gap:28px;">
-    [LINKS: <a href="#" data-section="view-name" onclick="switchView(event, 'view-name')" style="color:var(--text);opacity:0.7;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
+    [LINKS: <a href="pagename.html" style="color:var(--text);opacity:0.7;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
   </div>
   <a href="#" style="background:var(--primary);color:var(--bg);padding:9px 22px;border-radius:8px;font-weight:600;font-size:0.9rem;text-decoration:none;">Get Started</a>
 </nav>
-The dashboard has TWO navigation areas that must stay in sync:
-1. Sidebar nav (see SIDEBAR section above) — vertical nav links with emoji icons.
-2. Topbar nav — horizontal links shown above.
-Both MUST use the same onclick="switchView(event, 'view-name')" pattern with matching data-section attributes.
-Both MUST highlight the active link when a view is switched.
+This is the COMPLETE nav. No other nav markup anywhere in the file.
+No Tailwind classes on any nav element. No ul/li. No hidden divs. No responsive variants.
 KPI STAT CARDS — 4 cards:
 - Large metric number: Space Grotesk text-3xl font-bold text-[var(--text)]
 - Label: text-[var(--text)] opacity-60 text-sm mt-1
@@ -323,7 +292,8 @@ KPI STAT CARDS — 4 cards:
 - Detect domain from prompt and use contextually relevant metrics
 CHARTS — exactly 2 using Chart.js:
 - Give each canvas a unique explicit id: <canvas id="chart1"></canvas> and <canvas id="chart2"></canvas>
-- Reference charts by those exact ids: document.getElementById('chart1') and document.getElementById('chart2')
+- In the DOMContentLoaded script, reference charts by those exact ids:
+  document.getElementById('chart1') and document.getElementById('chart2')
 - Never use querySelector for chart canvas elements
 - Chart 1: Line or Bar for primary time-series (12 months of data)
 - Chart 2: Doughnut or Bar for breakdown/distribution
@@ -332,35 +302,10 @@ CHARTS — exactly 2 using Chart.js:
 - Chart container: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6
 - Grid lines: rgba(148,163,184,0.1). Chart background: transparent.
 - All data must be realistic and domain-appropriate. Zero lorem ipsum.
-CHART INITIALIZATION — CRITICAL (charts break without this exact pattern):
-- Do NOT use DOMContentLoaded for chart initialization — Chart.js CDN may not be loaded yet.
-- Use window.addEventListener('load', ...) which fires AFTER all scripts (including CDN) are loaded.
-- Additionally, wrap chart creation in a guard function. Use this EXACT pattern:
-  <script>
-  window.addEventListener('load', function() {
-    function initCharts() {
-      if (typeof Chart === 'undefined') {
-        setTimeout(initCharts, 100);
-        return;
-      }
-      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-      const ctx1 = document.getElementById('chart1').getContext('2d');
-      new Chart(ctx1, { /* config */ });
-      const ctx2 = document.getElementById('chart2').getContext('2d');
-      new Chart(ctx2, { /* config */ });
-      // After all charts are created, resize them in case any were in hidden sections
-      setTimeout(function() { Object.values(Chart.instances).forEach(c => c.resize()); }, 200);
-    }
-    initCharts();
-  });
-  </script>
-- This ensures Chart.js is fully loaded before any chart is created.
-- The trailing resize() call fixes charts inside initially hidden sections (display:none causes zero-size canvases).
-- Never put chart code inside DOMContentLoaded. Always use window 'load' + typeof Chart guard.
 CHART CODE MANDATE — non-negotiable:
 - Every page that contains a chart section MUST include:
   1. A <canvas> element with a unique id
-  2. A complete Chart.js configuration inside a window 'load' event listener with typeof Chart guard
+  2. A complete Chart.js configuration inside a DOMContentLoaded event listener
   3. At least 6 realistic data points — no empty datasets
   4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
@@ -383,7 +328,7 @@ INTERACTIVITY — vanilla JS only:
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'export.csv'; a.click();
-- Sidebar nav uses the same switchView(event, sectionId) function — active state updates automatically
+- Sidebar nav active state updates on click
 DATA SOURCE UI:
 - Supabase in prompt: show "Connect Supabase" button that opens a modal
 - CSV/Excel in prompt: show file upload input with FileReader parsing
@@ -397,7 +342,7 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - <meta name="description"> set
 - At least one button containing: Export, Connect, Upload, Get, or Start
 - Zero lorem ipsum in any field
-- All nav links must use onclick="switchView(event, 'view-name')" with data-section attributes. Never use href="filename.html" — this is a single-file dashboard and external file links will 404.
+- Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
 REPAIR RULE — chart preservation:
 - If repairing a page with chart sections, preserve all existing Chart.js code — do not remove or replace canvas elements.
 FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks.
