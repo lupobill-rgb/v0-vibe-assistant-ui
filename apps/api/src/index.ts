@@ -65,6 +65,11 @@ function verifyPreviewToken(token: string, requestedJobId: string): boolean {
   }
 }
 
+const DASHBOARD_KEYWORDS = /dashboard|analytics|chart|pipeline|report|tracker|metrics|kpi|visualiz/i;
+function isDashboardRequest(prompt: string): boolean {
+  return DASHBOARD_KEYWORDS.test(prompt);
+}
+
 // Ensure repos directory exists
 try {
   if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -809,6 +814,7 @@ async function bootstrap() {
           let plan: StarterSitePlan | null = null;
           let totalTokens = 0;
           let modelCalls = 0;
+          let pageNames: string[] = [];
           const startedAtMs = Date.now();
           const timeline: any[] = [];
 
@@ -836,6 +842,44 @@ async function bootstrap() {
               throw err;
             }
           };
+
+          // ── Dashboard fast path — bypass planner, single Edge call ──
+          if (isDashboardRequest(prompt)) {
+            try {
+              await storage.updateTaskState(taskId, 'building');
+              await storage.logEvent(taskId, 'Dashboard prompt detected — skipping planner, single-call fast path', 'info');
+              const dashColorBlock = buildColorBlock(resolveColorScheme(prompt));
+              const dashResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock });
+              modelCalls += 1;
+              if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
+              let dashData: { diff: string; usage?: { total_tokens: number } };
+              try {
+                dashData = JSON.parse(dashResult.text);
+              } catch {
+                throw new Error(`Dashboard edge returned invalid JSON (${dashResult.text.length} chars)`);
+              }
+              if (dashData.usage?.total_tokens) totalTokens += dashData.usage.total_tokens;
+              const previewDir = path.join(PREVIEWS_DIR, taskId);
+              fs.mkdirSync(previewDir, { recursive: true });
+              fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(dashData.diff));
+              pageNames = ['index'];
+              timeline.push({ step: 'dashboard-fast-path', startedAt: new Date(startedAtMs).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - startedAtMs, status: 'completed' });
+              await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: dashData.diff }]));
+              fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
+              fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
+              const previewToken = signPreviewToken(taskId);
+              await storage.setPreviewUrl(taskId, `/previews/${taskId}/index.html?token=${previewToken}`);
+              await storage.logEvent(taskId, 'Preview generated', 'info');
+              await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
+              await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
+              await storage.updateTaskState(taskId, 'completed');
+              await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
+              return;
+            } catch (dashErr: any) {
+              await storage.logEvent(taskId, `Dashboard fast path failed (${dashErr.message}), falling back to planner pipeline`, 'warning');
+              // Fall through to normal planner pipeline
+            }
+          }
 
           try {
             plan = await runStep('planning', async () => {
@@ -872,7 +916,6 @@ async function bootstrap() {
             console.warn(`Could not create preview directory: ${mkErr.message}`);
           }
 
-          let pageNames: string[] = [];
 
           // Resolve color scheme: from the plan if available, otherwise from the prompt
           const colorScheme = plan?.colorScheme ?? resolveColorScheme(prompt);
