@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.7.0"; // 2026-03-14 — fix sidebar/topbar nav conflict + chart resize in hidden sections
+const EDGE_FUNCTION_VERSION = "1.7.1"; // 2026-03-14 — add concrete sidebar nav link examples to prevent href=pagename.html
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,7 +272,11 @@ LAYOUT:
 - Content: 4 KPI cards top row (grid grid-cols-4 gap-6), then 2-col charts (grid grid-cols-2 gap-6), then full-width table
 SIDEBAR:
 - Brand logo/name top with var(--primary) accent color
-- Nav items: emoji icon + text label, padding px-4 py-3 rounded-xl
+- Nav items use switchView — every sidebar link MUST follow this exact markup:
+  <a href="#" data-section="view-overview" onclick="switchView(event, 'view-overview')" class="nav-item">📊 Overview</a>
+  <a href="#" data-section="view-analytics" onclick="switchView(event, 'view-analytics')" class="nav-item">📈 Analytics</a>
+  NEVER use href="pagename.html" — those files do not exist.
+- Styling per nav item: padding px-4 py-3 rounded-xl, emoji icon + text label
 - Active state: bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)] border-l-2 border-[var(--primary)]
 - User avatar + name + role pinned to bottom
 SINGLE-FILE NAVIGATION — CRITICAL (nav breaks without this):
