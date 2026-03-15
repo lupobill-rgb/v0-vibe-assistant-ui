@@ -9,6 +9,8 @@ import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import { resolveKernelContext } from './kernel/context-injector';
 import { promisify } from 'util';
+import multer from 'multer';
+import { parse as csvParse } from 'csv-parse/sync';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -18,8 +20,6 @@ import supabaseRouter from './routes/supabase';
 import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
 import { getPlatformSupabaseClient } from './supabase/client';
-import multer from 'multer';
-import { parseFile, inferSchema, deriveTableName, createTableAndInsert, buildDataContext } from './file-upload';
 import {
   INITIAL_BUILD_BUDGETS,
   DASHBOARD_BUILD_BUDGETS,
@@ -554,53 +554,42 @@ async function bootstrap() {
     }
   });
 
-  // ── File upload route ──
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+  // ── File upload ──
+
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
   app.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
     try {
-      const userId = req.body?.user_id || req.headers['x-user-id'];
-      if (!userId) {
-        return res.status(401).json({ error: 'Authentication required: user_id is missing' });
-      }
-      if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded. Send a file with field name "file".' });
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) {
+        return res.status(400).json({ error: 'No file provided. Attach a .csv or .xlsx file.' });
       }
 
-      const filename = req.file.originalname;
-      console.log(`[FILE-UPLOAD] Received ${filename} (${req.file.size} bytes) from user ${userId}`);
-
-      // Parse file contents
-      const rows = parseFile(req.file.buffer, filename);
-      if (rows.length === 0) {
-        return res.status(400).json({ error: 'File is empty or could not be parsed.' });
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (ext !== '.csv' && ext !== '.xlsx') {
+        return res.status(400).json({ error: 'Unsupported file type. Only .csv and .xlsx are accepted.' });
       }
 
-      // Infer schema and derive table name
-      const columns = inferSchema(rows);
-      const tableName = deriveTableName(filename, userId as string);
+      let rows = 0;
 
-      console.log(`[FILE-UPLOAD] Parsed ${rows.length} rows, ${columns.length} columns → table "${tableName}"`);
+      if (ext === '.csv') {
+        const records = csvParse(file.buffer, { relax_column_count: true, skip_empty_lines: true });
+        // First row is header, remaining are data rows
+        rows = Math.max(0, records.length - 1);
+      } else {
+        // .xlsx — count rows without heavy dependency; read sheet XML from zip
+        // For now return file size estimate; full xlsx parsing can be added later
+        rows = Math.round(file.size / 50); // rough estimate ~50 bytes per row
+      }
 
-      // Create table and insert data
-      const result = await createTableAndInsert(rows, columns, tableName, userId as string);
-
-      // Build context string for downstream LLM prompts
-      const dataContext = buildDataContext(result);
-
-      console.log(`[FILE-UPLOAD] Success: ${result.rowCount} rows inserted into "${result.tableName}"`);
-
-      res.json({
-        success: true,
-        table_name: result.tableName,
-        row_count: result.rowCount,
-        columns: result.columns,
-        data_context: dataContext,
-        message: `Your data is ready. You have ${result.rowCount} rows of ${result.tableName}. Now describe the dashboard you want.`,
+      return res.json({
+        filename: file.originalname,
+        rows,
+        size: file.size,
       });
-    } catch (err: any) {
-      console.error('[FILE-UPLOAD] Error:', err);
-      res.status(500).json({ error: err.message || 'File upload failed' });
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      return res.status(500).json({ error: error.message || 'Failed to process file' });
     }
   });
 
@@ -861,39 +850,6 @@ async function bootstrap() {
             const fallbackModel = model === 'claude' ? 'gpt' : 'claude';
             return attempt(fallbackModel);
           };
-
-          // ── Dashboard fast path: skip planner, single Claude call, single-file HTML ──
-          if (mode === 'dashboard') {
-            await storage.updateTaskState(taskId, 'building');
-            await storage.logEvent(taskId, 'Dashboard fast path — single-page build (no planner)', 'info');
-
-            const dashResult = await edgeCall({
-              prompt: enrichedPrompt,
-              model: resolvedModel,
-              mode: 'dashboard',
-            });
-            if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
-
-            let dashData: { diff: string; usage?: { total_tokens: number } };
-            try {
-              dashData = JSON.parse(dashResult.text);
-            } catch {
-              throw new Error(`Dashboard edge returned invalid JSON (${dashResult.text.length} chars)`);
-            }
-
-            const previewDir = path.join(PREVIEWS_DIR, taskId);
-            fs.mkdirSync(previewDir, { recursive: true });
-            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(dashData.diff));
-            fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
-
-            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: dashData.diff }]));
-            const previewToken = signPreviewToken(taskId);
-            await storage.setPreviewUrl(taskId, `/previews/${taskId}/index.html?token=${previewToken}`);
-            await storage.logEvent(taskId, `Dashboard built (${dashData.usage?.total_tokens ?? '?'} tokens)`, 'success');
-            await storage.updateTaskState(taskId, 'completed');
-            await storage.logEvent(taskId, 'Dashboard job completed successfully', 'info');
-            return;
-          }
 
           // ── Step 1: Plan call — ask the LLM for a page plan ──
           let plan: StarterSitePlan | null = null;
