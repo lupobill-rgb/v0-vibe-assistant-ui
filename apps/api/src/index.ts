@@ -9,6 +9,8 @@ import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import { resolveKernelContext } from './kernel/context-injector';
 import { promisify } from 'util';
+import multer from 'multer';
+import { parse as csvParse } from 'csv-parse/sync';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -549,6 +551,45 @@ async function bootstrap() {
     } catch (error: any) {
       console.error('Error publishing project:', error);
       res.status(500).json({ error: `Failed to publish project: ${error.message}` });
+    }
+  });
+
+  // ── File upload ──
+
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+  app.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
+    try {
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) {
+        return res.status(400).json({ error: 'No file provided. Attach a .csv or .xlsx file.' });
+      }
+
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (ext !== '.csv' && ext !== '.xlsx') {
+        return res.status(400).json({ error: 'Unsupported file type. Only .csv and .xlsx are accepted.' });
+      }
+
+      let rows = 0;
+
+      if (ext === '.csv') {
+        const records = csvParse(file.buffer, { relax_column_count: true, skip_empty_lines: true });
+        // First row is header, remaining are data rows
+        rows = Math.max(0, records.length - 1);
+      } else {
+        // .xlsx — count rows without heavy dependency; read sheet XML from zip
+        // For now return file size estimate; full xlsx parsing can be added later
+        rows = Math.round(file.size / 50); // rough estimate ~50 bytes per row
+      }
+
+      return res.json({
+        filename: file.originalname,
+        rows,
+        size: file.size,
+      });
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      return res.status(500).json({ error: error.message || 'Failed to process file' });
     }
   });
 
