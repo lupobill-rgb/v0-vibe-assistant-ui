@@ -199,8 +199,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
 
-  const handleEdit = async () => {
-    if (!editInput.trim() || !diff || isEditing) return
+  const handleEdit = async (promptOverride?: string) => {
+    const prompt = promptOverride || editInput.trim()
+    if (!prompt || !diff || isEditing) return
     setIsEditing(true)
     try {
       const currentPages = parseDiff(diff)
@@ -212,7 +213,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
-          prompt: editInput,
+          prompt,
           context: currentHtml,
           mode: 'edit',
         }),
@@ -380,7 +381,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       </div>
       <div className="w-[340px] flex-shrink-0 flex flex-col bg-slate-900">
         {/* ── PROGRESS SECTION ── */}
-        <div className="flex-shrink-0 border-b border-slate-700">
+        <div className="min-h-0 max-h-[45vh] overflow-hidden border-b border-slate-700">
           <PipelineTracker taskId={id} task={task as any} />
           {isComplete && (
             <div className="px-4 pb-3">
@@ -496,16 +497,16 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             <input
               value={editPrompt}
               onChange={(e) => setEditPrompt(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(""); handleEdit(p); } }}
               placeholder="e.g. Make the hero section taller"
-              disabled={!isComplete}
+              disabled={!isComplete || isEditing}
               className="flex-1 h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
             />
             <button
-              onClick={() => { if (editPrompt.trim()) { console.log("[VIBE] Edit request:", editPrompt, "for page:", activeFile); setEditPrompt(""); } }}
-              disabled={!editPrompt.trim() || !isComplete}
+              onClick={() => { if (editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(""); handleEdit(p); } }}
+              disabled={!editPrompt.trim() || !isComplete || isEditing}
               className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
-              Apply
+              {isEditing ? '...' : 'Apply'}
             </button>
           </div>
         </div>
