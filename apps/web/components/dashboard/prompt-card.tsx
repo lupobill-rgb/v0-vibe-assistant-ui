@@ -58,7 +58,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
 
     try {
       const xhr = new XMLHttpRequest()
-      const result = await new Promise<{ rows: number }>((resolve, reject) => {
+      const result = await new Promise<{ upload_id?: string; row_count?: number; rows?: number }>((resolve, reject) => {
         xhr.upload.addEventListener("progress", (ev) => {
           if (ev.lengthComputable) {
             const pct = Math.round((ev.loaded / ev.total) * 100)
