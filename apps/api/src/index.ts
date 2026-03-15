@@ -602,8 +602,37 @@ async function bootstrap() {
         });
       }
 
-      // Keep a sample (first 200 rows) to inject into LLM context
-      const SAMPLE_LIMIT = 200;
+      // Derive a safe table name from the filename
+      const tableName = path.basename(file.originalname, ext)
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_')
+        .replace(/_{2,}/g, '_')
+        .replace(/^_|_$/g, '') || 'uploaded_data';
+
+      // Infer column types from first 50 rows
+      const inferType = (val: unknown): string => {
+        if (val === null || val === undefined || val === '') return 'string';
+        if (typeof val === 'number') return 'number';
+        if (typeof val === 'boolean') return 'boolean';
+        const s = String(val);
+        if (!isNaN(Number(s)) && s.trim() !== '') return 'number';
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return 'date';
+        return 'string';
+      };
+      const columnSchema: Record<string, string> = {};
+      for (const col of columns) {
+        const sample = allRows.slice(0, 50).map(r => r[col]);
+        const types = sample.filter(v => v !== null && v !== undefined && v !== '').map(inferType);
+        columnSchema[col] = types.length > 0
+          ? (types.find(t => t === 'number') && types.every(t => t === 'number') ? 'number'
+            : types.every(t => t === 'date') ? 'date'
+            : types.every(t => t === 'boolean') ? 'boolean'
+            : 'string')
+          : 'string';
+      }
+
+      // Keep first 20 rows as the sample injected into LLM context
+      const SAMPLE_LIMIT = 20;
       const sampleData = allRows.slice(0, SAMPLE_LIMIT);
 
       // Persist to Supabase user_uploads table
@@ -614,7 +643,9 @@ async function bootstrap() {
           user_id: userId,
           project_id: req.body?.project_id || null,
           filename: file.originalname,
+          table_name: tableName,
           columns,
+          column_schema: columnSchema,
           sample_data: sampleData,
           row_count: rowCount,
         })
@@ -626,12 +657,14 @@ async function bootstrap() {
         return res.status(500).json({ error: `Failed to persist upload: ${insertError.message}` });
       }
 
-      console.log(`[UPLOAD] Persisted upload ${inserted.id} — ${file.originalname}, ${rowCount} rows, ${columns.length} cols`);
+      console.log(`[UPLOAD] Persisted upload ${inserted.id} — ${tableName}, ${rowCount} rows, ${columns.length} cols`);
 
       return res.json({
         upload_id: inserted.id,
         filename: file.originalname,
+        table_name: tableName,
         columns,
+        column_schema: columnSchema,
         row_count: rowCount,
         size: file.size,
       });
@@ -678,39 +711,32 @@ async function bootstrap() {
         }
       }
 
-      // Upload context injection: if user attached a file, inject schema + sample data
+      // Upload context injection: if user attached a file, inject table_name + schema + sample rows
       if (upload_id) {
         const { data: uploadRow, error: uploadErr } = await getPlatformSupabaseClient()
           .from('user_uploads')
-          .select('filename, columns, sample_data, row_count')
+          .select('filename, table_name, columns, column_schema, sample_data, row_count')
           .eq('id', upload_id)
           .single();
 
         if (uploadErr) {
           console.warn(`[UPLOAD] Failed to fetch upload ${upload_id}: ${uploadErr.message}`);
         } else if (uploadRow) {
-          // Also link the upload to this project if it wasn't set at upload time
+          // Link the upload to this project if it wasn't set at upload time
           if (project_id) {
             await getPlatformSupabaseClient()
               .from('user_uploads')
               .update({ project_id })
               .eq('id', upload_id);
           }
-          const cols = (uploadRow.columns as string[]).join(', ');
+          const schema = uploadRow.column_schema as Record<string, string>;
+          const schemaStr = Object.entries(schema).map(([k, v]) => `${k} (${v})`).join(', ');
           const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
-          const samplePreview = JSON.stringify(sampleRows.slice(0, 10), null, 2);
-          const dataContext = `\nUPLOADED DATA (use this data in your output):
-File: ${uploadRow.filename}
-Columns: ${cols}
-Total rows: ${uploadRow.row_count}
-Sample data (first ${Math.min(10, sampleRows.length)} rows):
-${samplePreview}
-Full dataset (${Math.min(sampleRows.length, 200)} rows) available as JSON:
-${JSON.stringify(sampleRows)}
+          const sampleJson = JSON.stringify(sampleRows, null, 2);
 
-INSTRUCTIONS: Build the dashboard/visualization using this real data. Embed the data directly in the HTML as a JavaScript variable. Do not use placeholder or mock data.\n`;
+          const dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}. Here are sample rows (first ${sampleRows.length} rows):\n${sampleJson}\nBuild the dashboard using this real data. Embed the data directly in the HTML as a JavaScript variable. Do not use placeholder or mock data.\n\n`;
           enrichedPrompt = dataContext + enrichedPrompt;
-          console.log(`[UPLOAD] Injected upload context for ${uploadRow.filename} (${uploadRow.row_count} rows, ${(uploadRow.columns as string[]).length} cols)`);
+          console.log(`[UPLOAD] Injected context — table=${uploadRow.table_name}, ${uploadRow.row_count} rows, schema=${schemaStr}`);
         }
       }
 
