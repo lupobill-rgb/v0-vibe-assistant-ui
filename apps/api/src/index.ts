@@ -635,6 +635,39 @@ async function bootstrap() {
       const SAMPLE_LIMIT = 20;
       const sampleData = allRows.slice(0, SAMPLE_LIMIT);
 
+      // Compute real aggregates from ALL rows so dashboards show correct totals
+      const aggregatedStats: Record<string, unknown> = { totalRows: rowCount };
+      const columnStats: Record<string, unknown> = {};
+      for (const col of columns) {
+        const vals = allRows.map(r => r[col]);
+        const nonNull = vals.filter(v => v !== null && v !== undefined && v !== '');
+        const colType = columnSchema[col];
+        const stat: Record<string, unknown> = { nonNullCount: nonNull.length, nullCount: vals.length - nonNull.length };
+
+        if (colType === 'number') {
+          const nums = nonNull.map(v => Number(v)).filter(n => !isNaN(n));
+          if (nums.length > 0) {
+            const sum = nums.reduce((a, b) => a + b, 0);
+            stat.sum = Math.round(sum * 100) / 100;
+            stat.min = Math.min(...nums);
+            stat.max = Math.max(...nums);
+            stat.mean = Math.round((sum / nums.length) * 100) / 100;
+          }
+        } else {
+          // Distinct value counts (cap at 50 most frequent to keep payload sane)
+          const freq: Record<string, number> = {};
+          for (const v of nonNull) {
+            const key = String(v);
+            freq[key] = (freq[key] || 0) + 1;
+          }
+          const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+          stat.distinctCount = sorted.length;
+          stat.topValues = Object.fromEntries(sorted.slice(0, 50));
+        }
+        columnStats[col] = stat;
+      }
+      aggregatedStats.columns = columnStats;
+
       // Persist to Supabase user_uploads table
       const sb = getPlatformSupabaseClient();
       const { data: inserted, error: insertError } = await sb
@@ -648,6 +681,7 @@ async function bootstrap() {
           column_schema: columnSchema,
           sample_data: sampleData,
           row_count: rowCount,
+          aggregated_stats: aggregatedStats,
         })
         .select('id')
         .single();
@@ -715,7 +749,7 @@ async function bootstrap() {
       if (upload_id) {
         const { data: uploadRow, error: uploadErr } = await getPlatformSupabaseClient()
           .from('user_uploads')
-          .select('original_filename, table_name, columns, column_schema, sample_data, row_count')
+          .select('original_filename, table_name, columns, column_schema, sample_data, row_count, aggregated_stats')
           .eq('id', upload_id)
           .single();
 
@@ -731,12 +765,31 @@ async function bootstrap() {
           }
           const schema = uploadRow.column_schema as Record<string, string>;
           const schemaStr = Object.entries(schema).map(([k, v]) => `${k} (${v})`).join(', ');
-          const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
-          const sampleJson = JSON.stringify(sampleRows, null, 2);
+          const stats = uploadRow.aggregated_stats as Record<string, unknown> | null;
 
-          const dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}. Here are sample rows (first ${sampleRows.length} rows):\n${sampleJson}\nBuild the dashboard using this real data. Embed the data directly in the HTML as a JavaScript variable. Do not use placeholder or mock data.\n\n`;
+          let dataContext: string;
+          if (stats && Object.keys(stats).length > 0) {
+            // Use real aggregated stats — correct totals, distributions, min/max/mean
+            const statsJson = JSON.stringify(stats, null, 2);
+            const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
+            const sampleJson = JSON.stringify(sampleRows.slice(0, 5), null, 2);
+            dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}.
+
+AGGREGATED STATS (computed from ALL ${uploadRow.row_count} rows — use these for totals, charts, and summaries):
+${statsJson}
+
+SAMPLE ROWS (first 5, for format reference only — do NOT use these for totals or counts):
+${sampleJson}
+
+Build the dashboard using the AGGREGATED STATS above for all numbers, totals, charts, and breakdowns. Embed the aggregated data directly in the HTML as JavaScript variables. Do not use placeholder or mock data. Do not compute totals from sample rows.\n\n`;
+          } else {
+            // Fallback for uploads created before aggregated_stats existed
+            const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
+            const sampleJson = JSON.stringify(sampleRows, null, 2);
+            dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}. Here are sample rows (first ${sampleRows.length} rows):\n${sampleJson}\nBuild the dashboard using this real data. Embed the data directly in the HTML as a JavaScript variable. Do not use placeholder or mock data.\n\n`;
+          }
           enrichedPrompt = dataContext + enrichedPrompt;
-          console.log(`[UPLOAD] Injected context — table=${uploadRow.table_name}, ${uploadRow.row_count} rows, schema=${schemaStr}`);
+          console.log(`[UPLOAD] Injected context — table=${uploadRow.table_name}, ${uploadRow.row_count} rows, schema=${schemaStr}, hasAggregates=${!!stats}`);
         }
       }
 
