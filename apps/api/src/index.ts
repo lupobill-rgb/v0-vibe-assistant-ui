@@ -640,9 +640,9 @@ async function bootstrap() {
       const { data: inserted, error: insertError } = await sb
         .from('user_uploads')
         .insert({
-          user_id: userId,
+          owner_id: userId,
           project_id: req.body?.project_id || null,
-          filename: file.originalname,
+          original_filename: file.originalname,
           table_name: tableName,
           columns,
           column_schema: columnSchema,
@@ -715,7 +715,7 @@ async function bootstrap() {
       if (upload_id) {
         const { data: uploadRow, error: uploadErr } = await getPlatformSupabaseClient()
           .from('user_uploads')
-          .select('filename, table_name, columns, column_schema, sample_data, row_count')
+          .select('original_filename, table_name, columns, column_schema, sample_data, row_count')
           .eq('id', upload_id)
           .single();
 
