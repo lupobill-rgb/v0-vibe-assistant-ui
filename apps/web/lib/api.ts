@@ -194,6 +194,7 @@ export async function createJob(params: {
   llm_model?: string
   type?: 'standard' | 'debug'
   debug_job_id?: string
+  upload_id?: string
 }): Promise<{ task_id?: string; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser()
   const response = await fetch(`${API_URL}/jobs`, {

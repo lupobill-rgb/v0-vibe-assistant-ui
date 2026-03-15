@@ -565,26 +565,74 @@ async function bootstrap() {
         return res.status(400).json({ error: 'No file provided. Attach a .csv or .xlsx file.' });
       }
 
+      const userId = req.body?.user_id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required: user_id is missing' });
+      }
+
       const ext = path.extname(file.originalname).toLowerCase();
       if (ext !== '.csv' && ext !== '.xlsx') {
         return res.status(400).json({ error: 'Unsupported file type. Only .csv and .xlsx are accepted.' });
       }
 
-      let rows = 0;
+      let columns: string[] = [];
+      let allRows: Record<string, unknown>[] = [];
+      let rowCount = 0;
 
       if (ext === '.csv') {
-        const records = csvParse(file.buffer, { relax_column_count: true, skip_empty_lines: true });
-        // First row is header, remaining are data rows
-        rows = Math.max(0, records.length - 1);
+        const records = csvParse(file.buffer, {
+          relax_column_count: true,
+          skip_empty_lines: true,
+          columns: true,          // first row becomes keys
+          cast: true,             // auto-cast numbers/booleans
+        }) as Record<string, unknown>[];
+        rowCount = records.length;
+        columns = records.length > 0 ? Object.keys(records[0]) : [];
+        allRows = records;
       } else {
-        // .xlsx — count rows without heavy dependency; read sheet XML from zip
-        // For now return file size estimate; full xlsx parsing can be added later
-        rows = Math.round(file.size / 50); // rough estimate ~50 bytes per row
+        // .xlsx — rough estimate until xlsx parsing is added
+        rowCount = Math.round(file.size / 50);
+        return res.json({
+          upload_id: null,
+          filename: file.originalname,
+          columns: [],
+          row_count: rowCount,
+          size: file.size,
+          note: 'XLSX data preview not yet supported. CSV is recommended.',
+        });
       }
 
+      // Keep a sample (first 200 rows) to inject into LLM context
+      const SAMPLE_LIMIT = 200;
+      const sampleData = allRows.slice(0, SAMPLE_LIMIT);
+
+      // Persist to Supabase user_uploads table
+      const sb = getPlatformSupabaseClient();
+      const { data: inserted, error: insertError } = await sb
+        .from('user_uploads')
+        .insert({
+          user_id: userId,
+          project_id: req.body?.project_id || null,
+          filename: file.originalname,
+          columns,
+          sample_data: sampleData,
+          row_count: rowCount,
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        console.error('[UPLOAD] Supabase insert failed:', insertError.message);
+        return res.status(500).json({ error: `Failed to persist upload: ${insertError.message}` });
+      }
+
+      console.log(`[UPLOAD] Persisted upload ${inserted.id} — ${file.originalname}, ${rowCount} rows, ${columns.length} cols`);
+
       return res.json({
+        upload_id: inserted.id,
         filename: file.originalname,
-        rows,
+        columns,
+        row_count: rowCount,
         size: file.size,
       });
     } catch (error: any) {
@@ -598,7 +646,7 @@ async function bootstrap() {
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', express.json(), async (req: Request, res: Response) => {
     try {
-      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id } = req.body;
+      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id, upload_id } = req.body;
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
       const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
 
@@ -629,6 +677,43 @@ async function bootstrap() {
           enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
         }
       }
+
+      // Upload context injection: if user attached a file, inject schema + sample data
+      if (upload_id) {
+        const { data: uploadRow, error: uploadErr } = await getPlatformSupabaseClient()
+          .from('user_uploads')
+          .select('filename, columns, sample_data, row_count')
+          .eq('id', upload_id)
+          .single();
+
+        if (uploadErr) {
+          console.warn(`[UPLOAD] Failed to fetch upload ${upload_id}: ${uploadErr.message}`);
+        } else if (uploadRow) {
+          // Also link the upload to this project if it wasn't set at upload time
+          if (project_id) {
+            await getPlatformSupabaseClient()
+              .from('user_uploads')
+              .update({ project_id })
+              .eq('id', upload_id);
+          }
+          const cols = (uploadRow.columns as string[]).join(', ');
+          const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
+          const samplePreview = JSON.stringify(sampleRows.slice(0, 10), null, 2);
+          const dataContext = `\nUPLOADED DATA (use this data in your output):
+File: ${uploadRow.filename}
+Columns: ${cols}
+Total rows: ${uploadRow.row_count}
+Sample data (first ${Math.min(10, sampleRows.length)} rows):
+${samplePreview}
+Full dataset (${Math.min(sampleRows.length, 200)} rows) available as JSON:
+${JSON.stringify(sampleRows)}
+
+INSTRUCTIONS: Build the dashboard/visualization using this real data. Embed the data directly in the HTML as a JavaScript variable. Do not use placeholder or mock data.\n`;
+          enrichedPrompt = dataContext + enrichedPrompt;
+          console.log(`[UPLOAD] Injected upload context for ${uploadRow.filename} (${uploadRow.row_count} rows, ${(uploadRow.columns as string[]).length} cols)`);
+        }
+      }
+
       const { data: priorJob } = await getPlatformSupabaseClient()
         .from('jobs')
         .select('last_diff')

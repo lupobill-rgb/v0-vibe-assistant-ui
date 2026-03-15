@@ -27,6 +27,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     status: "idle" | "uploading" | "done" | "error"
     progress: number
     message: string
+    uploadId?: string
   }>({ status: "idle", progress: 0, message: "" })
 
   const handleAttach = () => {
@@ -86,6 +87,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         status: "done",
         progress: 100,
         message: `✓ ${file.name} ready — ${rowCount.toLocaleString()} rows loaded. Now describe the dashboard you want.`,
+        uploadId: result.upload_id,
       })
     } catch (err) {
       setUploadState({
@@ -116,6 +118,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         prompt: prompt.trim(),
         project_id: projectId,
         base_branch: "main",
+        upload_id: uploadState.uploadId,
       })
 
       if (result.error || !result.task_id) {
