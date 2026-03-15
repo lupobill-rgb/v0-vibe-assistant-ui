@@ -371,7 +371,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary disabled:opacity-50"
           />
           <button
-            onClick={handleEdit}
+            onClick={() => handleEdit()}
             disabled={isEditing || !editInput.trim() || !diff}
             className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors"
           >
