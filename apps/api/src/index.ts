@@ -810,31 +810,10 @@ async function bootstrap() {
             await storage.updateTaskState(taskId, 'building');
             await storage.logEvent(taskId, 'Dashboard fast path — single-page build (no planner)', 'info');
 
-            const dashboardSystemPrompt = [
-              'You are VIBE, a dashboard builder. Return ONLY a single complete HTML file starting with <!DOCTYPE html>.',
-              'No explanation, no markdown fences, no preamble — just the HTML.',
-              '',
-              'NAVIGATION RULES:',
-              '- The dashboard MUST use a single-file architecture with multiple views.',
-              '- Define a global function: function switchView(viewId) { document.querySelectorAll("[data-view]").forEach(v => v.classList.add("hidden")); document.querySelector(`[data-view="${viewId}"]`).classList.remove("hidden"); }',
-              '- Each view is a <div data-view="viewName" class="hidden"> (first view omits "hidden").',
-              '- Nav links call onclick="switchView(\'viewName\')" — no anchor hrefs, no page reloads.',
-              '',
-              'DESIGN RULES:',
-              '- Use Tailwind CSS via CDN. Dark navy (#0f172a) background, violet (#8b5cf6) primary, cyan (#06b6d4) accent.',
-              '- Space Grotesk for headings, Inter for body text (Google Fonts CDN).',
-              '- Responsive layout. Professional dashboard aesthetic.',
-              '- Include at least: Overview, Analytics, and Settings views.',
-              '',
-              'SUPABASE:',
-              '- If the dashboard needs data, use __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ as placeholders for the Supabase client.',
-            ].join('\n');
-
             const dashResult = await edgeCall({
               prompt: enrichedPrompt,
               model: resolvedModel,
-              mode: 'html',
-              system: dashboardSystemPrompt,
+              mode: 'dashboard',
             });
             if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
 
