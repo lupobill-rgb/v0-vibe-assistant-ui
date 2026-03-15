@@ -199,13 +199,19 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
 
+  const [editError, setEditError] = useState<string | null>(null)
+
   const handleEdit = async (promptOverride?: string) => {
     const prompt = promptOverride || editInput.trim()
     if (!prompt || !diff || isEditing) return
     setIsEditing(true)
+    setEditError(null)
     try {
       const currentPages = parseDiff(diff)
-      const currentHtml = currentPages[0]?.html ?? ''
+      // Edit the currently active page, not always the first one
+      const activeIdx = currentPages.findIndex((p) => p.filename === activeFile)
+      const targetIdx = activeIdx >= 0 ? activeIdx : 0
+      const currentHtml = currentPages[targetIdx]?.html ?? ''
       const res = await fetch(EDGE_FN_URL, {
         method: 'POST',
         headers: {
@@ -219,10 +225,19 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         }),
       })
       const json = await res.json()
+      if (!res.ok) {
+        setEditError(json.error || 'Edge Function returned ' + res.status)
+        return
+      }
       if (json.diff) {
-        // Merge edited page back into existing pages array
+        const trimmedDiff = json.diff.trim()
+        if (!trimmedDiff.startsWith('<!DOCTYPE') && !trimmedDiff.startsWith('<!doctype') && !trimmedDiff.startsWith('<html')) {
+          setEditError('LLM returned invalid HTML. Try a simpler edit.')
+          return
+        }
+        // Merge edited page back into existing pages array at the active index
         const updatedPages = currentPages.map((p, i) =>
-          i === 0 ? { ...p, html: json.diff } : p
+          i === targetIdx ? { ...p, html: json.diff } : p
         )
         const newDiff = JSON.stringify(updatedPages)
         setDiff(newDiff)
@@ -234,7 +249,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             .eq('id', jobId)
         }
         setEditInput('')
+        setEditPrompt('')
+      } else {
+        setEditError('No updated HTML received. Try again.')
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[VIBE] Edit failed:', message)
+      setEditError('Edit failed: ' + message)
     } finally {
       setIsEditing(false)
     }
@@ -360,23 +382,33 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         )}
         {/* Edit prompt bar — pinned to bottom of preview */}
-        <div className="flex-shrink-0 border-t border-slate-700 p-3 flex gap-2">
-          <input
-            type="text"
-            value={editInput}
-            onChange={e => setEditInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleEdit()}
-            placeholder="Describe a change... e.g. make the header dark blue"
-            disabled={isEditing}
-            className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary disabled:opacity-50"
-          />
-          <button
-            onClick={() => handleEdit()}
-            disabled={isEditing || !editInput.trim() || !diff}
-            className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors"
-          >
-            {isEditing ? '...' : 'Edit'}
-          </button>
+        <div className="flex-shrink-0 border-t border-slate-700 p-3 flex flex-col gap-2">
+          {editError && (
+            <div className="flex items-center justify-between text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+              <span>{editError}</span>
+              <button onClick={() => setEditError(null)} className="ml-2 text-red-400 hover:text-red-300">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={editInput}
+              onChange={e => setEditInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleEdit()}
+              placeholder="Describe a change... e.g. make the header dark blue"
+              disabled={isEditing}
+              className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary disabled:opacity-50"
+            />
+            <button
+              onClick={() => handleEdit()}
+              disabled={isEditing || !editInput.trim() || !diff}
+              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors flex items-center gap-1.5"
+            >
+              {isEditing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Editing...</> : 'Edit'}
+            </button>
+          </div>
         </div>
       </div>
       <div className="w-[340px] flex-shrink-0 flex flex-col bg-slate-900">
