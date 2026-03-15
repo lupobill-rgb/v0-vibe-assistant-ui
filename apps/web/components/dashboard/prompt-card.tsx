@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2, CheckCircle2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createProject, createJob, API_URL } from "@/lib/api"
+import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 
 const suggestions = [
@@ -46,6 +47,10 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     const formData = new FormData()
     formData.append("file", file)
 
+    // Attach user_id for auth (matches createJob pattern)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.id) formData.append("user_id", user.id)
+
     try {
       const xhr = new XMLHttpRequest()
       const result = await new Promise<{ rows: number }>((resolve, reject) => {
@@ -76,11 +81,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         xhr.open("POST", `${API_URL}/upload`)
         xhr.send(formData)
       })
-      const rows = result.rows ?? 0
+      const rowCount = result.row_count ?? result.rows ?? 0
       setUploadState({
         status: "done",
         progress: 100,
-        message: `✓ ${file.name} ready — ${rows.toLocaleString()} rows loaded. Now describe the dashboard you want.`,
+        message: `✓ ${file.name} ready — ${rowCount.toLocaleString()} rows loaded. Now describe the dashboard you want.`,
       })
     } catch (err) {
       setUploadState({
