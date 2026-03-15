@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.7.2"; // 2026-03-14 — revert DASHBOARD_SYSTEM to pre-switchView version (91b1a1a)
+const EDGE_FUNCTION_VERSION = "1.8.0"; // 2026-03-15 — restore switchView with chart.resize() fix, populate all nav sections
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -329,6 +329,32 @@ INTERACTIVITY — vanilla JS only:
   const a = document.createElement('a');
   a.href = url; a.download = 'export.csv'; a.click();
 - Sidebar nav active state updates on click
+MULTI-SECTION NAVIGATION — MANDATORY for dashboards with sidebar nav:
+- Every sidebar nav item MUST correspond to a <section> with a matching id="view-[name]" (e.g. id="view-overview", id="view-geographic", id="view-industry").
+- ONLY the first section (overview/default) is visible on load. All others start with style="display:none".
+- Add a global switchView function that toggles sections and updates the active nav state:
+  <script>
+  function switchView(evt, viewId) {
+    if (evt) evt.preventDefault();
+    document.querySelectorAll('[id^="view-"]').forEach(s => s.style.display = 'none');
+    document.getElementById(viewId).style.display = 'block';
+    document.querySelectorAll('.nav-item').forEach(n => {
+      n.classList.remove('active');
+      if (n.dataset.section === viewId) n.classList.add('active');
+    });
+    // Re-render any Chart.js canvases inside the newly visible section
+    const canvases = document.getElementById(viewId).querySelectorAll('canvas');
+    canvases.forEach(c => { const chart = Chart.getChart(c); if (chart) chart.resize(); });
+  }
+  </script>
+- Each sidebar nav item uses: <a href="#" class="nav-item" data-section="view-[name]" onclick="switchView(event,'view-[name]')">
+- The active nav item class adds: bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)] border-l-2 border-[var(--primary)]
+- EVERY section MUST be fully populated with domain-relevant data:
+  * Overview: KPI cards + primary charts + data table (the default view).
+  * Geographic / Regional: Map visualization or regional breakdown bar chart + stats by region/location. Use Chart.js bar or doughnut chart with geographic labels.
+  * Industry / Category: Industry-specific or category-specific breakdown chart + comparison table. Use Chart.js chart with industry/category labels.
+  * Any other nav section: Relevant charts, tables, and KPI cards with realistic data. NO empty sections. NO placeholder text.
+- CRITICAL: Sections hidden with display:none cause Chart.js to render at 0px size. The switchView function above calls chart.resize() to fix this. Additionally, initialize charts for hidden sections inside a setTimeout to ensure they render correctly when first shown.
 DATA SOURCE UI:
 - Supabase in prompt: show "Connect Supabase" button that opens a modal
 - CSV/Excel in prompt: show file upload input with FileReader parsing
