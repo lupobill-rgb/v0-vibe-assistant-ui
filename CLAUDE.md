@@ -55,6 +55,38 @@ Prompt → deployed product. Org-aware. Governed. Beautiful.
 3. Railway redeploys `apps/api` automatically on main push
 4. Vercel redeploys `apps/web` automatically on main push
 
+## Stable: Dashboard Fast Path (v0.1-dashboard-stable) — DO NOT MODIFY
+
+The dashboard generation pipeline is **working and demo-ready** (Advanced Decisions demo).
+The following components are locked. **No changes without explicit approval.**
+
+### What is locked
+
+1. **Dashboard fast path in `apps/api/src/index.ts` (lines ~808–839)**
+   - When `mode === 'dashboard'`, the job handler bypasses the planner entirely.
+   - A single `edgeCall({ prompt, model, mode: 'dashboard' })` generates the full output.
+   - Result is written as `index.html` to the preview directory — no multi-page build, no plan step.
+
+2. **`VIBE_SYSTEM_RULES` is the only system prompt (`supabase/functions/generate-diff/index.ts`)**
+   - The edge function prepends `VIBE_SYSTEM_RULES` to every mode's system message (line ~581).
+   - Dashboard mode adds `DASHBOARD_SYSTEM` and design-phase specs — no additional dashboard-specific rules are injected.
+   - No extra system prompts, no prompt wrappers, no middleware prompt injection.
+
+3. **User prompt passes directly to Claude**
+   - The `enrichedPrompt` (user prompt + org context) is sent as the user message.
+   - No rewriting, no summarisation, no template wrapping of the user's intent.
+
+4. **Output is single-file HTML, no navigation links**
+   - The edge function returns `{ diff: "<html>..." }` — one self-contained HTML file.
+   - `index.html` is the only file written. `manifest.json` contains `["index"]`.
+   - No `<a>` navigation between pages, no multi-page routing.
+
+### Why this is locked
+
+- This exact pipeline produced the Advanced Decisions dashboard demo successfully.
+- Any change to prompt structure, output format, or routing logic risks breaking a proven path.
+- Future enhancements (multi-page dashboards, iterative refinement) must be built as **new modes**, not modifications to this path.
+
 ## Never
 
 - Silent failures. Always return plain-English explanation + next action.
