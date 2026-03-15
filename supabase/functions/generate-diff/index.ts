@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.9.1"; // 2026-03-15 — ban fetch() for chart data, all data must be hardcoded inline
+const EDGE_FUNCTION_VERSION = "1.9.2"; // 2026-03-15 — enforce explicit canvas height to prevent chart overflow
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -312,17 +312,20 @@ CHART CODE MANDATE — non-negotiable:
   2. A complete Chart.js new Chart() call
   3. At least 6 realistic data points — no empty datasets
   4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
+- CANVAS HEIGHT RULE: Every <canvas> MUST have explicit height via BOTH the HTML attribute AND inline CSS. Charts must never expand beyond their container.
+  Required format: <canvas id="chart1" height="300" style="height:300px !important; max-height:300px;"></canvas>
+  A <canvas> without both height="300" and style="height:300px !important; max-height:300px;" fails the quality gate.
 - CRITICAL PLACEMENT RULE: Place each chart's <script> tag IMMEDIATELY after its <canvas> element, inside the same container div. Do NOT defer all chart code to a single DOMContentLoaded listener at the bottom of the page — the output may be truncated.
   Example pattern (FOLLOW THIS EXACTLY):
   <div class="chart-container">
-    <canvas id="chart1" height="300"></canvas>
+    <canvas id="chart1" height="300" style="height:300px !important; max-height:300px;"></canvas>
     <script>
     (function(){
       const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
       new Chart(document.getElementById('chart1'), {
         type: 'bar',
         data: { labels: ['Jan','Feb','Mar','Apr','May','Jun'], datasets: [{ label: 'Revenue', data: [12,19,3,5,2,3], backgroundColor: primary }] },
-        options: { responsive: true, plugins: { legend: { display: true } } }
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }
       });
     })();
     </script>
