@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2 } from "lucide-react"
+import { ArrowUp, Paperclip, Globe, Zap, Layers, Image as ImageIcon, Loader2, CheckCircle2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject, createJob } from "@/lib/api"
+import { createProject, createJob, API_URL } from "@/lib/api"
 import { useTeam } from "@/contexts/TeamContext"
 
 const suggestions = [
@@ -21,6 +21,75 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadState, setUploadState] = useState<{
+    status: "idle" | "uploading" | "done" | "error"
+    progress: number
+    message: string
+  }>({ status: "idle", progress: 0, message: "" })
+
+  const handleAttach = () => {
+    fileInputRef.current?.click()
+  }
+
+  const clearUpload = () => {
+    setUploadState({ status: "idle", progress: 0, message: "" })
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadState({ status: "uploading", progress: 0, message: `Uploading ${file.name}...` })
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const xhr = new XMLHttpRequest()
+      const result = await new Promise<{ rows: number }>((resolve, reject) => {
+        xhr.upload.addEventListener("progress", (ev) => {
+          if (ev.lengthComputable) {
+            const pct = Math.round((ev.loaded / ev.total) * 100)
+            setUploadState((s) => ({ ...s, progress: pct, message: `Uploading ${file.name}... ${pct}%` }))
+          }
+        })
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText))
+            } catch {
+              reject(new Error("Invalid response from server"))
+            }
+          } else {
+            try {
+              const body = JSON.parse(xhr.responseText)
+              reject(new Error(body.error || `Upload failed (${xhr.status})`))
+            } catch {
+              reject(new Error(`Upload failed (${xhr.status})`))
+            }
+          }
+        })
+        xhr.addEventListener("error", () => reject(new Error("Network error during upload")))
+        xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")))
+        xhr.open("POST", `${API_URL}/upload`)
+        xhr.send(formData)
+      })
+      const rows = result.rows ?? 0
+      setUploadState({
+        status: "done",
+        progress: 100,
+        message: `✓ ${file.name} ready — ${rows.toLocaleString()} rows loaded. Now describe the dashboard you want.`,
+      })
+    } catch (err) {
+      setUploadState({
+        status: "error",
+        progress: 0,
+        message: err instanceof Error ? err.message : "Upload failed",
+      })
+    }
+  }
 
   const handleSubmit = async () => {
     if (!prompt.trim() || submitting) return
@@ -88,9 +157,40 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           {error && (
             <p className="text-xs text-red-400 mt-1 mb-2">{error}</p>
           )}
+          {uploadState.status !== "idle" && (
+            <div className={cn(
+              "flex items-center gap-2 text-xs rounded-lg px-3 py-2 mt-1 mb-2",
+              uploadState.status === "uploading" && "bg-primary/10 text-primary",
+              uploadState.status === "done" && "bg-emerald-500/10 text-emerald-400",
+              uploadState.status === "error" && "bg-red-500/10 text-red-400",
+            )}>
+              {uploadState.status === "uploading" && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
+              {uploadState.status === "done" && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+              <span className="flex-1 truncate">{uploadState.message}</span>
+              {uploadState.status === "uploading" && (
+                <div className="w-20 h-1.5 bg-border rounded-full overflow-hidden shrink-0">
+                  <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${uploadState.progress}%` }} />
+                </div>
+              )}
+              {uploadState.status !== "uploading" && (
+                <button onClick={clearUpload} className="shrink-0 hover:opacity-70"><X className="w-3.5 h-3.5" /></button>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between pt-3 border-t border-border/50 mt-2">
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                onClick={handleAttach}
+                disabled={uploadState.status === "uploading"}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+              >
                 <Paperclip className="w-3.5 h-3.5" />
                 Attach
               </button>
