@@ -805,6 +805,60 @@ async function bootstrap() {
             return attempt(fallbackModel);
           };
 
+          // ── Dashboard fast path: skip planner, single Claude call, single-file HTML ──
+          if (mode === 'dashboard') {
+            await storage.updateTaskState(taskId, 'building');
+            await storage.logEvent(taskId, 'Dashboard fast path — single-page build (no planner)', 'info');
+
+            const dashboardSystemPrompt = [
+              'You are VIBE, a dashboard builder. Return ONLY a single complete HTML file starting with <!DOCTYPE html>.',
+              'No explanation, no markdown fences, no preamble — just the HTML.',
+              '',
+              'NAVIGATION RULES:',
+              '- The dashboard MUST use a single-file architecture with multiple views.',
+              '- Define a global function: function switchView(viewId) { document.querySelectorAll("[data-view]").forEach(v => v.classList.add("hidden")); document.querySelector(`[data-view="${viewId}"]`).classList.remove("hidden"); }',
+              '- Each view is a <div data-view="viewName" class="hidden"> (first view omits "hidden").',
+              '- Nav links call onclick="switchView(\'viewName\')" — no anchor hrefs, no page reloads.',
+              '',
+              'DESIGN RULES:',
+              '- Use Tailwind CSS via CDN. Dark navy (#0f172a) background, violet (#8b5cf6) primary, cyan (#06b6d4) accent.',
+              '- Space Grotesk for headings, Inter for body text (Google Fonts CDN).',
+              '- Responsive layout. Professional dashboard aesthetic.',
+              '- Include at least: Overview, Analytics, and Settings views.',
+              '',
+              'SUPABASE:',
+              '- If the dashboard needs data, use __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ as placeholders for the Supabase client.',
+            ].join('\n');
+
+            const dashResult = await edgeCall({
+              prompt: enrichedPrompt,
+              model: resolvedModel,
+              mode: 'html',
+              system: dashboardSystemPrompt,
+            });
+            if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
+
+            let dashData: { diff: string; usage?: { total_tokens: number } };
+            try {
+              dashData = JSON.parse(dashResult.text);
+            } catch {
+              throw new Error(`Dashboard edge returned invalid JSON (${dashResult.text.length} chars)`);
+            }
+
+            const previewDir = path.join(PREVIEWS_DIR, taskId);
+            fs.mkdirSync(previewDir, { recursive: true });
+            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(dashData.diff));
+            fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
+
+            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: dashData.diff }]));
+            const previewToken = signPreviewToken(taskId);
+            await storage.setPreviewUrl(taskId, `/previews/${taskId}/index.html?token=${previewToken}`);
+            await storage.logEvent(taskId, `Dashboard built (${dashData.usage?.total_tokens ?? '?'} tokens)`, 'success');
+            await storage.updateTaskState(taskId, 'completed');
+            await storage.logEvent(taskId, 'Dashboard job completed successfully', 'info');
+            return;
+          }
+
           // ── Step 1: Plan call — ask the LLM for a page plan ──
           let plan: StarterSitePlan | null = null;
           let totalTokens = 0;
