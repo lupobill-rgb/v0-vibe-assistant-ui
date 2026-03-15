@@ -313,12 +313,12 @@ CHART CODE MANDATE — non-negotiable:
   3. At least 6 realistic data points — no empty datasets
   4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
 - CANVAS HEIGHT RULE: Every <canvas> MUST have explicit height via BOTH the HTML attribute AND inline CSS. Charts must never expand beyond their container.
-  Required format: <canvas id="chart1" height="300" style="height:300px !important; max-height:300px;"></canvas>
-  A <canvas> without both height="300" and style="height:300px !important; max-height:300px;" fails the quality gate.
+  Required format: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+  A <canvas> without both height="200" and style="height:200px !important; max-height:200px;" fails the quality gate.
 - CRITICAL PLACEMENT RULE: Place each chart's <script> tag IMMEDIATELY after its <canvas> element, inside the same container div. Do NOT defer all chart code to a single DOMContentLoaded listener at the bottom of the page — the output may be truncated.
   Example pattern (FOLLOW THIS EXACTLY):
   <div class="chart-container">
-    <canvas id="chart1" height="300" style="height:300px !important; max-height:300px;"></canvas>
+    <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
     <script>
     (function(){
       const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
