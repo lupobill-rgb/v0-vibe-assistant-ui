@@ -66,7 +66,10 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
   const primaryColor = brand?.primary_color ?? '';
   const fontHeading = brand?.font_heading ?? '';
 
-  // 4. Format and return
+  // 4. Resolve uploaded data tables for this user
+  const uploadedData = await resolveUploadedData(sb, userId);
+
+  // 5. Format and return
   const visibleTeams = teamId ? await resolveVisibleTeams(sb, teamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
 
@@ -78,7 +81,28 @@ Data owned: ${ownedScopes.join(', ') || 'none'}
 Data readable: ${readScopes.join(', ') || 'none'}
 Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
-Font: ${fontHeading}` + visibleTeams;
+Font: ${fontHeading}` + visibleTeams + uploadedData;
+}
+
+async function resolveUploadedData(supabase: ReturnType<typeof getPlatformSupabaseClient>, userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('user_uploads')
+    .select('table_name, row_count, columns')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (error || !data || data.length === 0) return '';
+
+  const lines = data.map((u: any) => {
+    const cols = typeof u.columns === 'string' ? JSON.parse(u.columns) : u.columns;
+    const colList = (cols as { name: string; pgType: string }[])
+      .map((c: { name: string; pgType: string }) => `${c.name} (${c.pgType})`)
+      .join(', ');
+    return `- "${u.table_name}": ${u.row_count} rows [${colList}]`;
+  });
+
+  return `\nUPLOADED DATA TABLES:\n${lines.join('\n')}\nUse SELECT * FROM "table_name" WHERE owner_id = auth.uid() to query.`;
 }
 
 async function resolveVisibleTeams(supabase: ReturnType<typeof getPlatformSupabaseClient>, teamId: string): Promise<string> {
