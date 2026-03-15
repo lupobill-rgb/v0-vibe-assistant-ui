@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.9.0"; // 2026-03-15 — fix empty charts: increase token limit + inline chart init
+const EDGE_FUNCTION_VERSION = "1.9.1"; // 2026-03-15 — ban fetch() for chart data, all data must be hardcoded inline
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -247,11 +247,16 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
 3. Every interactive feature must use vanilla JavaScript only.
 4. The file must start with <!DOCTYPE html> and end with </html>.
 5. Zero React. Zero JSX. Zero TypeScript. Zero component syntax. Ever.
+6. ZERO FETCH CALLS. ZERO API CALLS. ZERO ASYNC DATA LOADING.
+   All chart data, KPI values, and table rows must be hardcoded as JavaScript constants
+   directly in the HTML. Never use fetch(), XMLHttpRequest, axios, or any network request
+   to load data. The generated HTML runs in a static preview iframe with no backend —
+   any fetch() call will fail with a 404 and produce empty charts.
 
 Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
 You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
-Return a complete, self-contained HTML dashboard. All styling via Tailwind CDN.
+Return a complete, self-contained HTML dashboard with ALL data inline. No external data sources. All styling via Tailwind CDN.
 ALWAYS inject these in <head>:
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -325,6 +330,7 @@ CHART CODE MANDATE — non-negotiable:
 - For hidden sections (display:none), wrap the chart init in setTimeout(()=>{...}, 100) so Chart.js can measure canvas size when switchView reveals it.
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
 - NEVER create a <canvas> without a corresponding new Chart() call in a <script> immediately after it.
+- NEVER use fetch(), XMLHttpRequest, or any async call to load chart/table/KPI data. ALL data must be hardcoded inline as const arrays. The preview has no API backend — fetch calls return 404 and charts render empty.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
 - 10 realistic rows, no lorem ipsum
@@ -387,7 +393,7 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
 REPAIR RULE — chart preservation:
 - If repairing a page with chart sections, preserve all existing Chart.js code — do not remove or replace canvas elements.
-FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks.
+FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks. No fetch() for data. No XMLHttpRequest. No async data loading. All data hardcoded inline.
 Output MUST start with <!DOCTYPE html> and end with </html>.
 Any other output format causes a blank page for the customer.`;
 
