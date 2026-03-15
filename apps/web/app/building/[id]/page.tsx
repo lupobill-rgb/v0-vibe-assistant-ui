@@ -245,7 +245,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     setAddPageError(null)
     try {
       const url = EDGE_FN_URL
-      const body = { prompt: description, model: 'claude-sonnet-4-20250514', mode: 'single' }
+      const body = { prompt: description, model: 'claude', mode: 'html' }
 
       console.log("[VIBE] Add Page request:", url, body)
 
