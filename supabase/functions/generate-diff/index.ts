@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.8.0"; // 2026-03-15 — restore switchView with chart.resize() fix, populate all nav sections
+const EDGE_FUNCTION_VERSION = "1.9.1"; // 2026-03-15 — ban fetch() for chart data, all data must be hardcoded inline
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -247,11 +247,16 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
 3. Every interactive feature must use vanilla JavaScript only.
 4. The file must start with <!DOCTYPE html> and end with </html>.
 5. Zero React. Zero JSX. Zero TypeScript. Zero component syntax. Ever.
+6. ZERO FETCH CALLS. ZERO API CALLS. ZERO ASYNC DATA LOADING.
+   All chart data, KPI values, and table rows must be hardcoded as JavaScript constants
+   directly in the HTML. Never use fetch(), XMLHttpRequest, axios, or any network request
+   to load data. The generated HTML runs in a static preview iframe with no backend —
+   any fetch() call will fail with a 404 and produce empty charts.
 
 Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
 You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
-Return a complete, self-contained HTML dashboard. All styling via Tailwind CDN.
+Return a complete, self-contained HTML dashboard with ALL data inline. No external data sources. All styling via Tailwind CDN.
 ALWAYS inject these in <head>:
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -290,13 +295,12 @@ KPI STAT CARDS — 4 cards:
 - Label: text-[var(--text)] opacity-60 text-sm mt-1
 - Trend: top-right corner, ▲ text-emerald-400 or ▼ text-red-400 text-sm
 - Detect domain from prompt and use contextually relevant metrics
-CHARTS — exactly 2 using Chart.js:
-- Give each canvas a unique explicit id: <canvas id="chart1"></canvas> and <canvas id="chart2"></canvas>
-- In the DOMContentLoaded script, reference charts by those exact ids:
-  document.getElementById('chart1') and document.getElementById('chart2')
-- Never use querySelector for chart canvas elements
-- Chart 1: Line or Bar for primary time-series (12 months of data)
-- Chart 2: Doughnut or Bar for breakdown/distribution
+CHARTS — minimum 2 using Chart.js (more if multi-section):
+- Give each canvas a unique explicit id (e.g. id="chart1", id="chart2", id="chartGeo", id="chartIndustry")
+- Initialize each chart in an inline <script> immediately after its <canvas> (see CHART CODE MANDATE)
+- Never use querySelector for chart canvas elements — use getElementById
+- Overview section: Chart 1: Line or Bar for primary time-series (12 months of data). Chart 2: Doughnut or Bar for breakdown/distribution.
+- Every additional nav section that displays data MUST also have at least one Chart.js chart with full initialization code.
 - Domain detection: sales→revenue+pipeline; finance→cashflow+allocation; analytics→traffic+conversion; marketing→campaigns+CAC; HR→headcount+performance
 - Colors: primary var(--primary), accent #06b6d4, success #10b981, warning #f59e0b
 - Chart container: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6
@@ -305,10 +309,28 @@ CHARTS — exactly 2 using Chart.js:
 CHART CODE MANDATE — non-negotiable:
 - Every page that contains a chart section MUST include:
   1. A <canvas> element with a unique id
-  2. A complete Chart.js configuration inside a DOMContentLoaded event listener
+  2. A complete Chart.js new Chart() call
   3. At least 6 realistic data points — no empty datasets
   4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
+- CRITICAL PLACEMENT RULE: Place each chart's <script> tag IMMEDIATELY after its <canvas> element, inside the same container div. Do NOT defer all chart code to a single DOMContentLoaded listener at the bottom of the page — the output may be truncated.
+  Example pattern (FOLLOW THIS EXACTLY):
+  <div class="chart-container">
+    <canvas id="chart1" height="300"></canvas>
+    <script>
+    (function(){
+      const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+      new Chart(document.getElementById('chart1'), {
+        type: 'bar',
+        data: { labels: ['Jan','Feb','Mar','Apr','May','Jun'], datasets: [{ label: 'Revenue', data: [12,19,3,5,2,3], backgroundColor: primary }] },
+        options: { responsive: true, plugins: { legend: { display: true } } }
+      });
+    })();
+    </script>
+  </div>
+- For hidden sections (display:none), wrap the chart init in setTimeout(()=>{...}, 100) so Chart.js can measure canvas size when switchView reveals it.
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
+- NEVER create a <canvas> without a corresponding new Chart() call in a <script> immediately after it.
+- NEVER use fetch(), XMLHttpRequest, or any async call to load chart/table/KPI data. ALL data must be hardcoded inline as const arrays. The preview has no API backend — fetch calls return 404 and charts render empty.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
 - 10 realistic rows, no lorem ipsum
@@ -354,7 +376,7 @@ MULTI-SECTION NAVIGATION — MANDATORY for dashboards with sidebar nav:
   * Geographic / Regional: Map visualization or regional breakdown bar chart + stats by region/location. Use Chart.js bar or doughnut chart with geographic labels.
   * Industry / Category: Industry-specific or category-specific breakdown chart + comparison table. Use Chart.js chart with industry/category labels.
   * Any other nav section: Relevant charts, tables, and KPI cards with realistic data. NO empty sections. NO placeholder text.
-- CRITICAL: Sections hidden with display:none cause Chart.js to render at 0px size. The switchView function above calls chart.resize() to fix this. Additionally, initialize charts for hidden sections inside a setTimeout to ensure they render correctly when first shown.
+- CRITICAL: Sections hidden with display:none cause Chart.js to render at 0px size. The switchView function above calls chart.resize() to fix this. Additionally, wrap each hidden section's inline chart <script> in setTimeout(()=>{...}, 100) so the chart initializes after the DOM is ready. The chart.resize() in switchView will then correct the size when the section becomes visible.
 DATA SOURCE UI:
 - Supabase in prompt: show "Connect Supabase" button that opens a modal
 - CSV/Excel in prompt: show file upload input with FileReader parsing
@@ -371,7 +393,7 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
 REPAIR RULE — chart preservation:
 - If repairing a page with chart sections, preserve all existing Chart.js code — do not remove or replace canvas elements.
-FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks.
+FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks. No fetch() for data. No XMLHttpRequest. No async data loading. All data hardcoded inline.
 Output MUST start with <!DOCTYPE html> and end with </html>.
 Any other output format causes a blank page for the customer.`;
 
@@ -549,7 +571,7 @@ Deno.serve(async (req: Request) => {
           ? `\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
           : "";
         const directSystem = VIBE_SYSTEM_RULES + "\n" + DASHBOARD_SYSTEM + colorInjection;
-        const directResult = await PROVIDERS[model](directSystem, prompt, 8192);
+        const directResult = await PROVIDERS[model](directSystem, prompt, 16384);
 
         // Validate we got HTML back
         const html = directResult.diff.trim();
@@ -637,7 +659,7 @@ Rules:
 - Never use alert(), confirm(), or prompt()
 - Never generate React or JSX
 - Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
-      defaultMaxTokens = 8192;
+      defaultMaxTokens = 16384;
     } else {
       // Default: diff generation mode
       baseSystemMsg = "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
