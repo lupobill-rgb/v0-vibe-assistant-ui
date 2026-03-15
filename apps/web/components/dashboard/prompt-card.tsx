@@ -50,7 +50,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
 
     // Attach user_id for auth (matches createJob pattern)
     const { data: { user } } = await supabase.auth.getUser()
-    if (user?.id) formData.append("user_id", user.id)
+    if (!user?.id) {
+      setUploadState({ status: "error", progress: 0, message: "You must be signed in to upload files." })
+      return
+    }
+    formData.append("user_id", user.id)
 
     try {
       const xhr = new XMLHttpRequest()
