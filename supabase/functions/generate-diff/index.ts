@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.8.0"; // 2026-03-15 — restore switchView with chart.resize() fix, populate all nav sections
+const EDGE_FUNCTION_VERSION = "1.9.0"; // 2026-03-15 — fix empty charts: increase token limit + inline chart init
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -290,13 +290,12 @@ KPI STAT CARDS — 4 cards:
 - Label: text-[var(--text)] opacity-60 text-sm mt-1
 - Trend: top-right corner, ▲ text-emerald-400 or ▼ text-red-400 text-sm
 - Detect domain from prompt and use contextually relevant metrics
-CHARTS — exactly 2 using Chart.js:
-- Give each canvas a unique explicit id: <canvas id="chart1"></canvas> and <canvas id="chart2"></canvas>
-- In the DOMContentLoaded script, reference charts by those exact ids:
-  document.getElementById('chart1') and document.getElementById('chart2')
-- Never use querySelector for chart canvas elements
-- Chart 1: Line or Bar for primary time-series (12 months of data)
-- Chart 2: Doughnut or Bar for breakdown/distribution
+CHARTS — minimum 2 using Chart.js (more if multi-section):
+- Give each canvas a unique explicit id (e.g. id="chart1", id="chart2", id="chartGeo", id="chartIndustry")
+- Initialize each chart in an inline <script> immediately after its <canvas> (see CHART CODE MANDATE)
+- Never use querySelector for chart canvas elements — use getElementById
+- Overview section: Chart 1: Line or Bar for primary time-series (12 months of data). Chart 2: Doughnut or Bar for breakdown/distribution.
+- Every additional nav section that displays data MUST also have at least one Chart.js chart with full initialization code.
 - Domain detection: sales→revenue+pipeline; finance→cashflow+allocation; analytics→traffic+conversion; marketing→campaigns+CAC; HR→headcount+performance
 - Colors: primary var(--primary), accent #06b6d4, success #10b981, warning #f59e0b
 - Chart container: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6
@@ -305,10 +304,27 @@ CHARTS — exactly 2 using Chart.js:
 CHART CODE MANDATE — non-negotiable:
 - Every page that contains a chart section MUST include:
   1. A <canvas> element with a unique id
-  2. A complete Chart.js configuration inside a DOMContentLoaded event listener
+  2. A complete Chart.js new Chart() call
   3. At least 6 realistic data points — no empty datasets
   4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
+- CRITICAL PLACEMENT RULE: Place each chart's <script> tag IMMEDIATELY after its <canvas> element, inside the same container div. Do NOT defer all chart code to a single DOMContentLoaded listener at the bottom of the page — the output may be truncated.
+  Example pattern (FOLLOW THIS EXACTLY):
+  <div class="chart-container">
+    <canvas id="chart1" height="300"></canvas>
+    <script>
+    (function(){
+      const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+      new Chart(document.getElementById('chart1'), {
+        type: 'bar',
+        data: { labels: ['Jan','Feb','Mar','Apr','May','Jun'], datasets: [{ label: 'Revenue', data: [12,19,3,5,2,3], backgroundColor: primary }] },
+        options: { responsive: true, plugins: { legend: { display: true } } }
+      });
+    })();
+    </script>
+  </div>
+- For hidden sections (display:none), wrap the chart init in setTimeout(()=>{...}, 100) so Chart.js can measure canvas size when switchView reveals it.
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
+- NEVER create a <canvas> without a corresponding new Chart() call in a <script> immediately after it.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
 - 10 realistic rows, no lorem ipsum
@@ -354,7 +370,7 @@ MULTI-SECTION NAVIGATION — MANDATORY for dashboards with sidebar nav:
   * Geographic / Regional: Map visualization or regional breakdown bar chart + stats by region/location. Use Chart.js bar or doughnut chart with geographic labels.
   * Industry / Category: Industry-specific or category-specific breakdown chart + comparison table. Use Chart.js chart with industry/category labels.
   * Any other nav section: Relevant charts, tables, and KPI cards with realistic data. NO empty sections. NO placeholder text.
-- CRITICAL: Sections hidden with display:none cause Chart.js to render at 0px size. The switchView function above calls chart.resize() to fix this. Additionally, initialize charts for hidden sections inside a setTimeout to ensure they render correctly when first shown.
+- CRITICAL: Sections hidden with display:none cause Chart.js to render at 0px size. The switchView function above calls chart.resize() to fix this. Additionally, wrap each hidden section's inline chart <script> in setTimeout(()=>{...}, 100) so the chart initializes after the DOM is ready. The chart.resize() in switchView will then correct the size when the section becomes visible.
 DATA SOURCE UI:
 - Supabase in prompt: show "Connect Supabase" button that opens a modal
 - CSV/Excel in prompt: show file upload input with FileReader parsing
@@ -549,7 +565,7 @@ Deno.serve(async (req: Request) => {
           ? `\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
           : "";
         const directSystem = VIBE_SYSTEM_RULES + "\n" + DASHBOARD_SYSTEM + colorInjection;
-        const directResult = await PROVIDERS[model](directSystem, prompt, 8192);
+        const directResult = await PROVIDERS[model](directSystem, prompt, 16384);
 
         // Validate we got HTML back
         const html = directResult.diff.trim();
@@ -637,7 +653,7 @@ Rules:
 - Never use alert(), confirm(), or prompt()
 - Never generate React or JSX
 - Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
-      defaultMaxTokens = 8192;
+      defaultMaxTokens = 16384;
     } else {
       // Default: diff generation mode
       baseSystemMsg = "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
