@@ -159,6 +159,15 @@ export async function deleteProject(id: string): Promise<{ error?: string }> {
   return response.json()
 }
 
+export async function publishProject(projectId: string, jobId: string): Promise<{ published_url?: string; error?: string }> {
+  const response = await fetch(`${API_URL}/projects/${projectId}/publish`, {
+    method: 'POST',
+    headers: baseHeaders(),
+    body: JSON.stringify({ job_id: jobId }),
+  })
+  return response.json()
+}
+
 export async function fetchProjectJobs(projectId: string): Promise<Task[]> {
   try {
     const response = await fetch(`${API_URL}/projects/${projectId}/jobs`, {
