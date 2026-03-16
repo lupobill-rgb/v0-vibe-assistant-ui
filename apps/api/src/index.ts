@@ -485,91 +485,72 @@ async function bootstrap() {
     }
   });
 
-  // POST /projects/:id/publish - Publish a job's preview to Supabase Storage (permanent public URL)
-  app.post('/projects/:id/publish', express.json(), async (req: Request, res: Response) => {
+  // POST /jobs/:id/publish - Upload job HTML to Supabase Storage (permanent public URL)
+  app.post('/jobs/:id/publish', express.json(), async (req: Request, res: Response) => {
     try {
-      const projectId = req.params.id;
-      const { job_id } = req.body;
+      const jobId = req.params.id;
+      const { user_id } = req.body;
 
-      if (!job_id) {
-        return res.status(400).json({ error: 'Missing required field: job_id' });
+      if (!user_id) {
+        return res.status(400).json({ error: 'Missing required field: user_id' });
       }
 
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
-      }
-
-      const job = await storage.getTask(job_id);
+      const job = await storage.getTask(jobId);
       if (!job) {
         return res.status(404).json({ error: 'Job not found' });
       }
-      if (job.project_id !== projectId) {
-        return res.status(400).json({ error: 'Job does not belong to this project' });
-      }
-      if (!job.preview_url) {
-        return res.status(400).json({ error: 'Job does not have a preview to publish' });
+      if (!job.last_diff) {
+        return res.status(400).json({ error: 'Job has no generated HTML to publish' });
       }
 
-      const sourceDir = path.join(PREVIEWS_DIR, job_id);
-      if (!fs.existsSync(sourceDir)) {
-        return res.status(404).json({ error: 'Preview files not found' });
+      // Extract HTML from last_diff (may be JSON array of pages or raw HTML)
+      let html: string;
+      const trimmed = job.last_diff.trim();
+      if (trimmed.startsWith('[')) {
+        try {
+          const pages = JSON.parse(trimmed) as { html: string }[];
+          html = pages[0]?.html || trimmed;
+        } catch {
+          html = trimmed;
+        }
+      } else {
+        html = trimmed;
       }
 
-      // Upload to Supabase Storage public bucket
+      // Strip markdown fences if present
+      html = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+
       const sb = getPlatformSupabaseClient();
       const BUCKET = 'published-sites';
 
-      // Ensure bucket exists (idempotent — ignores "already exists" errors)
+      // Ensure bucket exists (idempotent)
       const { error: bucketErr } = await sb.storage.createBucket(BUCKET, { public: true });
       if (bucketErr && !bucketErr.message.includes('already exists')) {
-        return res.status(500).json({ error: `Failed to create storage bucket: ${bucketErr.message}` });
+        return res.status(500).json({ error: `Storage bucket error: ${bucketErr.message}` });
       }
 
-      // Collect all files from preview directory
-      const filesToUpload: { relativePath: string; fullPath: string }[] = [];
-      const collectFiles = (dir: string, prefix: string) => {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const entry of entries) {
-          const full = path.join(dir, entry.name);
-          const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-          if (entry.isDirectory()) collectFiles(full, rel);
-          else filesToUpload.push({ relativePath: rel, fullPath: full });
-        }
-      };
-      collectFiles(sourceDir, '');
-
-      // Upload each file to {projectId}/{filename}
-      for (const file of filesToUpload) {
-        const storagePath = `${projectId}/${file.relativePath}`;
-        const content = fs.readFileSync(file.fullPath);
-        const contentType = file.relativePath.endsWith('.html') ? 'text/html'
-          : file.relativePath.endsWith('.json') ? 'application/json'
-          : 'application/octet-stream';
-
-        const { error: uploadErr } = await sb.storage.from(BUCKET).upload(storagePath, content, {
-          contentType,
-          upsert: true,
-        });
-        if (uploadErr) {
-          return res.status(500).json({ error: `Failed to upload ${file.relativePath}: ${uploadErr.message}` });
-        }
+      const storagePath = `${user_id}/${jobId}/index.html`;
+      const { error: uploadErr } = await sb.storage.from(BUCKET).upload(storagePath, html, {
+        contentType: 'text/html',
+        upsert: true,
+      });
+      if (uploadErr) {
+        return res.status(500).json({ error: `Upload failed: ${uploadErr.message}` });
       }
 
-      // Build the permanent public URL
-      const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(`${projectId}/index.html`);
+      const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(storagePath);
       const publishedUrl = urlData.publicUrl;
 
-      await storage.publishProject(projectId, job_id, publishedUrl);
+      // Save published URL to jobs.preview_url
+      const { error: updateErr } = await sb.from('jobs').update({ preview_url: publishedUrl }).eq('id', jobId);
+      if (updateErr) {
+        console.error('Failed to save published URL to job:', updateErr.message);
+      }
 
-      res.json({
-        message: 'Project published successfully',
-        published_url: publishedUrl,
-        job_id,
-      });
+      res.json({ published_url: publishedUrl, job_id: jobId });
     } catch (error: any) {
-      console.error('Error publishing project:', error);
-      res.status(500).json({ error: `Failed to publish project: ${error.message}` });
+      console.error('Error publishing job:', error);
+      res.status(500).json({ error: `Publish failed: ${error.message}` });
     }
   });
 
