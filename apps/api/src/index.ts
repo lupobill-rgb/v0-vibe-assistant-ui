@@ -1050,10 +1050,11 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           };
 
           // ── Dashboard fast path — bypass planner, single Edge call ──
-          if (isDashboardRequest(prompt)) {
+          // File uploads always route here: uploaded data needs the single-call dashboard path
+          if (upload_id || isDashboardRequest(prompt)) {
             try {
               await storage.updateTaskState(taskId, 'building');
-              await storage.logEvent(taskId, 'Dashboard prompt detected — skipping planner, single-call fast path', 'info');
+              await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
               const dashColorBlock = buildColorBlock(resolveColorScheme(prompt));
               const dashResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock });
               modelCalls += 1;
