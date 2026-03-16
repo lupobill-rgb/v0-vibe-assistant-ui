@@ -485,7 +485,7 @@ async function bootstrap() {
     }
   });
 
-  // POST /projects/:id/publish - Publish a job's preview to the project
+  // POST /projects/:id/publish - Publish a job's preview to Supabase Storage (permanent public URL)
   app.post('/projects/:id/publish', express.json(), async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
@@ -516,32 +516,50 @@ async function bootstrap() {
         return res.status(404).json({ error: 'Preview files not found' });
       }
 
-      const destDir = path.join(PUBLISHED_DIR, projectId);
-      try {
-        if (fs.existsSync(destDir)) {
-          fs.rmSync(destDir, { recursive: true, force: true });
-        }
-      } catch (rmErr: any) {
-        console.warn(`Could not clean published dir: ${rmErr.message}`);
+      // Upload to Supabase Storage public bucket
+      const sb = getPlatformSupabaseClient();
+      const BUCKET = 'published-sites';
+
+      // Ensure bucket exists (idempotent — ignores "already exists" errors)
+      const { error: bucketErr } = await sb.storage.createBucket(BUCKET, { public: true });
+      if (bucketErr && !bucketErr.message.includes('already exists')) {
+        return res.status(500).json({ error: `Failed to create storage bucket: ${bucketErr.message}` });
       }
 
-      const copyRecursive = (src: string, dest: string) => {
-        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-        const entries = fs.readdirSync(src, { withFileTypes: true });
+      // Collect all files from preview directory
+      const filesToUpload: { relativePath: string; fullPath: string }[] = [];
+      const collectFiles = (dir: string, prefix: string) => {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
-          const srcPath = path.join(src, entry.name);
-          const destPath = path.join(dest, entry.name);
-          if (entry.isDirectory()) copyRecursive(srcPath, destPath);
-          else fs.copyFileSync(srcPath, destPath);
+          const full = path.join(dir, entry.name);
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) collectFiles(full, rel);
+          else filesToUpload.push({ relativePath: rel, fullPath: full });
         }
       };
-      try {
-        copyRecursive(sourceDir, destDir);
-      } catch (copyErr: any) {
-        return res.status(500).json({ error: `Failed to copy preview files: ${copyErr.message}` });
+      collectFiles(sourceDir, '');
+
+      // Upload each file to {projectId}/{filename}
+      for (const file of filesToUpload) {
+        const storagePath = `${projectId}/${file.relativePath}`;
+        const content = fs.readFileSync(file.fullPath);
+        const contentType = file.relativePath.endsWith('.html') ? 'text/html'
+          : file.relativePath.endsWith('.json') ? 'application/json'
+          : 'application/octet-stream';
+
+        const { error: uploadErr } = await sb.storage.from(BUCKET).upload(storagePath, content, {
+          contentType,
+          upsert: true,
+        });
+        if (uploadErr) {
+          return res.status(500).json({ error: `Failed to upload ${file.relativePath}: ${uploadErr.message}` });
+        }
       }
 
-      const publishedUrl = `/published/${projectId}/index.html`;
+      // Build the permanent public URL
+      const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(`${projectId}/index.html`);
+      const publishedUrl = urlData.publicUrl;
+
       await storage.publishProject(projectId, job_id, publishedUrl);
 
       res.json({
