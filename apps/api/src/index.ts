@@ -42,6 +42,7 @@ const PREVIEWS_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
 const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/tmp/published';
 const PREVIEW_TOKEN_SECRET = process.env.PREVIEW_TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
 const PREVIEW_TOKEN_EXPIRY_MS = 72 * 60 * 60 * 1000; // 72 hours
+const FRONTEND_BASE_URL = process.env.FRONTEND_URL || 'https://vibe-web-tau.vercel.app';
 
 function signPreviewToken(jobId: string): string {
   const payload = JSON.stringify({ jobId, exp: Date.now() + PREVIEW_TOKEN_EXPIRY_MS });
@@ -934,7 +935,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
             await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
             const previewToken = signPreviewToken(taskId);
-            await storage.setPreviewUrl(taskId, `/previews/${taskId}/index.html?token=${previewToken}`);
+            await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
             await storage.logEvent(taskId, `[DEBUG] Fix generated (${data.usage?.total_tokens ?? '?'} tokens)`, 'success');
             await storage.updateTaskState(taskId, 'completed');
             await storage.logEvent(taskId, '[DEBUG] Debug job completed successfully', 'info');
@@ -1073,7 +1074,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
               fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
               const previewToken = signPreviewToken(taskId);
-              await storage.setPreviewUrl(taskId, `/previews/${taskId}/index.html?token=${previewToken}`);
+              await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
               await storage.logEvent(taskId, 'Preview generated', 'info');
               await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
               await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
@@ -1235,7 +1236,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
           const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
           const previewToken = signPreviewToken(taskId);
-          await storage.setPreviewUrl(taskId, `/previews/${taskId}/${firstPage}.html?token=${previewToken}`);
+          await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/${firstPage}.html?token=${previewToken}`);
           await storage.logEvent(taskId, 'Preview generated', 'info');
           await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
           await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
@@ -1407,8 +1408,9 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
       const task = await storage.getTask(req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
       const token = signPreviewToken(req.params.id);
-      const separator = preview_url.includes('?') ? '&' : '?';
-      const signedUrl = `${preview_url}${separator}token=${token}`;
+      const absoluteUrl = preview_url.startsWith('http') ? preview_url : `${FRONTEND_BASE_URL}${preview_url}`;
+      const separator = absoluteUrl.includes('?') ? '&' : '?';
+      const signedUrl = `${absoluteUrl}${separator}token=${token}`;
       await storage.setPreviewUrl(req.params.id, signedUrl);
       res.json({ message: 'Preview URL updated successfully', preview_token: token });
     } catch (error: any) {
