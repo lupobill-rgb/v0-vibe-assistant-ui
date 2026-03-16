@@ -158,8 +158,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   }, [id])
 
   useEffect(() => {
-    const channel = supabase.channel("build-" + id)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "jobs", filter: "id=eq." + id },
+    if (!jobId) return
+    const channel = supabase.channel("build-" + jobId)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "jobs", filter: "id=eq." + jobId },
         (payload) => {
           const row = payload.new as Record<string, unknown>
           if (row.execution_state) setTask((prev) => {
