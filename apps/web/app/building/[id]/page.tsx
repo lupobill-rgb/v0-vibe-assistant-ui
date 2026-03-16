@@ -3,11 +3,11 @@
 import { use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Check, ClipboardCopy, ExternalLink, Loader2, Pencil, Plus, Terminal, X } from "lucide-react"
+import { Check, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Pencil, Plus, Terminal, X } from "lucide-react"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
-import { createJob, publishProject } from "@/lib/api"
+import { createJob, publishJob } from "@/lib/api"
 
 interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; [key: string]: unknown }
 
@@ -120,6 +120,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [projectName, setProjectName] = useState('')
   const router = useRouter()
 
 
@@ -139,6 +140,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     }
 
     const poll = async () => {
+      // Fetch project name for domain suggestions
+      const { data: proj } = await supabase.from('projects').select('name').eq('id', id).maybeSingle()
+      if (proj?.name) setProjectName(proj.name)
+
       const resolvedId = await resolveJobId()
       if (!resolvedId || cancelled) return
       setJobId(resolvedId)
@@ -507,11 +512,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         {/* ── ACTIONS SECTION ── */}
         <div className="px-4 py-3 border-t border-slate-700 flex flex-col gap-2">
           {publishedUrl ? (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 h-9 rounded-lg bg-emerald-900/40 border border-emerald-700/50 px-3">
                 <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-xs text-emerald-300 font-medium truncate">Published</span>
+                <span className="text-xs text-emerald-300 font-medium">Published live</span>
               </div>
+              {/* Option 1: Copy Link */}
               <div className="flex items-center gap-1.5">
                 <a href={publishedUrl} target="_blank" rel="noopener noreferrer"
                   className="flex-1 min-w-0 h-8 flex items-center gap-1.5 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-violet-400 hover:text-violet-300 truncate transition-colors">
@@ -529,6 +535,22 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                   {copied ? <><Check className="w-3 h-3 text-emerald-400" /> Copied</> : <><ClipboardCopy className="w-3 h-3" /> Copy Link</>}
                 </button>
               </div>
+              {/* Option 2: VIBE subdomain (coming soon) */}
+              <div className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50 text-xs text-slate-500">
+                <Globe className="w-3 h-3 shrink-0" />
+                <span className="truncate">{(projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.vibe.site</span>
+                <span className="ml-auto shrink-0 text-[10px] bg-slate-700 text-slate-400 rounded px-1.5 py-0.5">Coming soon</span>
+              </div>
+              {/* Option 3: Custom domain */}
+              <a
+                href={`https://www.godaddy.com/domainsearch/find?checkAvail=1&domainToCheck=${encodeURIComponent((projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-'))}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+              >
+                <Lock className="w-3 h-3 shrink-0" />
+                <span>Get a custom domain</span>
+                <ExternalLink className="w-3 h-3 ml-auto shrink-0 opacity-50" />
+              </a>
             </div>
           ) : (
             <button
@@ -538,7 +560,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 setPublishing(true)
                 setPublishError(null)
                 try {
-                  const result = await publishProject(id, jobId)
+                  const result = await publishJob(jobId)
                   if (result.error) {
                     setPublishError(result.error)
                   } else if (result.published_url) {
