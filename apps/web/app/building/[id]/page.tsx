@@ -3,11 +3,11 @@
 import { use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ExternalLink, Loader2, Pencil, Plus, Terminal, X } from "lucide-react"
+import { Check, ClipboardCopy, ExternalLink, Loader2, Pencil, Plus, Terminal, X } from "lucide-react"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
-import { createJob } from "@/lib/api"
+import { createJob, publishProject } from "@/lib/api"
 
 interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; [key: string]: unknown }
 
@@ -116,6 +116,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [updatePrompt, setUpdatePrompt] = useState('')
   const [updatingJob, setUpdatingJob] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
+  const [publishError, setPublishError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const router = useRouter()
 
 
@@ -502,14 +506,59 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
         {/* ── ACTIONS SECTION ── */}
         <div className="px-4 py-3 border-t border-slate-700 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => console.log('[VIBE] Push Live clicked')}
-            disabled={!isComplete}
-            className="flex items-center justify-center gap-2 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
-          >
-            Push Live
-          </button>
+          {publishedUrl ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 h-9 rounded-lg bg-emerald-900/40 border border-emerald-700/50 px-3">
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="text-xs text-emerald-300 font-medium truncate">Published</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <a href={publishedUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 min-w-0 h-8 flex items-center gap-1.5 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-violet-400 hover:text-violet-300 truncate transition-colors">
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{publishedUrl.replace(/^https?:\/\//, '')}</span>
+                </a>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(publishedUrl)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }}
+                  className="shrink-0 h-8 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all flex items-center gap-1.5"
+                >
+                  {copied ? <><Check className="w-3 h-3 text-emerald-400" /> Copied</> : <><ClipboardCopy className="w-3 h-3" /> Copy Link</>}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!jobId || publishing) return
+                setPublishing(true)
+                setPublishError(null)
+                try {
+                  const result = await publishProject(id, jobId)
+                  if (result.error) {
+                    setPublishError(result.error)
+                  } else if (result.published_url) {
+                    setPublishedUrl(result.published_url)
+                  }
+                } catch (err: any) {
+                  setPublishError(err.message || 'Publish failed')
+                } finally {
+                  setPublishing(false)
+                }
+              }}
+              disabled={!isComplete || publishing}
+              className="flex items-center justify-center gap-2 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+            >
+              {publishing ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing...</> : 'Push Live'}
+            </button>
+          )}
+          {publishError && (
+            <p className="text-xs text-red-400 px-1">{publishError}</p>
+          )}
           {task?.pull_request_link && (
             <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 h-9 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
