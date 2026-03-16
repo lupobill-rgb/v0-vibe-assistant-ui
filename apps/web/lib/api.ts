@@ -159,11 +159,13 @@ export async function deleteProject(id: string): Promise<{ error?: string }> {
   return response.json()
 }
 
-export async function publishProject(projectId: string, jobId: string): Promise<{ published_url?: string; error?: string }> {
-  const response = await fetch(`${API_URL}/projects/${projectId}/publish`, {
+export async function publishJob(jobId: string): Promise<{ published_url?: string; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user?.id) return { error: 'Not authenticated' }
+  const response = await fetch(`${API_URL}/jobs/${jobId}/publish`, {
     method: 'POST',
     headers: baseHeaders(),
-    body: JSON.stringify({ job_id: jobId }),
+    body: JSON.stringify({ user_id: user.id }),
   })
   return response.json()
 }
