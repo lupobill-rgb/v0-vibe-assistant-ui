@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Check, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Pencil, Plus, Terminal, X } from "lucide-react"
@@ -122,47 +122,69 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [copied, setCopied] = useState(false)
   const [projectName, setProjectName] = useState('')
   const router = useRouter()
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
+  // Helper to track timeouts and auto-clean on unmount
+  const safeTimeout = useCallback((fn: () => void, ms: number) => {
+    const t = setTimeout(fn, ms)
+    timersRef.current.push(t)
+    return t
+  }, [])
+
+  // Clean up all tracked timeouts on unmount
+  useEffect(() => {
+    return () => { timersRef.current.forEach(clearTimeout) }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
 
     async function resolveJobId(): Promise<string | null> {
-      // Always treat id as a project_id, get latest job
-      const { data: latest } = await supabase
+      const { data: latest, error } = await supabase
         .from('jobs')
         .select('id')
         .eq('project_id', id)
         .order('initiated_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (error) { console.error('[VIBE] resolveJobId error:', error.message); return null }
       return latest?.id ?? null
     }
 
     const poll = async () => {
-      // Fetch project name for domain suggestions
-      const { data: proj } = await supabase.from('projects').select('name').eq('id', id).maybeSingle()
-      if (proj?.name) setProjectName(proj.name)
+      try {
+        const { data: proj } = await supabase.from('projects').select('name').eq('id', id).maybeSingle()
+        if (!cancelled && proj?.name) setProjectName(proj.name)
 
-      const resolvedId = await resolveJobId()
-      if (!resolvedId || cancelled) return
-      setJobId(resolvedId)
-      while (!cancelled) {
-        const { data } = await supabase
-          .from('jobs')
-          .select('execution_state, last_diff, project_id')
-          .eq('id', resolvedId)
-          .maybeSingle()
-        if (data) {
-          setTask(prev => ({ ...(prev ?? {}), task_id: id, ...data } as Task))
-          if (data.last_diff) setDiff(data.last_diff)
-          if (data.execution_state === 'completed' ||
-              data.execution_state === 'failed') break
+        const resolvedId = await resolveJobId()
+        if (!resolvedId || cancelled) return
+        if (!cancelled) setJobId(resolvedId)
+
+        while (!cancelled) {
+          try {
+            const { data } = await supabase
+              .from('jobs')
+              .select('execution_state, last_diff, project_id')
+              .eq('id', resolvedId)
+              .maybeSingle()
+            if (cancelled) break
+            if (data) {
+              setTask(prev => ({ ...(prev ?? {}), task_id: id, ...data } as Task))
+              if (data.last_diff) setDiff(data.last_diff)
+              if (data.execution_state === 'completed' ||
+                  data.execution_state === 'failed') break
+            }
+          } catch (err) {
+            if (cancelled) break
+            console.error('[VIBE] Poll iteration error:', err)
+          }
+          await new Promise(r => setTimeout(r, 2000))
         }
-        await new Promise(r => setTimeout(r, 2000))
+      } catch (err) {
+        if (!cancelled) console.error('[VIBE] Poll setup error:', err)
       }
     }
-    poll()
+    poll().catch(err => { if (!cancelled) console.error('[VIBE] Poll unhandled:', err) })
     return () => { cancelled = true }
   }, [id])
 
@@ -195,16 +217,20 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     const raw = diff || (typeof task?.last_diff === 'string' ? task.last_diff : null)
     return raw ? parseDiff(raw) : []
   }, [diff, task?.last_diff])
+  const prevBlobRef = useRef<string | null>(null)
   const previewUrl = useMemo(() => {
+    // Revoke previous blob URL before creating a new one
+    if (prevBlobRef.current) { URL.revokeObjectURL(prevBlobRef.current); prevBlobRef.current = null }
     if (pages.length === 0) return null
     const url = buildBlobUrl(pages, activeFile)
-    console.log('[preview url]', url)
+    prevBlobRef.current = url
     return url
   }, [pages, activeFile])
 
+  // Revoke on final unmount
   useEffect(() => {
-    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }
-  }, [previewUrl])
+    return () => { if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current) }
+  }, [])
 
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
@@ -321,7 +347,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       setShowAddPage(false)
       setAddPageError(null)
       setSuccessToast('Page added successfully')
-      setTimeout(() => setSuccessToast(null), 3000)
+      safeTimeout(() => setSuccessToast(null), 3000)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error('[VIBE] Failed to generate page:', message)
@@ -329,7 +355,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     } finally {
       setAddingPage(false)
 }
-  }, [pages])
+  }, [pages, safeTimeout])
 
   const handleUpdate = useCallback(async () => {
     const projectId = task?.project_id
@@ -348,8 +374,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   }, [task?.project_id, updatePrompt, updatingJob, router])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-900 relative flex-row-reverse">
-      <div className="flex-[2] flex flex-col min-w-0 border-l border-slate-700">
+    <div className="flex h-screen overflow-hidden bg-slate-900 relative flex-col md:flex-row-reverse">
+      <div className="flex-1 md:flex-[2] flex flex-col min-w-0 md:border-l border-slate-700">
         {isMultiPage && (
           <div className="flex items-center gap-1 px-3 h-10 border-b border-slate-700 bg-slate-800 overflow-x-auto">
             {pages.map((p) => (
@@ -421,7 +447,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         </div>
       </div>
-      <div className="w-[340px] flex-shrink-0 flex flex-col bg-slate-900">
+      <div className="w-full md:w-[340px] flex-shrink-0 flex flex-col bg-slate-900 order-first md:order-none">
         {/* ── PROGRESS SECTION ── */}
         <div className="min-h-0 max-h-[45vh] overflow-hidden border-b border-slate-700">
           <PipelineTracker taskId={id} task={task as any} />
@@ -528,7 +554,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                   onClick={() => {
                     navigator.clipboard.writeText(publishedUrl)
                     setCopied(true)
-                    setTimeout(() => setCopied(false), 2000)
+                    safeTimeout(() => setCopied(false), 2000)
                   }}
                   className="shrink-0 h-8 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all flex items-center gap-1.5"
                 >
