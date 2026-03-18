@@ -541,14 +541,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 h-9 rounded-lg bg-emerald-900/40 border border-emerald-700/50 px-3">
                 <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-xs text-emerald-300 font-medium">Published live</span>
+                <span className="text-xs text-emerald-300 font-medium">Your site is live</span>
               </div>
-              {/* Option 1: Copy Link */}
+              {/* Friendly display URL */}
               <div className="flex items-center gap-1.5">
                 <a href={publishedUrl} target="_blank" rel="noopener noreferrer"
                   className="flex-1 min-w-0 h-8 flex items-center gap-1.5 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-violet-400 hover:text-violet-300 truncate transition-colors">
-                  <ExternalLink className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{publishedUrl.replace(/^https?:\/\//, '')}</span>
+                  <Globe className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{(projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.vibe-web-tau.vercel.app</span>
                 </a>
                 <button
                   onClick={() => {
@@ -561,13 +561,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                   {copied ? <><Check className="w-3 h-3 text-emerald-400" /> Copied</> : <><ClipboardCopy className="w-3 h-3" /> Copy Link</>}
                 </button>
               </div>
-              {/* Option 2: VIBE subdomain (coming soon) */}
-              <div className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50 text-xs text-slate-500">
-                <Globe className="w-3 h-3 shrink-0" />
-                <span className="truncate">{(projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.vibe.site</span>
-                <span className="ml-auto shrink-0 text-[10px] bg-slate-700 text-slate-400 rounded px-1.5 py-0.5">Coming soon</span>
-              </div>
-              {/* Option 3: Custom domain */}
+              {/* Custom domain */}
               <a
                 href={`https://www.godaddy.com/domainsearch/find?checkAvail=1&domainToCheck=${encodeURIComponent((projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-'))}`}
                 target="_blank" rel="noopener noreferrer"
