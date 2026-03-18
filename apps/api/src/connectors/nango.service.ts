@@ -23,7 +23,7 @@ export interface NangoConnection {
 @Injectable()
 export class NangoService {
   private readonly logger = new Logger(NangoService.name);
-  private readonly nango: Nango;
+  private readonly nango: InstanceType<typeof Nango>;
 
   constructor() {
     const secretKey = process.env.NANGO_SECRET_KEY;
