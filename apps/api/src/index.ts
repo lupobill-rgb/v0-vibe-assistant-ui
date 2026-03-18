@@ -547,6 +547,15 @@ async function bootstrap() {
         console.error('Failed to save published URL to job:', updateErr.message);
       }
 
+      // Also persist to the projects table so the short URL (/s/:projectId) works
+      if (job.project_id) {
+        try {
+          await storage.publishProject(job.project_id, jobId, publishedUrl);
+        } catch (projErr: any) {
+          console.error('Failed to save published URL to project:', projErr.message);
+        }
+      }
+
       res.json({ published_url: publishedUrl, job_id: jobId });
     } catch (error: any) {
       console.error('Error publishing job:', error);

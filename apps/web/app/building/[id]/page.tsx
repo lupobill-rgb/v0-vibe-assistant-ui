@@ -564,41 +564,47 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
         {/* ── ACTIONS SECTION ── */}
         <div className={"px-4 py-3 border-t border-slate-700 flex-col gap-2 " + (sidebarOpen ? "flex" : "hidden md:flex")}>
-          {publishedUrl ? (
+          {publishedUrl ? (() => {
+            const shareUrl = typeof window !== 'undefined'
+              ? `${window.location.origin}/s/${jobId}`
+              : `/s/${jobId}`
+            return (
             <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2 h-9 rounded-lg bg-emerald-900/40 border border-emerald-700/50 px-3">
+              <div className="flex items-center gap-2 min-h-[44px] rounded-lg bg-emerald-900/40 border border-emerald-700/50 px-3">
                 <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-xs text-emerald-300 font-medium">Your site is live</span>
+                <span className="text-sm text-emerald-300 font-medium">Your site is live!</span>
               </div>
-              {/* Friendly display URL */}
+              {/* Share URL — clean short link */}
               <div className="flex items-center gap-1.5">
-                <a href={publishedUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex-1 min-w-0 h-8 flex items-center gap-1.5 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-violet-400 hover:text-violet-300 truncate transition-colors">
-                  <Globe className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{(projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.vibe-web-tau.vercel.app</span>
+                <a href={shareUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 min-w-0 min-h-[44px] flex items-center gap-1.5 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-violet-400 hover:text-violet-300 truncate transition-colors">
+                  <Globe className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{shareUrl.replace(/^https?:\/\//, '')}</span>
                 </a>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(publishedUrl)
+                    navigator.clipboard.writeText(shareUrl)
                     setCopied(true)
                     safeTimeout(() => setCopied(false), 2000)
                   }}
-                  className="shrink-0 h-8 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all flex items-center gap-1.5"
+                  className="shrink-0 min-h-[44px] px-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-all flex items-center gap-1.5"
                 >
-                  {copied ? <><Check className="w-3 h-3 text-emerald-400" /> Copied</> : <><ClipboardCopy className="w-3 h-3" /> Copy Link</>}
+                  {copied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><ClipboardCopy className="w-3.5 h-3.5" /> Copy Link</>}
                 </button>
               </div>
               {/* Custom domain */}
               <a
                 href={`https://www.godaddy.com/domainsearch/find?checkAvail=1&domainToCheck=${encodeURIComponent((projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-'))}`}
                 target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+                className="flex items-center gap-2 min-h-[44px] px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all"
               >
                 <Lock className="w-3 h-3 shrink-0" />
                 <span>Get a custom domain</span>
                 <ExternalLink className="w-3 h-3 ml-auto shrink-0 opacity-50" />
               </a>
             </div>
+            )
+          })()
           ) : (
             <button
               type="button"
