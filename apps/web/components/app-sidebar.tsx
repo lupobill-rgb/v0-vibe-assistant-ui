@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
+import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
 import { supabase } from "@/lib/supabase"
 
 const navItems = [
@@ -78,6 +79,7 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
   const router = useRouter()
   const activeProjectId = pathname.startsWith("/projects/") ? (params?.id as string | undefined) : undefined
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [connectDatasourceOpen, setConnectDatasourceOpen] = useState(false)
 
   // Close switcher on outside click
   useEffect(() => {
@@ -100,6 +102,10 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
       open={dialogOpen}
       onOpenChange={setDialogOpen}
       onCreated={(id) => router.push(`/chat?project=${id}`)}
+    />
+    <ConnectDatasourceDialog
+      open={connectDatasourceOpen}
+      onOpenChange={setConnectDatasourceOpen}
     />
     <TooltipProvider delayDuration={0}>
       <aside
@@ -214,6 +220,15 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
               New Project
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start gap-2"
+            onClick={() => setConnectDatasourceOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Connect Data Source
+          </Button>
         </div>
 
         {/* Search */}
