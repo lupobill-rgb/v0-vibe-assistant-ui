@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Check, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Pencil, Plus, Terminal, X } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Pencil, Plus, Terminal, X } from "lucide-react"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
@@ -121,6 +121,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [projectName, setProjectName] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
@@ -139,6 +140,17 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   useEffect(() => {
     let cancelled = false
 
+    // Wait for Supabase auth session to restore (critical on mobile refresh where
+    // session restore from storage is async — without this, RLS blocks all queries
+    // and the page appears blank / crashes)
+    async function waitForSession(retries = 8): Promise<boolean> {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) return true
+      if (retries <= 0) return false
+      await new Promise(r => setTimeout(r, 400))
+      return waitForSession(retries - 1)
+    }
+
     async function resolveJobId(): Promise<string | null> {
       const { data: latest, error } = await supabase
         .from('jobs')
@@ -153,6 +165,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
     const poll = async () => {
       try {
+        const hasSession = await waitForSession()
+        if (cancelled) return
+        if (!hasSession) { console.warn('[VIBE] No auth session after retries'); return }
+
         const { data: proj } = await supabase.from('projects').select('name').eq('id', id).maybeSingle()
         if (!cancelled && proj?.name) setProjectName(proj.name)
 
@@ -374,13 +390,13 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   }, [task?.project_id, updatePrompt, updatingJob, router])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-900 relative flex-col md:flex-row-reverse">
+    <div className="flex h-[100dvh] overflow-hidden bg-slate-900 relative flex-col md:flex-row-reverse">
       <div className="flex-1 md:flex-[2] flex flex-col min-w-0 md:border-l border-slate-700">
         {isMultiPage && (
-          <div className="flex items-center gap-1 px-3 h-10 border-b border-slate-700 bg-slate-800 overflow-x-auto">
+          <div className="flex items-center gap-1 px-3 min-h-[44px] border-b border-slate-700 bg-slate-800 overflow-x-auto">
             {pages.map((p) => (
               <button key={p.filename} onClick={() => setActiveFile(p.filename)}
-                className={"px-3 py-1.5 text-xs rounded-md transition-colors whitespace-nowrap " +
+                className={"px-3 min-h-[44px] text-xs rounded-md transition-colors whitespace-nowrap " +
                   (activeFile === p.filename
                     ? "bg-violet-600 text-white"
                     : "text-slate-400 hover:text-white hover:bg-slate-700")}>
@@ -433,14 +449,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               value={editInput}
               onChange={e => setEditInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleEdit()}
-              placeholder="Describe a change... e.g. make the header dark blue"
+              placeholder="Describe a change..."
               disabled={isEditing}
-              className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary disabled:opacity-50"
+              className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 min-h-[44px] text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary disabled:opacity-50"
             />
             <button
               onClick={() => handleEdit()}
               disabled={isEditing || !editInput.trim() || !diff}
-              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors flex items-center gap-1.5"
+              className="px-4 min-h-[44px] rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors flex items-center gap-1.5"
             >
               {isEditing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Editing...</> : 'Edit'}
             </button>
@@ -448,8 +464,19 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         </div>
       </div>
       <div className="w-full md:w-[340px] flex-shrink-0 flex flex-col bg-slate-900 order-first md:order-none">
+        {/* ── MOBILE SIDEBAR TOGGLE ── */}
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="flex md:hidden items-center justify-between min-h-[44px] px-4 border-b border-slate-700 bg-slate-800 active:bg-slate-700 transition-colors"
+        >
+          <span className="text-xs font-medium text-slate-300">
+            {task?.execution_state === 'completed' ? 'Build complete' : task?.execution_state === 'failed' ? 'Build failed' : 'Building...'}
+          </span>
+          {sidebarOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
         {/* ── PROGRESS SECTION ── */}
-        <div className="min-h-0 max-h-[45vh] overflow-hidden border-b border-slate-700">
+        <div className={"min-h-0 max-h-[45vh] overflow-hidden border-b border-slate-700 " + (sidebarOpen ? "block" : "hidden md:block")}>
           <PipelineTracker taskId={id} task={task as any} />
           {isComplete && (
             <div className="px-4 pb-3">
@@ -461,7 +488,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         </div>
 
         {/* ── PAGE MANAGEMENT SECTION ── */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+        <div className={"flex-1 overflow-y-auto px-4 py-3 flex-col gap-2 " + (sidebarOpen ? "flex" : "hidden md:flex")}>
           {successToast && (
             <div className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 animate-pulse">
               {successToast}
@@ -536,7 +563,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         </div>
 
         {/* ── ACTIONS SECTION ── */}
-        <div className="px-4 py-3 border-t border-slate-700 flex flex-col gap-2">
+        <div className={"px-4 py-3 border-t border-slate-700 flex-col gap-2 " + (sidebarOpen ? "flex" : "hidden md:flex")}>
           {publishedUrl ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 h-9 rounded-lg bg-emerald-900/40 border border-emerald-700/50 px-3">
@@ -593,7 +620,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 }
               }}
               disabled={!isComplete || publishing}
-              className="flex items-center justify-center gap-2 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+              className="flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
             >
               {publishing ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing...</> : 'Push Live'}
             </button>
@@ -608,14 +635,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             </a>
           )}
           <button onClick={() => setShowLogs(!showLogs)}
-            className="flex items-center gap-2 w-full h-8 px-3 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all">
+            className="flex items-center gap-2 w-full min-h-[44px] px-3 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all">
             <Terminal className="w-3.5 h-3.5" /> {showLogs ? "Hide Logs" : "Show Logs"}
           </button>
-          <Link href="/" className="flex items-center justify-center h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-sm font-medium transition-colors">
+          <Link href="/" className="flex items-center justify-center min-h-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-sm font-medium transition-colors">
             Build Another
           </Link>
         </div>
-        <div className="px-4 py-3 border-t border-slate-700">
+        <div className={"px-4 py-3 border-t border-slate-700 " + (sidebarOpen ? "block" : "hidden md:block")}>
           <label className="text-xs font-medium text-slate-400 mb-2 block">Edit current page</label>
           <div className="flex gap-2">
             <input
@@ -624,18 +651,18 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(""); handleEdit(p); } }}
               placeholder="e.g. Make the hero section taller"
               disabled={!isComplete || isEditing}
-              className="flex-1 h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+              className="flex-1 min-h-[44px] rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
             />
             <button
               onClick={() => { if (editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(""); handleEdit(p); } }}
               disabled={!editPrompt.trim() || !isComplete || isEditing}
-              className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
+              className="min-h-[44px] px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
               {isEditing ? '...' : 'Apply'}
             </button>
           </div>
         </div>
         {task?.execution_state === 'completed' && task?.project_id && (
-          <div className="px-4 py-3 border-t border-slate-700">
+          <div className={"px-4 py-3 border-t border-slate-700 " + (sidebarOpen ? "block" : "hidden md:block")}>
             <label className="text-xs font-medium text-slate-400 mb-2 block">Iterate on this build</label>
             <div className="flex gap-2">
               <input
@@ -644,12 +671,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 onKeyDown={(e) => { if (e.key === 'Enter' && updatePrompt.trim() && !updatingJob) handleUpdate() }}
                 placeholder="Describe what to change..."
                 disabled={updatingJob}
-                className="flex-1 h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+                className="flex-1 min-h-[44px] rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
               />
               <button
                 onClick={handleUpdate}
                 disabled={!updatePrompt.trim() || updatingJob}
-                className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors flex items-center gap-1.5"
+                className="min-h-[44px] px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors flex items-center gap-1.5"
               >
                 {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                 Update

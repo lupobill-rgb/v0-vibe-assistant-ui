@@ -145,14 +145,14 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   }
 
   return (
-    <div className="px-6 -mt-8 relative z-10">
+    <div className="px-4 sm:px-6 -mt-8 relative z-10">
       <div
         className={cn(
           "bg-card rounded-3xl border border-border shadow-2xl shadow-black/20 transition-all duration-300",
           focused && "border-primary/40 shadow-primary/5"
         )}
       >
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <div className="relative">
             <textarea
               value={prompt}
@@ -163,7 +163,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               placeholder="Describe what you want to build..."
               rows={3}
               disabled={submitting}
-              className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed disabled:opacity-60"
+              className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-base resize-none outline-none leading-relaxed disabled:opacity-60 min-h-[80px]"
             />
           </div>
           {error && (
@@ -189,7 +189,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               )}
             </div>
           )}
-          <div className="flex items-center justify-between pt-3 border-t border-border/50 mt-2">
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-border/50 mt-2">
             <div className="flex items-center gap-2">
               <input
                 ref={fileInputRef}
@@ -201,13 +201,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               <button
                 onClick={handleAttach}
                 disabled={uploadState.status === "uploading"}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
               >
                 <Paperclip className="w-3.5 h-3.5" />
                 Attach
               </button>
-              <div className="w-px h-4 bg-border" />
-              <span className="text-[10px] text-muted-foreground font-mono">
+              <div className="w-px h-4 bg-border hidden sm:block" />
+              <span className="text-[10px] text-muted-foreground font-mono hidden sm:inline">
                 {prompt.length > 0 ? `${prompt.length} chars` : "\u2318\u21b5 to submit"}
               </span>
             </div>
@@ -215,7 +215,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               onClick={handleSubmit}
               disabled={!prompt.trim() || submitting}
               className={cn(
-                "flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all duration-200",
+                "flex items-center justify-center gap-2 px-4 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-200",
                 prompt.trim() && !submitting
                   ? "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shadow-lg shadow-[#A855F7]/20 hover:opacity-90"
                   : "bg-secondary text-muted-foreground"
@@ -226,18 +226,19 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               ) : (
                 <ArrowUp className="w-4 h-4" />
               )}
-              Build Project
+              <span className="hidden sm:inline">Build Project</span>
+              <span className="sm:hidden">Build</span>
             </button>
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+      <div className="flex flex-wrap items-center justify-center gap-2 mt-4 px-1">
         {suggestions.map((s) => (
           <button
             key={s.label}
             onClick={() => setPrompt(s.label)}
             disabled={submitting}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 min-h-[44px] rounded-xl bg-secondary/60 border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-border transition-all duration-200 disabled:opacity-50"
           >
             <s.icon className="w-3.5 h-3.5" />
             {s.label}

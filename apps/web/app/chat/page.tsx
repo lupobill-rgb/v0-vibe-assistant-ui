@@ -38,7 +38,7 @@ function JobRow({ task }: { task: Task }) {
   return (
     <Link
       href={`/task/${task.task_id}`}
-      className="flex items-center gap-4 px-4 py-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all duration-200 group"
+      className="flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3 min-h-[56px] rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all duration-200 group"
     >
       <Icon
         className={cn("w-4 h-4 flex-shrink-0", cfg.color, isRunning && "animate-spin")}
@@ -47,7 +47,7 @@ function JobRow({ task }: { task: Task }) {
         <p className="text-sm text-foreground truncate">{task.user_prompt}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">{date}</p>
       </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
         <span
           className={cn(
             "text-[11px] font-medium px-2 py-0.5 rounded-md",
@@ -306,14 +306,14 @@ function ChatContent() {
     <AppShell>
     <div className="min-h-screen">
       {/* Page Header */}
-      <div className="px-6 pt-8 pb-2">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center">
+      <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-2">
+        <div className="flex items-center gap-3 mb-4 sm:mb-6">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center flex-shrink-0">
             <MessageSquare className="w-5 h-5 text-white" />
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Chat</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground">Chat</h1>
+            <p className="text-sm text-muted-foreground mt-0.5 truncate">
               Submit prompts and track your AI jobs
             </p>
           </div>
@@ -321,13 +321,13 @@ function ChatContent() {
       </div>
 
         {/* Project Gallery */}
-        <div className="px-6 pb-4">
+        <div className="px-4 sm:px-6 pb-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">Projects</h2>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCreateDialogOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
+                className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
                 title="New Project"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -335,7 +335,7 @@ function ChatContent() {
               </button>
               <button
                 onClick={() => setImportDialogOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
+                className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
                 title="Import from GitHub"
               >
                 <Github className="w-3.5 h-3.5" />
@@ -367,7 +367,7 @@ function ChatContent() {
         <PromptCard selectedProjectId={selectedProjectId} />
 
       {/* Recent Jobs */}
-      <div className="px-6 py-8">
+      <div className="px-4 sm:px-6 py-6 sm:py-8">
         <h2 className="text-base font-semibold text-foreground mb-4">
           {selectedProjectId ? "Project Jobs" : "Recent Jobs"}
         </h2>
