@@ -11,6 +11,7 @@
     "start:nest": "node dist/nest-main.js"
   },
   "dependencies": {
+    "@nangohq/node": "^0.69.46",
     "@nestjs/common": "^11.1.13",
     "@nestjs/core": "^11.1.13",
     "@nestjs/platform-express": "^11.1.13",
