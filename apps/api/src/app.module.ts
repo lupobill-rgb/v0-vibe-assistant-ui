@@ -1,12 +1,8 @@
 import { Module } from '@nestjs/common';
 import { JobsModule } from './jobs';
+import { ConnectorsModule } from './connectors/connectors.module';
 
-/**
- * Example AppModule for integrating the JobsModule
- * This is a reference implementation showing how to use the JobsModule
- * in a NestJS application.
- */
 @Module({
-  imports: [JobsModule],
+  imports: [JobsModule, ConnectorsModule],
 })
 export class AppModule {}
