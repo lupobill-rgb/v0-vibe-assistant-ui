@@ -4,7 +4,7 @@ import Nango from '@nangohq/node';
 export enum ConnectorType {
   SALESFORCE = 'salesforce',
   HUBSPOT = 'hubspot',
-  GOOGLE_SHEETS = 'google-sheet',
+  SLACK           = 'slack',
   GOOGLE_ANALYTICS = 'google-analytics-4',
   MIXPANEL = 'mixpanel',
   AIRTABLE = 'airtable',

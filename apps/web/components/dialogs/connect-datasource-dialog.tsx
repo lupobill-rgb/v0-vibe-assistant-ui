@@ -22,7 +22,7 @@ import {
 const CONNECTORS = [
   { value: "hubspot", label: "HubSpot" },
   { value: "salesforce", label: "Salesforce" },
-  { value: "google-sheet", label: "Google Sheets" },
+  { value: "slack", label: "Slack" },
   { value: "google-analytics-4", label: "Google Analytics 4" },
   { value: "mixpanel", label: "Mixpanel" },
   { value: "airtable", label: "Airtable" },
