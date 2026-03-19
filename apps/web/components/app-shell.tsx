@@ -8,15 +8,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar
-        currentOrg={currentOrg}
-        currentTeam={currentTeam}
-        userRole={userRole}
-        availableTeams={availableTeams}
-        onTeamChange={switchTeam}
-        teamLoading={loading}
-      />
-      <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
+      <div className="hidden md:flex md:flex-shrink-0">
+        <AppSidebar
+          currentOrg={currentOrg}
+          currentTeam={currentTeam}
+          userRole={userRole}
+          availableTeams={availableTeams}
+          onTeamChange={switchTeam}
+          teamLoading={loading}
+        />
+      </div>
+      <main className="flex-1 overflow-y-auto min-h-0 w-full">{children}</main>
     </div>
   )
 }
