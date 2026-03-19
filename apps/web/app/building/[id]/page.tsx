@@ -184,6 +184,22 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         if (!resolvedId || cancelled) return
         if (!cancelled) setJobId(resolvedId)
 
+        // Immediately fetch current job state before entering poll loop
+        {
+          const { data: initial } = await supabase
+            .from('jobs')
+            .select('execution_state, last_diff, project_id')
+            .eq('id', resolvedId)
+            .maybeSingle()
+          if (cancelled) return
+          if (initial) {
+            setTask(prev => ({ ...(prev ?? {}), task_id: id, ...initial } as Task))
+            if (initial.last_diff) setDiff(initial.last_diff)
+            if (initial.execution_state === 'completed' ||
+                initial.execution_state === 'failed') return
+          }
+        }
+
         while (!cancelled) {
           try {
             const { data } = await supabase
@@ -432,7 +448,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             <p className="text-slate-400 font-medium">{task?.execution_state === "failed" ? "Build failed" : "Build complete"}</p>
             <p className="text-slate-500 text-sm">No preview available</p>
           </div>
-        ) : (
+        ) : !previewUrl && task?.execution_state !== 'completed' ? (
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
               <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
@@ -440,7 +456,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             <p className="text-slate-300 font-medium">Building your page...</p>
             <p className="text-slate-500 text-sm">Preview will appear here when ready</p>
           </div>
-        )}
+        ) : null}
         {/* Edit prompt bar — pinned to bottom of preview */}
         <div className="flex-shrink-0 border-t border-slate-700 p-3 flex flex-col gap-2">
           {editError && (
