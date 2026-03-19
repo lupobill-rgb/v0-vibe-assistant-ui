@@ -152,6 +152,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     }
 
     async function resolveJobId(): Promise<string | null> {
+      // First check if id is directly a job id
+      const { data: directJob } = await supabase
+        .from('jobs')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle()
+      if (directJob?.id) return directJob.id
+      // Fall back to project_id lookup (latest job for that project)
       const { data: latest, error } = await supabase
         .from('jobs')
         .select('id')
