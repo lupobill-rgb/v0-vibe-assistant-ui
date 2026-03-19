@@ -399,7 +399,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-slate-900 relative flex-col md:flex-row-reverse">
-      <div className="flex-1 md:flex-[2] flex flex-col min-w-0 md:border-l border-slate-700">
+      <div className="flex-1 flex flex-col min-w-0 md:border-l border-slate-700">
         {isMultiPage && (
           <div className="flex items-center gap-1 px-3 min-h-[44px] border-b border-slate-700 bg-slate-800 overflow-x-auto">
             {pages.map((p) => (
@@ -471,7 +471,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         </div>
       </div>
-      <div className="w-full md:w-[340px] flex-shrink-0 flex flex-col bg-slate-900 order-first md:order-none">
+      <div className="w-full md:w-[260px] flex-shrink-0 flex flex-col bg-slate-900 order-first md:order-none">
         {/* ── MOBILE SIDEBAR TOGGLE ── */}
         <button
           type="button"
