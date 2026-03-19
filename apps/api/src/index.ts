@@ -167,6 +167,84 @@ async function bootstrap() {
   // Serve static published files
   app.use('/published', express.static(PUBLISHED_DIR));
 
+  // ── Connector routes (Nango integration) ──
+  app.post('/connectors/connect', express.json(), async (req: Request, res: Response) => {
+    try {
+      const { teamId, connectorType, redirectUri } = req.body;
+      if (!teamId || !connectorType) {
+        return res.status(400).json({ error: 'Missing required fields: teamId, connectorType' });
+      }
+      const secretKey = process.env.NANGO_SECRET_KEY;
+      if (!secretKey) {
+        return res.status(500).json({ error: 'NANGO_SECRET_KEY not configured' });
+      }
+      const NangoSDK = require('@nangohq/node');
+      const nango = new NangoSDK({ secretKey });
+      const connectionId = `${teamId}__${connectorType}`;
+      const session = await nango.auth(connectorType, connectionId, {
+        user_id: teamId,
+        ...(redirectUri ? { params: { redirect_uri: redirectUri } } : {}),
+      });
+      const url = (session as any).url ?? '';
+      res.json({ url });
+    } catch (error: any) {
+      console.error('Connector connect error:', error);
+      res.status(500).json({ error: error.message ?? 'Failed to initiate connection' });
+    }
+  });
+
+  app.get('/connectors/:teamId', async (req: Request, res: Response) => {
+    try {
+      const { teamId } = req.params;
+      const secretKey = process.env.NANGO_SECRET_KEY;
+      if (!secretKey) {
+        return res.status(500).json({ error: 'NANGO_SECRET_KEY not configured' });
+      }
+      const NangoSDK = require('@nangohq/node');
+      const nango = new NangoSDK({ secretKey });
+      const connectorTypes = [
+        'salesforce','hubspot','slack','google-analytics-4',
+        'mixpanel','airtable','snowflake','postgres','google-bigquery','aws-s3'
+      ];
+      const checks = await Promise.allSettled(
+        connectorTypes.map(async (ct) => {
+          const connectionId = `${teamId}__${ct}`;
+          try {
+            await nango.getConnection(ct, connectionId);
+            return ct;
+          } catch {
+            return null;
+          }
+        })
+      );
+      const active = checks
+        .map((r) => (r.status === 'fulfilled' ? r.value : null))
+        .filter(Boolean);
+      res.json({ connectors: active });
+    } catch (error: any) {
+      console.error('Connector list error:', error);
+      res.status(500).json({ error: error.message ?? 'Failed to list connectors' });
+    }
+  });
+
+  app.delete('/connectors/:teamId/:connectorType', async (req: Request, res: Response) => {
+    try {
+      const { teamId, connectorType } = req.params;
+      const secretKey = process.env.NANGO_SECRET_KEY;
+      if (!secretKey) {
+        return res.status(500).json({ error: 'NANGO_SECRET_KEY not configured' });
+      }
+      const NangoSDK = require('@nangohq/node');
+      const nango = new NangoSDK({ secretKey });
+      const connectionId = `${teamId}__${connectorType}`;
+      await nango.deleteConnection(connectorType, connectionId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Connector delete error:', error);
+      res.status(500).json({ error: error.message ?? 'Failed to delete connection' });
+    }
+  });
+
   // ── Kernel diagnostic (Layer 3 verification) ──
   app.get('/api/kernel-context/:userId/:orgId', async (req: Request, res: Response) => {
     try {
