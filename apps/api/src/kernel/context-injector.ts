@@ -69,6 +69,9 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
   // 4. Resolve uploaded data tables for this user
   const uploadedData = await resolveUploadedData(sb, userId);
 
+  // 4b. Resolve active Nango connectors for this team
+  const activeConnectors = teamId ? await resolveActiveConnectors(teamId) : [];
+
   // 5. Format and return
   const visibleTeams = teamId ? await resolveVisibleTeams(sb, teamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
@@ -81,7 +84,8 @@ Data owned: ${ownedScopes.join(', ') || 'none'}
 Data readable: ${readScopes.join(', ') || 'none'}
 Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
-Font: ${fontHeading}` + visibleTeams + uploadedData;
+Font: ${fontHeading}` + visibleTeams + uploadedData
+    + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 }
 
 async function resolveUploadedData(supabase: ReturnType<typeof getPlatformSupabaseClient>, userId: string): Promise<string> {
@@ -122,4 +126,26 @@ async function resolveVisibleTeams(supabase: ReturnType<typeof getPlatformSupaba
     return `- ${name}: ${scopes} (${row.visibility_level})`;
   });
   return `\nVISIBLE TEAM DATA:\n${lines.join('\n')}`;
+}
+
+async function resolveActiveConnectors(teamId: string): Promise<string[]> {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+    const res = await fetch(
+      `${supabaseUrl}/functions/v1/connectors/${teamId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'apikey': supabaseAnonKey,
+        },
+      }
+    );
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    return Array.isArray(data?.connectors) ? data.connectors : [];
+  } catch (err) {
+    console.error('[KERNEL] resolveActiveConnectors error:', err);
+    return [];
+  }
 }
