@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import Nango from '@nangohq/node';
 
 export enum ConnectorType {
   SALESFORCE = 'salesforce',
@@ -23,14 +22,17 @@ export interface NangoConnection {
 @Injectable()
 export class NangoService {
   private readonly logger = new Logger(NangoService.name);
-  private readonly nango: Nango;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private readonly nango: any;
 
   constructor() {
     const secretKey = process.env.NANGO_SECRET_KEY;
     if (!secretKey) {
       throw new Error('NANGO_SECRET_KEY is not configured');
     }
-    this.nango = new Nango({ secretKey });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const NangoSDK = require('@nangohq/node');
+    this.nango = new NangoSDK({ secretKey });
     this.logger.log('NangoService initialized');
   }
 
