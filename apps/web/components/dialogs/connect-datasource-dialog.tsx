@@ -65,9 +65,13 @@ export function ConnectDatasourceDialog({
     setError("")
 
     try {
-      const res = await fetch("/api/connectors/connect", {
+      const res = await fetch("https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/connectors/connect", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""}`,
+        },
         body: JSON.stringify({
           teamId: currentTeam.id,
           connectorType,
