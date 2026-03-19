@@ -18,6 +18,7 @@ COPY apps/api/package.json ./apps/api/
 RUN npm ci
 RUN npm ci --workspace=apps/api
 
+ARG CACHEBUST=1
 # Copy source
 COPY apps/api ./apps/api
 
