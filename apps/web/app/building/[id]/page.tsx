@@ -605,7 +605,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             </div>
             )
           })()
-          ) : (
+          : (
             <button
               type="button"
               onClick={async () => {
