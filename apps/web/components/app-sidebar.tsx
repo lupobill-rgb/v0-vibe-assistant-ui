@@ -8,6 +8,7 @@ import {
   FolderKanban,
   MessageSquare,
   Settings,
+  Store,
   Sparkles,
   ChevronLeft,
   ChevronRight,
@@ -37,6 +38,7 @@ const navItems = [
   { icon: Home, label: "Home", href: "/" },
   { icon: FolderKanban, label: "Projects", href: "/projects" },
   { icon: MessageSquare, label: "Chat", href: "/chat" },
+  { icon: Store, label: "Marketplace", href: "/marketplace" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ]
 
