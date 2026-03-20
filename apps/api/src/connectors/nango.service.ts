@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 export enum ConnectorType {
   SALESFORCE       = 'salesforce',
+  REVOS_CRM        = 'revos-crm',
   HUBSPOT          = 'hubspot',
   SLACK            = 'slack',
   GOOGLE_ANALYTICS = 'google-analytics-4',

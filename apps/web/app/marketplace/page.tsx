@@ -9,6 +9,7 @@ import { Search, Plus, Package } from "lucide-react"
 const CONNECTORS = [
   { id: "hubspot",            name: "HubSpot",           emoji: "🟠", category: "CRM",       description: "Sync contacts, deals, and pipeline data from HubSpot." },
   { id: "salesforce",         name: "Salesforce",         emoji: "☁️", category: "CRM",       description: "Connect your Salesforce CRM for live account and opportunity data." },
+  { id: "revos-crm",          name: "REV OS CRM",          emoji: "🤖", category: "CRM",       description: "Connect your UbiGrowth REV OS AI Revenue OS for voice agent and pipeline data." },
   { id: "google-sheet",       name: "Google Sheets",      emoji: "📊", category: "Database",   description: "Pull structured data directly from Google Sheets." },
   { id: "google-analytics-4", name: "Google Analytics 4", emoji: "📈", category: "Analytics",  description: "Import web analytics, traffic, and conversion metrics." },
   { id: "mixpanel",           name: "Mixpanel",           emoji: "🔬", category: "Analytics",  description: "Bring in product analytics events and user funnels." },
