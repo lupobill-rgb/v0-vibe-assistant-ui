@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
 import { Star, ExternalLink, Clock, Trash2, FolderOpen, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { deleteProject } from "@/lib/api"
@@ -35,39 +34,24 @@ export interface Project {
   status: "active" | "deployed" | "draft"
 }
 
-export function ProjectCard({ project }: { project: Project }) {
+export function ProjectCard({ project, lastDiff }: { project: Project; lastDiff?: string | null }) {
   const [starred, setStarred] = useState(project.starred)
   const [hovering, setHovering] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const router = useRouter()
 
-  useEffect(() => {
-    let cancelled = false
-    async function fetchPreview() {
-      const { data, error } = await supabase
-        .from("jobs")
-        .select("last_diff")
-        .eq("project_id", project.id)
-        .eq("execution_state", "completed")
-        .order("initiated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (error || cancelled || !data?.last_diff) return
-      let html: string | null = null
-      try {
-        const parsed = JSON.parse(data.last_diff)
-        if (Array.isArray(parsed) && parsed[0]?.html) html = parsed[0].html
-      } catch {
-        const raw = data.last_diff.trim()
-        if (raw.startsWith("<!") || raw.startsWith("<html")) html = raw
-      }
-      if (html && !cancelled) setPreviewHtml(html)
+  const previewHtml = useMemo(() => {
+    if (!lastDiff) return null
+    try {
+      const parsed = JSON.parse(lastDiff)
+      if (Array.isArray(parsed) && parsed[0]?.html) return parsed[0].html as string
+    } catch {
+      const raw = lastDiff.trim()
+      if (raw.startsWith("<!") || raw.startsWith("<html")) return raw
     }
-    fetchPreview()
-    return () => { cancelled = true }
-  }, [project.id])
+    return null
+  }, [lastDiff])
 
   const statusColors = {
     active: "bg-[#4F8EFF]/20 text-[#4F8EFF]",
