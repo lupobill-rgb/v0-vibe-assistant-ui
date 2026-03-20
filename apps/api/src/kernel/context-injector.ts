@@ -4,25 +4,25 @@ import { getPlatformSupabaseClient } from '../supabase/client';
  * Resolves the kernel context string injected before every job prompt.
  * Queries team membership, data scopes, and brand tokens for the given user+org.
  */
-export async function resolveKernelContext(userId: string, orgId: string): Promise<string> {
+export async function resolveKernelContext(userId: string, orgId: string, teamId?: string): Promise<string> {
   const sb = getPlatformSupabaseClient();
-  console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}`);
+  console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}, teamId=${teamId ?? 'auto'}`);
 
   // 1. Find the user's team and role within this org
-  const { data: membership } = await sb
+  let query = sb
     .from('team_members')
     .select('role, teams!inner(id, name)')
     .eq('user_id', userId)
-    .eq('teams.org_id', orgId)
-    .limit(1)
-    .single();
+    .eq('teams.org_id', orgId);
+  if (teamId) query = query.eq('team_id', teamId);
+  const { data: membership } = await query.limit(1).single();
 
-  let teamId = (membership?.teams as any)?.id ?? null;
+  let resolvedTeamId = (membership?.teams as any)?.id ?? null;
   let teamName = (membership?.teams as any)?.name ?? 'unknown';
   let role = membership?.role ?? 'unknown';
 
   // Fallback: if no team_member row, pick the first team in the org
-  if (!teamId) {
+  if (!resolvedTeamId) {
     console.log(`[KERNEL] No team_member row for user=${userId}, falling back to first org team`);
     const { data: fallbackTeam } = await sb
       .from('teams')
@@ -31,7 +31,7 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
       .limit(1)
       .single();
 
-    teamId = fallbackTeam?.id ?? null;
+    resolvedTeamId = fallbackTeam?.id ?? null;
     teamName = fallbackTeam?.name ?? 'unknown';
     role = 'Admin';
   }
@@ -40,11 +40,11 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
   let ownedScopes: string[] = [];
   let readScopes: string[] = [];
 
-  if (teamId) {
+  if (resolvedTeamId) {
     const { data: scopes } = await sb
       .from('data_scopes')
       .select('scope_name, scope_type')
-      .eq('team_id', teamId)
+      .eq('team_id', resolvedTeamId)
       .in('scope_type', ['owned', 'read']);
 
     for (const s of scopes ?? []) {
@@ -70,10 +70,10 @@ export async function resolveKernelContext(userId: string, orgId: string): Promi
   const uploadedData = await resolveUploadedData(sb, userId);
 
   // 4b. Resolve active Nango connectors for this team
-  const activeConnectors = teamId ? await resolveActiveConnectors(teamId) : [];
+  const activeConnectors = resolvedTeamId ? await resolveActiveConnectors(resolvedTeamId) : [];
 
   // 5. Format and return
-  const visibleTeams = teamId ? await resolveVisibleTeams(sb, teamId) : '';
+  const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
 
   return `TEAM CONTEXT:

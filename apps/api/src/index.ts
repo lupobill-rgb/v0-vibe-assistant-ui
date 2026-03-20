@@ -252,9 +252,9 @@ async function bootstrap() {
   });
 
   // ── Kernel diagnostic (Layer 3 verification) ──
-  app.get('/api/kernel-context/:userId/:orgId', async (req: Request, res: Response) => {
+  app.get('/api/kernel-context/:userId/:orgId/:teamId?', async (req: Request, res: Response) => {
     try {
-      const ctx = await resolveKernelContext(req.params.userId, req.params.orgId);
+      const ctx = await resolveKernelContext(req.params.userId, req.params.orgId, req.params.teamId);
       res.json({
         context: ctx,
         hasVisibleTeamData: ctx.includes('VISIBLE TEAM DATA'),
