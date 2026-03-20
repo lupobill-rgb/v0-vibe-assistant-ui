@@ -29,8 +29,8 @@ export class NangoService {
     if (!secretKey) {
       throw new Error('NANGO_SECRET_KEY is not configured');
     }
-    const NangoSDK = require('@nangohq/node');
-    this.nango = new NangoSDK({ secretKey });
+    const { Nango } = require('@nangohq/node');
+    this.nango = new Nango({ secretKey });
     this.logger.log('NangoService initialized');
   }
 
