@@ -73,6 +73,12 @@ function isDashboardRequest(prompt: string): boolean {
   return DASHBOARD_KEYWORDS.test(prompt);
 }
 
+const SITE_KEYWORDS = ['multi-page','multipage','website','marketing site',
+  'multi page','company site','about page','multiple pages'];
+function isSiteRequest(p: string): boolean {
+  return SITE_KEYWORDS.some(kw => p.toLowerCase().includes(kw));
+}
+
 // Ensure repos directory exists
 try {
   if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -1225,7 +1231,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 const pageResult = await edgeCall({
                   prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
-                  mode: 'page',
+                  mode: isSiteRequest(prompt) ? 'site' : 'page',
                   context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
                   color_block: colorBlock,
                 });
