@@ -51,12 +51,12 @@ function buildBlobUrl(pages: PageData[], activeFile: string): string | null {
   // Inject router script to handle #filename.html navigation
   const routerScript = pages.length > 1 ? '<script>' +
     'window.addEventListener("hashchange",function(){' +
-    'var f=location.hash.slice(1);if(f)window.parent.postMessage({vibeNavigate:f},"*");' +
+    'var f=location.hash.slice(1);if(f)window.parent.postMessage({vibeNavigate:f},window.location.origin);' +
     '});' +
     'document.addEventListener("click",function(e){' +
     'var a=e.target.closest("a");if(!a)return;var h=a.getAttribute("href");' +
     'if(h&&h.startsWith("#")&&h.endsWith(".html")){' +
-    'e.preventDefault();window.parent.postMessage({vibeNavigate:h.slice(1)},"*");' +
+    'e.preventDefault();window.parent.postMessage({vibeNavigate:h.slice(1)},window.location.origin);' +
     '}});' +
     '</script>' : ''
   const html = page.html.replace('</body>', routerScript + '</body>')
@@ -246,7 +246,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   // Listen for navigation messages from iframe
   useEffect(() => {
+    const iframeOrigin = window.location.origin;
     const handler = (e: MessageEvent) => {
+      if (e.origin !== iframeOrigin && e.origin !== 'null') return;
       if (e.data?.vibeNavigate) setActiveFile(e.data.vibeNavigate)
     }
     window.addEventListener('message', handler)
