@@ -8,6 +8,7 @@ import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import { resolveKernelContext } from './kernel/context-injector';
+import { runDebugAgent, runSelfHealingScan } from '../../executor/src/agents/debug-agent';
 import { promisify } from 'util';
 import multer from 'multer';
 import { parse as csvParse } from 'csv-parse/sync';
@@ -1005,44 +1006,36 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
             await storage.logEvent(taskId, `[DEBUG] Collected ${failedEvents.length} events, ${errorLogs.length} chars of error context`, 'info');
 
-            // Route to Edge Function with debug system prompt
-            const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
-            const supabaseKey = process.env.SUPABASE_ANON_KEY;
-            if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
-            const edgeFunctionUrl = `${supabaseUrl}/functions/v1/generate-diff`;
-
-            const debugPrompt = `You are the VIBE Debug Agent. A previous build failed.\n\nOriginal prompt: "${prompt}"\n\nError logs from failed job:\n${errorLogs.slice(0, 8000)}\n\nDiagnose the root cause and generate a corrected version. Fix the errors while preserving the original intent.`;
-
-            const response = await fetch(edgeFunctionUrl, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ prompt: debugPrompt, model: resolvedModel, mode: 'html', system: 'debug' }),
-            });
-
-            const rawText = await response.text();
-            if (!response.ok) throw new Error(rawText || `Debug edge call returned ${response.status}`);
-
-            let data: { diff: string; usage?: { total_tokens: number } };
-            try {
-              data = JSON.parse(rawText);
-            } catch {
-              throw new Error(`Debug edge returned invalid JSON (${rawText.length} chars)`);
+            // Resolve repo path from project
+            const repoPath = project.local_path;
+            if (!repoPath || !fs.existsSync(repoPath)) {
+              throw new Error(`Debug agent requires a local repo but project ${project_id} has no valid local_path: ${repoPath}`);
             }
 
-            const injectSupabaseCredentials = (html: string): string =>
-              html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey!);
+            // Run the iterative debug agent (retries up to MAX_DEBUG_ITERATIONS)
+            const debugResult = await runDebugAgent(taskId, repoPath, errorLogs);
 
-            const previewDir = path.join(PREVIEWS_DIR, taskId);
-            fs.mkdirSync(previewDir, { recursive: true });
-            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(data.diff));
-            fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
+            if (debugResult.success) {
+              // Read the built index.html from the repo for preview
+              const builtIndex = path.join(repoPath, 'out', 'index.html');
+              const previewDir = path.join(PREVIEWS_DIR, taskId);
+              fs.mkdirSync(previewDir, { recursive: true });
 
-            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
-            const previewToken = signPreviewToken(taskId);
-            await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
-            await storage.logEvent(taskId, `[DEBUG] Fix generated (${data.usage?.total_tokens ?? '?'} tokens)`, 'success');
-            await storage.updateTaskState(taskId, 'completed');
-            await storage.logEvent(taskId, '[DEBUG] Debug job completed successfully', 'info');
+              if (fs.existsSync(builtIndex)) {
+                fs.copyFileSync(builtIndex, path.join(previewDir, 'index.html'));
+              }
+              fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
+
+              const html = fs.existsSync(builtIndex) ? fs.readFileSync(builtIndex, 'utf-8') : '';
+              await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html }]));
+              const previewToken = signPreviewToken(taskId);
+              await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
+              await storage.logEvent(taskId, `[DEBUG] Fix applied after ${debugResult.iterations} iteration(s). ${debugResult.healedIssues ?? 0} component issue(s) healed.`, 'success');
+              await storage.updateTaskState(taskId, 'completed');
+            } else {
+              await storage.logEvent(taskId, `[DEBUG] Agent failed: ${debugResult.summary}`, 'error');
+              await storage.updateTaskState(taskId, 'failed');
+            }
             return;
           }
 
@@ -1300,9 +1293,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             });
 
             const selfHealResult = await runStep('self-healing', async () => {
-              // Self-healing scan is handled in the executor pipeline
-              // This step records timing only
-              await new Promise(r => setTimeout(r, 0));
+              return await runSelfHealingScan(taskId, previewDir);
             });
 
             // Save generated pages to jobs table so the frontend can read last_diff
