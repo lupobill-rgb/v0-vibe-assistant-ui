@@ -138,26 +138,30 @@ export default function MarketplacePage() {
                 return (
                   <div
                     key={c.id}
-                    className="group relative flex flex-col rounded-xl bg-card border border-border p-4 hover:border-[#A855F7]/60 hover:shadow-sm transition-all"
+                    className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30"
                   >
-                    {/* Category badge */}
-                    <span className="absolute top-3 right-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">
-                      {c.category}
-                    </span>
+                    {/* Top-right badges */}
+                    <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">
+                        {c.category}
+                      </span>
+                      {isConnected && (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                          Connected
+                        </span>
+                      )}
+                    </div>
                     {/* Icon + name */}
                     <div className="flex items-start gap-3 mb-2">
                       <span className="text-3xl leading-none">{c.emoji}</span>
                       <div className="min-w-0">
-                        <h3 className="font-semibold text-foreground truncate">{c.name}</h3>
+                        <h3 className="font-semibold text-base text-foreground truncate">{c.name}</h3>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground mb-4 line-clamp-2 flex-1">{c.description}</p>
                     {/* Action */}
-                    {isConnected ? (
-                      <span className="inline-flex items-center justify-center w-full h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-medium">
-                        ✓ Connected
-                      </span>
-                    ) : (
+                    {!isConnected && (
                       <button
                         onClick={() => setConnectOpen(true)}
                         className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#A855F7] hover:text-[#A855F7] transition-colors"
