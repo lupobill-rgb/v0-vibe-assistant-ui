@@ -73,8 +73,8 @@ function isDashboardRequest(prompt: string): boolean {
   return DASHBOARD_KEYWORDS.test(prompt);
 }
 
-const SITE_KEYWORDS = ['multi-page','multipage','website','marketing site',
-  'multi page','company site','about page','multiple pages'];
+const SITE_KEYWORDS = ['multi-page','multipage','marketing site',
+  'multi page','company site','multiple pages'];
 function isSiteRequest(p: string): boolean {
   return SITE_KEYWORDS.some(kw => p.toLowerCase().includes(kw));
 }
