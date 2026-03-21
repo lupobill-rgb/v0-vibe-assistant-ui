@@ -842,12 +842,12 @@ Deno.serve(async (req: Request) => {
     } else if (mode === "edit") {
       baseSystemMsg = `You are an expert web developer editing an existing HTML page.
 The user will provide the current HTML and a description of changes to make.
-Make ONLY the requested changes. Preserve all existing structure, styles, and content that is not mentioned.
+Make ONLY the requested changes. Preserve ALL existing structure, styles, scripts, charts, data, and content that is not explicitly mentioned in the edit request.
 Return the complete updated HTML starting with <!DOCTYPE html>. No explanations, no markdown fences — raw HTML only.
-Current page HTML:\n${context ?? ""}`;
-      // Scale max_tokens to the context size — dashboards can be 15K+ tokens
-      const contextLen = (context ?? "").length;
-      defaultMaxTokens = contextLen > 8000 ? 16384 : 8192;
+CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize, or omit any sections. Every element from the original must appear in your output unless the user asked to remove it.`;
+      // Move context to user message instead of system to save context window
+      prompt = `Edit request: ${prompt}\n\nCurrent HTML to edit:\n${context ?? ""}`;
+      defaultMaxTokens = 24000;
     } else if (mode === "html") {
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
