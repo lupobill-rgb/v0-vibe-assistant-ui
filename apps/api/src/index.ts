@@ -12,6 +12,7 @@ import { runDebugAgent, runSelfHealingScan } from '../../executor/src/agents/deb
 import { promisify } from 'util';
 import multer from 'multer';
 import { parse as csvParse } from 'csv-parse/sync';
+import { resolveMode } from './edge-function';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
