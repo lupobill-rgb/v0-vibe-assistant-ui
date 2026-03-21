@@ -146,3 +146,13 @@ vite.config.ts.timestamp-*
 
 # Prevent worktrees from being tracked as submodules
 .claude/worktrees/
+
+Market_place/
+
+VIBE/
+
+v0-vibe-assistant-ui/
+
+vibe-ui-temp/
+
+nul
