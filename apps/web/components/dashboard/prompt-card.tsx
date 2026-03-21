@@ -12,7 +12,7 @@ const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to bu
 Rules:
 - Ask only ONE question at a time
 - Questions must be SHORT (one sentence max)
-- After 2-3 exchanges you have enough context ΓÇö output EXACTLY this JSON and nothing else:
+- After 2-3 exchanges you have enough context — output EXACTLY this JSON and nothing else:
   {"ready": true, "enrichedPrompt": "<full build spec combining original intent + answers>", "summary": "<one line describing what will be built>"}
 - Never ask more than 3 questions total
 - Never explain yourself or add commentary
@@ -75,7 +75,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         xhr.open("POST", `${API_URL}/upload`)
         xhr.send(formData)
       })
-      setUploadState({ status: "done", progress: 100, message: `Γ£ô ${file.name} ready ΓÇö ${(result.row_count ?? 0).toLocaleString()} rows loaded.`, uploadId: result.upload_id })
+      setUploadState({ status: "done", progress: 100, message: `✓ ${file.name} ready — ${(result.row_count ?? 0).toLocaleString()} rows loaded.`, uploadId: result.upload_id })
     } catch (err) {
       setUploadState({ status: "error", progress: 0, message: err instanceof Error ? err.message : "Upload failed" })
     }
@@ -97,13 +97,26 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     return null
   }
   const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
-    const res = await fetch("/api/intake", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
-    })
-    const data = await res.json()
-    return data.text ?? ""
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+    try {
+      const res = await fetch("/api/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+        signal: controller.signal,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+      return data.text ?? ""
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("AI took too long to respond. Please try again.")
+      }
+      throw err
+    } finally {
+      clearTimeout(timeout)
+    }
   }
   const startIntake = async () => {
     if (!prompt.trim() || submitting) return
@@ -117,15 +130,15 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       const ready = tryParseReady(reply)
       if (ready) {
         setEnrichedPrompt(ready.enrichedPrompt)
-        setMessages([{ role: "assistant", text: `Got it ΓÇö building: ${ready.summary}` }])
+        setMessages([{ role: "assistant", text: `Got it — building: ${ready.summary}` }])
         await fireJob(ready.enrichedPrompt)
         return
       }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
-    } catch {
-      setError("Failed to connect to AI. Please try again.")
-      setStage("idle")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to connect to AI."
+      setError(`${msg} You can retry or skip to build.`)
     } finally {
       setIntaking(false)
     }
@@ -142,47 +155,115 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       // Check if Claude is ready to build
       const ready = tryParseReady(reply)
       if (ready) {
-        setMessages((m) => [...m, { role: "assistant", text: `Got it ΓÇö building: ${ready.summary}` }])
+        setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${ready.summary}` }])
         setEnrichedPrompt(ready.enrichedPrompt)
         await fireJob(ready.enrichedPrompt)
         return
       }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages((m) => [...m, { role: "assistant", text: reply }])
-    } catch {
-      setError("Something went wrong. Please try again.")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong."
+      setError(`${msg} You can retry or skip to build with what we have.`)
     } finally {
       setIntaking(false)
     }
   }
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
+  const buildViaVercel = async (finalPrompt: string): Promise<string> => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 120000)
+    try {
+      const res = await fetch("/api/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: finalPrompt }],
+          build: true,
+        }),
+        signal: controller.signal,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Build failed (${res.status})`)
+      if (!data.html) throw new Error("Build returned empty HTML")
+      return data.html
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("Build timed out. Please try again.")
+      }
+      throw err
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
   const fireJob = async (finalPrompt: string) => {
     setSubmitting(true)
     setStage("building")
     setError(null)
     try {
+      // Step 1: Build HTML via Vercel direct path
+      console.log("[VIBE] fireJob: starting Vercel build...")
+      const html = await buildViaVercel(finalPrompt)
+      console.log("[VIBE] fireJob: build complete, HTML length:", html.length)
+      // Step 2: Create project
       let projectId = selectedProjectId
       if (!projectId) {
+        console.log("[VIBE] fireJob: creating project...")
         const project = await createProject(finalPrompt.slice(0, 60), undefined, currentTeam?.id)
         if (project.error || !project.id) throw new Error(project.error || "Failed to create project")
         projectId = project.id
+        console.log("[VIBE] fireJob: project created:", projectId)
       }
-      const result = await createJob({
-        prompt: finalPrompt,
-        project_id: projectId,
-        base_branch: "main",
-        upload_id: uploadState.uploadId,
-        conversation_id: conversationId,
-      })
-      if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
-      // Store conversation_id for follow-up builds in same session
-      if (result.conversation_id) setConversationId(result.conversation_id)
-      router.push(`/building/${result.task_id}`)
+      // Step 3: Try direct Supabase insert, fall back to Railway createJob
+      let jobId: string | undefined
+      const { data: { user } } = await supabase.auth.getUser()
+      console.log("[VIBE] fireJob: inserting job into Supabase...")
+      const { data: jobData, error: jobError } = await supabase
+        .from("jobs")
+        .insert({
+          user_prompt: finalPrompt,
+          project_id: projectId,
+          execution_state: "completed",
+          last_diff: html,
+          user_id: user?.id,
+        })
+        .select("id")
+        .single()
+      if (jobError || !jobData?.id) {
+        console.warn("[VIBE] fireJob: Supabase insert failed:", jobError?.message, "— falling back to Railway")
+        const result = await createJob({
+          prompt: finalPrompt,
+          project_id: projectId,
+          base_branch: "main",
+          upload_id: uploadState.uploadId,
+          conversation_id: conversationId,
+        })
+        if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
+        if (result.conversation_id) setConversationId(result.conversation_id)
+        jobId = result.task_id
+        console.log("[VIBE] fireJob: Railway job created:", jobId)
+      } else {
+        jobId = jobData.id
+        console.log("[VIBE] fireJob: Supabase job created:", jobId)
+      }
+      // Step 4: Navigate
+      console.log("[VIBE] fireJob: navigating to /building/" + jobId)
+      router.push(`/building/${jobId}`)
     } catch (err) {
+      console.error("[VIBE] fireJob: error:", err)
       setError(err instanceof Error ? err.message : "Failed to start build")
       setSubmitting(false)
       setStage("idle")
     }
+  }
+  const buildWithCollected = () => {
+    // Assemble enriched prompt from conversation so far
+    const parts = conversationRef.current
+      .filter((m) => m.role === "user")
+      .map((m) => m.content)
+    const collected = parts.join("\n\n")
+    setError(null)
+    fireJob(collected)
   }
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); startIntake() }
@@ -198,7 +279,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setError(null)
     conversationRef.current = []
   }
-  // ΓöÇΓöÇ INTAKE MODE ΓöÇΓöÇ
+  // ── INTAKE MODE ──
   if (stage === "intake" || stage === "building") {
     return (
       <div className="px-4 sm:px-6 -mt-8 relative z-10">
@@ -277,13 +358,33 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
                 </button>
               </div>
             )}
-            {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+            {error && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-red-400">{error}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setError(null); sendAnswer() }}
+                    disabled={intaking}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    onClick={buildWithCollected}
+                    disabled={submitting}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:opacity-90 transition-colors"
+                  >
+                    Skip to Build
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     )
   }
-  // ΓöÇΓöÇ IDLE MODE ΓöÇΓöÇ
+  // ── IDLE MODE ──
   return (
     <div className="px-4 sm:px-6 -mt-8 relative z-10">
       <div
@@ -340,7 +441,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
               </button>
               <div className="w-px h-4 bg-border hidden sm:block" />
               <span className="text-[10px] text-muted-foreground font-mono hidden sm:inline">
-                {prompt.length > 0 ? `${prompt.length} chars` : "ΓîÿΓå╡ to submit"}
+                {prompt.length > 0 ? `${prompt.length} chars` : "⌘↵ to submit"}
               </span>
             </div>
             <button

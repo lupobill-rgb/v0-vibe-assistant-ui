@@ -31,7 +31,7 @@ HEAD must include:
 <script>window.__VIBE_SUPABASE_URL__="${SUPABASE_URL}";window.__VIBE_SUPABASE_ANON_KEY__="${SUPABASE_ANON_KEY}";</script>
 Output MUST start <!DOCTYPE html> and end </html>.`
 
-async function callEdgeFunction(prompt: string, system: string, maxTokens: number, timeoutMs = 25000) {
+async function callEdgeFunction(prompt: string, system: string, maxTokens: number, timeoutMs = 120000) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
