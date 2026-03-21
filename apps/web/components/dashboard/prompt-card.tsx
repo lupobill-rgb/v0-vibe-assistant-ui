@@ -136,9 +136,9 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
-    } catch {
-      setError("Failed to connect to AI. Please try again.")
-      setStage("idle")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to connect to AI."
+      setError(`${msg} You can retry or skip to build.`)
     } finally {
       setIntaking(false)
     }
@@ -162,8 +162,9 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages((m) => [...m, { role: "assistant", text: reply }])
-    } catch {
-      setError("Something went wrong. Please try again.")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong."
+      setError(`${msg} You can retry or skip to build with what we have.`)
     } finally {
       setIntaking(false)
     }
@@ -236,6 +237,15 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       setSubmitting(false)
       setStage("idle")
     }
+  }
+  const buildWithCollected = () => {
+    // Assemble enriched prompt from conversation so far
+    const parts = conversationRef.current
+      .filter((m) => m.role === "user")
+      .map((m) => m.content)
+    const collected = parts.join("\n\n")
+    setError(null)
+    fireJob(collected)
   }
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); startIntake() }
@@ -330,7 +340,27 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
                 </button>
               </div>
             )}
-            {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+            {error && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-red-400">{error}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setError(null); sendAnswer() }}
+                    disabled={intaking}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    onClick={buildWithCollected}
+                    disabled={submitting}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:opacity-90 transition-colors"
+                  >
+                    Skip to Build
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
