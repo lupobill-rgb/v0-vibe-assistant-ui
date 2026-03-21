@@ -58,6 +58,7 @@ export interface Task {
   completed_at?: number
   iteration_count: number
   project_id?: string
+  conversation_id?: string
   repo_url?: string
   base_branch?: string
   target_branch?: string
@@ -70,6 +71,26 @@ export interface Task {
   files_changed_count?: number
   agent_results?: AgentResultSummary[]
   job_timeline?: JobTimelineStep[]
+}
+
+export interface Conversation {
+  id: string
+  project_id: string
+  title: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  messages?: Message[]
+}
+
+export interface Message {
+  id: string
+  conversation_id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  job_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string
 }
 
 export interface HealthStatus {
@@ -206,7 +227,8 @@ export async function createJob(params: {
   type?: 'standard' | 'debug'
   debug_job_id?: string
   upload_id?: string
-}): Promise<{ task_id?: string; error?: string }> {
+  conversation_id?: string
+}): Promise<{ task_id?: string; conversation_id?: string; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser()
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',
@@ -394,6 +416,46 @@ export async function generateMultiPageSite(
   )
 
   return results
+}
+
+// ── Conversations ──────────────────────────────────────────────────────────
+
+export async function fetchConversations(projectId: string): Promise<Conversation[]> {
+  try {
+    const response = await fetch(`${API_URL}/projects/${projectId}/conversations`, {
+      headers: getHeaders(),
+    })
+    if (!response.ok) return []
+    return response.json()
+  } catch {
+    return []
+  }
+}
+
+export async function fetchConversation(conversationId: string): Promise<Conversation | null> {
+  try {
+    const response = await fetch(`${API_URL}/conversations/${conversationId}`, {
+      headers: getHeaders(),
+    })
+    if (!response.ok) return null
+    return response.json()
+  } catch {
+    return null
+  }
+}
+
+export async function createConversation(
+  projectId: string,
+  title?: string,
+): Promise<Conversation | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  const response = await fetch(`${API_URL}/projects/${projectId}/conversations`, {
+    method: 'POST',
+    headers: baseHeaders(),
+    body: JSON.stringify({ title, created_by: user?.id }),
+  })
+  if (!response.ok) return null
+  return response.json()
 }
 
 // ── Billing ────────────────────────────────────────────────────────────────

@@ -547,6 +547,92 @@ async function bootstrap() {
     }
   });
 
+  // ── Conversation endpoints ──
+
+  // POST /projects/:id/conversations - Create a new conversation
+  app.post('/projects/:id/conversations', express.json(), async (req: Request, res: Response) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+
+      const { title, created_by } = req.body;
+      const conversation = await storage.createConversation({
+        project_id: req.params.id,
+        title,
+        created_by,
+      });
+      res.status(201).json(conversation);
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      res.status(500).json({ error: 'Failed to create conversation' });
+    }
+  });
+
+  // GET /projects/:id/conversations - List conversations for a project
+  app.get('/projects/:id/conversations', async (req: Request, res: Response) => {
+    try {
+      const conversations = await storage.listConversations(req.params.id);
+      res.json(conversations);
+    } catch (error) {
+      console.error('Error listing conversations:', error);
+      res.status(500).json({ error: 'Failed to list conversations' });
+    }
+  });
+
+  // GET /conversations/:id - Get a conversation with messages
+  app.get('/conversations/:id', async (req: Request, res: Response) => {
+    try {
+      const conversation = await storage.getConversation(req.params.id);
+      if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+      const messages = await storage.getMessages(req.params.id);
+      res.json({ ...conversation, messages });
+    } catch (error) {
+      console.error('Error getting conversation:', error);
+      res.status(500).json({ error: 'Failed to get conversation' });
+    }
+  });
+
+  // POST /conversations/:id/messages - Add a message to a conversation
+  app.post('/conversations/:id/messages', express.json(), async (req: Request, res: Response) => {
+    try {
+      const conversation = await storage.getConversation(req.params.id);
+      if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+      const { role, content, job_id, metadata } = req.body;
+      if (!role || !content) return res.status(400).json({ error: 'role and content are required' });
+
+      const message = await storage.addMessage({
+        conversation_id: req.params.id,
+        role,
+        content,
+        job_id,
+        metadata,
+      });
+      res.status(201).json(message);
+    } catch (error) {
+      console.error('Error adding message:', error);
+      res.status(500).json({ error: 'Failed to add message' });
+    }
+  });
+
+  // PATCH /conversations/:id - Update conversation title
+  app.patch('/conversations/:id', express.json(), async (req: Request, res: Response) => {
+    try {
+      const conversation = await storage.getConversation(req.params.id);
+      if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+      const { title } = req.body;
+      if (!title) return res.status(400).json({ error: 'title is required' });
+
+      await storage.updateConversationTitle(req.params.id, title);
+      res.json({ ...conversation, title });
+    } catch (error) {
+      console.error('Error updating conversation:', error);
+      res.status(500).json({ error: 'Failed to update conversation' });
+    }
+  });
+
   // DELETE /projects/:id - Delete a project
   app.delete('/projects/:id', async (req: Request, res: Response) => {
     try {
@@ -809,7 +895,7 @@ async function bootstrap() {
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', express.json(), async (req: Request, res: Response) => {
     try {
-      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id, upload_id } = req.body;
+      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id, upload_id, conversation_id } = req.body;
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
       const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
 
@@ -843,6 +929,15 @@ async function bootstrap() {
         const kernelContext = await resolveKernelContext(user_id, org.id);
         if (kernelContext) {
           enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
+        }
+      }
+
+      // Conversation context injection: if continuing a conversation, inject prior messages
+      let resolvedConversationId = conversation_id;
+      if (resolvedConversationId) {
+        const conversationContext = await storage.getConversationContext(resolvedConversationId, 10);
+        if (conversationContext) {
+          enrichedPrompt = `CONVERSATION HISTORY (prior messages in this session):\n${conversationContext}\n\nNEW REQUEST:\n${enrichedPrompt}`;
         }
       }
 
@@ -964,10 +1059,28 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
       const finalBaseBranch = base_branch || 'main';
       const finalTargetBranch = target_branch || `vibe/${taskId.slice(0, 8)}`;
 
+      // Auto-create conversation if none provided — every job belongs to a conversation
+      if (!resolvedConversationId) {
+        const conv = await storage.createConversation({
+          project_id,
+          title: prompt.slice(0, 100),
+          created_by: user_id,
+        });
+        resolvedConversationId = conv.id;
+      }
+
+      // Store the user message in the conversation
+      await storage.addMessage({
+        conversation_id: resolvedConversationId,
+        role: 'user',
+        content: prompt,
+      });
+
       await storage.createTask({
         task_id: taskId,
         user_prompt: prompt,
         project_id,
+        conversation_id: resolvedConversationId,
         source_branch: finalBaseBranch,
         destination_branch: finalTargetBranch,
         execution_state: 'calling_llm',
@@ -980,6 +1093,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
       res.status(201).json({
         task_id: taskId,
+        conversation_id: resolvedConversationId,
         status: 'queued',
         message: 'Task created successfully',
       });
@@ -1407,10 +1521,34 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           });
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
+          // Store assistant response in conversation after successful build
+          if (resolvedConversationId) {
+            const task = await storage.getTask(taskId);
+            const summary = task?.preview_url
+              ? `Built successfully. Preview: ${task.preview_url}`
+              : 'Build completed.';
+            await storage.addMessage({
+              conversation_id: resolvedConversationId,
+              role: 'assistant',
+              content: summary,
+              job_id: taskId,
+              metadata: { execution_state: task?.execution_state, total_tokens: totalTokens },
+            });
+          }
         } catch (err: any) {
           console.error(`Job ${taskId} failed:`, err.message);
           await storage.updateTaskState(taskId, 'failed');
           await storage.logEvent(taskId, `Job failed: ${err.message}`, 'error');
+          // Store failure in conversation
+          if (resolvedConversationId) {
+            await storage.addMessage({
+              conversation_id: resolvedConversationId,
+              role: 'assistant',
+              content: `Build failed: ${err.message}`,
+              job_id: taskId,
+              metadata: { execution_state: 'failed' },
+            }).catch(() => {}); // Don't let message storage failure mask the real error
+          }
         }
       })();
     } catch (error) {
