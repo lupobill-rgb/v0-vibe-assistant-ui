@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-export const maxDuration = 120
+export const maxDuration = 180
 
 const SUPABASE_URL = 'https://ptaqytvztkhjpuawdxng.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
@@ -53,37 +53,25 @@ async function callAnthropic(messages: Array<{ role: string; content: string }>,
   return data.content?.[0]?.text || ''
 }
 
-async function callEdgeFunction(prompt: string, system: string, maxTokens: number, timeoutMs = 120000) {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(EDGE_FN_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        prompt,
-        model: 'claude',
-        system,
-        max_tokens: maxTokens,
-      }),
-      signal: controller.signal,
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      throw new Error(data.error || 'Edge Function returned ' + res.status)
-    }
-    return data
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(`Edge Function timed out after ${timeoutMs / 1000}s`)
-    }
-    throw err
-  } finally {
-    clearTimeout(timeout)
+async function callEdgeFunction(prompt: string, system: string, maxTokens: number) {
+  const res = await fetch(EDGE_FN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      prompt,
+      model: 'claude',
+      system,
+      max_tokens: maxTokens,
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data.error || 'Edge Function returned ' + res.status)
   }
+  return data
 }
 
 export async function POST(request: Request) {
@@ -105,7 +93,7 @@ export async function POST(request: Request) {
 
     if (build) {
       const prompt = messages[messages.length - 1]?.content ?? ''
-      const data = await callEdgeFunction(prompt, APP_SYSTEM, 16000, 110000)
+      const data = await callEdgeFunction(prompt, APP_SYSTEM, 16000)
       let html = data.diff || ''
       if (html.startsWith('```')) {
         html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
