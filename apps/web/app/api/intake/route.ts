@@ -31,11 +31,14 @@ export async function POST(request: Request) {
 
   if (edit) {
     const prompt = messages[messages.length - 1]?.content ?? ''
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+    }
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -46,7 +49,18 @@ export async function POST(request: Request) {
       }),
     })
     const data = await res.json()
-    const html = data.content?.[0]?.text ?? ''
+    if (data.error) {
+      console.error('[VIBE] Edit LLM error:', JSON.stringify(data.error))
+      return NextResponse.json({ error: data.error?.message || 'LLM call failed' }, { status: 502 })
+    }
+    let html = data.content?.[0]?.text ?? ''
+    // Strip markdown code fences if LLM wrapped the output
+    if (html.startsWith('```')) {
+      html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
+    }
+    if (!html) {
+      return NextResponse.json({ error: 'LLM returned empty response' }, { status: 502 })
+    }
     return NextResponse.json({ html, usage: data.usage })
   }
 
