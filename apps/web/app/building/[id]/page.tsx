@@ -416,16 +416,19 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   }, [task?.project_id, updatePrompt, updatingJob, router])
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-slate-900 relative flex-col md:flex-row-reverse">
-      <div className="flex-1 flex flex-col min-w-0 md:border-l border-slate-700">
+    <div className="flex h-[100dvh] overflow-hidden relative flex-col md:flex-row-reverse" style={{ background: '#0d0d12' }}>
+      <div className="flex-1 flex flex-col min-w-0" style={{ borderLeft: '1px solid #1e1e2a' }}>
         {isMultiPage && (
-          <div className="flex items-center gap-1 px-3 min-h-[44px] border-b border-slate-700 bg-slate-800 overflow-x-auto">
+          <div className="flex items-center gap-1 px-3 min-h-[44px] overflow-x-auto" style={{ borderBottom: '1px solid #1e1e2a', background: '#13131a' }}>
             {pages.map((p) => (
               <button key={p.filename} onClick={() => setActiveFile(p.filename)}
-                className={"px-3 min-h-[44px] text-xs rounded-md transition-colors whitespace-nowrap " +
-                  (activeFile === p.filename
-                    ? "bg-violet-600 text-white"
-                    : "text-slate-400 hover:text-white hover:bg-slate-700")}>
+                style={{
+                  padding: '0 12px', minHeight: 44, fontSize: 13, borderRadius: 6,
+                  whiteSpace: 'nowrap', transition: 'all 0.15s ease', border: 'none', cursor: 'pointer',
+                  background: activeFile === p.filename ? '#6366f1' : 'transparent',
+                  color: activeFile === p.filename ? '#fff' : '#6b7280',
+                  fontFamily: 'Inter, sans-serif'
+                }}>
                 {p.name}
               </button>
             ))}
@@ -433,12 +436,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         )}
         {previewUrl ? (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <div className="flex items-center gap-2 px-4 h-11 border-b border-slate-700 flex-shrink-0 bg-slate-800">
-              <span className="text-xs font-medium text-slate-400">Preview</span>
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              {isMultiPage && <span className="text-xs text-slate-500">{activeFile}</span>}
+            <div className="flex items-center gap-2 px-4 h-11 flex-shrink-0" style={{ borderBottom: '1px solid #1e1e2a', background: '#13131a' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', fontFamily: 'Inter, sans-serif' }}>Preview</span>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
+              {isMultiPage && <span style={{ fontSize: 12, color: '#6b7280' }}>{activeFile}</span>}
               <a href={previewUrl} target="_blank" rel="noopener noreferrer"
-                className="ml-auto text-xs text-slate-400 hover:text-white transition-colors flex items-center gap-1">
+                style={{ marginLeft: 'auto', fontSize: 12, color: '#6b7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'Inter, sans-serif' }}>
                 <ExternalLink className="w-3 h-3" /> Open
               </a>
             </div>
@@ -447,283 +450,372 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         ) : isComplete ? (
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-4">
-            <p className="text-slate-400 font-medium">{task?.execution_state === "failed" ? "Build failed" : "Build complete"}</p>
-            <p className="text-slate-500 text-sm">No preview available</p>
+            <p style={{ color: '#6b7280', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>{task?.execution_state === "failed" ? "Build failed" : "Build complete"}</p>
+            <p style={{ color: '#6b7280', fontSize: 14 }}>No preview available</p>
           </div>
         ) : !previewUrl && task?.execution_state !== 'completed' ? (
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
-              <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+            <div style={{ width: 64, height: 64, borderRadius: 16, background: '#13131a', border: '1px solid #1e1e2a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid #6366f1', borderTopColor: 'transparent' }} className="animate-spin" />
             </div>
-            <p className="text-slate-300 font-medium">Building your page...</p>
-            <p className="text-slate-500 text-sm">Preview will appear here when ready</p>
+            <p style={{ color: '#f0f0ff', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>Building your app...</p>
+            <p style={{ color: '#6b7280', fontSize: 14 }}>Preview will appear here when ready</p>
           </div>
         ) : null}
-        {/* Edit prompt bar — pinned to bottom of preview */}
-        <div className="flex-shrink-0 border-t border-slate-700 p-3 flex flex-col gap-2">
+      </div>
+      <div className="w-full md:w-[280px] flex-shrink-0 flex flex-col order-first md:order-none" style={{ background: '#13131a', fontFamily: 'Inter, sans-serif' }}>
+        {/* ── MOBILE TOGGLE ── */}
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="flex md:hidden items-center justify-between px-5 py-3"
+          style={{ borderBottom: '1px solid #1e1e2a' }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#f0f0ff' }}>
+            {projectName || 'Untitled App'}
+          </span>
+          {sidebarOpen ? <ChevronUp className="w-4 h-4" style={{ color: '#6b7280' }} /> : <ChevronDown className="w-4 h-4" style={{ color: '#6b7280' }} />}
+        </button>
+
+        {/* ── HEADER: Name + Status + Back ── */}
+        <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '20px 20px 16px', borderBottom: '1px solid #1e1e2a' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <Link href="/" style={{ color: '#6b7280', display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </Link>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: '#f0f0ff', fontFamily: "'Space Grotesk', sans-serif", lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {projectName || 'Untitled App'}
+            </h1>
+          </div>
+          {task?.execution_state === 'failed' ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 100, padding: '3px 10px' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} /> Failed
+            </span>
+          ) : isComplete ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#10b981', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 100, padding: '3px 10px' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} /> Ready
+            </span>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 100, padding: '3px 10px' }}>
+              <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#f59e0b' }} /> Building...
+            </span>
+          )}
+        </div>
+
+        {/* ── PROGRESS BAR (while building) ── */}
+        {!isComplete && (
+          <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '12px 20px', borderBottom: '1px solid #1e1e2a' }}>
+            <span style={{ fontSize: 13, color: '#f0f0ff', display: 'block', marginBottom: 8 }}>
+              {task?.execution_state === 'planning' ? 'Planning...' :
+               task?.execution_state === 'security' ? 'Security scan...' :
+               task?.execution_state === 'building' ? 'Building...' :
+               task?.execution_state === 'validating' ? 'Validating...' :
+               task?.execution_state === 'testing' ? 'Testing...' :
+               task?.execution_state === 'qa' ? 'Quality check...' :
+               task?.execution_state === 'ux' ? 'UX review...' :
+               task?.execution_state ? String(task.execution_state).replace(/_/g, ' ') : 'Starting...'}
+            </span>
+            <div style={{ height: 3, borderRadius: 2, background: '#1e1e2a', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 2, background: '#6366f1',
+                transition: 'width 0.6s ease',
+                width: task?.execution_state === 'planning' ? '15%' :
+                       task?.execution_state === 'security' ? '25%' :
+                       task?.execution_state === 'building' ? '50%' :
+                       task?.execution_state === 'validating' ? '65%' :
+                       task?.execution_state === 'testing' ? '75%' :
+                       task?.execution_state === 'qa' ? '85%' :
+                       task?.execution_state === 'ux' ? '92%' : '8%'
+              }} />
+            </div>
+          </div>
+        )}
+
+        {/* ── PRIMARY ACTIONS (when complete) ── */}
+        {isComplete && (
+          <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '16px 20px', borderBottom: '1px solid #1e1e2a' }}>
+            {previewUrl && (
+              <a href={previewUrl} target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  width: '100%', height: 44, borderRadius: 8, border: 'none',
+                  background: '#6366f1', color: '#fff', fontSize: 14, fontWeight: 600,
+                  cursor: 'pointer', textDecoration: 'none', marginBottom: 8
+                }}>
+                <ExternalLink className="w-4 h-4" /> Open App
+              </a>
+            )}
+            {publishedUrl ? (() => {
+              const shareUrl = typeof window !== 'undefined'
+                ? `${window.location.origin}/s/${jobId}`
+                : `/s/${jobId}`
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                    <Check className="w-3.5 h-3.5" style={{ color: '#10b981', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, color: '#10b981', fontWeight: 500 }}>Live</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <a href={shareUrl} target="_blank" rel="noopener noreferrer"
+                      style={{
+                        flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '0 10px', height: 38, borderRadius: 8,
+                        background: '#0d0d12', border: '1px solid #1e1e2a',
+                        fontSize: 12, color: '#6366f1', textDecoration: 'none', overflow: 'hidden'
+                      }}>
+                      <Globe className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shareUrl.replace(/^https?:\/\//, '')}</span>
+                    </a>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(shareUrl)
+                        setCopied(true)
+                        safeTimeout(() => setCopied(false), 2000)
+                      }}
+                      style={{
+                        flexShrink: 0, height: 38, padding: '0 12px', borderRadius: 8,
+                        background: '#0d0d12', border: '1px solid #1e1e2a',
+                        fontSize: 12, fontWeight: 500, color: '#f0f0ff', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 6
+                      }}>
+                      {copied ? <><Check className="w-3 h-3" style={{ color: '#10b981' }} /> Copied</> : <><ClipboardCopy className="w-3 h-3" /> Copy</>}
+                    </button>
+                  </div>
+                </div>
+              )
+            })() : (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!jobId || publishing) return
+                  setPublishing(true)
+                  setPublishError(null)
+                  try {
+                    const result = await publishJob(jobId)
+                    if (result.error) {
+                      setPublishError(result.error)
+                    } else if (result.published_url) {
+                      setPublishedUrl(result.published_url)
+                    }
+                  } catch (err: any) {
+                    setPublishError(err.message || 'Publish failed')
+                  } finally {
+                    setPublishing(false)
+                  }
+                }}
+                disabled={publishing}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  width: '100%', height: 44, borderRadius: 8,
+                  background: 'transparent', border: '1px solid #1e1e2a',
+                  color: '#f0f0ff', fontSize: 13, fontWeight: 500,
+                  cursor: 'pointer', opacity: publishing ? 0.5 : 1
+                }}>
+                {publishing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Publishing...</> : 'Push Live'}
+              </button>
+            )}
+            {publishError && (
+              <p style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{publishError}</p>
+            )}
+          </div>
+        )}
+
+        {/* ── PAGES ── */}
+        <div className={"flex-1 overflow-y-auto flex flex-col " + (sidebarOpen ? "" : "hidden md:flex")} style={{ padding: '16px 20px', borderBottom: '1px solid #1e1e2a' }}>
+          {successToast && (
+            <div style={{ fontSize: 12, color: '#10b981', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>
+              {successToast}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pages</span>
+            {isComplete && (
+              <button
+                type="button"
+                onClick={() => setShowAddPage(true)}
+                style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6366f1', cursor: 'pointer' }}
+              >
+                + Add page
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {pages.map((p, i) => (
+              <div key={p.filename}>
+                <button
+                  onClick={() => setActiveFile(p.filename)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    width: '100%', padding: '7px 10px', borderRadius: 6,
+                    background: activeFile === p.filename ? 'rgba(99,102,241,0.08)' : 'transparent',
+                    border: 'none', cursor: 'pointer', transition: 'background 0.15s ease'
+                  }}
+                >
+                  <span style={{
+                    fontSize: 13, fontWeight: activeFile === p.filename ? 500 : 400,
+                    color: activeFile === p.filename ? '#f0f0ff' : '#6b7280',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                  }}>{p.name}</span>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (editingPageIndex === i) { setEditingPageIndex(null) }
+                      else { setEditingPageIndex(i); setEditingHtml(p.html) }
+                    }}
+                    style={{ flexShrink: 0, marginLeft: 8, color: '#6b7280', cursor: 'pointer', opacity: activeFile === p.filename ? 0.7 : 0 }}
+                    title={`Edit ${p.name}`}
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </span>
+                </button>
+                {editingPageIndex === i && (
+                  <div style={{ marginTop: 4, borderRadius: 8, border: '1px solid #1e1e2a', overflow: 'hidden' }}>
+                    <textarea
+                      value={editingHtml}
+                      onChange={(e) => setEditingHtml(e.target.value)}
+                      spellCheck={false}
+                      style={{
+                        width: '100%', height: 192, background: '#0d0d12', color: '#c0c0d0',
+                        fontSize: 12, fontFamily: 'monospace', padding: 12, border: 'none',
+                        resize: 'vertical', outline: 'none'
+                      }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '8px 12px', background: '#13131a', borderTop: '1px solid #1e1e2a' }}>
+                      <button
+                        onClick={() => setEditingPageIndex(null)}
+                        style={{ background: 'none', border: 'none', fontSize: 12, color: '#6b7280', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          const updated = pages.map((pg, idx) => idx === i ? { ...pg, html: editingHtml } : pg)
+                          setDiff(JSON.stringify(updated))
+                          setEditingPageIndex(null)
+                        }}
+                        style={{
+                          background: '#6366f1', border: 'none', borderRadius: 6,
+                          padding: '4px 12px', fontSize: 12, fontWeight: 500, color: '#fff', cursor: 'pointer'
+                        }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── CHAT INPUT ── */}
+        <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '16px 20px' }}>
+          <div style={{ position: 'relative' }}>
+            <textarea
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && editPrompt.trim() && !isEditing) {
+                  e.preventDefault()
+                  const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p)
+                }
+              }}
+              placeholder="Ask VIBE to change something..."
+              disabled={!isComplete || isEditing}
+              rows={2}
+              style={{
+                width: '100%', borderRadius: 8, resize: 'none',
+                background: '#0d0d12', border: '1px solid #1e1e2a',
+                padding: '10px 40px 10px 12px', fontSize: 13, color: '#f0f0ff',
+                outline: 'none', lineHeight: 1.5,
+                opacity: (!isComplete || isEditing) ? 0.4 : 1,
+                transition: 'border-color 0.15s ease'
+              }}
+              onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
+              onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
+            />
+            <button
+              onClick={() => { if (editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) } }}
+              disabled={!editPrompt.trim() || !isComplete || isEditing}
+              style={{
+                position: 'absolute', right: 6, bottom: 6, width: 30, height: 30,
+                borderRadius: 6, background: editPrompt.trim() ? '#6366f1' : 'transparent',
+                border: 'none', cursor: editPrompt.trim() ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: editPrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease'
+              }}
+            >
+              {isEditing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
+            </button>
+          </div>
           {editError && (
-            <div className="flex items-center justify-between text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: '#ef4444', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8, padding: '6px 10px' }}>
               <span>{editError}</span>
-              <button onClick={() => setEditError(null)} className="ml-2 text-red-400 hover:text-red-300">
+              <button onClick={() => setEditError(null)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: 8 }}>
                 <X className="w-3 h-3" />
               </button>
             </div>
           )}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={editInput}
-              onChange={e => setEditInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleEdit()}
-              placeholder="Describe a change..."
-              disabled={isEditing}
-              className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 min-h-[44px] text-sm text-white placeholder-slate-500 focus:outline-none focus:border-primary disabled:opacity-50"
-            />
-            <button
-              onClick={() => handleEdit()}
-              disabled={isEditing || !editInput.trim() || !diff}
-              className="px-4 min-h-[44px] rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors flex items-center gap-1.5"
-            >
-              {isEditing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Editing...</> : 'Edit'}
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="w-full md:w-[260px] flex-shrink-0 flex flex-col bg-slate-900 order-first md:order-none">
-        {/* ── MOBILE SIDEBAR TOGGLE ── */}
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex md:hidden items-center justify-between min-h-[44px] px-4 border-b border-slate-700 bg-slate-800 active:bg-slate-700 transition-colors"
-        >
-          <span className="text-xs font-medium text-slate-300">
-            {task?.execution_state === 'completed' ? 'Build complete' : task?.execution_state === 'failed' ? 'Build failed' : 'Building...'}
-          </span>
-          {sidebarOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-        </button>
-        {/* ── PROGRESS SECTION ── */}
-        <div className={"min-h-0 max-h-[45vh] overflow-hidden border-b border-slate-700 " + (sidebarOpen ? "block" : "hidden md:block")}>
-          <PipelineTracker taskId={id} task={task as any} />
-          {isComplete && (
-            <div className="px-4 pb-3">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Build complete
-              </span>
+          {task?.execution_state === 'completed' && task?.project_id && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  value={updatePrompt}
+                  onChange={(e) => setUpdatePrompt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && updatePrompt.trim() && !updatingJob) handleUpdate() }}
+                  placeholder="Start a full rebuild..."
+                  disabled={updatingJob}
+                  style={{
+                    width: '100%', height: 38, borderRadius: 8,
+                    background: '#0d0d12', border: '1px solid #1e1e2a',
+                    padding: '0 36px 0 12px', fontSize: 13, color: '#f0f0ff',
+                    outline: 'none', opacity: updatingJob ? 0.4 : 1,
+                    transition: 'border-color 0.15s ease'
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
+                  onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
+                />
+                <button
+                  onClick={handleUpdate}
+                  disabled={!updatePrompt.trim() || updatingJob}
+                  style={{
+                    position: 'absolute', right: 4, top: 4, width: 30, height: 30,
+                    borderRadius: 6, background: updatePrompt.trim() ? '#6366f1' : 'transparent',
+                    border: 'none', cursor: updatePrompt.trim() ? 'pointer' : 'default',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: updatePrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease'
+                  }}
+                >
+                  {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2.5 16A10 10 0 0 1 21.5 8M21.5 8A10 10 0 0 1 2.5 16"/></svg>}
+                </button>
+              </div>
             </div>
           )}
-        </div>
-
-        {/* ── PAGE MANAGEMENT SECTION ── */}
-        <div className={"flex-1 overflow-y-auto px-4 py-3 flex-col gap-2 " + (sidebarOpen ? "flex" : "hidden md:flex")}>
-          {successToast && (
-            <div className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 animate-pulse">
-              {successToast}
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Pages</span>
-            <button
-              type="button"
-              disabled={!isComplete}
-              onClick={() => setShowAddPage(true)}
-              className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> {isComplete ? 'Add Page' : 'Building...'}
+          {/* Footer links */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, paddingTop: 12, borderTop: '1px solid #1e1e2a' }}>
+            <button onClick={() => setShowLogs(!showLogs)}
+              style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Terminal className="w-3 h-3" /> {showLogs ? 'Hide logs' : 'Logs'}
             </button>
-          </div>
-          {pages.map((p, i) => (
-            <div key={p.filename}>
-              <div className="flex items-center justify-between rounded-lg bg-slate-800 border border-slate-700 px-3 py-2">
-                <button
-                  onClick={() => setActiveFile(p.filename)}
-                  className={"text-xs font-medium truncate " + (activeFile === p.filename ? "text-violet-400" : "text-slate-300")}
-                >
-                  {p.name}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (editingPageIndex === i) {
-                      setEditingPageIndex(null)
-                    } else {
-                      setEditingPageIndex(i)
-                      setEditingHtml(p.html)
-                    }
-                  }}
-                  className="ml-2 flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-                  title={`Edit ${p.name}`}
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              {editingPageIndex === i && (
-                <div className="mt-1 rounded-lg border border-slate-700 overflow-hidden">
-                  <textarea
-                    value={editingHtml}
-                    onChange={(e) => setEditingHtml(e.target.value)}
-                    spellCheck={false}
-                    className="w-full h-48 bg-slate-950 text-slate-200 text-xs font-mono p-3 resize-y focus:outline-none focus:ring-1 focus:ring-violet-500 border-0"
-                  />
-                  <div className="flex items-center justify-end gap-2 px-3 py-2 bg-slate-900 border-t border-slate-700">
-                    <button
-                      onClick={() => setEditingPageIndex(null)}
-                      className="h-7 px-3 rounded text-xs text-slate-400 hover:text-white transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => {
-                        const updated = pages.map((pg, idx) => idx === i ? { ...pg, html: editingHtml } : pg)
-                        setDiff(JSON.stringify(updated))
-                        setEditingPageIndex(null)
-                      }}
-                      className="h-7 px-3 rounded bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* ── ACTIONS SECTION ── */}
-        <div className={"px-4 py-3 border-t border-slate-700 flex-col gap-2 " + (sidebarOpen ? "flex" : "hidden md:flex")}>
-          {publishedUrl ? (() => {
-            const shareUrl = typeof window !== 'undefined'
-              ? `${window.location.origin}/s/${jobId}`
-              : `/s/${jobId}`
-            return (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2 min-h-[44px] rounded-lg bg-emerald-900/40 border border-emerald-700/50 px-3">
-                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-sm text-emerald-300 font-medium">Your site is live!</span>
-              </div>
-              {/* Share URL — clean short link */}
-              <div className="flex items-center gap-1.5">
-                <a href={shareUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex-1 min-w-0 min-h-[44px] flex items-center gap-1.5 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-violet-400 hover:text-violet-300 truncate transition-colors">
-                  <Globe className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{shareUrl.replace(/^https?:\/\//, '')}</span>
-                </a>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(shareUrl)
-                    setCopied(true)
-                    safeTimeout(() => setCopied(false), 2000)
-                  }}
-                  className="shrink-0 min-h-[44px] px-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-all flex items-center gap-1.5"
-                >
-                  {copied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><ClipboardCopy className="w-3.5 h-3.5" /> Copy Link</>}
-                </button>
-              </div>
-              {/* Custom domain */}
-              <a
-                href={`https://www.godaddy.com/domainsearch/find?checkAvail=1&domainToCheck=${encodeURIComponent((projectName || 'my-site').toLowerCase().replace(/[^a-z0-9]+/g, '-'))}`}
-                target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 min-h-[44px] px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all"
-              >
-                <Lock className="w-3 h-3 shrink-0" />
-                <span>Get a custom domain</span>
-                <ExternalLink className="w-3 h-3 ml-auto shrink-0 opacity-50" />
+            {task?.pull_request_link && (
+              <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <ExternalLink className="w-3 h-3" /> PR
               </a>
-            </div>
-            )
-          })()
-          : (
-            <button
-              type="button"
-              onClick={async () => {
-                if (!jobId || publishing) return
-                setPublishing(true)
-                setPublishError(null)
-                try {
-                  const result = await publishJob(jobId)
-                  if (result.error) {
-                    setPublishError(result.error)
-                  } else if (result.published_url) {
-                    setPublishedUrl(result.published_url)
-                  }
-                } catch (err: any) {
-                  setPublishError(err.message || 'Publish failed')
-                } finally {
-                  setPublishing(false)
-                }
-              }}
-              disabled={!isComplete || publishing}
-              className="flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
-            >
-              {publishing ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing...</> : 'Push Live'}
-            </button>
-          )}
-          {publishError && (
-            <p className="text-xs text-red-400 px-1">{publishError}</p>
-          )}
-          {task?.pull_request_link && (
-            <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 h-9 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
-              <ExternalLink className="w-3.5 h-3.5" /> View PR
-            </a>
-          )}
-          <button onClick={() => setShowLogs(!showLogs)}
-            className="flex items-center gap-2 w-full min-h-[44px] px-3 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400 hover:text-white hover:border-slate-600 transition-all">
-            <Terminal className="w-3.5 h-3.5" /> {showLogs ? "Hide Logs" : "Show Logs"}
-          </button>
-          <Link href="/" className="flex items-center justify-center min-h-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-sm font-medium transition-colors">
-            Build Another
-          </Link>
-        </div>
-        <div className={"px-4 py-3 border-t border-slate-700 " + (sidebarOpen ? "block" : "hidden md:block")}>
-          <label className="text-xs font-medium text-slate-400 mb-2 block">Edit current page</label>
-          <div className="flex gap-2">
-            <input
-              value={editPrompt}
-              onChange={(e) => setEditPrompt(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(""); handleEdit(p); } }}
-              placeholder="e.g. Make the hero section taller"
-              disabled={!isComplete || isEditing}
-              className="flex-1 min-h-[44px] rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
-            />
-            <button
-              onClick={() => { if (editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(""); handleEdit(p); } }}
-              disabled={!editPrompt.trim() || !isComplete || isEditing}
-              className="min-h-[44px] px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
-              {isEditing ? '...' : 'Apply'}
-            </button>
+            )}
+            <Link href="/" style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none' }}>
+              Build something new
+            </Link>
           </div>
         </div>
-        {task?.execution_state === 'completed' && task?.project_id && (
-          <div className={"px-4 py-3 border-t border-slate-700 " + (sidebarOpen ? "block" : "hidden md:block")}>
-            <label className="text-xs font-medium text-slate-400 mb-2 block">Iterate on this build</label>
-            <div className="flex gap-2">
-              <input
-                value={updatePrompt}
-                onChange={(e) => setUpdatePrompt(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && updatePrompt.trim() && !updatingJob) handleUpdate() }}
-                placeholder="Describe what to change..."
-                disabled={updatingJob}
-                className="flex-1 min-h-[44px] rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
-              />
-              <button
-                onClick={handleUpdate}
-                disabled={!updatePrompt.trim() || updatingJob}
-                className="min-h-[44px] px-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors flex items-center gap-1.5"
-              >
-                {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                Update
-              </button>
-            </div>
-          </div>
-        )}
       </div>
       {showLogs && (
-        <div className="absolute inset-0 z-50 bg-black/60 flex items-end justify-center pb-6 px-6">
-          <div className="w-full max-w-4xl h-[50vh] rounded-2xl border border-slate-700 overflow-hidden shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-4 h-10 border-b border-slate-700 flex-shrink-0 bg-slate-800">
-              <span className="text-xs font-medium text-slate-400">Build Logs</span>
+        <div className="absolute inset-0 z-50 flex items-end justify-center pb-6 px-6" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <div className="w-full max-w-4xl h-[50vh] overflow-hidden shadow-2xl flex flex-col" style={{ borderRadius: 12, border: '1px solid #1e1e2a' }}>
+            <div className="flex items-center justify-between px-4 h-10 flex-shrink-0" style={{ borderBottom: '1px solid #1e1e2a', background: '#13131a' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', fontFamily: 'Inter, sans-serif' }}>Build Logs</span>
               <button onClick={() => setShowLogs(false)}
-                className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
