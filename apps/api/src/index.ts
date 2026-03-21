@@ -1054,22 +1054,31 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           /** Classify whether an error is eligible for LLM fallback (429/529/timeout only). */
           const isFallbackEligible = (status: number, text: string, err?: any): { eligible: boolean; reason: string } => {
             if (status === 429) return { eligible: true, reason: `HTTP 429 rate limit` };
+            if (status === 504) return { eligible: true, reason: `HTTP 504 gateway timeout` };
             if (status === 529) return { eligible: true, reason: `HTTP 529 overloaded` };
             if (err?.code === 'ETIMEDOUT') return { eligible: true, reason: `ETIMEDOUT` };
             if (err?.type === 'request-timeout') return { eligible: true, reason: `request-timeout` };
+            if (err?.name === 'AbortError') return { eligible: true, reason: `fetch aborted (timeout)` };
             return { eligible: false, reason: `HTTP ${status}: ${text.slice(0, 120)}` };
           };
 
           const edgeCall = async (payload: any): Promise<{ text: string; ok: boolean; status: number }> => {
             const model = payload.model || resolvedModel;
             const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
-              const res = await fetch(edgeFunctionUrl, {
-                method: 'POST',
-                headers: { ...headers },
-                body: JSON.stringify({ ...payload, model: m }),
-              });
-              const text = await res.text();
-              return { text, ok: res.ok, status: res.status };
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 120_000); // 120s fetch timeout
+              try {
+                const res = await fetch(edgeFunctionUrl, {
+                  method: 'POST',
+                  headers: { ...headers },
+                  body: JSON.stringify({ ...payload, model: m }),
+                  signal: controller.signal,
+                });
+                const text = await res.text();
+                return { text, ok: res.ok, status: res.status };
+              } finally {
+                clearTimeout(timeout);
+              }
             };
 
             let result: { text: string; ok: boolean; status: number };
@@ -1193,7 +1202,10 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.updateTaskState(taskId, 'building');
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
               const dashColorBlock = buildColorBlock(resolveColorScheme(prompt));
-              const dashResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock });
+              const dashResult = await Promise.race([
+                edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock }),
+                new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Dashboard edge call timed out after ${budgets.stepDeadlinesMs.building / 1000}s`)), budgets.stepDeadlinesMs.building)),
+              ]);
               modelCalls += 1;
               if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
               let dashData: { diff: string; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
