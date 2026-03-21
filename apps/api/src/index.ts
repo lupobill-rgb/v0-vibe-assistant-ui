@@ -829,6 +829,10 @@ async function bootstrap() {
         return res.status(404).json({ error: `Project not found: ${project_id}` });
       }
 
+      // Resolve team name for mode inference
+      const team = await storage.getTeam(project.team_id);
+      const teamName = team?.name ?? '';
+      const resolvedMode = resolveMode(prompt, teamName);
 
       // Budget enforcement via org
       const org = await storage.getOrgForProject(project_id);
