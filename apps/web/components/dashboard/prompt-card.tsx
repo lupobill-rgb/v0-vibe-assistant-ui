@@ -246,9 +246,17 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         jobId = jobData.id
         console.log("[VIBE] fireJob: Supabase job created:", jobId)
       }
-      // Step 4: Navigate
-      console.log("[VIBE] fireJob: navigating to /building/" + jobId)
-      router.push(`/building/${jobId}`)
+      // Step 4: Navigate — use both router.push and a fallback
+      const buildUrl = `/building/${jobId}`
+      console.log("[VIBE] fireJob: navigating to", buildUrl)
+      router.push(buildUrl)
+      // Fallback: if router.push doesn't trigger navigation within 2s, force it
+      setTimeout(() => {
+        if (window.location.pathname !== buildUrl) {
+          console.warn("[VIBE] fireJob: router.push did not navigate, forcing redirect")
+          window.location.href = buildUrl
+        }
+      }, 2000)
     } catch (err) {
       console.error("[VIBE] fireJob: error:", err)
       setError(err instanceof Error ? err.message : "Failed to start build")
