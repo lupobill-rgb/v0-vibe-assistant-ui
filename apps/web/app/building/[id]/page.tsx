@@ -290,28 +290,34 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       const activeIdx = currentPages.findIndex((p) => p.filename === activeFile)
       const targetIdx = activeIdx >= 0 ? activeIdx : 0
       const currentHtml = currentPages[targetIdx]?.html ?? ''
-      const res = await fetch('/api/intake', {
+      const res = await fetch(EDGE_FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        },
         body: JSON.stringify({
-          edit: true,
-          messages: [{ role: 'user', content: 'Edit request: ' + prompt + '\n\nCurrent HTML:\n' + currentHtml }],
+          prompt,
+          model: 'claude',
+          mode: 'edit',
+          context: currentHtml,
         }),
       })
       const json = await res.json()
       if (!res.ok) {
-        setEditError(json.error || '/api/intake returned ' + res.status)
+        setEditError(json.error || 'Edge Function returned ' + res.status)
         return
       }
-      if (json.html) {
-        const trimmedDiff = json.html.trim()
+      const editedHtml = json.diff || json.html || ''
+      if (editedHtml) {
+        const trimmedDiff = editedHtml.trim()
         if (!trimmedDiff.startsWith('<!DOCTYPE') && !trimmedDiff.startsWith('<!doctype') && !trimmedDiff.startsWith('<html')) {
           setEditError('LLM returned invalid HTML. Try a simpler edit.')
           return
         }
         // Merge edited page back into existing pages array at the active index
         const updatedPages = currentPages.map((p, i) =>
-          i === targetIdx ? { ...p, html: json.html } : p
+          i === targetIdx ? { ...p, html: editedHtml } : p
         )
         const newDiff = JSON.stringify(updatedPages)
         setDiff(newDiff)
