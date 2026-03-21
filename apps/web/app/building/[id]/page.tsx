@@ -315,17 +315,22 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           setEditError('LLM returned invalid HTML. Try a simpler edit.')
           return
         }
+        // Validate edit didn't truncate: edited HTML should be at least 60% of original size
+        if (currentHtml.length > 1000 && trimmedDiff.length < currentHtml.length * 0.6) {
+          setEditError(`Edit appears truncated (${trimmedDiff.length} chars vs original ${currentHtml.length}). Original preserved. Try a simpler edit.`)
+          return
+        }
         // Merge edited page back into existing pages array at the active index
         const updatedPages = currentPages.map((p, i) =>
           i === targetIdx ? { ...p, html: editedHtml } : p
         )
         const newDiff = JSON.stringify(updatedPages)
         setDiff(newDiff)
-        // Persist to Supabase
+        // Back up pre-edit version, then persist new version
         if (jobId) {
           await supabase
             .from('jobs')
-            .update({ last_diff: newDiff })
+            .update({ last_diff: newDiff, previous_diff: diff })
             .eq('id', jobId)
         }
         setEditInput('')

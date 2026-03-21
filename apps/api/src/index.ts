@@ -1010,6 +1010,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               .filter((p) => {
                 if (typeof p?.name !== 'string' || typeof p?.html !== 'string') return false;
                 const h = p.html.trimStart();
+                // Skip truncated/broken pages (< 2KB is likely incomplete for a dashboard)
+                if (p.html.length < 2000) return false;
                 return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
               })
               .map((p) => `PAGE: ${p.name}\n${p.html}`)
@@ -1033,6 +1035,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             const pagesContext = pages
               .filter((p) => {
                 const h = (p.html ?? '').trimStart();
+                // Skip truncated/broken pages (< 2KB is likely incomplete)
+                if ((p.html ?? '').length < 2000) return false;
                 return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
               })
               .map(p => `PAGE: ${p.name}\n${p.html}`)
