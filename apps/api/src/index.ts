@@ -1194,8 +1194,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             const model = payload.model || resolvedModel;
             const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
               const controller = new AbortController();
-              // Dashboard mode does 2 sequential LLM calls inside the edge function — needs more time
-              const fetchTimeoutMs = payload.mode === 'dashboard' ? 160_000 : 120_000;
+              // Dashboard mode now uses single LLM call — 140s keeps us under Supabase 150s wall-time limit
+              const fetchTimeoutMs = payload.mode === 'dashboard' ? 140_000 : 120_000;
               const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
               try {
                 const res = await fetch(edgeFunctionUrl, {
