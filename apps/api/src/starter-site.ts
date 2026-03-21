@@ -132,17 +132,24 @@ export async function mapWithConcurrency<T, R>(items: T[], limit: number, worker
   return out;
 }
 
-export function validateStarterSiteQuality(files: Array<{ route: string; html: string }>, allowPlaceholders = false): { ok: boolean; failingRoutes: string[]; reasons: string[] } {
+export function validateStarterSiteQuality(files: Array<{ route: string; html: string }>, allowPlaceholders = false, isDashboard = false): { ok: boolean; failingRoutes: string[]; reasons: string[] } {
   const reasons: string[] = [];
   const routeSet = new Set(files.map(f => f.route));
 
   for (const file of files) {
     const html = file.html.toLowerCase();
-    if (!/<h1[\s>]/.test(html)) reasons.push(`${file.route}: missing H1`);
-    if ((html.match(/<section[\s>]/g) || []).length < 2) reasons.push(`${file.route}: requires at least 2 sections`);
-    if (!/(<a[^>]+class="[^"]*cta|<button[^>]*>.*(start|get|contact|book|learn))/i.test(file.html)) reasons.push(`${file.route}: missing CTA`);
-    if (!/<nav[\s>]/.test(html)) reasons.push(`${file.route}: missing navbar`);
-    if (!/<title>.+<\/title>/.test(html) || !/name="description"/.test(html)) reasons.push(`${file.route}: missing SEO metadata`);
+    if (isDashboard) {
+      // Dashboard pages need charts/canvas, not CTAs/sections
+      if (!/<canvas[\s>]/.test(html) && !/<table[\s>]/.test(html)) reasons.push(`${file.route}: missing chart or table`);
+      if (!/<title>.+<\/title>/.test(html)) reasons.push(`${file.route}: missing title`);
+      if ((html.match(/<script[\s>]/g) || []).length < 2) reasons.push(`${file.route}: missing chart scripts`);
+    } else {
+      if (!/<h1[\s>]/.test(html)) reasons.push(`${file.route}: missing H1`);
+      if ((html.match(/<section[\s>]/g) || []).length < 2) reasons.push(`${file.route}: requires at least 2 sections`);
+      if (!/(<a[^>]+class="[^"]*cta|<button[^>]*>.*(start|get|contact|book|learn))/i.test(file.html)) reasons.push(`${file.route}: missing CTA`);
+      if (!/<nav[\s>]/.test(html)) reasons.push(`${file.route}: missing navbar`);
+      if (!/<title>.+<\/title>/.test(html) || !/name="description"/.test(html)) reasons.push(`${file.route}: missing SEO metadata`);
+    }
     if (!allowPlaceholders && /lorem ipsum/i.test(file.html)) reasons.push(`${file.route}: placeholder text found`);
   }
 
