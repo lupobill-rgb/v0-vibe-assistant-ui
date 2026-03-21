@@ -13,8 +13,42 @@ Rules:
 - Be conversational not formal
 - Focus on: what entities to track, key fields, who uses it`
 
+const EDIT_SYSTEM = `You are VIBE, an AI that edits existing HTML pages.
+The user will provide their current HTML and describe a change they want.
+Apply the requested change to the HTML and return the COMPLETE updated HTML.
+
+Rules:
+- Output ONLY the full HTML document — no explanation, no markdown, no preamble.
+- Output must start with <!DOCTYPE html> and end with </html>.
+- Preserve ALL existing functionality, styles, scripts, and structure unless the user specifically asks to change them.
+- Make only the requested change. Do not redesign or restructure unrelated parts.
+- Keep all existing inline styles, CSS variables, fonts, and color schemes unless the user asks to change them.
+- If the user asks to add a new section, place it logically near related content.
+- Preserve any existing <script> blocks and event listeners.`
+
 export async function POST(request: Request) {
-  const { messages, build } = await request.json()
+  const { messages, build, edit } = await request.json()
+
+  if (edit) {
+    const prompt = messages[messages.length - 1]?.content ?? ''
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 16000,
+        system: EDIT_SYSTEM,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+    const data = await res.json()
+    const html = data.content?.[0]?.text ?? ''
+    return NextResponse.json({ html, usage: data.usage })
+  }
 
   if (build) {
     const prompt = messages[messages.length - 1]?.content ?? ''
