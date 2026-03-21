@@ -172,7 +172,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
   const buildViaVercel = async (finalPrompt: string): Promise<string> => {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 120000)
+    const timeout = setTimeout(() => controller.abort(), 180000)
     try {
       const res = await fetch("/api/intake", {
         method: "POST",
@@ -201,11 +201,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setStage("building")
     setError(null)
     try {
-      // Step 1: Build HTML via Vercel direct path
-      console.log("[VIBE] fireJob: starting Vercel build...")
-      const html = await buildViaVercel(finalPrompt)
-      console.log("[VIBE] fireJob: build complete, HTML length:", html.length)
-      // Step 2: Create project
+      // Step 1: Create project + job FIRST so we can navigate immediately
       let projectId = selectedProjectId
       if (!projectId) {
         console.log("[VIBE] fireJob: creating project...")
@@ -214,39 +210,20 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         projectId = project.id
         console.log("[VIBE] fireJob: project created:", projectId)
       }
-      // Step 3: Try direct Supabase insert, fall back to Railway createJob
-      let jobId: string | undefined
-      const { data: { user } } = await supabase.auth.getUser()
-      console.log("[VIBE] fireJob: inserting job into Supabase...")
-      const { data: jobData, error: jobError } = await supabase
-        .from("jobs")
-        .insert({
-          user_prompt: finalPrompt,
-          project_id: projectId,
-          execution_state: "completed",
-          last_diff: html,
-          user_id: user?.id,
-        })
-        .select("id")
-        .single()
-      if (jobError || !jobData?.id) {
-        console.warn("[VIBE] fireJob: Supabase insert failed:", jobError?.message, "— falling back to Railway")
-        const result = await createJob({
-          prompt: finalPrompt,
-          project_id: projectId,
-          base_branch: "main",
-          upload_id: uploadState.uploadId,
-          conversation_id: conversationId,
-        })
-        if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
-        if (result.conversation_id) setConversationId(result.conversation_id)
-        jobId = result.task_id
-        console.log("[VIBE] fireJob: Railway job created:", jobId)
-      } else {
-        jobId = jobData.id
-        console.log("[VIBE] fireJob: Supabase job created:", jobId)
-      }
-      // Step 4: Navigate — use both router.push and a fallback
+      // Step 2: Create job record via Railway (sets state to 'queued')
+      console.log("[VIBE] fireJob: creating job via Railway...")
+      const result = await createJob({
+        prompt: finalPrompt,
+        project_id: projectId,
+        base_branch: "main",
+        upload_id: uploadState.uploadId,
+        conversation_id: conversationId,
+      })
+      if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
+      if (result.conversation_id) setConversationId(result.conversation_id)
+      const jobId = result.task_id
+      console.log("[VIBE] fireJob: job created:", jobId)
+      // Step 3: Navigate IMMEDIATELY — don't wait for build
       const buildUrl = `/building/${jobId}`
       console.log("[VIBE] fireJob: navigating to", buildUrl)
       router.push(buildUrl)
