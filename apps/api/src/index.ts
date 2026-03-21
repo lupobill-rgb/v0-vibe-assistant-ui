@@ -1277,7 +1277,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 const pageResult = await edgeCall({
                   prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
-                  mode: resolveMode(prompt),
+                  mode: resolvedMode === 'site' ? 'site' : 'page',
                   context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
                   color_block: colorBlock,
                 });
