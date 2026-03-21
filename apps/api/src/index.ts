@@ -1147,6 +1147,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           };
 
           // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
+          await storage.logEvent(taskId, `[DIAG] resolvedMode= teamName= upload_id=`, 'info');
           const team = await storage.getTeam(project.team_id);
           const teamName = team?.name ?? '';
           const resolvedMode = resolveMode(prompt, teamName);
