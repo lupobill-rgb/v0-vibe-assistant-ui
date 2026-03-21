@@ -12,6 +12,7 @@ import { runDebugAgent, runSelfHealingScan } from '../../executor/src/agents/deb
 import { promisify } from 'util';
 import multer from 'multer';
 import { parse as csvParse } from 'csv-parse/sync';
+import { resolveMode } from './edge-function';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -69,17 +70,6 @@ function verifyPreviewToken(token: string, requestedJobId: string): boolean {
   }
 }
 
-const DASHBOARD_KEYWORDS = /dashboard|analytics|chart|pipeline|report|tracker|metrics|kpi|visualiz/i;
-function isDashboardRequest(prompt: string): boolean {
-  return DASHBOARD_KEYWORDS.test(prompt);
-}
-
-const SITE_KEYWORDS = ['multi-page','multipage','marketing site',
-  'multi page','company site','multiple pages'];
-function isSiteRequest(p: string): boolean {
-  return SITE_KEYWORDS.some(kw => p.toLowerCase().includes(kw));
-}
-
 // Ensure repos directory exists
 try {
   if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -112,10 +102,10 @@ try {
   const gitVersion = execSync('git --version', { encoding: 'utf-8' }).trim();
   console.log(`Git is available: ${gitVersion}`);
 } catch {
-  console.warn('Git not available â€” git-dependent routes will degrade gracefully.');
+  console.warn('Git not available — git-dependent routes will degrade gracefully.');
 }
 
-// â”€â”€ Default team for local development â”€â”€
+// ── Default team for local development ──
 // When team_id is not provided, auto-provision a default org + team so the
 // frontend works without explicit multi-tenant setup.
 const DEFAULT_ORG_SLUG = 'default-org';
@@ -174,7 +164,7 @@ async function bootstrap() {
   // Serve static published files
   app.use('/published', express.static(PUBLISHED_DIR));
 
-  // â”€â”€ Connector routes (Nango integration) â”€â”€
+  // ── Connector routes (Nango integration) ──
   app.post('/connectors/connect', express.json(), async (req: Request, res: Response) => {
     try {
       const { teamId, connectorType, redirectUri } = req.body;
@@ -252,7 +242,7 @@ async function bootstrap() {
     }
   });
 
-  // â”€â”€ Kernel diagnostic (Layer 3 verification) â”€â”€
+  // ── Kernel diagnostic (Layer 3 verification) ──
   app.get('/api/kernel-context/:userId/:orgId/:teamId', async (req: Request, res: Response) => {
     try {
       const ctx = await resolveKernelContext(req.params.userId, req.params.orgId, req.params.teamId);
@@ -277,7 +267,7 @@ async function bootstrap() {
     }
   });
 
-  // â”€â”€ Organization routes â”€â”€
+  // ── Organization routes ──
 
   // POST /orgs - Create a new organization
   app.post('/orgs', express.json(), async (req: Request, res: Response) => {
@@ -317,7 +307,7 @@ async function bootstrap() {
     }
   });
 
-  // â”€â”€ Team routes â”€â”€
+  // ── Team routes ──
 
   // POST /orgs/:orgId/teams - Create a team within an organization
   app.post('/orgs/:orgId/teams', express.json(), async (req: Request, res: Response) => {
@@ -361,9 +351,9 @@ async function bootstrap() {
     }
   });
 
-  // â”€â”€ Project routes â”€â”€
+  // ── Project routes ──
 
-  // POST /projects - Create a new project (team_id optional â€” falls back to default team)
+  // POST /projects - Create a new project (team_id optional — falls back to default team)
   app.post('/projects', express.json(), async (req: Request, res: Response) => {
     try {
       const { name, team_id: rawTeamId, repository_url, template = 'empty' } = req.body;
@@ -388,7 +378,7 @@ async function bootstrap() {
       const projectId = uuidv4();
       const repoDir = path.join(REPOS_BASE_DIR, team.org_id, team_id, projectId);
 
-      // Create directory structure â€” may fail on read-only filesystems (e.g. Vercel)
+      // Create directory structure — may fail on read-only filesystems (e.g. Vercel)
       try {
         fs.mkdirSync(repoDir, { recursive: true });
       } catch (fsErr: any) {
@@ -515,7 +505,7 @@ async function bootstrap() {
         return res.json(projects);
       }
 
-      // No filter provided â€” fall back to default team for local dev
+      // No filter provided — fall back to default team for local dev
       const defaults = await getOrCreateDefaultTeam();
       const projects = await storage.listProjects(defaults.team_id);
       return res.json(projects);
@@ -660,7 +650,7 @@ async function bootstrap() {
     }
   });
 
-  // â”€â”€ File upload â”€â”€
+  // ── File upload ──
 
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -696,7 +686,7 @@ async function bootstrap() {
         columns = records.length > 0 ? Object.keys(records[0]) : [];
         allRows = records;
       } else {
-        // .xlsx â€” rough estimate until xlsx parsing is added
+        // .xlsx — rough estimate until xlsx parsing is added
         rowCount = Math.round(file.size / 50);
         return res.json({
           upload_id: null,
@@ -797,7 +787,7 @@ async function bootstrap() {
         return res.status(500).json({ error: `Failed to persist upload: ${insertError.message}` });
       }
 
-      console.log(`[UPLOAD] Persisted upload ${inserted.id} â€” ${tableName}, ${rowCount} rows, ${columns.length} cols`);
+      console.log(`[UPLOAD] Persisted upload ${inserted.id} — ${tableName}, ${rowCount} rows, ${columns.length} cols`);
 
       return res.json({
         upload_id: inserted.id,
@@ -814,7 +804,7 @@ async function bootstrap() {
     }
   });
 
-  // â”€â”€ Job routes â”€â”€
+  // ── Job routes ──
 
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', express.json(), async (req: Request, res: Response) => {
@@ -838,6 +828,7 @@ async function bootstrap() {
       if (!project) {
         return res.status(404).json({ error: `Project not found: ${project_id}` });
       }
+
 
       // Budget enforcement via org
       const org = await storage.getOrgForProject(project_id);
@@ -875,16 +866,16 @@ async function bootstrap() {
 
           let dataContext: string;
           if (stats && Object.keys(stats).length > 0) {
-            // Use real aggregated stats â€” correct totals, distributions, min/max/mean
+            // Use real aggregated stats — correct totals, distributions, min/max/mean
             const statsJson = JSON.stringify(stats, null, 2);
             const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
             const sampleJson = JSON.stringify(sampleRows.slice(0, 5), null, 2);
             dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}.
 
-AGGREGATED STATS (computed from ALL ${uploadRow.row_count} rows â€” use these for totals, charts, and summaries):
+AGGREGATED STATS (computed from ALL ${uploadRow.row_count} rows — use these for totals, charts, and summaries):
 ${statsJson}
 
-SAMPLE ROWS (first 5, for format reference only â€” do NOT use these for totals or counts):
+SAMPLE ROWS (first 5, for format reference only — do NOT use these for totals or counts):
 ${sampleJson}
 
 Build the dashboard using the AGGREGATED STATS above for all numbers, totals, charts, and breakdowns. Embed the aggregated data directly in the HTML as JavaScript variables. Do not use placeholder or mock data. Do not compute totals from sample rows.\n\n`;
@@ -895,7 +886,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}. Here are sample rows (first ${sampleRows.length} rows):\n${sampleJson}\nBuild the dashboard using this real data. Embed the data directly in the HTML as a JavaScript variable. Do not use placeholder or mock data.\n\n`;
           }
           enrichedPrompt = dataContext + enrichedPrompt;
-          console.log(`[UPLOAD] Injected context â€” table=${uploadRow.table_name}, ${uploadRow.row_count} rows, schema=${schemaStr}, hasAggregates=${!!stats}`);
+          console.log(`[UPLOAD] Injected context — table=${uploadRow.table_name}, ${uploadRow.row_count} rows, schema=${schemaStr}, hasAggregates=${!!stats}`);
         }
       }
 
@@ -922,7 +913,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               .join('\n---\n');
             if (existingPages) {
               enrichedPrompt =
-                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> â€” no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\n${enrichedPrompt}`;
+                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\n${enrichedPrompt}`;
             }
           }
         } catch {
@@ -944,11 +935,11 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               .map(p => `PAGE: ${p.name}\n${p.html}`)
               .join('\n---\n');
             if (pagesContext) {
-              enrichedPrompt = `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> â€” no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
+              enrichedPrompt = `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
             }
           }
         } catch {
-          // last_diff not valid JSON array â€” skip context injection
+          // last_diff not valid JSON array — skip context injection
         }
       }
 
@@ -981,7 +972,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
         llm_model: resolvedModel,
       });
 
-      await storage.logEvent(taskId, 'Task created â€” calling Edge Function for diff generation', 'info');
+      await storage.logEvent(taskId, 'Task created — calling Edge Function for diff generation', 'info');
 
       res.status(201).json({
         task_id: taskId,
@@ -992,7 +983,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
       // Fire-and-forget: process the job asynchronously
       (async () => {
         try {
-          // â”€â”€ Debug job routing â”€â”€
+          // ── Debug job routing ──
           if (type === 'debug' && debug_job_id) {
             await storage.updateTaskState(taskId, 'building');
             await storage.logEvent(taskId, `[DEBUG] Debug job for failed task ${debug_job_id}`, 'info');
@@ -1096,11 +1087,11 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
             const classification = isFallbackEligible(result.status, result.text);
             if (!classification.eligible) {
-              // Non-retriable error â€” fail fast, no fallback
+              // Non-retriable error — fail fast, no fallback
               return result;
             }
 
-            // Retriable error â€” one retry with same model, then fallback
+            // Retriable error — one retry with same model, then fallback
             console.log(`[LLM-FALLBACK] retry triggered: ${classification.reason}`);
             retries += 1;
             await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
@@ -1113,7 +1104,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             return attempt(fallbackModel);
           };
 
-          // â”€â”€ Step 1: Plan call â€” ask the LLM for a page plan â”€â”€
+          // ── Step 1: Plan call — ask the LLM for a page plan ──
           let plan: StarterSitePlan | null = null;
           let totalTokens = 0;
           let modelCalls = 0;
@@ -1146,21 +1137,25 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             }
           };
 
-          // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
           const team = await storage.getTeam(project.team_id);
           const teamName = team?.name ?? '';
           const resolvedMode = resolveMode(prompt, teamName);
-          await storage.logEvent(taskId, "[DIAG] resolvedMode=" + resolvedMode + " teamName=" + teamName + " upload_id=" + String(upload_id), "info");
+          await storage.logEvent(taskId, `[DIAG] resolvedMode=${resolvedMode} teamName=${teamName} upload_id=${upload_id}`, "info");
+
+          // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
           if (!upload_id && resolvedMode === 'app') {
             try {
               await storage.updateTaskState(taskId, 'building');
-              await storage.logEvent(taskId, `App fast path activated (team: ${teamName}) - routing to APP_SYSTEM`, `info`);
-              const appResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: `app` });
+              await storage.logEvent(taskId, `App fast path activated (team: ${teamName}) — routing to APP_SYSTEM`, 'info');
+              const appResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'app' });
               modelCalls += 1;
               if (!appResult.ok) throw new Error(appResult.text || `App edge call returned ${appResult.status}`);
               let appData: { diff: string; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
-              try { appData = JSON.parse(appResult.text); }
-              catch { throw new Error(`App edge returned invalid JSON (${appResult.text.length} chars)`); }
+              try {
+                appData = JSON.parse(appResult.text);
+              } catch {
+                throw new Error(`App edge returned invalid JSON (${appResult.text.length} chars)`);
+              }
               if (appData.usage?.total_tokens) totalTokens += appData.usage.total_tokens;
               const previewDir = path.join(PREVIEWS_DIR, taskId);
               fs.mkdirSync(previewDir, { recursive: true });
@@ -1172,7 +1167,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               const previewToken = signPreviewToken(taskId);
               await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
               await storage.logEvent(taskId, 'Preview generated', 'info');
-              await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, `info`);
+              await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
               await storage.updateTaskUsageMetrics(taskId, {
                 llm_model: appData.model ?? resolvedModel,
                 llm_prompt_tokens: appData.usage?.input_tokens ?? 0,
@@ -1183,16 +1178,16 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.logEvent(taskId, 'App job completed successfully (fast path)', 'info');
               return;
             } catch (appErr: any) {
-              await storage.logEvent(taskId, `App fast path failed (${appErr.message}), falling back to planner pipeline`, `warning`);
+              await storage.logEvent(taskId, `App fast path failed (${appErr.message}), falling back to planner pipeline`, 'warning');
             }
           }
 
-          // â”€â”€ Dashboard fast path â€” bypass planner, single Edge call â”€â”€
+          // ── Dashboard fast path ── bypass planner, single Edge call ──
           // File uploads always route here: uploaded data needs the single-call dashboard path
-          if (upload_id || isDashboardRequest(prompt)) {
+          if (upload_id || resolvedMode === 'dashboard') {
             try {
               await storage.updateTaskState(taskId, 'building');
-              await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) â€” skipping planner`, 'info');
+              await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
               const dashColorBlock = buildColorBlock(resolveColorScheme(prompt));
               const dashResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock });
               modelCalls += 1;
@@ -1250,11 +1245,11 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             const llmColorScheme = Array.isArray(planPages) ? null : planPages?.color_scheme ?? null;
             const result = buildStarterSitePlan(Array.isArray(pagesArray) ? pagesArray : null, prompt, llmColorScheme);
             if (result.notes.length > 0) await storage.logEvent(taskId, result.notes.join(' '), 'info');
-            await storage.logEvent(taskId, `Plan received: ${result.pages.length} page(s) â€” ${result.pages.map((p) => p.name).join(', ')}`, 'info');
+            await storage.logEvent(taskId, `Plan received: ${result.pages.length} page(s) — ${result.pages.map((p) => p.name).join(', ')}`, 'info');
             return result;
             });
           } catch (planErr: any) {
-            // Plan call failed â€” fall back to single-page build
+            // Plan call failed — fall back to single-page build
             await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'warning');
             plan = null;
           }
@@ -1283,7 +1278,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 const pageResult = await edgeCall({
                   prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
-                  mode: isSiteRequest(prompt) ? 'site' : 'page',
+                  mode: resolvedMode === 'site' ? 'site' : 'page',
                   context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
                   color_block: colorBlock,
                 });
@@ -1314,7 +1309,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 await storage.logEvent(taskId, `[QA REASONS] ${quality.reasons.join(' | ')}`, 'warn');
                 for (const failingRoute of quality.failingRoutes.slice(0, 1)) {
                   if (repairAttempts >= MAX_REPAIR_ATTEMPTS) {
-                    await storage.logEvent(taskId, `Max repair attempts (${MAX_REPAIR_ATTEMPTS}) reached â€” accepting current output`, 'warning');
+                    await storage.logEvent(taskId, `Max repair attempts (${MAX_REPAIR_ATTEMPTS}) reached — accepting current output`, 'warning');
                     break;
                   }
                   repairAttempts += 1;
@@ -1335,7 +1330,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
             const uxResult = await runStep('ux', async () => {
               // UX check is handled in the executor pipeline
-              // This step records timing only â€” executor drives actual UX agent
+              // This step records timing only — executor drives actual UX agent
               await new Promise(r => setTimeout(r, 0));
             });
 
@@ -1351,7 +1346,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             });
             await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
           } else {
-            // â”€â”€ Fallback: single-page build with mode: 'html' â”€â”€
+            // ── Fallback: single-page build with mode: 'html' ──
             await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
             console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
             const fallbackResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html', color_block: colorBlock });
@@ -1362,7 +1357,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             try {
               data = JSON.parse(fallbackResult.text);
             } catch {
-              console.error(`Job ${taskId} â€” raw response (${fallbackResult.text.length} chars):`, fallbackResult.text.slice(0, 500));
+              console.error(`Job ${taskId} — raw response (${fallbackResult.text.length} chars):`, fallbackResult.text.slice(0, 500));
               throw new Error(`Edge Function returned invalid JSON (${fallbackResult.text.length} chars)`);
             }
 
@@ -1374,7 +1369,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
           }
 
-          // â”€â”€ Step 3: Write manifest and finalize â”€â”€
+          // ── Step 3: Write manifest and finalize ──
           fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
           fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
           const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -1444,7 +1439,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
     }
   });
 
-  // â”€â”€ Diff endpoints â”€â”€
+  // ── Diff endpoints ──
 
   app.get('/jobs/:id/diff', async (req: Request, res: Response) => {
     try {
@@ -1483,7 +1478,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
         return res.status(400).json({ error: 'Fix has no diff payload' });
       }
 
-      // Locate worktree â€” executor convention: /data/worktrees/{task_id}
+      // Locate worktree — executor convention: /data/worktrees/{task_id}
       const worktreePath = path.join('/data/worktrees', req.params.id);
       if (!fs.existsSync(worktreePath)) {
         return res.status(404).json({
@@ -1499,13 +1494,13 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
         return res.status(500).json({ error: `Failed to write patch: ${err.message}` });
       }
 
-      // git apply --check first â€” dry run
+      // git apply --check first — dry run
       try {
         await execAsync(`git apply --check ${patchPath}`, { cwd: worktreePath });
       } catch (err: any) {
         fs.existsSync(patchPath) && fs.unlinkSync(patchPath);
         return res.status(422).json({
-          error: 'Fix diff cannot be applied cleanly â€” the codebase may have changed.',
+          error: 'Fix diff cannot be applied cleanly — the codebase may have changed.',
           detail: err.stderr?.slice(0, 500),
         });
       }
@@ -1548,7 +1543,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
     }
   });
 
-  // â”€â”€ Preview URL endpoint â”€â”€
+  // ── Preview URL endpoint ──
 
   app.post('/jobs/:id/preview', express.json(), async (req: Request, res: Response) => {
     try {
@@ -1567,7 +1562,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
     }
   });
 
-  // â”€â”€ Analytics endpoint â”€â”€
+  // ── Analytics endpoint ──
 
   app.get('/analytics/overview', async (req: Request, res: Response) => {
     try {
@@ -1582,7 +1577,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
     }
   });
 
-  // GET /jobs/:id/logs â€” SSE stream of log events
+  // GET /jobs/:id/logs — SSE stream of log events
   app.get('/jobs/:id/logs', async (req: Request, res: Response) => {
     try {
       const jobId = req.params.id;
