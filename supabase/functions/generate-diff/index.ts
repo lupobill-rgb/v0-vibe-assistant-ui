@@ -778,7 +778,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, context, model = "claude", system, max_tokens, mode, color_block } = await req.json();
+    let { prompt, context, model = "claude", system, max_tokens, mode, color_block } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string };
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
