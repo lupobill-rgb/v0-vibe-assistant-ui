@@ -33,7 +33,7 @@ const TEAM_MODE_DEFAULTS: Record<string, string> = {
   "sales":       "app",
   "engineering": "app",
   "operations":  "app",
-  "marketing":   "page",
+  "marketing":   "dashboard",
   "product":     "dashboard",
   "finance":     "dashboard",
 };
@@ -44,10 +44,10 @@ export function resolveMode(prompt: string, teamName?: string): string {
   const isDashboard = DASHBOARD_KEYWORDS.some(kw => p.includes(kw));
   const isSite      = SITE_KEYWORDS.some(kw => p.includes(kw));
 
-  // App intent always wins — even over dashboard keywords
+  // Dashboard intent wins when explicitly present — "dashboard" keyword is unambiguous
+  if (isDashboard) return "dashboard";
   if (isApp) return "app";
   if (isSite) return "site";
-  if (isDashboard) return "dashboard";
 
   // Fall back to team default
   const teamKey = (teamName || "").toLowerCase();
