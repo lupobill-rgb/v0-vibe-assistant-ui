@@ -30,24 +30,36 @@ HEAD must include:
 Output MUST start <!DOCTYPE html> and end </html>.`
 
 async function callEdgeFunction(prompt: string, system: string, maxTokens: number) {
-  const res = await fetch(EDGE_FN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({
-      prompt,
-      model: 'claude',
-      system,
-      max_tokens: maxTokens,
-    }),
-  })
-  const data = await res.json()
-  if (!res.ok) {
-    throw new Error(data.error || 'Edge Function returned ' + res.status)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 25000)
+  try {
+    const res = await fetch(EDGE_FN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        prompt,
+        model: 'claude',
+        system,
+        max_tokens: maxTokens,
+      }),
+      signal: controller.signal,
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.error || 'Edge Function returned ' + res.status)
+    }
+    return data
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Edge Function timed out after 25s')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
   }
-  return data
 }
 
 export async function POST(request: Request) {

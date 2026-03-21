@@ -97,13 +97,26 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     return null
   }
   const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
-    const res = await fetch("/api/intake", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
-    })
-    const data = await res.json()
-    return data.text ?? ""
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+    try {
+      const res = await fetch("/api/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+        signal: controller.signal,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+      return data.text ?? ""
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("AI took too long to respond. Please try again.")
+      }
+      throw err
+    } finally {
+      clearTimeout(timeout)
+    }
   }
   const startIntake = async () => {
     if (!prompt.trim() || submitting) return
