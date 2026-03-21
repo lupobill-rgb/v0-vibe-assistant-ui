@@ -1,5 +1,6 @@
--- Migration: Add conversations and messages for iterative project editing
--- Conversations link to projects; messages track the full prompt/response chain
+-- Migration: Add conversations and conversation_messages for iterative project editing
+-- Conversations link to projects; conversation_messages track the full prompt/response chain
+-- NOTE: "messages" is reserved by Supabase Realtime — using "conversation_messages" instead
 
 -- ============================================================================
 -- Conversations (belong to projects)
@@ -17,9 +18,9 @@ CREATE INDEX IF NOT EXISTS idx_conversations_by_project ON conversations(project
 CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 
 -- ============================================================================
--- Messages (belong to conversations)
+-- Conversation Messages (belong to conversations)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE IF NOT EXISTS conversation_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
@@ -29,8 +30,8 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_by_conversation ON messages(conversation_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_messages_by_job ON messages(job_id);
+CREATE INDEX IF NOT EXISTS idx_conv_messages_by_conversation ON conversation_messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_conv_messages_by_job ON conversation_messages(job_id);
 
 -- ============================================================================
 -- Add conversation_id to jobs (optional FK — jobs can exist without conversation)
@@ -49,8 +50,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_messages_update_conversation
-  AFTER INSERT ON messages
+CREATE TRIGGER trg_conv_messages_update_conversation
+  AFTER INSERT ON conversation_messages
   FOR EACH ROW
   EXECUTE FUNCTION update_conversation_timestamp();
 
@@ -58,4 +59,4 @@ CREATE TRIGGER trg_messages_update_conversation
 -- Row Level Security
 -- ============================================================================
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_messages ENABLE ROW LEVEL SECURITY;
