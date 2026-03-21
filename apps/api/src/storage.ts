@@ -947,7 +947,7 @@ class VibeStorage {
     metadata?: Record<string, unknown>;
   }): Promise<Message> {
     const { data, error } = await this.sb
-      .from('messages')
+      .from('conversation_messages')
       .insert({
         conversation_id: msg.conversation_id,
         role: msg.role,
@@ -963,7 +963,7 @@ class VibeStorage {
 
   async getMessages(conversationId: string, limit: number = 50): Promise<Message[]> {
     const { data, error } = await this.sb
-      .from('messages')
+      .from('conversation_messages')
       .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
