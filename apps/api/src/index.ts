@@ -1137,6 +1137,10 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             }
           };
 
+          const team = await storage.getTeam(project.team_id);
+          const teamName = team?.name ?? '';
+          const resolvedMode = resolveMode(prompt, teamName);
+
           // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
           if (!upload_id && resolvedMode === 'app') {
             try {
