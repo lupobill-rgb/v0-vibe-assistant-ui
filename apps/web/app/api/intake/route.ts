@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+export const maxDuration = 120
+
 const SUPABASE_URL = 'https://ptaqytvztkhjpuawdxng.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
 const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
@@ -29,9 +31,9 @@ HEAD must include:
 <script>window.__VIBE_SUPABASE_URL__="${SUPABASE_URL}";window.__VIBE_SUPABASE_ANON_KEY__="${SUPABASE_ANON_KEY}";</script>
 Output MUST start <!DOCTYPE html> and end </html>.`
 
-async function callEdgeFunction(prompt: string, system: string, maxTokens: number) {
+async function callEdgeFunction(prompt: string, system: string, maxTokens: number, timeoutMs = 25000) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 25000)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(EDGE_FN_URL, {
       method: 'POST',
@@ -54,7 +56,7 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
     return data
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error('Edge Function timed out after 25s')
+      throw new Error(`Edge Function timed out after ${timeoutMs / 1000}s`)
     }
     throw err
   } finally {
@@ -81,8 +83,14 @@ export async function POST(request: Request) {
 
     if (build) {
       const prompt = messages[messages.length - 1]?.content ?? ''
-      const data = await callEdgeFunction(prompt, APP_SYSTEM, 16000)
-      const html = data.diff || ''
+      const data = await callEdgeFunction(prompt, APP_SYSTEM, 16000, 110000)
+      let html = data.diff || ''
+      if (html.startsWith('```')) {
+        html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
+      }
+      if (!html) {
+        return NextResponse.json({ error: 'Build returned empty HTML' }, { status: 502 })
+      }
       return NextResponse.json({ html, usage: data.usage })
     }
 
