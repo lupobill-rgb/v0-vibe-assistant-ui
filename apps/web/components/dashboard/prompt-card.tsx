@@ -3,7 +3,7 @@ import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Loader2, CheckCircle2, X, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject, createJob, API_URL } from "@/lib/api"
+import { createProject } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 type Message = { role: "assistant" | "user"; text: string }
@@ -97,13 +97,26 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     return null
   }
   const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
-    const res = await fetch("/api/intake", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
-    })
-    const data = await res.json()
-    return data.text ?? ""
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+    try {
+      const res = await fetch("/api/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+        signal: controller.signal,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+      return data.text ?? ""
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("AI took too long to respond. Please try again.")
+      }
+      throw err
+    } finally {
+      clearTimeout(timeout)
+    }
   }
   const startIntake = async () => {
     if (!prompt.trim() || submitting) return
@@ -156,28 +169,68 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     }
   }
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
+  const buildViaVercel = async (finalPrompt: string): Promise<string> => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 120000)
+    try {
+      const res = await fetch("/api/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: finalPrompt }],
+          build: true,
+        }),
+        signal: controller.signal,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Build failed (${res.status})`)
+      if (!data.html) throw new Error("Build returned empty HTML")
+      return data.html
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("Build timed out. Please try again.")
+      }
+      throw err
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
   const fireJob = async (finalPrompt: string) => {
     setSubmitting(true)
     setStage("building")
     setError(null)
     try {
+      // Step 1: Build HTML via Vercel direct path (NOT Railway)
+      const html = await buildViaVercel(finalPrompt)
+      // Step 2: Create project
       let projectId = selectedProjectId
       if (!projectId) {
         const project = await createProject(finalPrompt.slice(0, 60), undefined, currentTeam?.id)
         if (project.error || !project.id) throw new Error(project.error || "Failed to create project")
         projectId = project.id
       }
-      const result = await createJob({
-        prompt: finalPrompt,
-        project_id: projectId,
-        base_branch: "main",
-        upload_id: uploadState.uploadId,
-        conversation_id: conversationId,
-      })
-      if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
-      // Store conversation_id for follow-up builds in same session
-      if (result.conversation_id) setConversationId(result.conversation_id)
-      router.push(`/building/${result.task_id}`)
+      // Step 3: Insert job record directly into Supabase for history
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: jobData, error: jobError } = await supabase
+        .from("jobs")
+        .insert({
+          user_prompt: finalPrompt,
+          project_id: projectId,
+          execution_state: "completed",
+          last_diff: html,
+          user_id: user?.id,
+        })
+        .select("id")
+        .single()
+      if (jobError || !jobData?.id) {
+        // Supabase insert failed — store HTML in sessionStorage as fallback
+        const fallbackId = crypto.randomUUID()
+        sessionStorage.setItem(`vibe_build_${fallbackId}`, html)
+        router.push(`/building/${fallbackId}`)
+        return
+      }
+      // Step 4: Navigate to building page to show the result
+      router.push(`/building/${jobData.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start build")
       setSubmitting(false)
