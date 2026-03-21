@@ -70,17 +70,6 @@ function verifyPreviewToken(token: string, requestedJobId: string): boolean {
   }
 }
 
-const DASHBOARD_KEYWORDS = /dashboard|analytics|chart|pipeline|report|tracker|metrics|kpi|visualiz/i;
-function isDashboardRequest(prompt: string): boolean {
-  return DASHBOARD_KEYWORDS.test(prompt);
-}
-
-const SITE_KEYWORDS = ['multi-page','multipage','marketing site',
-  'multi page','company site','multiple pages'];
-function isSiteRequest(p: string): boolean {
-  return SITE_KEYWORDS.some(kw => p.toLowerCase().includes(kw));
-}
-
 // Ensure repos directory exists
 try {
   if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -1149,7 +1138,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
           // ── Dashboard fast path — bypass planner, single Edge call ──
           // File uploads always route here: uploaded data needs the single-call dashboard path
-          if (upload_id || isDashboardRequest(prompt)) {
+          if (upload_id || resolveMode(prompt) === 'dashboard') {
             try {
               await storage.updateTaskState(taskId, 'building');
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
@@ -1243,7 +1232,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 const pageResult = await edgeCall({
                   prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
-                  mode: isSiteRequest(prompt) ? 'site' : 'page',
+                  mode: resolveMode(prompt),
                   context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
                   color_block: colorBlock,
                 });
