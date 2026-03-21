@@ -935,9 +935,13 @@ async function bootstrap() {
       // Conversation context injection: if continuing a conversation, inject prior messages
       let resolvedConversationId = conversation_id;
       if (resolvedConversationId) {
-        const conversationContext = await storage.getConversationContext(resolvedConversationId, 10);
-        if (conversationContext) {
-          enrichedPrompt = `CONVERSATION HISTORY (prior messages in this session):\n${conversationContext}\n\nNEW REQUEST:\n${enrichedPrompt}`;
+        try {
+          const conversationContext = await storage.getConversationContext(resolvedConversationId, 10);
+          if (conversationContext) {
+            enrichedPrompt = `CONVERSATION HISTORY (prior messages in this session):\n${conversationContext}\n\nNEW REQUEST:\n${enrichedPrompt}`;
+          }
+        } catch (ctxErr: any) {
+          console.warn(`[CONVERSATION] Failed to load context (non-blocking): ${ctxErr.message}`);
         }
       }
 
@@ -1059,22 +1063,32 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
       const finalBaseBranch = base_branch || 'main';
       const finalTargetBranch = target_branch || `vibe/${taskId.slice(0, 8)}`;
 
-      // Auto-create conversation if none provided — every job belongs to a conversation
+      // Auto-create conversation if none provided — best-effort, never blocks job creation
       if (!resolvedConversationId) {
-        const conv = await storage.createConversation({
-          project_id,
-          title: prompt.slice(0, 100),
-          created_by: user_id,
-        });
-        resolvedConversationId = conv.id;
+        try {
+          const conv = await storage.createConversation({
+            project_id,
+            title: prompt.slice(0, 100),
+            created_by: user_id,
+          });
+          resolvedConversationId = conv.id;
+        } catch (convErr: any) {
+          console.warn(`[CONVERSATION] Auto-create failed (non-blocking): ${convErr.message}`);
+        }
       }
 
-      // Store the user message in the conversation
-      await storage.addMessage({
-        conversation_id: resolvedConversationId,
-        role: 'user',
-        content: prompt,
-      });
+      // Store the user message in the conversation (best-effort)
+      if (resolvedConversationId) {
+        try {
+          await storage.addMessage({
+            conversation_id: resolvedConversationId,
+            role: 'user',
+            content: prompt,
+          });
+        } catch (msgErr: any) {
+          console.warn(`[CONVERSATION] Failed to store user message: ${msgErr.message}`);
+        }
+      }
 
       await storage.createTask({
         task_id: taskId,
@@ -1521,19 +1535,23 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           });
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
-          // Store assistant response in conversation after successful build
+          // Store assistant response in conversation after successful build (best-effort)
           if (resolvedConversationId) {
-            const task = await storage.getTask(taskId);
-            const summary = task?.preview_url
-              ? `Built successfully. Preview: ${task.preview_url}`
-              : 'Build completed.';
-            await storage.addMessage({
-              conversation_id: resolvedConversationId,
-              role: 'assistant',
-              content: summary,
-              job_id: taskId,
-              metadata: { execution_state: task?.execution_state, total_tokens: totalTokens },
-            });
+            try {
+              const task = await storage.getTask(taskId);
+              const summary = task?.preview_url
+                ? `Built successfully. Preview: ${task.preview_url}`
+                : 'Build completed.';
+              await storage.addMessage({
+                conversation_id: resolvedConversationId,
+                role: 'assistant',
+                content: summary,
+                job_id: taskId,
+                metadata: { execution_state: task?.execution_state, total_tokens: totalTokens },
+              });
+            } catch (msgErr: any) {
+              console.warn(`[CONVERSATION] Failed to store assistant message: ${msgErr.message}`);
+            }
           }
         } catch (err: any) {
           console.error(`Job ${taskId} failed:`, err.message);
