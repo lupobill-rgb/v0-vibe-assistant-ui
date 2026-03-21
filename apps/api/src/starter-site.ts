@@ -8,7 +8,7 @@ export const INITIAL_BUILD_BUDGETS = {
   maxModelCalls: 12,
   maxTokensOut: 12_000,
   stepDeadlinesMs: {
-    planning: 20_000,
+    planning: 120_000,
     building: 360_000,
     validating: 120_000,
     security: 20_000,
@@ -23,7 +23,7 @@ export const DASHBOARD_BUILD_BUDGETS = {
   maxModelCalls: 24,
   maxTokensOut: 30_000,
   stepDeadlinesMs: {
-    planning: 30_000,           // 30s
+    planning: 120_000,          // 120s — app builds need time
     building: 180_000,          // 3 min (includes 2 design phase calls)
     validating: 120_000,        // 2 min
     security: 20_000,           // 20s
