@@ -31,6 +31,28 @@ HEAD must include:
 <script>window.__VIBE_SUPABASE_URL__="${SUPABASE_URL}";window.__VIBE_SUPABASE_ANON_KEY__="${SUPABASE_ANON_KEY}";</script>
 Output MUST start <!DOCTYPE html> and end </html>.`
 
+async function callAnthropic(messages: Array<{ role: string; content: string }>, system: string, maxTokens: number) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system,
+      messages,
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error?.message || `Anthropic API error ${res.status}`)
+  return data.content?.[0]?.text || ''
+}
+
 async function callEdgeFunction(prompt: string, system: string, maxTokens: number, timeoutMs = 120000) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -94,13 +116,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ html, usage: data.usage })
     }
 
-    // Intake Q&A — conversational flow
-    const lastMessage = messages[messages.length - 1]?.content ?? ''
-    const conversationContext = messages
-      .map((m: { role: string; content: string }) => `${m.role}: ${m.content}`)
-      .join('\n')
-    const data = await callEdgeFunction(conversationContext, INTAKE_SYSTEM, 500)
-    const text = data.diff || ''
+    // Intake Q&A — call Anthropic directly for fast responses
+    const anthropicMessages = messages.map((m: { role: string; content: string }) => ({
+      role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+      content: m.content,
+    }))
+    const text = await callAnthropic(anthropicMessages, INTAKE_SYSTEM, 500)
     return NextResponse.json({ text })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
