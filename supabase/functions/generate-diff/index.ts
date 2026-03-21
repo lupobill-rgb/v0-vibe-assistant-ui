@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.10.0"; // 2026-03-21 — add APP_SYSTEM mode for CRUD app generation
+const EDGE_FUNCTION_VERSION = "1.11.0"; // 2026-03-21 — merge design phases to avoid 504 timeout
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -852,21 +852,15 @@ Current page HTML:\n${context ?? ""}`;
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
     } else if (mode === "dashboard") {
-      // Phase 1: Visual System — establish design tokens for this domain
-      const visualSpec = await callLLM(
-        DESIGN_PHASE_VISUAL + "\n\nDashboard request: " + prompt,
-        'Return only JSON: {"colors":{},"typography":{},"layout":"sidebar|topbar","domain":""}',
-        2048
-      );
-      // Phase 2: Systems Architect — define data model and chart types
-      const systemSpec = await callLLM(
+      // Single combined design phase — merged to avoid Supabase 150s wall-time 504
+      const designSpec = await callLLM(
         DESIGN_PHASE_SYSTEMS + "\n\nDashboard request: " + prompt,
-        `Return only JSON: {"pages":[],"charts":[],"kpis":[],"table":{"columns":[]}}
+        `Return only JSON: {"layout":"sidebar|topbar","pages":[],"charts":[],"kpis":[],"table":{"columns":[]}}
 The table must use static HTML only — no sorting, no filtering, no JS interaction.
 Plain <table> with <thead> and <tbody> rows. No dynamic features.`,
         2048
       );
-      // Phase 3: Build — generate HTML from spec
+      // Phase 2: Build — generate HTML from spec
       const HARD_BLOCK = `
 ABSOLUTE HARD STOP: This file will be rendered in a plain browser iframe.
 It has NO build system, NO Node.js, NO React, NO webpack, NO Next.js.
@@ -882,10 +876,8 @@ The file MUST start with <!DOCTYPE html> and end with </html>.
 `;
       baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
 DESIGN SPEC (follow exactly):
-Visual: ${visualSpec}
-Structure: ${systemSpec}
+Structure: ${designSpec}
 Rules:
-- Use the exact colors from the visual spec
 - Use the exact chart types from the structure spec
 - Use the exact KPI names from the structure spec
 - Use the exact table columns from the structure spec
