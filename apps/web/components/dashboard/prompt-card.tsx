@@ -155,6 +155,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       setIntaking(false)
     }
   }
+  const [conversationId, setConversationId] = useState<string | undefined>(undefined)
   const fireJob = async (finalPrompt: string) => {
     setSubmitting(true)
     setStage("building")
@@ -171,8 +172,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         project_id: projectId,
         base_branch: "main",
         upload_id: uploadState.uploadId,
+        conversation_id: conversationId,
       })
       if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
+      // Store conversation_id for follow-up builds in same session
+      if (result.conversation_id) setConversationId(result.conversation_id)
       router.push(`/building/${result.task_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start build")

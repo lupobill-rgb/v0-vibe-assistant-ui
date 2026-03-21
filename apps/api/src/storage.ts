@@ -74,6 +74,7 @@ export interface VibeTask {
   task_id: string;
   user_prompt: string;
   project_id?: string;
+  conversation_id?: string;
   repository_url?: string;
   source_branch: string;
   destination_branch: string;
@@ -102,6 +103,25 @@ export interface AgentResultSummary {
   summary?: string;
   duration_ms: number;
   fixes?: { category: string; description: string; diff?: string }[];
+}
+
+export interface Conversation {
+  id: string;
+  project_id: string;
+  title: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  job_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface VibeEvent {
@@ -133,6 +153,7 @@ interface JobRow {
   total_job_seconds: number | null;
   files_changed_count: number | null;
   last_diff: string | null;
+  conversation_id: string | null;
   initiated_at: string;
   last_modified: string;
   agent_results: AgentResultSummary[] | null;
@@ -153,6 +174,7 @@ function jobRowToVibeTask(row: JobRow): VibeTask {
     task_id: row.id,
     user_prompt: row.user_prompt,
     project_id: row.project_id,
+    conversation_id: row.conversation_id || undefined,
     repository_url: row.repository_url || undefined,
     source_branch: row.source_branch,
     destination_branch: row.destination_branch,
@@ -391,6 +413,7 @@ class VibeStorage {
       id: task.task_id,
       user_prompt: task.user_prompt,
       project_id: task.project_id || null,
+      conversation_id: task.conversation_id || null,
       repository_url: task.repository_url || null,
       source_branch: task.source_branch,
       destination_branch: task.destination_branch,
@@ -864,6 +887,105 @@ class VibeStorage {
         { onConflict: 'project_id' }
       );
     if (error) throw new Error(`Failed to upsert Supabase connection: ${error.message}`);
+  }
+
+  // ── Conversation methods ──
+
+  async createConversation(conv: {
+    project_id: string;
+    title?: string;
+    created_by?: string;
+  }): Promise<Conversation> {
+    const { data, error } = await this.sb
+      .from('conversations')
+      .insert({
+        project_id: conv.project_id,
+        title: conv.title || null,
+        created_by: conv.created_by || null,
+      })
+      .select()
+      .single();
+    if (error) throw new Error(`Failed to create conversation: ${error.message}`);
+    return data as Conversation;
+  }
+
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    const { data, error } = await this.sb
+      .from('conversations')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) return undefined;
+    return data as Conversation;
+  }
+
+  async listConversations(projectId: string): Promise<Conversation[]> {
+    const { data, error } = await this.sb
+      .from('conversations')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('updated_at', { ascending: false });
+    if (error) throw new Error(`Failed to list conversations: ${error.message}`);
+    return (data || []) as Conversation[];
+  }
+
+  async updateConversationTitle(id: string, title: string): Promise<void> {
+    const { error } = await this.sb
+      .from('conversations')
+      .update({ title, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw new Error(`Failed to update conversation title: ${error.message}`);
+  }
+
+  // ── Message methods ──
+
+  async addMessage(msg: {
+    conversation_id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    job_id?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<Message> {
+    const { data, error } = await this.sb
+      .from('messages')
+      .insert({
+        conversation_id: msg.conversation_id,
+        role: msg.role,
+        content: msg.content,
+        job_id: msg.job_id || null,
+        metadata: msg.metadata || {},
+      })
+      .select()
+      .single();
+    if (error) throw new Error(`Failed to add message: ${error.message}`);
+    return data as Message;
+  }
+
+  async getMessages(conversationId: string, limit: number = 50): Promise<Message[]> {
+    const { data, error } = await this.sb
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+    if (error) throw new Error(`Failed to get messages: ${error.message}`);
+    return (data || []) as Message[];
+  }
+
+  async getConversationContext(conversationId: string, maxMessages: number = 10): Promise<string> {
+    const messages = await this.getMessages(conversationId, maxMessages);
+    if (messages.length === 0) return '';
+    return messages
+      .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+      .join('\n\n');
+  }
+
+  async linkJobToConversation(jobId: string, conversationId: string): Promise<void> {
+    const { error } = await this.sb
+      .from('jobs')
+      .update({ conversation_id: conversationId })
+      .eq('id', jobId);
+    if (error) throw new Error(`Failed to link job to conversation: ${error.message}`);
   }
 
   // ── Helpers ──
