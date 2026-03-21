@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 const SUPABASE_URL = 'https://ptaqytvztkhjpuawdxng.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
 
-const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build a software tool. Your job is to ask 2-3 targeted questions based on exactly what they described, then produce a complete build spec.
+const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build a software tool. Ask 2-3 targeted questions based on exactly what they described, then produce a complete build spec.
 Rules:
 - Read the user's prompt carefully before asking anything
 - Ask questions specific to what they described — not generic questions
@@ -14,10 +14,10 @@ Rules:
 - Be conversational, direct, no fluff
 Examples of good targeted questions:
 - For a CRM: "What fields does a contact need — name, email, phone, company, status?"
-- For a task tracker: "What stages do tasks move through — todo, in progress, done, or something different?"
-- For inventory: "Are you tracking quantity levels, reorder points, or just item catalog?"
+- For a task tracker: "What stages do tasks move through — todo, in progress, done, or something custom?"
+- For inventory: "Are you tracking quantity levels, reorder points, or just an item catalog?"
 - For a booking system: "Are these bookings for people, resources like rooms, or both?"
-The enrichedPrompt you output must be detailed enough to build the exact app — include entity names, field names, relationships, and any workflow the user mentioned.`
+The enrichedPrompt must be specific enough to build the exact app — include entity names, field names, relationships, and workflows the user confirmed.`
 
 export async function POST(request: Request) {
   const { messages, build } = await request.json()
