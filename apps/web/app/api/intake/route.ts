@@ -46,28 +46,28 @@ REQUIRED LAYOUT:
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
     <header style="padding:1rem 1.5rem;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
       <h2 id="view-title" style="font-size:1.1rem;font-weight:600;color:var(--text);">Records</h2>
-      <button id="btn-add" onclick="openModal()" style="background:var(--primary);color:#fff;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-weight:500;font-size:0.875rem;">+ Add New</button>
+      <button id="btn-add" style="background:var(--primary);color:#fff;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-weight:500;font-size:0.875rem;">+ Add New</button>
     </header>
     <div style="padding:0.75rem 1.5rem;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:0.75rem;">
-      <input id="search-input" oninput="filterTable()" placeholder="Search..." style="flex:1;max-width:320px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.75rem;font-size:0.875rem;outline:none;">
+      <input id="search-input" placeholder="Search..." style="flex:1;max-width:320px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.75rem;font-size:0.875rem;outline:none;">
     </div>
     <main id="main-content" style="flex:1;overflow:auto;padding:1.5rem;">
       <div id="loading-state" style="text-align:center;padding:4rem;color:#64748b;">Loading...</div>
       <div id="empty-state" style="display:none;text-align:center;padding:4rem 2rem;">
         <p style="color:#64748b;font-size:1rem;margin-bottom:1rem;">No records yet</p>
-        <button onclick="openModal()" style="background:var(--primary);color:#fff;border:none;padding:0.6rem 1.25rem;border-radius:6px;cursor:pointer;font-weight:500;">Add your first record</button>
+        <button id="btn-empty-add" style="background:var(--primary);color:#fff;border:none;padding:0.6rem 1.25rem;border-radius:6px;cursor:pointer;font-weight:500;">Add your first record</button>
       </div>
       <div id="table-container" style="display:none;overflow-x:auto;"></div>
     </main>
   </div>
 </div>
-<div id="modal-overlay" onclick="closeModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:50;"></div>
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:50;"></div>
 <div id="modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;width:480px;max-width:90vw;max-height:85vh;overflow-y:auto;z-index:51;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
     <h3 id="modal-title" style="font-size:1rem;font-weight:600;color:var(--text);">Add Record</h3>
-    <button onclick="closeModal()" style="background:none;border:none;color:var(--text);font-size:1.5rem;cursor:pointer;line-height:1;">&times;</button>
+    <button id="modal-close-btn" style="background:none;border:none;color:var(--text);font-size:1.5rem;cursor:pointer;line-height:1;">&times;</button>
   </div>
-  <form id="record-form" onsubmit="saveRecord(event);return false;"></form>
+  <form id="record-form"></form>
 </div>
 <div id="vibe-toast" style="display:none;position:fixed;bottom:1.5rem;right:1.5rem;padding:0.75rem 1.25rem;border-radius:8px;font-size:0.875rem;z-index:100;color:#fff;"></div>
 </body>
@@ -115,8 +115,8 @@ function renderTable(rows) {
       html += '<td style="padding:0.6rem 0.75rem;color:var(--text);">' + String(val) + '</td>';
     });
     html += '<td style="padding:0.6rem 0.75rem;text-align:right;">';
-    html += '<button onclick="openModal(\\'' + row.id + '\\')" style="background:none;border:1px solid var(--border);color:var(--text);padding:0.25rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.75rem;margin-right:0.4rem;">Edit</button>';
-    html += '<button onclick="confirmDelete(\\'' + row.id + '\\')" style="background:none;border:1px solid var(--danger);color:var(--danger);padding:0.25rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.75rem;">Delete</button>';
+    html += '<button class="edit-btn" data-id="' + row.id + '" style="background:none;border:1px solid var(--border);color:var(--text);padding:0.25rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.75rem;margin-right:0.4rem;">Edit</button>';
+    html += '<button class="delete-btn" data-id="' + row.id + '" style="background:none;border:1px solid var(--danger);color:var(--danger);padding:0.25rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.75rem;">Delete</button>';
     html += '</td></tr>';
   });
   html += '</tbody></table>';
@@ -145,7 +145,7 @@ function openModal(id) {
     html += '</div>';
   });
   html += '<div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem;">';
-  html += '<button type="button" onclick="closeModal()" style="background:none;border:1px solid var(--border);color:var(--text);padding:0.5rem 1rem;border-radius:6px;cursor:pointer;">Cancel</button>';
+  html += '<button type="button" class="cancel-btn" style="background:none;border:1px solid var(--border);color:var(--text);padding:0.5rem 1rem;border-radius:6px;cursor:pointer;">Cancel</button>';
   html += '<button type="submit" style="background:var(--primary);color:#fff;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-weight:500;">Save</button>';
   html += '</div>';
   form.innerHTML = html;
@@ -195,7 +195,23 @@ function showToast(msg, type) {
   t.style.display = 'block';
   setTimeout(() => { t.style.display = 'none'; }, 3000);
 }
-document.addEventListener('DOMContentLoaded', loadRecords);
+document.addEventListener('DOMContentLoaded', function() {
+  loadRecords();
+  document.getElementById('btn-add').addEventListener('click', function() { openModal(); });
+  document.getElementById('btn-empty-add').addEventListener('click', function() { openModal(); });
+  document.getElementById('modal-overlay').addEventListener('click', closeModal);
+  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+  document.getElementById('search-input').addEventListener('input', filterTable);
+  document.getElementById('record-form').addEventListener('submit', function(e) { saveRecord(e); });
+  document.addEventListener('click', function(e) {
+    var editBtn = e.target.closest('.edit-btn');
+    var deleteBtn = e.target.closest('.delete-btn');
+    var cancelBtn = e.target.closest('.cancel-btn');
+    if (editBtn) openModal(editBtn.dataset.id);
+    if (deleteBtn) confirmDelete(deleteBtn.dataset.id);
+    if (cancelBtn) closeModal();
+  });
+});
 CRITICAL: Replace COLLECTION and FORM_FIELDS with actual values based on the user prompt.
 FORM_FIELDS is a JS array defined before openModal: const FORM_FIELDS = [{name:'field_name', label:'Field Label', type:'text|email|number|select|textarea', required:true, options:['opt1','opt2']}];
 For select fields infer sensible options from the prompt context.
