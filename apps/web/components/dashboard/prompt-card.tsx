@@ -3,7 +3,7 @@ import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Loader2, CheckCircle2, X, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject, API_URL } from "@/lib/api"
+import { createProject, createJob, API_URL } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 type Message = { role: "assistant" | "user"; text: string }
@@ -201,17 +201,23 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setStage("building")
     setError(null)
     try {
-      // Step 1: Build HTML via Vercel direct path (NOT Railway)
+      // Step 1: Build HTML via Vercel direct path
+      console.log("[VIBE] fireJob: starting Vercel build...")
       const html = await buildViaVercel(finalPrompt)
+      console.log("[VIBE] fireJob: build complete, HTML length:", html.length)
       // Step 2: Create project
       let projectId = selectedProjectId
       if (!projectId) {
+        console.log("[VIBE] fireJob: creating project...")
         const project = await createProject(finalPrompt.slice(0, 60), undefined, currentTeam?.id)
         if (project.error || !project.id) throw new Error(project.error || "Failed to create project")
         projectId = project.id
+        console.log("[VIBE] fireJob: project created:", projectId)
       }
-      // Step 3: Insert job record directly into Supabase for history
+      // Step 3: Try direct Supabase insert, fall back to Railway createJob
+      let jobId: string | undefined
       const { data: { user } } = await supabase.auth.getUser()
+      console.log("[VIBE] fireJob: inserting job into Supabase...")
       const { data: jobData, error: jobError } = await supabase
         .from("jobs")
         .insert({
@@ -224,15 +230,27 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         .select("id")
         .single()
       if (jobError || !jobData?.id) {
-        // Supabase insert failed — store HTML in sessionStorage as fallback
-        const fallbackId = crypto.randomUUID()
-        sessionStorage.setItem(`vibe_build_${fallbackId}`, html)
-        router.push(`/building/${fallbackId}`)
-        return
+        console.warn("[VIBE] fireJob: Supabase insert failed:", jobError?.message, "— falling back to Railway")
+        const result = await createJob({
+          prompt: finalPrompt,
+          project_id: projectId,
+          base_branch: "main",
+          upload_id: uploadState.uploadId,
+          conversation_id: conversationId,
+        })
+        if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
+        if (result.conversation_id) setConversationId(result.conversation_id)
+        jobId = result.task_id
+        console.log("[VIBE] fireJob: Railway job created:", jobId)
+      } else {
+        jobId = jobData.id
+        console.log("[VIBE] fireJob: Supabase job created:", jobId)
       }
-      // Step 4: Navigate to building page to show the result
-      router.push(`/building/${jobData.id}`)
+      // Step 4: Navigate
+      console.log("[VIBE] fireJob: navigating to /building/" + jobId)
+      router.push(`/building/${jobId}`)
     } catch (err) {
+      console.error("[VIBE] fireJob: error:", err)
       setError(err instanceof Error ? err.message : "Failed to start build")
       setSubmitting(false)
       setStage("idle")
