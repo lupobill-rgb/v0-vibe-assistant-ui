@@ -1141,9 +1141,49 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             }
           };
 
-          // ── Dashboard fast path — bypass planner, single Edge call ──
+          // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
+          if (!upload_id && resolvedMode === 'app') {
+            try {
+              await storage.updateTaskState(taskId, 'building');
+              await storage.logEvent(taskId, `App fast path activated (team: ${teamName}) — routing to APP_SYSTEM`, 'info');
+              const appResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'app' });
+              modelCalls += 1;
+              if (!appResult.ok) throw new Error(appResult.text || `App edge call returned ${appResult.status}`);
+              let appData: { diff: string; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
+              try {
+                appData = JSON.parse(appResult.text);
+              } catch {
+                throw new Error(`App edge returned invalid JSON (${appResult.text.length} chars)`);
+              }
+              if (appData.usage?.total_tokens) totalTokens += appData.usage.total_tokens;
+              const previewDir = path.join(PREVIEWS_DIR, taskId);
+              fs.mkdirSync(previewDir, { recursive: true });
+              fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(appData.diff));
+              pageNames = ['index'];
+              await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'App', filename: 'index.html', route: '/', html: appData.diff }]));
+              fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
+              fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
+              const previewToken = signPreviewToken(taskId);
+              await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
+              await storage.logEvent(taskId, 'Preview generated', 'info');
+              await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
+              await storage.updateTaskUsageMetrics(taskId, {
+                llm_model: appData.model ?? resolvedModel,
+                llm_prompt_tokens: appData.usage?.input_tokens ?? 0,
+                llm_completion_tokens: appData.usage?.output_tokens ?? 0,
+                llm_total_tokens: appData.usage?.total_tokens ?? 0,
+              });
+              await storage.updateTaskState(taskId, 'completed');
+              await storage.logEvent(taskId, 'App job completed successfully (fast path)', 'info');
+              return;
+            } catch (appErr: any) {
+              await storage.logEvent(taskId, `App fast path failed (${appErr.message}), falling back to planner pipeline`, 'warning');
+            }
+          }
+
+          // ── Dashboard fast path ── bypass planner, single Edge call ──
           // File uploads always route here: uploaded data needs the single-call dashboard path
-          if (upload_id || resolveMode(prompt) === 'dashboard') {
+          if (upload_id || resolvedMode === 'dashboard') {
             try {
               await storage.updateTaskState(taskId, 'building');
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
