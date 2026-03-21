@@ -794,6 +794,7 @@ class VibeStorage {
   // ── Usage metrics ──
 
   async updateTaskUsageMetrics(taskId: string, metrics: {
+    llm_model?: string;
     llm_prompt_tokens?: number;
     llm_completion_tokens?: number;
     llm_total_tokens?: number;
@@ -805,6 +806,7 @@ class VibeStorage {
       last_modified: new Date().toISOString(),
     };
 
+    if (metrics.llm_model !== undefined) updates.llm_model = metrics.llm_model;
     if (metrics.llm_prompt_tokens !== undefined) updates.llm_prompt_tokens = metrics.llm_prompt_tokens;
     if (metrics.llm_completion_tokens !== undefined) updates.llm_completion_tokens = metrics.llm_completion_tokens;
     if (metrics.llm_total_tokens !== undefined) updates.llm_total_tokens = metrics.llm_total_tokens;

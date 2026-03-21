@@ -1156,7 +1156,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               const dashResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock });
               modelCalls += 1;
               if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
-              let dashData: { diff: string; usage?: { total_tokens: number } };
+              let dashData: { diff: string; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
               try {
                 dashData = JSON.parse(dashResult.text);
               } catch {
@@ -1176,6 +1176,12 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.logEvent(taskId, 'Preview generated', 'info');
               await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
               await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
+              await storage.updateTaskUsageMetrics(taskId, {
+                llm_model: dashData.model ?? resolvedModel,
+                llm_prompt_tokens: dashData.usage?.input_tokens ?? 0,
+                llm_completion_tokens: dashData.usage?.output_tokens ?? 0,
+                llm_total_tokens: dashData.usage?.total_tokens ?? 0,
+              });
               await storage.updateTaskState(taskId, 'completed');
               await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
               return;
@@ -1311,7 +1317,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             modelCalls += 1;
             if (!fallbackResult.ok) throw new Error(fallbackResult.text || `Edge Function returned ${fallbackResult.status}`);
 
-            let data: { diff: string; usage: { total_tokens: number } };
+            let data: { diff: string; model?: string; usage: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
             try {
               data = JSON.parse(fallbackResult.text);
             } catch {
@@ -1339,6 +1345,12 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           if (modelCalls > budgets.maxModelCalls || totalTokens > budgets.maxTokensOut || (Date.now() - startedAtMs) > budgets.maxWallTimeMs) {
             await storage.logEvent(taskId, 'Starter build budget exceeded', 'warning');
           }
+          await storage.updateTaskUsageMetrics(taskId, {
+            llm_model: resolvedModel,
+            llm_prompt_tokens: 0,
+            llm_completion_tokens: 0,
+            llm_total_tokens: totalTokens,
+          });
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
         } catch (err: any) {
