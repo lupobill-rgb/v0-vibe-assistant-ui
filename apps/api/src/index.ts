@@ -1194,8 +1194,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             const model = payload.model || resolvedModel;
             const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
               const controller = new AbortController();
-              // Dashboard mode does 2 sequential LLM calls inside the edge function — needs more time
-              const fetchTimeoutMs = payload.mode === 'dashboard' ? 160_000 : 120_000;
+              // Dashboard mode now uses single LLM call — 140s keeps us under Supabase 150s wall-time limit
+              const fetchTimeoutMs = payload.mode === 'dashboard' ? 140_000 : 120_000;
               const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
               try {
                 const res = await fetch(edgeFunctionUrl, {
@@ -1421,11 +1421,17 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
                 await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
                 console.log('[KERNEL] page prompt prefix:', page.description.slice(0, 300));
+                // Dashboard fallback: use dashboard mode so pages get Chart.js, KPIs, tables
+                const pageBuildMode = resolvedMode === 'dashboard' ? 'dashboard' :
+                  resolvedMode === 'site' ? 'site' : 'page';
+                const pageContext = resolvedMode === 'dashboard'
+                  ? `This is page "${page.name}" of a multi-page dashboard. PagePlan: ${JSON.stringify(currentPlan)}. Include KPI cards, Chart.js charts, and data tables relevant to ${page.name}. Include sidebar navigation linking to all pages: ${currentPlan.pages.map((p: any) => `${p.name} (${p.route === '/' ? 'index' : p.route.slice(1)}.html)`).join(', ')}.`
+                  : `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`;
                 const pageResult = await edgeCall({
                   prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
-                  mode: resolvedMode === 'site' ? 'site' : 'page',
-                  context: `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`,
+                  mode: pageBuildMode,
+                  context: pageContext,
                   color_block: colorBlock,
                 });
                 modelCalls += 1;
@@ -1449,7 +1455,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 route: name === 'index' ? '/' : `/${name}`,
                 html: fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8'),
               }));
-              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt));
+              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt), resolvedMode === 'dashboard');
               if (!quality.ok) {
                 await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
                 await storage.logEvent(taskId, `[QA REASONS] ${quality.reasons.join(' | ')}`, 'warn');
@@ -1461,7 +1467,11 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                   repairAttempts += 1;
                   const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
                   const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
-                  const repairResult = await edgeCall({ prompt: `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`, model: resolvedModel, mode: 'page', color_block: colorBlock });
+                  const repairMode = resolvedMode === 'dashboard' ? 'dashboard' : 'page';
+                  const repairPrompt = resolvedMode === 'dashboard'
+                    ? `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML dashboard page so it includes: Chart.js charts with <canvas> elements, KPI stat cards, a data table, sidebar navigation, <title>, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, Chart.js CDN, and design tokens intact.\n${existing}`
+                    : `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`;
+                  const repairResult = await edgeCall({ prompt: repairPrompt, model: resolvedModel, mode: repairMode, color_block: colorBlock });
                   modelCalls += 1;
                   if (repairResult.ok) {
                     const repairData = JSON.parse(repairResult.text);

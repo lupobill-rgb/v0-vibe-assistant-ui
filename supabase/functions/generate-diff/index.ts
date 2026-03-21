@@ -852,15 +852,8 @@ Current page HTML:\n${context ?? ""}`;
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
     } else if (mode === "dashboard") {
-      // Single combined design phase — merged to avoid Supabase 150s wall-time 504
-      const designSpec = await callLLM(
-        DESIGN_PHASE_SYSTEMS + "\n\nDashboard request: " + prompt,
-        `Return only JSON: {"layout":"sidebar|topbar","pages":[],"charts":[],"kpis":[],"table":{"columns":[]}}
-The table must use static HTML only — no sorting, no filtering, no JS interaction.
-Plain <table> with <thead> and <tbody> rows. No dynamic features.`,
-        2048
-      );
-      // Phase 2: Build — generate HTML from spec
+      // Single LLM call — no separate design spec phase
+      // Previous 2-call approach hit Supabase 150s wall-time limit causing 504s
       const HARD_BLOCK = `
 ABSOLUTE HARD STOP: This file will be rendered in a plain browser iframe.
 It has NO build system, NO Node.js, NO React, NO webpack, NO Next.js.
@@ -875,12 +868,13 @@ Every interactive feature MUST use vanilla JavaScript only.
 The file MUST start with <!DOCTYPE html> and end with </html>.
 `;
       baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
-DESIGN SPEC (follow exactly):
-Structure: ${designSpec}
-Rules:
-- Use the exact chart types from the structure spec
-- Use the exact KPI names from the structure spec
-- Use the exact table columns from the structure spec
+STRUCTURAL REQUIREMENTS:
+- Include at least 4 KPI stat cards with realistic values
+- Include at least 2 Chart.js charts (bar, line, doughnut, or pie)
+- Each chart canvas must have a unique id (e.g. id="chart1", id="chart2")
+- Include a data table with relevant columns for the domain
+- The table must use static HTML only — plain <table> with <thead> and <tbody>
+- Detect the domain from the user prompt and use contextually relevant metrics
 - Never use alert(), confirm(), or prompt()
 - Never generate React or JSX
 - Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
