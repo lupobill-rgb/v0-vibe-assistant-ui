@@ -80,6 +80,22 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       setUploadState({ status: "error", progress: 0, message: err instanceof Error ? err.message : "Upload failed" })
     }
   }
+  const tryParseReady = (text: string): { ready: true; enrichedPrompt: string; summary: string } | null => {
+    // Try direct parse first
+    try {
+      const parsed = JSON.parse(text)
+      if (parsed.ready) return parsed
+    } catch {}
+    // Extract JSON object from surrounding text
+    const match = text.match(/\{[^{}]*"ready"\s*:\s*true[^{}]*\}/)
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0])
+        if (parsed.ready) return parsed
+      } catch {}
+    }
+    return null
+  }
   const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
     const res = await fetch("/api/intake", {
       method: "POST",
@@ -98,14 +114,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     try {
       const reply = await callClaude(conversationRef.current)
       // Check if Claude is already ready
-      try {
-        const parsed = JSON.parse(reply)
-        if (parsed.ready) {
-          setEnrichedPrompt(parsed.enrichedPrompt)
-          await fireJob(parsed.enrichedPrompt)
-          return
-        }
-      } catch {}
+      const ready = tryParseReady(reply)
+      if (ready) {
+        setEnrichedPrompt(ready.enrichedPrompt)
+        setMessages([{ role: "assistant", text: `Got it — building: ${ready.summary}` }])
+        await fireJob(ready.enrichedPrompt)
+        return
+      }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
     } catch {
@@ -125,15 +140,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     try {
       const reply = await callClaude(conversationRef.current)
       // Check if Claude is ready to build
-      try {
-        const parsed = JSON.parse(reply)
-        if (parsed.ready) {
-          setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${parsed.summary}` }])
-          setEnrichedPrompt(parsed.enrichedPrompt)
-          await fireJob(parsed.enrichedPrompt)
-          return
-        }
-      } catch {}
+      const ready = tryParseReady(reply)
+      if (ready) {
+        setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${ready.summary}` }])
+        setEnrichedPrompt(ready.enrichedPrompt)
+        await fireJob(ready.enrichedPrompt)
+        return
+      }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages((m) => [...m, { role: "assistant", text: reply }])
     } catch {
