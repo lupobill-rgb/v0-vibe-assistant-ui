@@ -12,14 +12,15 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 // Priority: explicit mode arg > app keywords > dashboard keywords > team default
 
 const APP_KEYWORDS = [
-  "crm","contact","deal","lead","task","ticket","project tracker",
-  "inventory","order","invoice","customer","kanban","issue","bug tracker",
-  "helpdesk","booking","reservation","crud","full-stack","fullstack",
-  "full stack","database app","manage ","management",
+  "crm","contact","contacts","deal","deals","lead","leads","task","tasks",
+  "ticket","tickets","project tracker","inventory","order","orders",
+  "invoice","invoices","customer","customers","kanban","issue","bug tracker",
+  "helpdesk","booking","bookings","reservation","crud","full-stack","fullstack",
+  "full stack","database app","manage","management","track",
 ];
 
 const DASHBOARD_KEYWORDS = [
-  "dashboard","analytics","chart","pipeline","report","tracker",
+  "dashboard","analytics","chart","report","tracker",
   "metrics","kpi","visualiz",
 ];
 
@@ -44,9 +45,9 @@ export function resolveMode(prompt: string, teamName?: string): string {
   const isDashboard = DASHBOARD_KEYWORDS.some(kw => p.includes(kw));
   const isSite      = SITE_KEYWORDS.some(kw => p.includes(kw));
 
-  // Dashboard intent wins when explicitly present — "dashboard" keyword is unambiguous
-  if (isDashboard) return "dashboard";
+  // App intent takes priority — CRM/CRUD signals are more specific than dashboard
   if (isApp) return "app";
+  if (isDashboard) return "dashboard";
   if (isSite) return "site";
 
   // Fall back to team default
