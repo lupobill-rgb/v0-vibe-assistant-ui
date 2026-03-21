@@ -290,32 +290,28 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       const activeIdx = currentPages.findIndex((p) => p.filename === activeFile)
       const targetIdx = activeIdx >= 0 ? activeIdx : 0
       const currentHtml = currentPages[targetIdx]?.html ?? ''
-      const res = await fetch(EDGE_FN_URL, {
+      const res = await fetch('/api/intake', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt,
-          context: currentHtml,
-          mode: 'edit',
+          build: true,
+          messages: [{ role: 'user', content: prompt + '\n\nCurrent HTML:\n' + currentHtml }],
         }),
       })
       const json = await res.json()
       if (!res.ok) {
-        setEditError(json.error || 'Edge Function returned ' + res.status)
+        setEditError(json.error || '/api/intake returned ' + res.status)
         return
       }
-      if (json.diff) {
-        const trimmedDiff = json.diff.trim()
+      if (json.html) {
+        const trimmedDiff = json.html.trim()
         if (!trimmedDiff.startsWith('<!DOCTYPE') && !trimmedDiff.startsWith('<!doctype') && !trimmedDiff.startsWith('<html')) {
           setEditError('LLM returned invalid HTML. Try a simpler edit.')
           return
         }
         // Merge edited page back into existing pages array at the active index
         const updatedPages = currentPages.map((p, i) =>
-          i === targetIdx ? { ...p, html: json.diff } : p
+          i === targetIdx ? { ...p, html: json.html } : p
         )
         const newDiff = JSON.stringify(updatedPages)
         setDiff(newDiff)
