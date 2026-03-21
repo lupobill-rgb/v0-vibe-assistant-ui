@@ -3,7 +3,7 @@ import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Loader2, CheckCircle2, X, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject } from "@/lib/api"
+import { createProject, API_URL } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 type Message = { role: "assistant" | "user"; text: string }
