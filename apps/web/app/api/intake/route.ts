@@ -29,6 +29,7 @@ HEAD must include:
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
 <script>window.__VIBE_SUPABASE_URL__="${SUPABASE_URL}";window.__VIBE_SUPABASE_ANON_KEY__="${SUPABASE_ANON_KEY}";</script>
+NEVER use alert(), confirm(), or prompt(). Use showToast() for all user feedback.
 Output MUST start <!DOCTYPE html> and end </html>.`
 
 async function callAnthropic(messages: Array<{ role: string; content: string }>, system: string, maxTokens: number) {

@@ -197,6 +197,14 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       clearTimeout(timeout)
     }
   }
+  const generateSmartName = (text: string): string => {
+    const stopWords = new Set(['a', 'an', 'the', 'to', 'for', 'and', 'or', 'but', 'in', 'on', 'at', 'of', 'with', 'is', 'it', 'me', 'my', 'i', 'we', 'our', 'that', 'this', 'be', 'do', 'build', 'create', 'make', 'please', 'want', 'need', 'like', 'can', 'should', 'would'])
+    const words = text.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 0)
+    const meaningful = words.filter(w => !stopWords.has(w.toLowerCase()))
+    const selected = (meaningful.length >= 4 ? meaningful : words).slice(0, 6)
+    if (selected.length === 0) return text.slice(0, 60)
+    return selected.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+  }
   const fireJob = async (finalPrompt: string) => {
     setSubmitting(true)
     setStage("building")
@@ -206,7 +214,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       let projectId = selectedProjectId
       if (!projectId) {
         console.log("[VIBE] fireJob: creating project...")
-        const project = await createProject(finalPrompt.slice(0, 60), undefined, currentTeam?.id)
+        const project = await createProject(generateSmartName(finalPrompt), undefined, currentTeam?.id)
         if (project.error || !project.id) throw new Error(project.error || "Failed to create project")
         projectId = project.id
         console.log("[VIBE] fireJob: project created:", projectId)

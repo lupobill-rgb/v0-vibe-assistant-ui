@@ -277,6 +277,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
 
+  // Set document title to project name when build completes successfully
+  useEffect(() => {
+    if (task?.execution_state === 'completed' && projectName) {
+      document.title = projectName
+    }
+    return () => { document.title = 'VIBE - AI Coding Assistant' }
+  }, [task?.execution_state, projectName])
+
   const [editError, setEditError] = useState<string | null>(null)
 
   const handleEdit = async (promptOverride?: string) => {
@@ -290,25 +298,20 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       const activeIdx = currentPages.findIndex((p) => p.filename === activeFile)
       const targetIdx = activeIdx >= 0 ? activeIdx : 0
       const currentHtml = currentPages[targetIdx]?.html ?? ''
-      const res = await fetch(EDGE_FN_URL, {
+      const res = await fetch('/api/intake', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt,
-          model: 'claude',
-          mode: 'edit',
-          context: currentHtml,
+          build: true,
+          messages: [{ role: 'user', content: prompt + '\n\nCurrent HTML:\n' + currentHtml }],
         }),
       })
       const json = await res.json()
       if (!res.ok) {
-        setEditError(json.error || 'Edge Function returned ' + res.status)
+        setEditError(json.error || 'Request failed (' + res.status + ')')
         return
       }
-      const editedHtml = json.diff || json.html || ''
+      const editedHtml = json.html || ''
       if (editedHtml) {
         const trimmedDiff = editedHtml.trim()
         if (!trimmedDiff.startsWith('<!DOCTYPE') && !trimmedDiff.startsWith('<!doctype') && !trimmedDiff.startsWith('<html')) {
