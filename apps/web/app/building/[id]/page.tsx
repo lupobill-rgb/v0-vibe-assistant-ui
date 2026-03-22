@@ -302,8 +302,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          build: true,
-          messages: [{ role: 'user', content: prompt + '\n\nCurrent HTML:\n' + currentHtml }],
+          edit: true,
+          context: currentHtml,
+          messages: [{ role: 'user', content: prompt }],
         }),
       })
       const json = await res.json()
