@@ -54,19 +54,22 @@ async function callAnthropic(messages: Array<{ role: string; content: string }>,
   return data.content?.[0]?.text || ''
 }
 
-async function callEdgeFunction(prompt: string, system: string, maxTokens: number) {
+async function callEdgeFunction(prompt: string, system: string, maxTokens: number, opts?: { mode?: string; context?: string }) {
+  const body: Record<string, unknown> = {
+    prompt,
+    model: 'claude',
+    system,
+    max_tokens: maxTokens,
+  }
+  if (opts?.mode) body.mode = opts.mode
+  if (opts?.context) body.context = opts.context
   const res = await fetch(EDGE_FN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
     },
-    body: JSON.stringify({
-      prompt,
-      model: 'claude',
-      system,
-      max_tokens: maxTokens,
-    }),
+    body: JSON.stringify(body),
   })
   const data = await res.json()
   if (!res.ok) {
@@ -76,12 +79,12 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
 }
 
 export async function POST(request: Request) {
-  const { messages, build, edit, project_id } = await request.json()
+  const { messages, build, edit, prompt: editPrompt, context, project_id } = await request.json()
 
   try {
     if (edit) {
-      const prompt = messages[messages.length - 1]?.content ?? ''
-      const data = await callEdgeFunction(prompt, '', 16000)
+      const prompt = editPrompt || messages?.[messages.length - 1]?.content || ''
+      const data = await callEdgeFunction(prompt, '', 16000, { mode: 'edit', context })
       let html = data.diff || ''
       if (html.startsWith('```')) {
         html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
