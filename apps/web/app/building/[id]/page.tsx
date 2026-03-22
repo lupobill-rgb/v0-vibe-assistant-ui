@@ -312,6 +312,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         return
       }
       const editedHtml = json.html || ''
+      // If VIBE returned a clarifying question instead of HTML, show it to the user
+      if (editedHtml && !editedHtml.trim().toLowerCase().startsWith('<!doctype') && !editedHtml.trim().startsWith('<html')) {
+        setEditPrompt(editedHtml.trim())
+        setIsEditing(false)
+        return
+      }
       if (editedHtml) {
         const trimmedDiff = editedHtml.trim()
         if (!trimmedDiff.startsWith('<!DOCTYPE') && !trimmedDiff.startsWith('<!doctype') && !trimmedDiff.startsWith('<html')) {

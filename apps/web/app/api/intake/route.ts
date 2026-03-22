@@ -84,7 +84,11 @@ export async function POST(request: Request) {
   try {
     if (edit) {
       const prompt = editPrompt || messages?.[messages.length - 1]?.content || ''
-      const data = await callEdgeFunction(prompt, '', 16000, { mode: 'edit', context })
+      let trimmedContext = context ?? ''
+      if (trimmedContext.length > 50000) {
+        trimmedContext = trimmedContext.slice(0, 50000) + '\n<!-- HTML truncated for size -->'
+      }
+      const data = await callEdgeFunction(prompt, 'If the edit request is unclear or too vague, respond with a single plain text clarifying question instead of HTML.', 12000, { mode: 'edit', context: trimmedContext })
       let html = data.diff || ''
       if (html.startsWith('```')) {
         html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
