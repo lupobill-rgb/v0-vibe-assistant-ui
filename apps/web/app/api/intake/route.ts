@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       if (!html) {
         return NextResponse.json({ error: 'LLM returned empty response' }, { status: 502 })
       }
-      return NextResponse.json({ html, usage: data.usage })
+      return NextResponse.json({ html })
     }
 
     if (build) {
