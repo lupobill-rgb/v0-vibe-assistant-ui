@@ -180,6 +180,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         body: JSON.stringify({
           messages: [{ role: "user", content: finalPrompt }],
           build: true,
+          project_id: selectedProjectId,
         }),
         signal: controller.signal,
       })

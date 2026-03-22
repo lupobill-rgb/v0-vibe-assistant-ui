@@ -75,7 +75,7 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
 }
 
 export async function POST(request: Request) {
-  const { messages, build, edit } = await request.json()
+  const { messages, build, edit, project_id } = await request.json()
 
   try {
     if (edit) {
@@ -92,7 +92,50 @@ export async function POST(request: Request) {
     }
 
     if (build) {
-      const prompt = messages[messages.length - 1]?.content ?? ''
+      let prompt = messages[messages.length - 1]?.content ?? ''
+
+      // If project_id provided, look up uploaded data to enrich the prompt
+      if (project_id) {
+        try {
+          const uploadRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/user_uploads?project_id=eq.${encodeURIComponent(project_id)}&order=created_at.desc&limit=1`,
+            {
+              headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              },
+            }
+          )
+          if (uploadRes.ok) {
+            const uploads = await uploadRes.json()
+            if (Array.isArray(uploads) && uploads.length > 0) {
+              const upload = uploads[0]
+              const statsBlock = upload.aggregated_stats?.columns
+                ? JSON.stringify(upload.aggregated_stats.columns)
+                : 'N/A'
+              const sampleRows = Array.isArray(upload.sample_data)
+                ? JSON.stringify(upload.sample_data.slice(0, 3))
+                : 'N/A'
+              prompt += `\n\nUPLOADED DATA — USE THIS DATA, DO NOT HARDCODE ANYTHING:\n` +
+                `Table name: ${upload.table_name}\n` +
+                `Columns: ${JSON.stringify(upload.columns)}\n` +
+                `Total rows: ${upload.row_count}\n` +
+                `Real stats (use these exact numbers for KPI cards and charts): ${statsBlock}\n` +
+                `Sample rows: ${sampleRows}\n\n` +
+                `Instructions:\n` +
+                `- Query this table via Supabase REST API using window.__VIBE_SUPABASE_URL__\n` +
+                `- Use the real stats above for all KPI values and chart data\n` +
+                `- Build all filters to re-query this table with WHERE clauses matching the filter\n` +
+                `- Column names in queries must exactly match the columns array above\n` +
+                `- This works for any uploaded file — adapt to whatever columns are present`
+            }
+          }
+        } catch (uploadErr) {
+          // Non-fatal: proceed with original prompt if upload lookup fails
+          console.error('[VIBE] Failed to fetch upload data:', uploadErr)
+        }
+      }
+
       const data = await callEdgeFunction(prompt, APP_SYSTEM, 16000)
       let html = data.diff || ''
       if (html.startsWith('```')) {
