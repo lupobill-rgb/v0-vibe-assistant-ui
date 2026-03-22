@@ -88,8 +88,8 @@ export async function POST(request: Request) {
       if (trimmedContext.length > 50000) {
         trimmedContext = trimmedContext.slice(0, 50000) + '\n<!-- HTML truncated for size -->'
       }
-      const data = await callEdgeFunction(prompt, 'If the edit request is unclear or too vague, respond with a single plain text clarifying question instead of HTML.', 12000, { mode: 'edit', context: trimmedContext })
-      let html = data.diff || ''
+      const editMessages = [{ role: 'user', content: trimmedContext ? `Current HTML:\n${trimmedContext}\n\nEdit request: ${prompt}` : prompt }]
+      let html = await callAnthropic(editMessages, 'You are an expert web developer. Make ONLY the requested change to the HTML. Preserve everything else exactly. Return complete HTML starting with <!DOCTYPE html>. No explanations. Raw HTML only.', 16000)
       if (html.startsWith('```')) {
         html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
       }
