@@ -72,6 +72,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   // 4b. Resolve active Nango connectors for this team
   const activeConnectors = resolvedTeamId ? await resolveActiveConnectors(resolvedTeamId) : [];
 
+  // 4c. Resolve budget context for this team
+  const budgetContext = resolvedTeamId ? await resolveBudgetContext(sb, resolvedTeamId) : '';
+
   // 5. Format and return
   const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
@@ -84,7 +87,7 @@ Data owned: ${ownedScopes.join(', ') || 'none'}
 Data readable: ${readScopes.join(', ') || 'none'}
 Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
-Font: ${fontHeading}` + visibleTeams + uploadedData
+Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 }
 
@@ -126,6 +129,73 @@ async function resolveVisibleTeams(supabase: ReturnType<typeof getPlatformSupaba
     return `- ${name}: ${scopes} (${row.visibility_level})`;
   });
   return `\nVISIBLE TEAM DATA:\n${lines.join('\n')}`;
+}
+
+async function resolveBudgetContext(
+  supabase: ReturnType<typeof getPlatformSupabaseClient>,
+  teamId: string,
+): Promise<string> {
+  const now = new Date();
+  const fiscalYear = now.getFullYear();
+  const currentQuarter = Math.ceil((now.getMonth() + 1) / 3);
+  const qCol = `q${currentQuarter}_amount` as const;
+
+  // Fetch allocations for this team + fiscal year
+  const { data: allocations, error: allocErr } = await supabase
+    .from('budget_allocations')
+    .select('id, category, q1_amount, q2_amount, q3_amount, q4_amount')
+    .eq('team_id', teamId)
+    .eq('fiscal_year', fiscalYear);
+
+  if (allocErr) {
+    console.log(`[KERNEL] resolveBudgetContext alloc error for team=${teamId}: ${allocErr.message}`);
+    return '';
+  }
+  if (!allocations || allocations.length === 0) return '';
+
+  // Fetch spend totals grouped by category for current quarter in one query
+  const { data: spendRows, error: spendErr } = await supabase
+    .from('team_spend')
+    .select('category, amount')
+    .eq('team_id', teamId)
+    .eq('quarter', currentQuarter);
+
+  if (spendErr) {
+    console.log(`[KERNEL] resolveBudgetContext spend error for team=${teamId}: ${spendErr.message}`);
+  }
+
+  // Aggregate spend by category client-side (Supabase JS doesn't support GROUP BY)
+  const spentByCategory = new Map<string, number>();
+  for (const row of spendRows ?? []) {
+    const cat = (row.category ?? '').toLowerCase();
+    spentByCategory.set(cat, (spentByCategory.get(cat) ?? 0) + Number(row.amount));
+  }
+
+  const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+  let totalAllocated = 0;
+  let totalSpent = 0;
+
+  const lines = allocations.map((a: any) => {
+    const allocated = Number(a[qCol] ?? 0);
+    const spent = spentByCategory.get((a.category ?? '').toLowerCase()) ?? 0;
+    const remaining = allocated - spent;
+    const pct = allocated > 0 ? Math.round((spent / allocated) * 100) : 0;
+    totalAllocated += allocated;
+    totalSpent += spent;
+    return `- ${a.category}: ${fmt(allocated)} allocated | ${fmt(spent)} spent | ${fmt(remaining)} remaining (${pct}%)`;
+  });
+
+  const totalRemaining = totalAllocated - totalSpent;
+  const totalPct = totalAllocated > 0 ? Math.round((totalSpent / totalAllocated) * 100) : 0;
+
+  return `\n--- BUDGET CONTEXT ---
+Fiscal Year: ${fiscalYear}
+Current Quarter: Q${currentQuarter}
+Team Budget:
+${lines.join('\n')}
+Total: ${fmt(totalAllocated)} allocated | ${fmt(totalSpent)} spent | ${fmt(totalRemaining)} remaining (${totalPct}%)
+--- END BUDGET CONTEXT ---`;
 }
 
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {

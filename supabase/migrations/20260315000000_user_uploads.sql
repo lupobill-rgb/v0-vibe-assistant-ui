@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS user_uploads (
 );
 
 -- Index for fast lookup by user (most recent first)
-CREATE INDEX idx_user_uploads_user_id ON user_uploads(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_uploads_user_id ON user_uploads(user_id, created_at DESC);
 
 -- RLS: users can only see their own uploads
 ALTER TABLE user_uploads ENABLE ROW LEVEL SECURITY;

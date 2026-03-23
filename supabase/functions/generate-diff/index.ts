@@ -41,6 +41,65 @@ d) FORBIDDEN — never set background-color or color as raw hex values in CSS. O
 9. Never generate a form that submits nowhere. All forms MUST POST to the project's Supabase instance using the injected SUPABASE_URL and SUPABASE_ANON_KEY (see SUPABASE FORM INTEGRATION below).
 10. Output starts with <!DOCTYPE html> and nothing else. No explanation. No preamble. No markdown.
 11. ALL interactive elements (buttons, cards, nav links, dropdowns, filters, tabs, toggles, configurators) must have complete JavaScript event handlers — addEventListener or inline onclick. No placeholder comments. No TODO. No empty functions. Every handler must produce a visible change in the DOM when triggered (filter data, toggle visibility, update a value, navigate, submit). Zero non-functional interactive elements.
+12. TEAM CONTEXT — when window.__VIBE_TEAM_ID__ is set, use it to scope all data operations to the current team. Never hard-code team IDs.
+13. BUDGET AWARENESS — SPEND / EXPENSE FORMS:
+When generating any form that logs expenses, purchases, or spend, use vibeLogSpend() instead of vibeSubmitForm().
+Every spend form MUST have these fields: category (dropdown), amount (number input), description (text), vendor (text, optional), date (date input, default today).
+On submit call vibeLogSpend() and show success/error toast feedback.
+The vibeLogSpend function is defined in SPEND FORM INTEGRATION below — include it before </body> on any page with a spend form.
+Do NOT use vibeSubmitForm for expense/spend/purchase forms — always use vibeLogSpend.
+
+SPEND FORM INTEGRATION — required on any page with an expense or spend form:
+The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
+Add this script in <head> (the API server replaces __TEAM_ID__ with the real value):
+<script>window.__VIBE_TEAM_ID__="__TEAM_ID__";</script>
+Use this form pattern:
+<form onsubmit="return vibeLogSpend(event, this)">
+  <select name="category" required>...</select>
+  <input name="amount" type="number" step="0.01" min="0" required />
+  <input name="description" type="text" />
+  <input name="vendor" type="text" />
+  <input name="date" type="date" />
+  <button type="submit">Log Spend</button>
+</form>
+Add this script before </body>:
+<script>
+async function vibeLogSpend(e, form) {
+  e.preventDefault();
+  const btn = form.querySelector('[type=submit]');
+  const origText = btn.textContent;
+  btn.textContent = 'Saving...'; btn.disabled = true;
+  const fd = Object.fromEntries(new FormData(form));
+  try {
+    const res = await fetch(window.__VIBE_SUPABASE_URL__ + '/rest/v1/team_spend', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': window.__VIBE_SUPABASE_ANON_KEY__,
+        'Authorization': 'Bearer ' + window.__VIBE_SUPABASE_ANON_KEY__,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({
+        team_id: window.__VIBE_TEAM_ID__,
+        category: fd.category,
+        amount: parseFloat(fd.amount),
+        description: fd.description || '',
+        vendor: fd.vendor || '',
+        quarter: Math.ceil((new Date().getMonth() + 1) / 3),
+        spend_date: fd.date || new Date().toISOString().split('T')[0]
+      })
+    });
+    if (res.ok) {
+      form.reset();
+      const msg = form.querySelector('.form-success');
+      if (msg) msg.classList.remove('hidden');
+      else { const t = document.createElement('div'); t.textContent = 'Spend logged successfully!'; t.className = 'text-green-600 mt-2 font-medium'; form.appendChild(t); setTimeout(() => t.remove(), 3000); }
+    } else { alert('Failed to log spend. Please try again.'); }
+  } catch { alert('Network error. Please try again.'); }
+  finally { btn.textContent = origText; btn.disabled = false; }
+  return false;
+}
+</script>
 
 SUPABASE FORM INTEGRATION — required on every page with a form:
 Inject this script in <head> (the API server will replace __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ with real values):

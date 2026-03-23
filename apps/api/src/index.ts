@@ -21,6 +21,7 @@ import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
 import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
+import financeRouter from './routes/finance';
 import { getPlatformSupabaseClient } from './supabase/client';
 import {
   INITIAL_BUILD_BUDGETS,
@@ -145,6 +146,7 @@ async function bootstrap() {
   app.use('/api/supabase', express.json(), supabaseRouter);
   app.use('/api/preview', express.json(), previewRouter);
   app.use('/api/billing', express.json(), billingRouter);
+  app.use('/api/finance', financeRouter);
 
   // Serve static preview files (require signed preview token)
   app.use('/previews', (req: Request, res: Response, next: NextFunction) => {
