@@ -86,27 +86,49 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        const { data: memberships, error } = await supabase
+        // Step 1: Get team memberships (simple query, no FK join)
+        const { data: memberships, error: memberError } = await supabase
           .from("team_members")
-          .select("team_id, role, teams(id, name, slug, org_id, organizations(id, name))")
+          .select("team_id, role")
           .eq("user_id", user.id)
 
-        if (error || !memberships || memberships.length === 0) {
+        if (memberError || !memberships || memberships.length === 0) {
+          console.warn("[TeamContext] No memberships found:", memberError?.message)
           setLoading(false)
           return
         }
 
-        const teams: Team[] = memberships.map((m: any) => ({
-          id: m.teams.id,
-          name: m.teams.name,
-          slug: m.teams.slug ?? m.teams.name.toLowerCase().replace(/\s+/g, "-"),
+        // Step 2: Fetch teams by IDs
+        const teamIds = memberships.map((m: any) => m.team_id)
+        const { data: teamsData, error: teamsError } = await supabase
+          .from("teams")
+          .select("id, name, slug, org_id")
+          .in("id", teamIds)
+
+        if (teamsError || !teamsData || teamsData.length === 0) {
+          console.warn("[TeamContext] Failed to fetch teams:", teamsError?.message)
+          setLoading(false)
+          return
+        }
+
+        const teams: Team[] = teamsData.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          slug: t.slug ?? t.name.toLowerCase().replace(/\s+/g, "-"),
         }))
         setAvailableTeams(teams)
 
-        // Set org from first membership (all memberships share same org in typical setup)
-        const firstOrg = (memberships[0] as any).teams?.organizations
-        if (firstOrg) {
-          setCurrentOrg({ id: firstOrg.id, name: firstOrg.name })
+        // Step 3: Fetch org from first team's org_id
+        const orgId = teamsData[0]?.org_id
+        if (orgId) {
+          const { data: orgData } = await supabase
+            .from("organizations")
+            .select("id, name")
+            .eq("id", orgId)
+            .single()
+          if (orgData) {
+            setCurrentOrg({ id: orgData.id, name: orgData.name })
+          }
         }
 
         // Restore from localStorage or use first team
@@ -120,10 +142,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         setCurrentTeamState(active)
 
         // Set role for active team
-        const membership = memberships.find((m: any) => m.teams.id === active!.id)
+        const membership = memberships.find((m: any) => m.team_id === active!.id)
         setUserRole(normalizeRole(membership?.role))
-      } catch {
-        // Tables don't exist or query failed — non-fatal
+      } catch (err) {
+        console.error("[TeamContext] loadTeams failed:", err)
       } finally {
         setLoading(false)
       }
