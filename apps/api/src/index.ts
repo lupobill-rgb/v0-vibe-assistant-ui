@@ -928,7 +928,7 @@ async function bootstrap() {
       // Kernel context injection: prepend team/role/brand identity to prompt
       let enrichedPrompt = prompt;
       if (user_id && org) {
-        const kernelContext = await resolveKernelContext(user_id, org.id);
+        const kernelContext = await resolveKernelContext(user_id, org.id, project.team_id);
         if (kernelContext) {
           enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
         }

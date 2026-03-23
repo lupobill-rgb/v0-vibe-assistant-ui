@@ -9,17 +9,53 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}, teamId=${teamId ?? 'auto'}`);
 
   // 1. Find the user's team and role within this org
-  let query = sb
-    .from('team_members')
-    .select('role, teams!inner(id, name)')
-    .eq('user_id', userId)
-    .eq('teams.org_id', orgId);
-  if (teamId) query = query.eq('team_id', teamId);
-  const { data: membership } = await query.limit(1).single();
+  let resolvedTeamId: string | null = null;
+  let teamName = 'unknown';
+  let role = 'unknown';
 
-  let resolvedTeamId = (membership?.teams as any)?.id ?? null;
-  let teamName = (membership?.teams as any)?.name ?? 'unknown';
-  let role = membership?.role ?? 'unknown';
+  if (teamId) {
+    // Direct lookup: we know the exact team
+    const { data: membership } = await sb
+      .from('team_members')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('team_id', teamId)
+      .limit(1)
+      .single();
+
+    if (membership) {
+      role = membership.role ?? 'unknown';
+      resolvedTeamId = teamId;
+      const { data: t } = await sb.from('teams').select('name').eq('id', teamId).single();
+      teamName = t?.name ?? 'unknown';
+    }
+  }
+
+  // Fallback: find any team membership in this org
+  if (!resolvedTeamId) {
+    const { data: memberships } = await sb
+      .from('team_members')
+      .select('role, team_id')
+      .eq('user_id', userId);
+
+    if (memberships && memberships.length > 0) {
+      // Filter to teams in this org
+      const teamIds = memberships.map((m: any) => m.team_id);
+      const { data: orgTeams } = await sb
+        .from('teams')
+        .select('id, name')
+        .eq('org_id', orgId)
+        .in('id', teamIds)
+        .limit(1);
+
+      if (orgTeams && orgTeams.length > 0) {
+        resolvedTeamId = orgTeams[0].id;
+        teamName = orgTeams[0].name;
+        const match = memberships.find((m: any) => m.team_id === resolvedTeamId);
+        role = match?.role ?? 'unknown';
+      }
+    }
+  }
 
   // Fallback: if no team_member row, pick the first team in the org
   if (!resolvedTeamId) {
