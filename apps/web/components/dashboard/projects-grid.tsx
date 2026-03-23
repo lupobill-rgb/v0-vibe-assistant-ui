@@ -3,16 +3,20 @@ import { useEffect, useState, useCallback } from "react"
 import { ProjectCard, type Project } from "./project-card"
 import { fetchProjects as apiFetchProjects } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
+import { useTeam } from "@/contexts/TeamContext"
 
 const PAGE_SIZE = 12
 
 export function ProjectsGrid() {
+  const { currentTeam } = useTeam()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [lastDiffMap, setLastDiffMap] = useState<Record<string, string | null>>({})
 
   useEffect(() => {
+    setLoading(true)
+    setVisibleCount(PAGE_SIZE)
     apiFetchProjects()
       .then(data => {
         const mapped = data.map((p) => ({
@@ -31,7 +35,7 @@ export function ProjectsGrid() {
         console.error('Failed to load projects:', err)
         setLoading(false)
       })
-  }, [])
+  }, [currentTeam?.id])
 
   const visibleProjects = projects.slice(0, visibleCount)
 
