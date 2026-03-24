@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.14.0"; // 2026-03-24 — dashboard vibeLoadData: add credentials script, concrete example, fix chart mandate
+const EDGE_FUNCTION_VERSION = "1.13.0"; // 2026-03-24 — dashboards fetch live from budget_allocations via vibeLoadData()
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -326,31 +326,10 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
 5. Zero React. Zero JSX. Zero TypeScript. Zero component syntax. Ever.
 6. LIVE DATA via vibeLoadData():
    When BUDGET CONTEXT or TEAM CONTEXT provides Supabase table names, ALL chart data, KPI values, and table rows MUST be loaded at runtime via vibeLoadData(tableName, filters).
+   Include the Supabase <head> credentials script AND the vibeLoadData() script from LIVE DATA INTEGRATION (see VIBE_SYSTEM_RULES).
    Show a loading skeleton while data loads. Show an empty state if no rows return.
    Use realistic FALLBACK sample data ONLY when no Supabase context is provided (no table names in prompt or context).
    NEVER use raw fetch() or XMLHttpRequest — always use vibeLoadData().
-   REQUIRED PATTERN — follow this exactly when Supabase tables are referenced:
-   a) In <head>, inject the credentials script (platform replaces placeholders at deploy):
-      <script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";</script>
-   b) Before </body>, inject the vibeLoadData function:
-      <script>
-      async function vibeLoadData(table,filters={}){
-        const url=window.__VIBE_SUPABASE_URL__;const key=window.__VIBE_SUPABASE_ANON_KEY__;
-        if(!url||!key)return[];
-        let ep=url+'/rest/v1/'+table+'?select=*';
-        Object.entries(filters).forEach(([k,v])=>{ep+='&'+k+'=eq.'+v;});
-        const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+key}});
-        return r.ok?await r.json():[];
-      }
-      </script>
-   c) Load data and populate dashboard in an async IIFE:
-      <script>
-      (async function(){
-        const rows = await vibeLoadData('budget_allocations', {team_id: window.__VIBE_TEAM_ID__});
-        if(!rows.length){ document.getElementById('empty-state').style.display='block'; return; }
-        // populate KPI cards, chart datasets, and table rows from rows
-      })();
-      </script>
 
 Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
