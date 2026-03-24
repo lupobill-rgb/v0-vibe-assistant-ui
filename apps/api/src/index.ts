@@ -8,7 +8,7 @@ import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import { resolveKernelContext } from './kernel/context-injector';
-import { runDebugAgent, runSelfHealingScan } from '../../executor/src/agents/debug-agent';
+import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
 import { promisify } from 'util';
 import multer from 'multer';
 import { parse as csvParse } from 'csv-parse/sync';
