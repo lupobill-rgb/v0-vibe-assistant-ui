@@ -1346,22 +1346,25 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
 
               // ── Auto-publish team asset before LLM call ──
-              // If user attached a file and prompt implies publish intent or known asset type,
-              // publish to published_assets (and budget_allocations for budget_plan).
+              // If user attached a file, detect asset type from prompt + filename and publish.
+              // CSV uploads always ingest (fallback to 'general' type).
               if (upload_id && org) {
-                const assetType = detectAssetType(prompt, '');
-                if (assetType || hasPublishIntent(prompt) || isBudgetRelated(prompt)) {
-                  try {
-                    const { data: uploadForIngest } = await getPlatformSupabaseClient()
-                      .from('user_uploads')
-                      .select('raw_content, original_filename')
-                      .eq('id', upload_id)
-                      .single();
+                try {
+                  const { data: uploadForIngest } = await getPlatformSupabaseClient()
+                    .from('user_uploads')
+                    .select('raw_content, original_filename')
+                    .eq('id', upload_id)
+                    .single();
+                  const uploadFilename = uploadForIngest?.original_filename || '';
+                  const assetType = detectAssetType(prompt, uploadFilename);
+                  const isCSV = uploadFilename.endsWith('.csv') || uploadFilename.endsWith('.CSV');
+                  if (assetType || hasPublishIntent(prompt) || isBudgetRelated(prompt) || isCSV) {
                     if (uploadForIngest?.raw_content) {
                       // Resolve publishing team — use project's team or first org team
                       const publishTeamId = project.team_id || (org as any).default_team_id;
                       if (publishTeamId) {
                         const resolvedType = assetType || (isBudgetRelated(prompt) ? 'budget_plan' : 'general');
+                        console.log(`[AUTO-INGEST] Calling ingestTeamAsset: upload_id=${upload_id} type=${resolvedType} team=${publishTeamId} file=${uploadFilename}`);
                         const publishResult = await ingestTeamAsset({
                           teamId: publishTeamId,
                           assetType: resolvedType,
@@ -1382,10 +1385,12 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                     } else {
                       console.warn(`[AUTO-INGEST] No raw_content for upload ${upload_id} — skipping asset publish`);
                     }
-                  } catch (ingestErr: any) {
-                    console.error(`[AUTO-INGEST] Team asset publish failed (non-blocking): ${ingestErr.message}`);
-                    await storage.logEvent(taskId, `Team asset auto-publish failed: ${ingestErr.message}`, 'warning');
+                  } else {
+                    console.log(`[AUTO-INGEST] Skipped: no matching asset type, publish intent, or CSV for upload ${upload_id} (file=${uploadFilename})`);
                   }
+                } catch (ingestErr: any) {
+                  console.error(`[AUTO-INGEST] Team asset publish failed (non-blocking): ${ingestErr.message}`);
+                  await storage.logEvent(taskId, `Team asset auto-publish failed: ${ingestErr.message}`, 'warning');
                 }
               }
 
