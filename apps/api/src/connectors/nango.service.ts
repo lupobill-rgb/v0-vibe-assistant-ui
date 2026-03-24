@@ -28,14 +28,23 @@ export class NangoService {
   constructor() {
     const secretKey = process.env.NANGO_SECRET_KEY;
     if (!secretKey) {
-      throw new Error('NANGO_SECRET_KEY is not configured');
+      this.logger.warn('NANGO_SECRET_KEY is not configured — connector features disabled');
+      this.nango = null;
+      return;
     }
     const { Nango } = require('@nangohq/node');
     this.nango = new Nango({ secretKey });
     this.logger.log('NangoService initialized');
   }
 
+  private ensureConfigured(): void {
+    if (!this.nango) {
+      throw new Error('NangoService is not configured — set NANGO_SECRET_KEY to enable connectors');
+    }
+  }
+
   async getConnectUrl(teamId: string, connectorType: ConnectorType, redirectUri: string): Promise<string> {
+    this.ensureConfigured();
     const connectionId = `${teamId}__${connectorType}`;
     this.logger.log(`Initiating OAuth team=${teamId} connector=${connectorType}`);
     const session = await this.nango.auth(connectorType, connectionId, {
@@ -46,6 +55,7 @@ export class NangoService {
   }
 
   async getConnection(teamId: string, connectorType: ConnectorType): Promise<NangoConnection | null> {
+    this.ensureConfigured();
     const connectionId = `${teamId}__${connectorType}`;
     try {
       const connection = await this.nango.getConnection(connectorType, connectionId);
@@ -61,12 +71,14 @@ export class NangoService {
   }
 
   async deleteConnection(teamId: string, connectorType: ConnectorType): Promise<void> {
+    this.ensureConfigured();
     const connectionId = `${teamId}__${connectorType}`;
     await this.nango.deleteConnection(connectorType, connectionId);
     this.logger.log(`Connection deleted team=${teamId} connector=${connectorType}`);
   }
 
   async listActiveConnections(teamId: string): Promise<ConnectorType[]> {
+    this.ensureConfigured();
     const checks = await Promise.allSettled(
       Object.values(ConnectorType).map((ct) => this.getConnection(teamId, ct)),
     );
