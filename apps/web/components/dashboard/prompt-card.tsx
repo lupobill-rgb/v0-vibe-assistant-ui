@@ -46,9 +46,12 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   const handleAttach = () => fileInputRef.current?.click()
   const clearUpload = () => {
     uploadIdRef.current = undefined
+    uploadPromiseRef.current = null
     setUploadState({ status: "idle", progress: 0, message: "" })
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
+  // Promise that resolves when the current upload completes (or null if idle)
+  const uploadPromiseRef = useRef<Promise<void> | null>(null)
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -61,32 +64,39 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       return
     }
     formData.append("user_id", user.id)
-    try {
-      const xhr = new XMLHttpRequest()
-      const result = await new Promise<{ upload_id?: string; row_count?: number }>((resolve, reject) => {
-        xhr.upload.addEventListener("progress", (ev) => {
-          if (ev.lengthComputable) {
-            const pct = Math.round((ev.loaded / ev.total) * 100)
-            setUploadState((s) => ({ ...s, progress: pct, message: `Uploading ${file.name}... ${pct}%` }))
-          }
+    // Store the upload promise so startIntake() can await it
+    const doUpload = async () => {
+      try {
+        const xhr = new XMLHttpRequest()
+        const result = await new Promise<{ upload_id?: string; row_count?: number }>((resolve, reject) => {
+          xhr.upload.addEventListener("progress", (ev) => {
+            if (ev.lengthComputable) {
+              const pct = Math.round((ev.loaded / ev.total) * 100)
+              setUploadState((s) => ({ ...s, progress: pct, message: `Uploading ${file.name}... ${pct}%` }))
+            }
+          })
+          xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try { resolve(JSON.parse(xhr.responseText)) } catch { reject(new Error("Invalid response")) }
+            } else {
+              try { reject(new Error(JSON.parse(xhr.responseText).error || `Upload failed`)) } catch { reject(new Error(`Upload failed (${xhr.status})`)) }
+            }
+          })
+          xhr.addEventListener("error", () => reject(new Error("Network error")))
+          xhr.open("POST", `${API_URL}/upload`)
+          xhr.send(formData)
         })
-        xhr.addEventListener("load", () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try { resolve(JSON.parse(xhr.responseText)) } catch { reject(new Error("Invalid response")) }
-          } else {
-            try { reject(new Error(JSON.parse(xhr.responseText).error || `Upload failed`)) } catch { reject(new Error(`Upload failed (${xhr.status})`)) }
-          }
-        })
-        xhr.addEventListener("error", () => reject(new Error("Network error")))
-        xhr.open("POST", `${API_URL}/upload`)
-        xhr.send(formData)
-      })
-      const uid = result.upload_id
-      uploadIdRef.current = uid
-      setUploadState({ status: "done", progress: 100, message: `✓ ${file.name} ready — ${(result.row_count ?? 0).toLocaleString()} rows loaded.`, uploadId: uid, filename: file.name })
-    } catch (err) {
-      setUploadState({ status: "error", progress: 0, message: err instanceof Error ? err.message : "Upload failed" })
+        const uid = result.upload_id
+        uploadIdRef.current = uid
+        console.log("[VIBE] Upload complete, uploadIdRef.current =", uid)
+        setUploadState({ status: "done", progress: 100, message: `✓ ${file.name} ready — ${(result.row_count ?? 0).toLocaleString()} rows loaded.`, uploadId: uid, filename: file.name })
+      } catch (err) {
+        setUploadState({ status: "error", progress: 0, message: err instanceof Error ? err.message : "Upload failed" })
+      }
     }
+    uploadPromiseRef.current = doUpload()
+    await uploadPromiseRef.current
+    uploadPromiseRef.current = null
   }
   const tryParseReady = (text: string): { ready: true; enrichedPrompt: string; summary: string } | null => {
     // Try direct parse first
@@ -131,11 +141,19 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setStage("intake")
     setIntaking(true)
     setMessages([])
+    // Wait for any in-progress file upload to finish before proceeding
+    if (uploadPromiseRef.current) {
+      console.log("[VIBE] startIntake: waiting for upload to complete...")
+      await uploadPromiseRef.current
+      console.log("[VIBE] startIntake: upload done, uploadIdRef.current =", uploadIdRef.current)
+    }
     // Create project early so upload_id is resolvable during intake Q&A
     if (!selectedProjectId && !projectIdRef.current) {
+      console.log("[VIBE] startIntake: creating project with upload_id =", uploadIdRef.current)
       const project = await createProject(generateSmartName(prompt), undefined, currentTeam?.id, uploadIdRef.current)
       if (project.id) {
         projectIdRef.current = project.id
+        console.log("[VIBE] startIntake: project created =", project.id)
       }
     }
     // Include file context so the intake AI knows about the attachment
