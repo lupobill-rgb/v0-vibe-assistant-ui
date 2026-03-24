@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.11.0"; // 2026-03-21 — merge design phases to avoid 504 timeout
+const EDGE_FUNCTION_VERSION = "1.12.0"; // 2026-03-24 — fix Rule 14 conflict with dashboard mode, ban Chart.js v2 types
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,19 +48,15 @@ Every spend form MUST have these fields: category (dropdown), amount (number inp
 On submit call vibeLogSpend() and show success/error toast feedback.
 The vibeLogSpend function is defined in SPEND FORM INTEGRATION below — include it before </body> on any page with a spend form.
 Do NOT use vibeSubmitForm for expense/spend/purchase forms — always use vibeLogSpend.
-14. LIVE DATA — when BUDGET CONTEXT or TEAM CONTEXT references Supabase tables, generated apps MUST fetch real data on page load using vibeLoadData(). NEVER hardcode sample numbers when real tables exist. Include vibeLoadData before </body> (see LIVE DATA INTEGRATION below). Show loading state while fetching. Show empty state if no data: "No data yet. Upload your plan to begin."
-CRITICAL — VARIABLE NAMES: NEVER use placeholder strings like __SUPABASE_URL__, __TEAM_ID__, __API_KEY__, or ANY double-underscore template variables as literal values in fetch calls, URLs, or JavaScript code. These are NOT real values and will cause runtime errors like "Failed to parse URL from __SUPABASE_URL__".
-ALWAYS use exactly these runtime window variables (injected by the VIBE platform):
-  - window.__VIBE_SUPABASE_URL__ for the Supabase project URL
-  - window.__VIBE_SUPABASE_ANON_KEY__ for the Supabase anon key
-  - window.__VIBE_TEAM_ID__ for the current team ID
-For team filtering, read the team from window.__VIBE_TEAM_ID__ or from the data itself — do NOT invent placeholder constants.
+14. LIVE DATA (app and website modes ONLY — does NOT apply to dashboard mode):
+When BUDGET CONTEXT or TEAM CONTEXT references Supabase tables, generated apps MUST fetch real data on page load using vibeLoadData(). Include vibeLoadData before </body> (see LIVE DATA INTEGRATION below). Show loading state while fetching. Show empty state if no data.
+EXCEPTION: Dashboard mode uses hardcoded sample data — never fetch in dashboards.
+15. VARIABLE NAMES — in all JS code, read credentials from window.__VIBE_SUPABASE_URL__, window.__VIBE_SUPABASE_ANON_KEY__, and window.__VIBE_TEAM_ID__. The double-underscore placeholders (__SUPABASE_URL__ etc.) are ONLY valid inside the <head> assignment scripts where the platform replaces them at deploy time.
 
 SPEND FORM INTEGRATION — required on any page with an expense or spend form:
 The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
-Add this script in <head> (the VIBE platform replaces __TEAM_ID__ at deploy time — only use it in this exact assignment):
+Add this script in <head> (platform replaces __TEAM_ID__ at deploy time):
 <script>window.__VIBE_TEAM_ID__="__TEAM_ID__";</script>
-In all other code, read the team ID from window.__VIBE_TEAM_ID__. NEVER use __TEAM_ID__ as a literal string in fetch() or JavaScript expressions.
 Use this form pattern:
 <form onsubmit="return vibeLogSpend(event, this)">
   <select name="category" required>...</select>
@@ -110,12 +106,11 @@ async function vibeLogSpend(e, form) {
 </script>
 
 SUPABASE FORM INTEGRATION — required on every page with a form:
-Inject this script in <head> exactly as shown (the VIBE platform replaces the placeholders at deploy time):
+Inject this script in <head> (platform replaces placeholders at deploy time):
 <script>
 window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";
 window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";
 </script>
-IMPORTANT: Only use __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ inside this exact <script> assignment block. Everywhere else in your code, always read from window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__. Never use the double-underscore placeholders as literal strings in fetch(), URL construction, or any other JavaScript.
 Every <form> must use this pattern instead of action="...formspree...":
 <form onsubmit="return vibeSubmitForm(event, this)">
 Add this script before </body>:
@@ -145,9 +140,9 @@ async function vibeSubmitForm(e, form) {
 }
 </script>
 
-LIVE DATA INTEGRATION — required on any page that displays Supabase data:
+LIVE DATA INTEGRATION — required on app/website pages that display Supabase data (NOT dashboards):
 The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
-Add this script before </body>. This function reads credentials from window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__ — these are the ONLY valid credential sources. NEVER pass literal placeholder strings to fetch().
+Add this script before </body>:
 <script>
 async function vibeLoadData(table,filters={}){
   const url=window.__VIBE_SUPABASE_URL__;
@@ -373,12 +368,16 @@ TOPBAR — inline styles only, no Tailwind on nav:
 </nav>
 This is the COMPLETE nav. No other nav markup anywhere in the file.
 No Tailwind classes on any nav element. No ul/li. No hidden divs. No responsive variants.
-KPI STAT CARDS — 4 cards:
-- Large metric number: Space Grotesk text-3xl font-bold text-[var(--text)]
-- Label: text-[var(--text)] opacity-60 text-sm mt-1
-- Trend: top-right corner, ▲ text-emerald-400 or ▼ text-red-400 text-sm
+KPI STAT CARDS — 4 cards in grid-cols-4 gap-6 (grid-cols-2 on mobile):
+- Card: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 relative overflow-hidden
+- Large metric number: Space Grotesk text-3xl font-bold text-[var(--text)] truncate
+- Label: text-[var(--text)] opacity-60 text-sm mt-1 truncate
+- Trend: absolute top-4 right-4, ▲ text-emerald-400 or ▼ text-red-400 text-sm
+- CRITICAL: Use relative+absolute positioning so trend badge never overlaps metric text. Add min-h-[120px] to each card.
 - Detect domain from prompt and use contextually relevant metrics
-CHARTS — minimum 2 using Chart.js (more if multi-section):
+CHARTS — minimum 2 using Chart.js v3+ (CDN loads v4):
+- ALLOWED chart types: 'bar', 'line', 'doughnut', 'pie'. For horizontal bars use type:'bar' with options.indexAxis:'y'.
+- BANNED (Chart.js v2, will throw "not a registered controller"): 'horizontalBar', 'radar', 'polarArea', 'bubble', 'scatter' unless you register them. NEVER use type:'horizontalBar'.
 - Give each canvas a unique explicit id (e.g. id="chart1", id="chart2", id="chartGeo", id="chartIndustry")
 - Initialize each chart in an inline <script> immediately after its <canvas> (see CHART CODE MANDATE)
 - Never use querySelector for chart canvas elements — use getElementById
@@ -506,7 +505,7 @@ HEAD must include:
 <script src="https://cdn.tailwindcss.com"><\/script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
 <script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";<\/script>
-The __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ placeholders are ONLY valid inside this exact script assignment. They are replaced server-side at deploy time. Everywhere else in your code, read from window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__. NEVER use __SUPABASE_URL__ or __SUPABASE_ANON_KEY__ as literal strings in fetch(), URL construction, or any other JavaScript expression.
+Placeholders are replaced at deploy time. In all other JS, use window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__ (see Rule 15).
 
 Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
@@ -731,7 +730,7 @@ Rules:
 - Every page MUST have at least 2 charts with explicit chart types
 - Each chart MUST have a unique canvasId, chartType, labels array (6+ items),
   and datasets array with data values
-- Chart types allowed: bar, line, doughnut, pie
+- Chart types allowed: bar, line, doughnut, pie (NEVER horizontalBar — use bar with indexAxis:'y')
 - KPIs must have realistic numeric values and units
 - Table columns must match the dashboard domain
 Output ONLY this JSON structure, no other text:
