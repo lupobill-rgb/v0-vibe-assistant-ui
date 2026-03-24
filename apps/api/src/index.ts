@@ -1378,22 +1378,29 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
 
               // ── Auto-publish team asset before LLM call ──
-              // If user attached a file and prompt implies publish intent or known asset type,
-              // publish to published_assets (and budget_allocations for budget_plan).
+              // If user attached a file, detect asset type from prompt + filename and publish.
+              // CSV uploads always ingest (fallback to 'general' type).
+              let preIngestPublishTeamId: string | undefined;
+              let preIngestAssetType: string | undefined;
               if (upload_id && org) {
-                const assetType = detectAssetType(prompt, '');
-                if (assetType || hasPublishIntent(prompt) || isBudgetRelated(prompt)) {
-                  try {
-                    const { data: uploadForIngest } = await getPlatformSupabaseClient()
-                      .from('user_uploads')
-                      .select('raw_content, original_filename')
-                      .eq('id', upload_id)
-                      .single();
+                try {
+                  const { data: uploadForIngest } = await getPlatformSupabaseClient()
+                    .from('user_uploads')
+                    .select('raw_content, original_filename')
+                    .eq('id', upload_id)
+                    .single();
+                  const uploadFilename = uploadForIngest?.original_filename || '';
+                  const assetType = detectAssetType(prompt, uploadFilename);
+                  const isCSV = uploadFilename.endsWith('.csv') || uploadFilename.endsWith('.CSV');
+                  if (assetType || hasPublishIntent(prompt) || isBudgetRelated(prompt) || isCSV) {
                     if (uploadForIngest?.raw_content) {
                       // Resolve publishing team — use project's team or first org team
                       const publishTeamId = project.team_id || (org as any).default_team_id;
                       if (publishTeamId) {
                         const resolvedType = assetType || (isBudgetRelated(prompt) ? 'budget_plan' : 'general');
+                        preIngestPublishTeamId = publishTeamId;
+                        preIngestAssetType = resolvedType;
+                        console.log(`[AUTO-INGEST] Calling ingestTeamAsset: upload_id=${upload_id} type=${resolvedType} team=${publishTeamId} file=${uploadFilename}`);
                         const publishResult = await ingestTeamAsset({
                           teamId: publishTeamId,
                           assetType: resolvedType,
@@ -1405,7 +1412,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                         });
                         await storage.logEvent(taskId, `Published team asset: type=${resolvedType}, ${publishResult.row_count} rows${publishResult.replaced ? ' (replaced previous)' : ''}`, 'info');
                         if (publishResult.budget_ingest) {
-                          await storage.logEvent(taskId, `Budget allocations synced: ${publishResult.budget_ingest.rows_processed} rows written`, 'info');
+                          await storage.logEvent(taskId, `Budget allocations synced (raw): ${publishResult.budget_ingest.rows_processed} rows written`, 'info');
                         }
                         if (publishResult.errors.length > 0) {
                           await storage.logEvent(taskId, `Asset publish warnings: ${publishResult.errors.slice(0, 3).join('; ')}`, 'warning');
@@ -1414,11 +1421,28 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                     } else {
                       console.warn(`[AUTO-INGEST] No raw_content for upload ${upload_id} — skipping asset publish`);
                     }
-                  } catch (ingestErr: any) {
-                    console.error(`[AUTO-INGEST] Team asset publish failed (non-blocking): ${ingestErr.message}`);
-                    await storage.logEvent(taskId, `Team asset auto-publish failed: ${ingestErr.message}`, 'warning');
+                  } else {
+                    console.log(`[AUTO-INGEST] Skipped: no matching asset type, publish intent, or CSV for upload ${upload_id} (file=${uploadFilename})`);
                   }
+                } catch (ingestErr: any) {
+                  console.error(`[AUTO-INGEST] Team asset publish failed (non-blocking): ${ingestErr.message}`);
+                  await storage.logEvent(taskId, `Team asset auto-publish failed: ${ingestErr.message}`, 'warning');
                 }
+              }
+
+              // ── Inject budget-data extraction instruction for LLM ──
+              // When the user uploads budget data with modification instructions,
+              // tell the LLM to embed the ADJUSTED/CALCULATED numbers as structured JSON
+              // so we can re-ingest them into budget_allocations after the LLM call.
+              if (preIngestAssetType === 'budget_plan') {
+                enrichedPrompt += `\n\nCRITICAL — BUDGET DATA OUTPUT REQUIREMENT:
+After applying any requested changes (reductions, increases, reallocations, etc.) to the uploaded budget data, you MUST include a hidden script tag in your HTML output containing the FINAL ADJUSTED budget numbers as a JSON array.
+Format — place this EXACTLY before </body>:
+<script id="vibe-budget-data" type="application/json">
+[{"team":"TeamName","category":"CategoryName","q1":1234,"q2":1234,"q3":1234,"q4":1234}, ...]
+</script>
+Each object must have: team (string), category (string), q1/q2/q3/q4 (numbers — the ADJUSTED values after applying the user's requested changes).
+Include ALL rows from the original data with their final calculated values. This is how the adjusted numbers get saved to the database.`;
               }
 
               const dashColorBlock = buildColorBlock(resolveColorScheme(prompt));
@@ -1435,6 +1459,51 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 throw new Error(`Dashboard edge returned invalid JSON (${dashResult.text.length} chars)`);
               }
               if (dashData.usage?.total_tokens) totalTokens += dashData.usage.total_tokens;
+
+              // ── Post-LLM budget re-ingest: extract calculated numbers from HTML ──
+              // The LLM embeds adjusted budget data as JSON in a <script id="vibe-budget-data"> tag.
+              // Extract it and re-ingest into budget_allocations so dashboards see the calculated values.
+              if (preIngestAssetType === 'budget_plan' && preIngestPublishTeamId && org) {
+                try {
+                  const budgetDataMatch = dashData.diff.match(
+                    /<script\s+id="vibe-budget-data"\s+type="application\/json">\s*([\s\S]*?)\s*<\/script>/i,
+                  );
+                  if (budgetDataMatch?.[1]) {
+                    const adjustedRows: { team: string; category: string; q1: number; q2: number; q3: number; q4: number }[] = JSON.parse(budgetDataMatch[1]);
+                    if (Array.isArray(adjustedRows) && adjustedRows.length > 0) {
+                      // Convert the adjusted JSON rows back to CSV format for ingestBudgetCSV
+                      const csvHeader = 'team,category,q1,q2,q3,q4';
+                      const csvLines = adjustedRows.map(r =>
+                        `${r.team},${r.category},${r.q1},${r.q2},${r.q3},${r.q4}`,
+                      );
+                      const adjustedCSV = [csvHeader, ...csvLines].join('\n');
+
+                      console.log(`[POST-LLM-INGEST] Extracted ${adjustedRows.length} adjusted budget rows from LLM output`);
+
+                      const { ingestBudgetCSV: reIngestBudgetCSV } = await import('./lib/ingest-budget-csv');
+                      const reIngestResult = await reIngestBudgetCSV(adjustedCSV, org.id);
+
+                      console.log(`[POST-LLM-INGEST] budget_allocations re-ingested: wrote ${reIngestResult.rows_processed} rows, failed ${reIngestResult.rows_failed} rows`);
+                      await storage.logEvent(
+                        taskId,
+                        `Budget allocations updated with LLM-calculated values: ${reIngestResult.rows_processed} rows written to budget_allocations`,
+                        'info',
+                      );
+                      if (reIngestResult.errors.length > 0) {
+                        await storage.logEvent(taskId, `Budget re-ingest warnings: ${reIngestResult.errors.slice(0, 3).join('; ')}`, 'warning');
+                      }
+                    } else {
+                      console.warn('[POST-LLM-INGEST] vibe-budget-data tag found but contained no valid rows');
+                    }
+                  } else {
+                    console.log('[POST-LLM-INGEST] No vibe-budget-data tag found in LLM output — budget_allocations retains raw upload values');
+                  }
+                } catch (reIngestErr: any) {
+                  console.error(`[POST-LLM-INGEST] Failed to extract/re-ingest budget data: ${reIngestErr.message}`);
+                  await storage.logEvent(taskId, `Budget re-ingest from LLM output failed (non-blocking): ${reIngestErr.message}`, 'warning');
+                }
+              }
+
               const previewDir = path.join(PREVIEWS_DIR, taskId);
               fs.mkdirSync(previewDir, { recursive: true });
               fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(dashData.diff));

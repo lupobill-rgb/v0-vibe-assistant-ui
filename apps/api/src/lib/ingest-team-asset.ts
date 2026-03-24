@@ -150,6 +150,7 @@ export async function ingestTeamAsset(opts: PublishOptions): Promise<AssetPublis
     .single();
 
   if (upsertErr) {
+    console.error(`[INGEST] published_assets upsert FAILED for team=${teamId} type=${assetType}: ${upsertErr.message}`);
     errors.push(`Publish failed: ${upsertErr.message}`);
     return {
       asset_id: '',
@@ -160,6 +161,8 @@ export async function ingestTeamAsset(opts: PublishOptions): Promise<AssetPublis
       errors,
     };
   }
+
+  console.log(`[INGEST] published_assets: wrote 1 row (asset_id=${upserted?.id}, team=${teamId}, type=${assetType}, ${rowCount} data rows, replaced=${replaced})`);
 
   const result: AssetPublishResult = {
     asset_id: upserted?.id ?? '',
@@ -179,10 +182,12 @@ export async function ingestTeamAsset(opts: PublishOptions): Promise<AssetPublis
         typeof metadata.fiscal_year === 'number' ? metadata.fiscal_year : undefined,
       );
       result.budget_ingest = budgetResult;
+      console.log(`[INGEST] budget_allocations: wrote ${budgetResult.rows_processed} rows, failed ${budgetResult.rows_failed} rows (fiscal_year=${budgetResult.fiscal_year})`);
       if (budgetResult.rows_failed > 0) {
         errors.push(`Budget ingest: ${budgetResult.rows_failed} rows skipped`);
       }
     } catch (e: any) {
+      console.error(`[INGEST] budget_allocations ingest FAILED: ${e.message}`);
       errors.push(`Budget ingest side-effect failed: ${e.message}`);
     }
   }
