@@ -16,20 +16,29 @@ export function PreviewPanel({ pages }: PreviewPanelProps) {
   const blobUrl = useMemo(() => {
     const raw = pages[activeIndex]?.html ?? ""
 
-    // Inject Supabase credentials so vibeLoadData() works inside the iframe
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://ptaqytvztkhjpuawdxng.supabase.co"
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+
+    // Replace __SUPABASE_URL__ / __SUPABASE_ANON_KEY__ placeholders that the
+    // LLM injects in <head>.  This mirrors injectSupabaseCredentials() in the
+    // API (apps/api/src/index.ts) so previews resolve to real Supabase URLs
+    // instead of the literal placeholder strings.
+    let html = raw
+      .replace(/__SUPABASE_URL__/g, supabaseUrl)
+      .replace(/__SUPABASE_ANON_KEY__/g, supabaseAnonKey)
+
+    // Also inject credentials script for HTML that doesn't use placeholders
     const credentialsScript = `<script>
-window.__VIBE_SUPABASE_URL__ = ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://ptaqytvztkhjpuawdxng.supabase.co")};
-window.__VIBE_SUPABASE_ANON_KEY__ = ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "")};
+window.__VIBE_SUPABASE_URL__ = window.__VIBE_SUPABASE_URL__ || ${JSON.stringify(supabaseUrl)};
+window.__VIBE_SUPABASE_ANON_KEY__ = window.__VIBE_SUPABASE_ANON_KEY__ || ${JSON.stringify(supabaseAnonKey)};
 </script>`
 
-    // Insert before any other scripts — right after <head> or at the top
-    let html: string
-    if (raw.toLowerCase().includes("<head>")) {
-      html = raw.replace(/(<head[^>]*>)/i, `$1\n${credentialsScript}`)
-    } else if (raw.toLowerCase().includes("<html")) {
-      html = raw.replace(/(<html[^>]*>)/i, `$1\n${credentialsScript}`)
+    if (html.toLowerCase().includes("<head>")) {
+      html = html.replace(/(<head[^>]*>)/i, `$1\n${credentialsScript}`)
+    } else if (html.toLowerCase().includes("<html")) {
+      html = html.replace(/(<html[^>]*>)/i, `$1\n${credentialsScript}`)
     } else {
-      html = credentialsScript + "\n" + raw
+      html = credentialsScript + "\n" + html
     }
 
     const blob = new Blob([html], { type: "text/html" })
