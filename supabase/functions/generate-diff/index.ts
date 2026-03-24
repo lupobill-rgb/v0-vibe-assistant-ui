@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.12.0"; // 2026-03-24 — fix Rule 14 conflict with dashboard mode, ban Chart.js v2 types
+const EDGE_FUNCTION_VERSION = "1.13.0"; // 2026-03-24 — dashboards fetch live from budget_allocations via vibeLoadData()
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,9 +48,8 @@ Every spend form MUST have these fields: category (dropdown), amount (number inp
 On submit call vibeLogSpend() and show success/error toast feedback.
 The vibeLogSpend function is defined in SPEND FORM INTEGRATION below — include it before </body> on any page with a spend form.
 Do NOT use vibeSubmitForm for expense/spend/purchase forms — always use vibeLogSpend.
-14. LIVE DATA (app and website modes ONLY — does NOT apply to dashboard mode):
-When BUDGET CONTEXT or TEAM CONTEXT references Supabase tables, generated apps MUST fetch real data on page load using vibeLoadData(). Include vibeLoadData before </body> (see LIVE DATA INTEGRATION below). Show loading state while fetching. Show empty state if no data.
-EXCEPTION: Dashboard mode uses hardcoded sample data — never fetch in dashboards.
+14. LIVE DATA (ALL modes including dashboards):
+When BUDGET CONTEXT or TEAM CONTEXT references Supabase tables, generated output MUST fetch real data on page load using vibeLoadData(). Include vibeLoadData before </body> (see LIVE DATA INTEGRATION below). Show loading state while fetching. Show empty state if no data. Dashboards MUST also use vibeLoadData() so revised budget plans reflect automatically without rebuild.
 15. VARIABLE NAMES — in all JS code, read credentials from window.__VIBE_SUPABASE_URL__, window.__VIBE_SUPABASE_ANON_KEY__, and window.__VIBE_TEAM_ID__. The double-underscore placeholders (__SUPABASE_URL__ etc.) are ONLY valid inside the <head> assignment scripts where the platform replaces them at deploy time.
 
 SPEND FORM INTEGRATION — required on any page with an expense or spend form:
@@ -140,7 +139,7 @@ async function vibeSubmitForm(e, form) {
 }
 </script>
 
-LIVE DATA INTEGRATION — required on app/website pages that display Supabase data (NOT dashboards):
+LIVE DATA INTEGRATION — required on ALL pages that display Supabase data (including dashboards):
 The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
 Add this script before </body>:
 <script>
@@ -325,16 +324,17 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
 3. Every interactive feature must use vanilla JavaScript only.
 4. The file must start with <!DOCTYPE html> and end with </html>.
 5. Zero React. Zero JSX. Zero TypeScript. Zero component syntax. Ever.
-6. ZERO FETCH CALLS. ZERO API CALLS. ZERO ASYNC DATA LOADING.
-   All chart data, KPI values, and table rows must be hardcoded as JavaScript constants
-   directly in the HTML. Never use fetch(), XMLHttpRequest, axios, or any network request
-   to load data. The generated HTML runs in a static preview iframe with no backend —
-   any fetch() call will fail with a 404 and produce empty charts.
+6. LIVE DATA via vibeLoadData():
+   When BUDGET CONTEXT or TEAM CONTEXT provides Supabase table names, ALL chart data, KPI values, and table rows MUST be loaded at runtime via vibeLoadData(tableName, filters).
+   Include the Supabase <head> credentials script AND the vibeLoadData() script from LIVE DATA INTEGRATION (see VIBE_SYSTEM_RULES).
+   Show a loading skeleton while data loads. Show an empty state if no rows return.
+   Use realistic FALLBACK sample data ONLY when no Supabase context is provided (no table names in prompt or context).
+   NEVER use raw fetch() or XMLHttpRequest — always use vibeLoadData().
 
 Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
 You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
-Return a complete, self-contained HTML dashboard with ALL data inline. No external data sources. All styling via Tailwind CDN.
+Return a complete, self-contained HTML dashboard. Load data via vibeLoadData() when Supabase tables are referenced; use realistic fallback constants only when no table context is provided. All styling via Tailwind CDN.
 ALWAYS inject these in <head>:
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -415,7 +415,8 @@ CHART CODE MANDATE — non-negotiable:
 - For hidden sections (display:none), wrap the chart init in setTimeout(()=>{...}, 100) so Chart.js can measure canvas size when switchView reveals it.
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
 - NEVER create a <canvas> without a corresponding new Chart() call in a <script> immediately after it.
-- NEVER use fetch(), XMLHttpRequest, or any async call to load chart/table/KPI data. ALL data must be hardcoded inline as const arrays. The preview has no API backend — fetch calls return 404 and charts render empty.
+- When Supabase table context is provided, ALL chart/table/KPI data MUST be loaded via vibeLoadData(). Include the Supabase credentials script in <head> and vibeLoadData() before </body>. Use await vibeLoadData('table_name') inside an async IIFE to populate charts and tables. Show loading skeletons while data loads.
+- When NO Supabase table context is provided (e.g. generic "sales dashboard"), use realistic hardcoded sample data as fallback constants.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
 - 10 realistic rows, no lorem ipsum
@@ -478,7 +479,7 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
 REPAIR RULE — chart preservation:
 - If repairing a page with chart sections, preserve all existing Chart.js code — do not remove or replace canvas elements.
-FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks. No fetch() for data. No XMLHttpRequest. No async data loading. All data hardcoded inline.
+FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks. No raw fetch() — use vibeLoadData() only. No XMLHttpRequest.
 Output MUST start with <!DOCTYPE html> and end with </html>.
 Any other output format causes a blank page for the customer.`;
 
