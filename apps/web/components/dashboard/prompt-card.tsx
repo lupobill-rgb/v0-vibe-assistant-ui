@@ -110,7 +110,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, upload_id: uploadIdRef.current }),
         signal: controller.signal,
       })
       const data = await res.json()

@@ -14,7 +14,8 @@ Rules:
   {"ready": true, "enrichedPrompt": "<complete build spec>", "summary": "<one line>"}
 - Never ask more than 3 questions
 - Be conversational not formal
-- Focus on: what entities to track, key fields, who uses it`
+- Focus on: what entities to track, key fields, who uses it
+- IMPORTANT: If the user has attached a file and its content is shown below, READ IT FIRST. Do NOT ask questions that are already answered by the file data (column names, team names, departments, categories, amounts, etc.). Extract what you need from the file and proceed to build faster — you may only need 1 question or none at all.`
 
 const APP_SYSTEM = `You are VIBE, a full-stack app builder.
 BUILD A WORKING APPLICATION. NOT a website. NOT a landing page. NOT a marketing page.
@@ -78,8 +79,35 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
   return data
 }
 
+async function fetchUploadSummary(uploadId: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/user_uploads?id=eq.${encodeURIComponent(uploadId)}&limit=1`,
+      {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      }
+    )
+    if (!res.ok) return null
+    const rows = await res.json()
+    if (!Array.isArray(rows) || rows.length === 0) return null
+    const upload = rows[0]
+    const columns = upload.columns || Object.keys(upload.column_schema || {})
+    const sampleRows = Array.isArray(upload.sample_data) ? upload.sample_data.slice(0, 10) : []
+    return `[ATTACHED FILE DATA — "${upload.original_filename || upload.table_name}"]\n` +
+      `Columns: ${JSON.stringify(columns)}\n` +
+      `Total rows: ${upload.row_count}\n` +
+      `Sample data (first ${sampleRows.length} rows):\n${JSON.stringify(sampleRows, null, 2)}\n` +
+      `[END FILE DATA]`
+  } catch {
+    return null
+  }
+}
+
 export async function POST(request: Request) {
-  const { messages, build, edit, prompt: editPrompt, context, project_id } = await request.json()
+  const { messages, build, edit, prompt: editPrompt, context, project_id, upload_id } = await request.json()
 
   try {
     if (edit) {
@@ -160,6 +188,21 @@ export async function POST(request: Request) {
       role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
       content: m.content,
     }))
+
+    // If a file is attached, fetch its content and inject into the first user message
+    if (upload_id && anthropicMessages.length > 0) {
+      const fileSummary = await fetchUploadSummary(upload_id)
+      if (fileSummary) {
+        const firstUserIdx = anthropicMessages.findIndex((m: { role: string }) => m.role === 'user')
+        if (firstUserIdx >= 0) {
+          anthropicMessages[firstUserIdx] = {
+            ...anthropicMessages[firstUserIdx],
+            content: anthropicMessages[firstUserIdx].content + '\n\n' + fileSummary,
+          }
+        }
+      }
+    }
+
     const text = await callAnthropic(anthropicMessages, INTAKE_SYSTEM, 500)
     return NextResponse.json({ text })
   } catch (err) {
