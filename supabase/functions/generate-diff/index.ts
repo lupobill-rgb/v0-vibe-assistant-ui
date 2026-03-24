@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.13.0"; // 2026-03-24 — dashboards fetch live from budget_allocations via vibeLoadData()
+const EDGE_FUNCTION_VERSION = "1.14.0"; // 2026-03-24 — dashboard vibeLoadData: add credentials script, concrete example, fix chart mandate
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -326,16 +326,39 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
 5. Zero React. Zero JSX. Zero TypeScript. Zero component syntax. Ever.
 6. LIVE DATA via vibeLoadData():
    When BUDGET CONTEXT or TEAM CONTEXT provides Supabase table names, ALL chart data, KPI values, and table rows MUST be loaded at runtime via vibeLoadData(tableName, filters).
-   Include the Supabase <head> credentials script AND the vibeLoadData() script from LIVE DATA INTEGRATION (see VIBE_SYSTEM_RULES).
    Show a loading skeleton while data loads. Show an empty state if no rows return.
    Use realistic FALLBACK sample data ONLY when no Supabase context is provided (no table names in prompt or context).
    NEVER use raw fetch() or XMLHttpRequest — always use vibeLoadData().
+   REQUIRED PATTERN — follow this exactly when Supabase tables are referenced:
+   a) In <head>, inject the credentials script (platform replaces placeholders at deploy):
+      <script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";</script>
+   b) Before </body>, inject the vibeLoadData function:
+      <script>
+      async function vibeLoadData(table,filters={}){
+        const url=window.__VIBE_SUPABASE_URL__;const key=window.__VIBE_SUPABASE_ANON_KEY__;
+        if(!url||!key)return[];
+        let ep=url+'/rest/v1/'+table+'?select=*';
+        Object.entries(filters).forEach(([k,v])=>{ep+='&'+k+'=eq.'+v;});
+        const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+key}});
+        return r.ok?await r.json():[];
+      }
+      </script>
+   c) Load data and populate dashboard in an async IIFE:
+      <script>
+      (async function(){
+        const rows = await vibeLoadData('budget_allocations', {team_id: window.__VIBE_TEAM_ID__});
+        if(!rows.length){ document.getElementById('empty-state').style.display='block'; return; }
+        // populate KPI cards, chart datasets, and table rows from rows
+      })();
+      </script>
 
 Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
 You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
 Return a complete, self-contained HTML dashboard. Load data via vibeLoadData() when Supabase tables are referenced; use realistic fallback constants only when no table context is provided. All styling via Tailwind CDN.
 ALWAYS inject these in <head>:
+<script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";</script>
+<script>window.__VIBE_TEAM_ID__="__TEAM_ID__";</script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -398,7 +421,24 @@ CHART CODE MANDATE — non-negotiable:
   Required format: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
   A <canvas> without both height="200" and style="height:200px !important; max-height:200px;" fails the quality gate.
 - CRITICAL PLACEMENT RULE: Place each chart's <script> tag IMMEDIATELY after its <canvas> element, inside the same container div. Do NOT defer all chart code to a single DOMContentLoaded listener at the bottom of the page — the output may be truncated.
-  Example pattern (FOLLOW THIS EXACTLY):
+  Example pattern — WITH live data (FOLLOW THIS EXACTLY when Supabase tables are referenced):
+  <div class="chart-container">
+    <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+    <script>
+    (async function(){
+      const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+      const rows = await vibeLoadData('budget_allocations', {team_id: window.__VIBE_TEAM_ID__});
+      const labels = rows.map(r => r.department || r.category || r.name);
+      const values = rows.map(r => r.amount || r.value || 0);
+      new Chart(document.getElementById('chart1'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Budget', data: values, backgroundColor: primary }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }
+      });
+    })();
+    </script>
+  </div>
+  Example pattern — WITHOUT Supabase context (fallback only):
   <div class="chart-container">
     <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
     <script>
