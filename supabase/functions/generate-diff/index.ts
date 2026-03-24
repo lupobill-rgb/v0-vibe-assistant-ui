@@ -48,6 +48,13 @@ Every spend form MUST have these fields: category (dropdown), amount (number inp
 On submit call vibeLogSpend() and show success/error toast feedback.
 The vibeLogSpend function is defined in SPEND FORM INTEGRATION below — include it before </body> on any page with a spend form.
 Do NOT use vibeSubmitForm for expense/spend/purchase forms — always use vibeLogSpend.
+14. LIVE DATA FROM SUPABASE — when the prompt references data that exists in Supabase tables (budget_allocations, team_spend, form_submissions, or any table mentioned in the BUDGET CONTEXT or TEAM CONTEXT blocks), the generated app MUST fetch real data from Supabase on page load. NEVER hardcode sample data when real data is available.
+Rules for live data:
+- If BUDGET CONTEXT is present, budget_allocations and team_spend MUST be queried via vibeLoadData().
+- Dashboard KPI cards, charts, and tables must render from query results, not from hardcoded arrays.
+- Show a loading spinner while data loads.
+- If no data exists yet, show an empty state: "No budget data. Upload your FY plan to get started."
+- The vibeLoadData function is defined in LIVE DATA INTEGRATION below — include it before </body> on any page that displays data.
 
 SPEND FORM INTEGRATION — required on any page with an expense or spend form:
 The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
@@ -134,7 +141,44 @@ async function vibeSubmitForm(e, form) {
   finally { btn.textContent = origText; btn.disabled = false; }
   return false;
 }
-</script>`;
+</script>
+
+LIVE DATA INTEGRATION — required on any page that displays data from Supabase:
+The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
+Add this script before </body>:
+<script>
+async function vibeLoadData(table, filters = {}) {
+  const url = window.__VIBE_SUPABASE_URL__;
+  const key = window.__VIBE_SUPABASE_ANON_KEY__;
+  if (!url || !key) return [];
+  let endpoint = url + '/rest/v1/' + table + '?select=*';
+  Object.entries(filters).forEach(([k, v]) => {
+    endpoint += '&' + k + '=eq.' + v;
+  });
+  const res = await fetch(endpoint, {
+    headers: {
+      'apikey': key,
+      'Authorization': 'Bearer ' + key
+    }
+  });
+  return res.ok ? await res.json() : [];
+}
+document.addEventListener('DOMContentLoaded', async () => {
+  document.querySelectorAll('[data-vibe-loading]').forEach(el => el.style.display = '');
+  const allocations = await vibeLoadData('budget_allocations');
+  const spend = await vibeLoadData('team_spend');
+  document.querySelectorAll('[data-vibe-loading]').forEach(el => el.style.display = 'none');
+  if (typeof renderDashboard === 'function') renderDashboard(allocations, spend);
+  if (allocations.length === 0 && spend.length === 0) {
+    const empty = document.querySelector('[data-vibe-empty]');
+    if (empty) empty.style.display = '';
+  }
+});
+</script>
+On pages that display data, add:
+- A loading spinner element with data-vibe-loading attribute (hidden by default)
+- An empty state element with data-vibe-empty attribute and text "No budget data. Upload your FY plan to get started." (hidden by default)
+- A renderDashboard(allocations, spend) function that populates KPI cards, charts, and tables from the query results`;
 
 // ── Mode-specific system prompts ─────────────────────────────────────────
 
