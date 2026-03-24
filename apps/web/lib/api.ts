@@ -1,9 +1,10 @@
 import { supabase } from './supabase'
 
-// API base URL — must be set via NEXT_PUBLIC_API_URL for browser access
+// API base URL — NEXT_PUBLIC_API_URL is baked at build time.
+// Production fallback ensures uploads work even if env var is missing from Vercel build.
 export const API_URL =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) ||
-  'http://localhost:3001'
+  'https://vibeapi-production-fdd1.up.railway.app'
 
 // Tenant ID — identifies the current user/workspace for multi-tenant isolation.
 // For local dev this defaults to 'test-tenant'. Override via NEXT_PUBLIC_TENANT_ID.

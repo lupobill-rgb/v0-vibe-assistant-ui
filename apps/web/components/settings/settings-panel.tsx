@@ -93,7 +93,7 @@ export function SettingsPanel() {
 
   const apiUrl =
     (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
-    "http://localhost:3001"
+    "https://vibeapi-production-fdd1.up.railway.app"
 
   useEffect(() => {
     fetchHealth()
