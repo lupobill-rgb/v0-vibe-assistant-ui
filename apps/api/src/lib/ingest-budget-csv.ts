@@ -100,6 +100,7 @@ export async function ingestBudgetCSV(
     else { rowsProcessed++; }
   }
 
+  console.log(`[BUDGET-CSV] budget_allocations ingest complete: ${rowsProcessed} rows written, ${rowsFailed} rows failed, fiscal_year=${fy}`);
   return { rows_processed: rowsProcessed, rows_failed: rowsFailed, fiscal_year: fy, errors };
 }
 
