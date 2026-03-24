@@ -49,11 +49,18 @@ On submit call vibeLogSpend() and show success/error toast feedback.
 The vibeLogSpend function is defined in SPEND FORM INTEGRATION below — include it before </body> on any page with a spend form.
 Do NOT use vibeSubmitForm for expense/spend/purchase forms — always use vibeLogSpend.
 14. LIVE DATA — when BUDGET CONTEXT or TEAM CONTEXT references Supabase tables, generated apps MUST fetch real data on page load using vibeLoadData(). NEVER hardcode sample numbers when real tables exist. Include vibeLoadData before </body> (see LIVE DATA INTEGRATION below). Show loading state while fetching. Show empty state if no data: "No data yet. Upload your plan to begin."
+CRITICAL — VARIABLE NAMES: NEVER use placeholder strings like __SUPABASE_URL__, __TEAM_ID__, __API_KEY__, or ANY double-underscore template variables as literal values in fetch calls, URLs, or JavaScript code. These are NOT real values and will cause runtime errors like "Failed to parse URL from __SUPABASE_URL__".
+ALWAYS use exactly these runtime window variables (injected by the VIBE platform):
+  - window.__VIBE_SUPABASE_URL__ for the Supabase project URL
+  - window.__VIBE_SUPABASE_ANON_KEY__ for the Supabase anon key
+  - window.__VIBE_TEAM_ID__ for the current team ID
+For team filtering, read the team from window.__VIBE_TEAM_ID__ or from the data itself — do NOT invent placeholder constants.
 
 SPEND FORM INTEGRATION — required on any page with an expense or spend form:
 The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
-Add this script in <head> (the API server replaces __TEAM_ID__ with the real value):
+Add this script in <head> (the VIBE platform replaces __TEAM_ID__ at deploy time — only use it in this exact assignment):
 <script>window.__VIBE_TEAM_ID__="__TEAM_ID__";</script>
+In all other code, read the team ID from window.__VIBE_TEAM_ID__. NEVER use __TEAM_ID__ as a literal string in fetch() or JavaScript expressions.
 Use this form pattern:
 <form onsubmit="return vibeLogSpend(event, this)">
   <select name="category" required>...</select>
@@ -103,11 +110,12 @@ async function vibeLogSpend(e, form) {
 </script>
 
 SUPABASE FORM INTEGRATION — required on every page with a form:
-Inject this script in <head> (the API server will replace __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ with real values):
+Inject this script in <head> exactly as shown (the VIBE platform replaces the placeholders at deploy time):
 <script>
 window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";
 window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";
 </script>
+IMPORTANT: Only use __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ inside this exact <script> assignment block. Everywhere else in your code, always read from window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__. Never use the double-underscore placeholders as literal strings in fetch(), URL construction, or any other JavaScript.
 Every <form> must use this pattern instead of action="...formspree...":
 <form onsubmit="return vibeSubmitForm(event, this)">
 Add this script before </body>:
@@ -139,7 +147,7 @@ async function vibeSubmitForm(e, form) {
 
 LIVE DATA INTEGRATION — required on any page that displays Supabase data:
 The <head> SUPABASE_URL/ANON_KEY script (see SUPABASE FORM INTEGRATION) must also be present.
-Add this script before </body>:
+Add this script before </body>. This function reads credentials from window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__ — these are the ONLY valid credential sources. NEVER pass literal placeholder strings to fetch().
 <script>
 async function vibeLoadData(table,filters={}){
   const url=window.__VIBE_SUPABASE_URL__;
@@ -498,7 +506,7 @@ HEAD must include:
 <script src="https://cdn.tailwindcss.com"><\/script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
 <script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";<\/script>
-The __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ placeholders will be replaced server-side. Output them exactly as shown.
+The __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ placeholders are ONLY valid inside this exact script assignment. They are replaced server-side at deploy time. Everywhere else in your code, read from window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__. NEVER use __SUPABASE_URL__ or __SUPABASE_ANON_KEY__ as literal strings in fetch(), URL construction, or any other JavaScript expression.
 
 Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
