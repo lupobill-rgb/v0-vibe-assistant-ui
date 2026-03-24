@@ -1226,6 +1226,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
           /** Classify whether an error is eligible for LLM fallback (429/529/timeout only). */
           const isFallbackEligible = (status: number, text: string, err?: any): { eligible: boolean; reason: string } => {
+            if (status === 402) return { eligible: true, reason: `HTTP 402 payment required` };
             if (status === 429) return { eligible: true, reason: `HTTP 429 rate limit` };
             if (status === 504) return { eligible: true, reason: `HTTP 504 gateway timeout` };
             if (status === 529) return { eligible: true, reason: `HTTP 529 overloaded` };
