@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { getPlatformSupabaseClient } from '../supabase/client';
-import { ingestBudgetCSV } from '../lib/ingest-budget-csv';
+import { ingestTeamAsset } from '../lib/ingest-team-asset';
 
 const router = express.Router();
 
@@ -19,7 +19,7 @@ const upload = multer({
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-async function isFinanceMember(userId: string): Promise<boolean> {
+async function getFinanceTeamId(userId: string): Promise<string | null> {
   const sb = getPlatformSupabaseClient();
   const { data } = await sb
     .from('team_members')
@@ -27,7 +27,7 @@ async function isFinanceMember(userId: string): Promise<boolean> {
     .eq('user_id', userId)
     .eq('teams.name', 'Finance')
     .limit(1);
-  return !!(data && data.length > 0);
+  return data && data.length > 0 ? data[0].team_id : null;
 }
 
 // ── POST /api/finance/upload-plan ────────────────────────────────────────
@@ -39,7 +39,8 @@ router.post('/upload-plan', upload.single('file'), async (req: Request, res: Res
       return res.status(401).json({ error: 'user_id is required' });
     }
 
-    if (!(await isFinanceMember(userId))) {
+    const financeTeamId = await getFinanceTeamId(userId);
+    if (!financeTeamId) {
       return res.status(403).json({ error: 'Only Finance team members can upload budget plans' });
     }
 
@@ -57,13 +58,29 @@ router.post('/upload-plan', upload.single('file'), async (req: Request, res: Res
     ) || new Date().getFullYear();
 
     const csv = req.file.buffer.toString('utf-8');
-    const result = await ingestBudgetCSV(csv, orgId, fiscalYear);
+    const result = await ingestTeamAsset({
+      teamId: financeTeamId,
+      assetType: 'budget_plan',
+      rawContent: csv,
+      originalFilename: req.file.originalname,
+      orgId,
+      publishedBy: userId,
+      metadata: { fiscal_year: fiscalYear },
+    });
 
-    if (result.rows_processed === 0 && result.errors.length > 0) {
+    if (result.errors.length > 0 && result.row_count === 0) {
       return res.status(400).json(result);
     }
 
-    res.json(result);
+    // Return backward-compatible shape
+    res.json({
+      asset_id: result.asset_id,
+      rows_processed: result.budget_ingest?.rows_processed ?? result.row_count,
+      rows_failed: result.budget_ingest?.rows_failed ?? 0,
+      fiscal_year: fiscalYear,
+      replaced: result.replaced,
+      errors: result.errors,
+    });
   } catch (err: any) {
     res.status(500).json({ error: `Upload failed: ${err.message}` });
   }

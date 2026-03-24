@@ -111,6 +111,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   // 4c. Resolve budget context for this team
   const budgetContext = resolvedTeamId ? await resolveBudgetContext(sb, resolvedTeamId) : '';
 
+  // 4d. Resolve published assets this team can see (own + visible teams)
+  const publishedAssets = resolvedTeamId ? await resolvePublishedAssets(sb, resolvedTeamId) : '';
+
   // 5. Format and return
   const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
@@ -124,6 +127,7 @@ Data readable: ${readScopes.join(', ') || 'none'}
 Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
+    + publishedAssets
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 }
 
@@ -232,6 +236,46 @@ Team Budget:
 ${lines.join('\n')}
 Total: ${fmt(totalAllocated)} allocated | ${fmt(totalSpent)} spent | ${fmt(totalRemaining)} remaining (${totalPct}%)
 --- END BUDGET CONTEXT ---`;
+}
+
+async function resolvePublishedAssets(
+  supabase: ReturnType<typeof getPlatformSupabaseClient>,
+  teamId: string,
+): Promise<string> {
+  // Fetch assets published by this team + teams visible to this team
+  const { data: visibleTeamRows } = await supabase
+    .from('team_visibility')
+    .select('target_team_id')
+    .eq('source_team_id', teamId);
+
+  const teamIds = [teamId, ...(visibleTeamRows ?? []).map((r: any) => r.target_team_id)];
+
+  const { data: assets, error } = await supabase
+    .from('published_assets')
+    .select('asset_type, team_id, original_filename, row_count, column_schema, updated_at, teams!inner(name)')
+    .in('team_id', teamIds)
+    .order('updated_at', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.log(`[KERNEL] resolvePublishedAssets error for team=${teamId}: ${error.message}`);
+    return '';
+  }
+  if (!assets || assets.length === 0) return '';
+
+  const lines = assets.map((a: any) => {
+    const teamName = a.teams?.name ?? 'unknown';
+    const cols = Array.isArray(a.column_schema)
+      ? a.column_schema.map((c: any) => c.name).join(', ')
+      : '';
+    const updated = a.updated_at ? new Date(a.updated_at).toLocaleDateString() : '';
+    return `- ${a.asset_type} (from ${teamName}): ${a.original_filename ?? 'unknown'}, ${a.row_count} rows${cols ? ` [${cols}]` : ''} — updated ${updated}`;
+  });
+
+  return `\n--- PUBLISHED ASSETS (Marketplace) ---
+${lines.join('\n')}
+Query via: vibeLoadData('published_assets', {asset_type: '<type>'}) or vibeLoadData('budget_allocations') for budget data.
+--- END PUBLISHED ASSETS ---`;
 }
 
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {

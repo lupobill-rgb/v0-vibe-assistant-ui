@@ -13,7 +13,8 @@ import { promisify } from 'util';
 import multer from 'multer';
 import { parse as csvParse } from 'csv-parse/sync';
 import { resolveMode } from './edge-function';
-import { ingestBudgetCSV, isBudgetRelated } from './lib/ingest-budget-csv';
+import { isBudgetRelated } from './lib/ingest-budget-csv';
+import { ingestTeamAsset, detectAssetType, hasPublishIntent } from './lib/ingest-team-asset';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -1344,28 +1345,47 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.updateTaskState(taskId, 'building');
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
 
-              // ── Auto-ingest budget CSV before LLM call ──
-              // If user attached a CSV and prompt references budget data,
-              // populate budget_allocations so vibeLoadData() returns real rows.
-              if (upload_id && isBudgetRelated(prompt) && org) {
-                try {
-                  const { data: uploadForIngest } = await getPlatformSupabaseClient()
-                    .from('user_uploads')
-                    .select('raw_content, original_filename')
-                    .eq('id', upload_id)
-                    .single();
-                  if (uploadForIngest?.raw_content) {
-                    const ingestResult = await ingestBudgetCSV(uploadForIngest.raw_content, org.id);
-                    await storage.logEvent(taskId, `Auto-ingested budget CSV: ${ingestResult.rows_processed} rows written to budget_allocations`, 'info');
-                    if (ingestResult.rows_failed > 0) {
-                      await storage.logEvent(taskId, `Budget ingest warnings: ${ingestResult.rows_failed} rows skipped — ${ingestResult.errors.slice(0, 3).join('; ')}`, 'warning');
+              // ── Auto-publish team asset before LLM call ──
+              // If user attached a file and prompt implies publish intent or known asset type,
+              // publish to published_assets (and budget_allocations for budget_plan).
+              if (upload_id && org) {
+                const assetType = detectAssetType(prompt, '');
+                if (assetType || hasPublishIntent(prompt) || isBudgetRelated(prompt)) {
+                  try {
+                    const { data: uploadForIngest } = await getPlatformSupabaseClient()
+                      .from('user_uploads')
+                      .select('raw_content, original_filename')
+                      .eq('id', upload_id)
+                      .single();
+                    if (uploadForIngest?.raw_content) {
+                      // Resolve publishing team — use project's team or first org team
+                      const publishTeamId = project.team_id || (org as any).default_team_id;
+                      if (publishTeamId) {
+                        const resolvedType = assetType || (isBudgetRelated(prompt) ? 'budget_plan' : 'general');
+                        const publishResult = await ingestTeamAsset({
+                          teamId: publishTeamId,
+                          assetType: resolvedType,
+                          rawContent: uploadForIngest.raw_content,
+                          originalFilename: uploadForIngest.original_filename || 'upload.csv',
+                          orgId: org.id,
+                          publishedBy: user_id,
+                          metadata: { source: 'auto_ingest', job_id: taskId },
+                        });
+                        await storage.logEvent(taskId, `Published team asset: type=${resolvedType}, ${publishResult.row_count} rows${publishResult.replaced ? ' (replaced previous)' : ''}`, 'info');
+                        if (publishResult.budget_ingest) {
+                          await storage.logEvent(taskId, `Budget allocations synced: ${publishResult.budget_ingest.rows_processed} rows written`, 'info');
+                        }
+                        if (publishResult.errors.length > 0) {
+                          await storage.logEvent(taskId, `Asset publish warnings: ${publishResult.errors.slice(0, 3).join('; ')}`, 'warning');
+                        }
+                      }
+                    } else {
+                      console.warn(`[AUTO-INGEST] No raw_content for upload ${upload_id} — skipping asset publish`);
                     }
-                  } else {
-                    console.warn(`[AUTO-INGEST] No raw_content for upload ${upload_id} — skipping budget ingest`);
+                  } catch (ingestErr: any) {
+                    console.error(`[AUTO-INGEST] Team asset publish failed (non-blocking): ${ingestErr.message}`);
+                    await storage.logEvent(taskId, `Team asset auto-publish failed: ${ingestErr.message}`, 'warning');
                   }
-                } catch (ingestErr: any) {
-                  console.error(`[AUTO-INGEST] Budget CSV ingest failed (non-blocking): ${ingestErr.message}`);
-                  await storage.logEvent(taskId, `Budget CSV auto-ingest failed: ${ingestErr.message}`, 'warning');
                 }
               }
 
