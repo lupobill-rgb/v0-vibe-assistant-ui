@@ -777,15 +777,47 @@ async function bootstrap() {
         columns = records.length > 0 ? Object.keys(records[0]) : [];
         allRows = records;
       } else {
-        // .xlsx — rough estimate until xlsx parsing is added
+        // .xlsx — persist raw file so upload_id is available for the build prompt
         rowCount = Math.round(file.size / 50);
+        const xlsxTableName = path.basename(file.originalname, ext)
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '_')
+          .replace(/_{2,}/g, '_')
+          .replace(/^_|_$/g, '') || 'uploaded_data';
+
+        const sb = getPlatformSupabaseClient();
+        const { data: xlsxInserted, error: xlsxError } = await sb
+          .from('user_uploads')
+          .insert({
+            owner_id: userId,
+            project_id: req.body?.project_id || null,
+            original_filename: file.originalname,
+            table_name: xlsxTableName,
+            columns: [],
+            column_schema: {},
+            sample_data: [],
+            raw_content: file.buffer.toString('base64'),
+            row_count: rowCount,
+            aggregated_stats: { totalRows: rowCount },
+          })
+          .select('id')
+          .single();
+
+        if (xlsxError) {
+          console.error('[UPLOAD] XLSX Supabase insert failed:', xlsxError.message);
+          return res.status(500).json({ error: `Failed to persist upload: ${xlsxError.message}` });
+        }
+
+        console.log(`[UPLOAD] Persisted XLSX upload ${xlsxInserted.id} — ${xlsxTableName}, ~${rowCount} rows`);
+
         return res.json({
-          upload_id: null,
+          upload_id: xlsxInserted.id,
           filename: file.originalname,
+          table_name: xlsxTableName,
           columns: [],
           row_count: rowCount,
           size: file.size,
-          note: 'XLSX data preview not yet supported. CSV is recommended.',
+          note: 'XLSX column preview not yet supported. CSV is recommended for full data context.',
         });
       }
 
