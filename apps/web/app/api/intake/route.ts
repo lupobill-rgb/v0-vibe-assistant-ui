@@ -113,7 +113,7 @@ async function fetchUploadSummary(uploadId: string): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  const { messages, build, edit, prompt: editPrompt, context, project_id, upload_id } = await request.json()
+  const { messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id } = await request.json()
 
   try {
     if (edit) {
@@ -203,6 +203,24 @@ export async function POST(request: Request) {
 
     // ALWAYS fetch file content when an upload exists — every call, not just the first
     let intakeSystem = INTAKE_SYSTEM
+
+    // Inject team + budget context when team_id is present
+    if (team_id) {
+      try {
+        const kernelRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'}/api/kernel-context/${team_id}/${process.env.NEXT_PUBLIC_ORG_ID || '3de82e57-4813-4ad6-83bd-2adb461604f0'}`,
+          { headers: { 'Content-Type': 'application/json' } }
+        )
+        if (kernelRes.ok) {
+          const kernelData = await kernelRes.json()
+          const kernelBlock = kernelData?.context || kernelData?.teamContext || JSON.stringify(kernelData)
+          intakeSystem += `\n\nTEAM CONTEXT (already resolved — do NOT ask the user what team they are on):\n${kernelBlock}\nUse this context to scope all questions and the final enrichedPrompt.`
+        }
+      } catch (kernelErr) {
+        console.warn('[INTAKE] kernel-context fetch failed — proceeding without team context:', kernelErr)
+      }
+    }
+
     if (resolvedUploadId) {
       const fileSummary = await fetchUploadSummary(resolvedUploadId)
       if (fileSummary) {

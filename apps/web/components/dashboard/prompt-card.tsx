@@ -23,6 +23,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   const router = useRouter()
   const { currentTeam } = useTeam()
   const [prompt, setPrompt] = useState("")
+  const projectIdRef = useRef<string | undefined>(undefined)
   const [focused, setFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -110,7 +111,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, upload_id: uploadIdRef.current }),
+        body: JSON.stringify({ messages, upload_id: uploadIdRef.current, team_id: currentTeam?.id, project_id: projectIdRef.current }),
         signal: controller.signal,
       })
       const data = await res.json()
@@ -130,6 +131,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setStage("intake")
     setIntaking(true)
     setMessages([])
+    // Create project early so upload_id is resolvable during intake Q&A
+    if (!selectedProjectId && !projectIdRef.current) {
+      const project = await createProject(generateSmartName(prompt), undefined, currentTeam?.id, uploadIdRef.current)
+      if (project.id) {
+        projectIdRef.current = project.id
+      }
+    }
     // Include file context so the intake AI knows about the attachment
     const fileNote = uploadIdRef.current && uploadState.filename
       ? `\n[Attached file: ${uploadState.filename}]`
@@ -222,7 +230,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setError(null)
     try {
       // Step 1: Create project + job FIRST so we can navigate immediately
-      let projectId = selectedProjectId
+      let projectId = selectedProjectId || projectIdRef.current
       if (!projectId) {
         console.log("[VIBE] fireJob: creating project...")
         const project = await createProject(generateSmartName(finalPrompt), undefined, currentTeam?.id, uploadIdRef.current)
