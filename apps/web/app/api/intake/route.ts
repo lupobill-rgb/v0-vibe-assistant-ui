@@ -79,16 +79,24 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
   return data
 }
 
+/** Resolve upload_id from project record (single source of truth) */
+async function resolveProjectUploadId(projectId: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(projectId)}&select=upload_id&limit=1`,
+      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
+    )
+    if (!res.ok) return null
+    const rows = await res.json()
+    return rows?.[0]?.upload_id || null
+  } catch { return null }
+}
+
 async function fetchUploadSummary(uploadId: string): Promise<string | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/user_uploads?id=eq.${encodeURIComponent(uploadId)}&limit=1`,
-      {
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-      }
+      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
     )
     if (!res.ok) return null
     const rows = await res.json()
@@ -101,9 +109,7 @@ async function fetchUploadSummary(uploadId: string): Promise<string | null> {
       `Total rows: ${upload.row_count}\n` +
       `Sample data (first ${sampleRows.length} rows):\n${JSON.stringify(sampleRows, null, 2)}\n` +
       `[END FILE DATA]`
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 export async function POST(request: Request) {
@@ -189,21 +195,24 @@ export async function POST(request: Request) {
       content: m.content,
     }))
 
-    // If a file is attached, fetch its content and inject into the first user message
-    if (upload_id && anthropicMessages.length > 0) {
-      const fileSummary = await fetchUploadSummary(upload_id)
+    // Resolve upload_id: request body → project record (single source of truth)
+    let resolvedUploadId = upload_id
+    if (!resolvedUploadId && project_id) {
+      resolvedUploadId = await resolveProjectUploadId(project_id)
+    }
+
+    // ALWAYS fetch file content when an upload exists — every call, not just the first
+    let intakeSystem = INTAKE_SYSTEM
+    if (resolvedUploadId) {
+      const fileSummary = await fetchUploadSummary(resolvedUploadId)
       if (fileSummary) {
-        const firstUserIdx = anthropicMessages.findIndex((m: { role: string }) => m.role === 'user')
-        if (firstUserIdx >= 0) {
-          anthropicMessages[firstUserIdx] = {
-            ...anthropicMessages[firstUserIdx],
-            content: anthropicMessages[firstUserIdx].content + '\n\n' + fileSummary,
-          }
-        }
+        intakeSystem += `\n\nA file is attached to this project. Here is its content:\n${fileSummary}\nDo NOT ask questions that are answered by this data. Read it first, then respond.`
+      } else {
+        console.warn(`[INTAKE] Could not fetch upload ${resolvedUploadId} — proceeding without file context`)
       }
     }
 
-    const text = await callAnthropic(anthropicMessages, INTAKE_SYSTEM, 500)
+    const text = await callAnthropic(anthropicMessages, intakeSystem, 500)
     return NextResponse.json({ text })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
