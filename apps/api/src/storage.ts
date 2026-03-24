@@ -314,6 +314,7 @@ class VibeStorage {
     team_id: string;
     repository_url?: string | null;
     local_path: string;
+    upload_id?: string | null;
   }): Promise<Project> {
     const insert: Record<string, unknown> = {
       name: project.name,
@@ -322,6 +323,7 @@ class VibeStorage {
       local_path: project.local_path,
     };
     if (project.id) insert.id = project.id;
+    if (project.upload_id) insert.upload_id = project.upload_id;
 
     const { data, error } = await this.sb
       .from('projects')

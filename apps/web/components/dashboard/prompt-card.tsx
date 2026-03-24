@@ -225,7 +225,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       let projectId = selectedProjectId
       if (!projectId) {
         console.log("[VIBE] fireJob: creating project...")
-        const project = await createProject(generateSmartName(finalPrompt), undefined, currentTeam?.id)
+        const project = await createProject(generateSmartName(finalPrompt), undefined, currentTeam?.id, uploadIdRef.current)
         if (project.error || !project.id) throw new Error(project.error || "Failed to create project")
         projectId = project.id
         console.log("[VIBE] fireJob: project created:", projectId)

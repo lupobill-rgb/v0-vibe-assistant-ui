@@ -8,7 +8,7 @@ import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import { resolveKernelContext } from './kernel/context-injector';
-import { runDebugAgent, runSelfHealingScan } from '../../executor/src/agents/debug-agent';
+import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
 import { promisify } from 'util';
 import multer from 'multer';
 import { parse as csvParse } from 'csv-parse/sync';
@@ -359,7 +359,7 @@ async function bootstrap() {
   // POST /projects - Create a new project (team_id optional — falls back to default team)
   app.post('/projects', express.json(), async (req: Request, res: Response) => {
     try {
-      const { name, team_id: rawTeamId, repository_url, template = 'empty' } = req.body;
+      const { name, team_id: rawTeamId, repository_url, template = 'empty', upload_id: projUploadId } = req.body;
 
       if (!name) {
         return res.status(400).json({ error: 'Missing required field: name' });
@@ -416,6 +416,7 @@ async function bootstrap() {
         team_id,
         repository_url: repository_url || null,
         local_path: repoDir,
+        upload_id: projUploadId || null,
       });
 
       res.status(201).json({
@@ -899,7 +900,7 @@ async function bootstrap() {
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', express.json(), async (req: Request, res: Response) => {
     try {
-      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id, upload_id, conversation_id } = req.body;
+      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id, upload_id: bodyUploadId, conversation_id } = req.body;
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
       const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
 
@@ -918,6 +919,9 @@ async function bootstrap() {
       if (!project) {
         return res.status(404).json({ error: `Project not found: ${project_id}` });
       }
+
+      // Resolve upload_id: request body takes precedence, fall back to project record
+      const upload_id = bodyUploadId || (project as any).upload_id || undefined;
 
       // Resolve team name for mode inference
       const team = await storage.getTeam(project.team_id);
