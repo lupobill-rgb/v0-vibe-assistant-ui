@@ -13,6 +13,7 @@ import { promisify } from 'util';
 import multer from 'multer';
 import { parse as csvParse } from 'csv-parse/sync';
 import { resolveMode } from './edge-function';
+import { ingestBudgetCSV, isBudgetRelated } from './lib/ingest-budget-csv';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -864,6 +865,7 @@ async function bootstrap() {
           columns,
           column_schema: columnSchema,
           sample_data: sampleData,
+          raw_content: file.buffer.toString('utf-8'),
           row_count: rowCount,
           aggregated_stats: aggregatedStats,
         })
@@ -1337,6 +1339,32 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             try {
               await storage.updateTaskState(taskId, 'building');
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
+
+              // ── Auto-ingest budget CSV before LLM call ──
+              // If user attached a CSV and prompt references budget data,
+              // populate budget_allocations so vibeLoadData() returns real rows.
+              if (upload_id && isBudgetRelated(prompt) && org) {
+                try {
+                  const { data: uploadForIngest } = await getPlatformSupabaseClient()
+                    .from('user_uploads')
+                    .select('raw_content, original_filename')
+                    .eq('id', upload_id)
+                    .single();
+                  if (uploadForIngest?.raw_content) {
+                    const ingestResult = await ingestBudgetCSV(uploadForIngest.raw_content, org.id);
+                    await storage.logEvent(taskId, `Auto-ingested budget CSV: ${ingestResult.rows_processed} rows written to budget_allocations`, 'info');
+                    if (ingestResult.rows_failed > 0) {
+                      await storage.logEvent(taskId, `Budget ingest warnings: ${ingestResult.rows_failed} rows skipped — ${ingestResult.errors.slice(0, 3).join('; ')}`, 'warning');
+                    }
+                  } else {
+                    console.warn(`[AUTO-INGEST] No raw_content for upload ${upload_id} — skipping budget ingest`);
+                  }
+                } catch (ingestErr: any) {
+                  console.error(`[AUTO-INGEST] Budget CSV ingest failed (non-blocking): ${ingestErr.message}`);
+                  await storage.logEvent(taskId, `Budget CSV auto-ingest failed: ${ingestErr.message}`, 'warning');
+                }
+              }
+
               const dashColorBlock = buildColorBlock(resolveColorScheme(prompt));
               const dashResult = await Promise.race([
                 edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock }),
