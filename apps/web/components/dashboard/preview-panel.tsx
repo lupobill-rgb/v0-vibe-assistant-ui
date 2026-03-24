@@ -14,7 +14,24 @@ export function PreviewPanel({ pages }: PreviewPanelProps) {
   const showTabs = pages.length > 1
 
   const blobUrl = useMemo(() => {
-    const html = pages[activeIndex]?.html ?? ""
+    const raw = pages[activeIndex]?.html ?? ""
+
+    // Inject Supabase credentials so vibeLoadData() works inside the iframe
+    const credentialsScript = `<script>
+window.__VIBE_SUPABASE_URL__ = ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://ptaqytvztkhjpuawdxng.supabase.co")};
+window.__VIBE_SUPABASE_ANON_KEY__ = ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "")};
+</script>`
+
+    // Insert before any other scripts — right after <head> or at the top
+    let html: string
+    if (raw.toLowerCase().includes("<head>")) {
+      html = raw.replace(/(<head[^>]*>)/i, `$1\n${credentialsScript}`)
+    } else if (raw.toLowerCase().includes("<html")) {
+      html = raw.replace(/(<html[^>]*>)/i, `$1\n${credentialsScript}`)
+    } else {
+      html = credentialsScript + "\n" + raw
+    }
+
     const blob = new Blob([html], { type: "text/html" })
     return URL.createObjectURL(blob)
   }, [pages, activeIndex])
