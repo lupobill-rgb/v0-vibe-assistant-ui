@@ -17,6 +17,7 @@ Rules:
 - Never ask more than 3 questions total
 - Never explain yourself or add commentary
 - Be conversational, not formal
+- If the user attached a file (shown as [Attached file: ...]), acknowledge it and include it in the enrichedPrompt. Do NOT ask what data to use — they already provided it.
 Focus on: what type of output (app/site/dashboard), what data/entities are involved, who will use it.`
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
@@ -37,9 +38,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     progress: number
     message: string
     uploadId?: string
+    filename?: string
   }>({ status: "idle", progress: 0, message: "" })
+  // Ref to keep upload_id accessible across async closures without stale capture
+  const uploadIdRef = useRef<string | undefined>(undefined)
   const handleAttach = () => fileInputRef.current?.click()
   const clearUpload = () => {
+    uploadIdRef.current = undefined
     setUploadState({ status: "idle", progress: 0, message: "" })
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
@@ -75,7 +80,9 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         xhr.open("POST", `${API_URL}/upload`)
         xhr.send(formData)
       })
-      setUploadState({ status: "done", progress: 100, message: `✓ ${file.name} ready — ${(result.row_count ?? 0).toLocaleString()} rows loaded.`, uploadId: result.upload_id })
+      const uid = result.upload_id
+      uploadIdRef.current = uid
+      setUploadState({ status: "done", progress: 100, message: `✓ ${file.name} ready — ${(result.row_count ?? 0).toLocaleString()} rows loaded.`, uploadId: uid, filename: file.name })
     } catch (err) {
       setUploadState({ status: "error", progress: 0, message: err instanceof Error ? err.message : "Upload failed" })
     }
@@ -123,7 +130,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setStage("intake")
     setIntaking(true)
     setMessages([])
-    conversationRef.current = [{ role: "user", content: prompt.trim() }]
+    // Include file context so the intake AI knows about the attachment
+    const fileNote = uploadIdRef.current && uploadState.filename
+      ? `\n[Attached file: ${uploadState.filename}]`
+      : ""
+    conversationRef.current = [{ role: "user", content: prompt.trim() + fileNote }]
     try {
       const reply = await callClaude(conversationRef.current)
       // Check if Claude is already ready
@@ -225,7 +236,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         prompt: finalPrompt,
         project_id: projectId,
         base_branch: "main",
-        upload_id: uploadState.uploadId,
+        upload_id: uploadIdRef.current,
         conversation_id: conversationId,
       })
       if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
@@ -291,6 +302,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
                 </button>
               )}
             </div>
+            {/* File attachment indicator — persists through intake */}
+            {uploadState.status === "done" && uploadIdRef.current && (
+              <div className="flex items-center gap-2 text-xs rounded-lg px-3 py-2 mb-3 bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="flex-1 truncate">{uploadState.message}</span>
+              </div>
+            )}
             {/* Conversation */}
             <div className="space-y-3 mb-4">
               {messages.map((m, i) => (
