@@ -993,8 +993,12 @@ async function bootstrap() {
       let enrichedPrompt = prompt;
       if (user_id && org) {
         const kernelContext = await resolveKernelContext(user_id, org.id, project.team_id);
-        if (kernelContext) {
-          enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
+        const deptSkills = project.team_id
+          ? await resolveDepartmentSkills(project.team_id, prompt, getPlatformSupabaseClient())
+          : '';
+        const contextBlock = [kernelContext, deptSkills].filter(Boolean).join('\n');
+        if (contextBlock) {
+          enrichedPrompt = `${contextBlock}\n\nUSER REQUEST:\n${prompt}`;
         }
       }
 
