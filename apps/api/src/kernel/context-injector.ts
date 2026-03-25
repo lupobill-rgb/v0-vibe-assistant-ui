@@ -278,6 +278,106 @@ Query via: vibeLoadData('published_assets', {asset_type: '<type>'}) or vibeLoadD
 --- END PUBLISHED ASSETS ---`;
 }
 
+// --- Stop words for keyword overlap scoring ---
+const STOP_WORDS = new Set([
+  'a','an','the','is','are','was','were','be','been','being','have','has','had',
+  'do','does','did','will','would','shall','should','may','might','must','can',
+  'could','i','me','my','we','our','you','your','he','she','it','they','them',
+  'this','that','these','those','of','in','to','for','with','on','at','by',
+  'from','as','into','about','between','through','and','but','or','not','no',
+  'so','if','then','than','too','very','just','also','how','what','when','where',
+  'who','which','why','all','each','every','any','few','more','most','some',
+  'such','only','own','same','other','new','old','make','like','need','want',
+  'use','get','create','build','add','show','please','help',
+]);
+
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w))
+  );
+}
+
+function scoreOverlap(skillDesc: string, promptTokens: Set<string>): number {
+  const skillTokens = tokenize(skillDesc);
+  let hits = 0;
+  for (const t of skillTokens) {
+    if (promptTokens.has(t)) hits++;
+  }
+  return hits;
+}
+
+const MAX_OUTPUT_CHARS = 16_000;
+
+/**
+ * Resolves department-specific skills from skill_registry for a given team.
+ * Scores each skill's description against the user prompt via keyword overlap,
+ * returns top 2 (or top 3 if third scores > 50% of top) formatted as a context block.
+ */
+export async function resolveDepartmentSkills(
+  teamId: string,
+  userPrompt: string,
+  supabase: { from: (table: string) => any },
+): Promise<string> {
+  // 1. Fetch the team's function
+  const { data: team, error: teamErr } = await supabase
+    .from('teams')
+    .select('function')
+    .eq('id', teamId)
+    .limit(1)
+    .single();
+
+  if (teamErr || !team?.function) return '';
+
+  // 2. Query matching skills
+  const { data: skills, error: skillErr } = await supabase
+    .from('skill_registry')
+    .select('plugin_name, skill_name, description, content')
+    .eq('team_function', team.function)
+    .neq('content', 'PENDING_DESKTOP_SEED');
+
+  if (skillErr || !skills || skills.length === 0) return '';
+
+  // 3. Score each skill
+  const promptTokens = tokenize(userPrompt);
+  const scored = skills
+    .map((s: any) => ({ ...s, score: scoreOverlap(s.description ?? s.skill_name, promptTokens) }))
+    .sort((a: any, b: any) => b.score - a.score);
+
+  if (scored[0].score === 0) return '';
+
+  // 4. Pick top 2, optionally top 3
+  const topScore = scored[0].score;
+  let picks = scored.slice(0, Math.min(2, scored.length));
+  if (scored.length > 2 && scored[2].score > topScore * 0.5) {
+    picks = scored.slice(0, 3);
+  }
+
+  // 5. Format output, respecting 16k cap
+  let output = '--- DEPARTMENT SKILLS ---\n';
+  let count = 0;
+
+  for (const skill of picks) {
+    const block = `## ${skill.skill_name} (${skill.plugin_name})\n${skill.content}\n---\n`;
+    if (output.length + block.length > MAX_OUTPUT_CHARS) {
+      const remaining = MAX_OUTPUT_CHARS - output.length;
+      if (remaining > 100) {
+        output += block.slice(0, remaining - 4) + '\n---\n';
+        count++;
+      }
+      break;
+    }
+    output += block;
+    count++;
+  }
+
+  if (count === 0) return '';
+
+  const bytes = Buffer.byteLength(output, 'utf-8');
+  console.log(`[kernel] Injected ${count} department skills for team ${teamId} (${bytes} bytes)`);
+  return output;
+}
+
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {
   try {
     const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
