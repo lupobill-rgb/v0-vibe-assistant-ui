@@ -141,6 +141,10 @@ async function bootstrap() {
   // Enable CORS
   nestApp.enableCors();
 
+  // Ensure body parsing for NestJS controllers (connectors, etc.)
+  nestApp.use(require('express').json());
+  nestApp.use(require('express').urlencoded({ extended: true }));
+
   // Get the underlying Express instance
   const app = nestApp.getHttpAdapter().getInstance();
 
