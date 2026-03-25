@@ -185,11 +185,9 @@ async function bootstrap() {
       const session = await nango.createConnectSession({
         tags: { end_user_id: teamId },
         allowed_integrations: [connectorType],
-        ...(redirectUri ? { redirect_url: redirectUri } : {}),
       });
-      const token = (session as any).data.token;
-      const url = `https://api.nango.dev/oauth/connect/${connectorType}?connect_session_token=${token}&connection_id=${connectionId}`;
-      res.json({ url });
+      const sessionToken = session.data.token;
+      res.json({ sessionToken, connectionId });
     } catch (error: any) {
       console.error('Connector connect error:', error);
       res.status(500).json({ error: error.message ?? 'Failed to initiate connection' });
