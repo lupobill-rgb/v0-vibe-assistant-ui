@@ -1401,8 +1401,9 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           }
 
           // ── Dashboard fast path ── bypass planner, single Edge call ──
-          // File uploads always route here: uploaded data needs the single-call dashboard path
-          if (upload_id || resolvedMode === 'dashboard') {
+          // Fast path removed — LLM + department skills determine output format
+          // File uploads still route here: uploaded data needs the single-call dashboard path
+          if (upload_id) {
             try {
               await storage.updateTaskState(taskId, 'building');
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
@@ -1610,12 +1611,9 @@ Include ALL rows from the original data with their final calculated values. This
                 const safeName = page.route === '/' ? 'index' : page.route.slice(1);
                 await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
                 console.log('[KERNEL] page prompt prefix:', page.description.slice(0, 300));
-                // Dashboard fallback: use dashboard mode so pages get Chart.js, KPIs, tables
-                const pageBuildMode = resolvedMode === 'dashboard' ? 'dashboard' :
-                  resolvedMode === 'site' ? 'site' : 'page';
-                const pageContext = resolvedMode === 'dashboard'
-                  ? `This is page "${page.name}" of a multi-page dashboard. PagePlan: ${JSON.stringify(currentPlan)}. Include KPI cards, Chart.js charts, and data tables relevant to ${page.name}. Include sidebar navigation linking to all pages: ${currentPlan.pages.map((p: any) => `${p.name} (${p.route === '/' ? 'index' : p.route.slice(1)}.html)`).join(', ')}.`
-                  : `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`;
+                // Fast path removed — LLM + department skills determine output format
+                const pageBuildMode = resolvedMode === 'site' ? 'site' : 'page';
+                const pageContext = `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`;
                 const pageResult = await edgeCall({
                   prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
                   model: resolvedModel,
@@ -1644,7 +1642,7 @@ Include ALL rows from the original data with their final calculated values. This
                 route: name === 'index' ? '/' : `/${name}`,
                 html: fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8'),
               }));
-              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt), resolvedMode === 'dashboard');
+              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt));
               if (!quality.ok) {
                 await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
                 await storage.logEvent(taskId, `[QA REASONS] ${quality.reasons.join(' | ')}`, 'warn');
@@ -1656,10 +1654,9 @@ Include ALL rows from the original data with their final calculated values. This
                   repairAttempts += 1;
                   const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
                   const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
-                  const repairMode = resolvedMode === 'dashboard' ? 'dashboard' : 'page';
-                  const repairPrompt = resolvedMode === 'dashboard'
-                    ? `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML dashboard page so it includes: Chart.js charts with <canvas> elements, KPI stat cards, a data table, sidebar navigation, <title>, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, Chart.js CDN, and design tokens intact.\n${existing}`
-                    : `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`;
+                  // Fast path removed — LLM + department skills determine output format
+                  const repairMode = 'page';
+                  const repairPrompt = `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`;
                   const repairResult = await edgeCall({ prompt: repairPrompt, model: resolvedModel, mode: repairMode, color_block: colorBlock });
                   modelCalls += 1;
                   if (repairResult.ok) {
