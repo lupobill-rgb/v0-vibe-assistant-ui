@@ -18,16 +18,15 @@ export class ConnectorsController {
    * Initiates OAuth flow — returns a connect URL the frontend opens.
    */
   @Post('connect')
-  async connect(@Body() body: ConnectDto): Promise<{ url: string }> {
+  async connect(@Body() body: ConnectDto): Promise<{ sessionToken: string; connectionId: string }> {
     this.logger.log(
       `Connect request — team=${body.teamId} connector=${body.connectorType}`,
     );
-    const url = await this.nangoService.getConnectUrl(
+    return this.nangoService.getConnectUrl(
       body.teamId,
       body.connectorType,
       body.redirectUri,
     );
-    return { url };
   }
 
   /**
