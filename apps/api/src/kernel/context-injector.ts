@@ -329,14 +329,38 @@ export async function resolveDepartmentSkills(
 
   if (teamErr || !team?.function) return '';
 
-  // 2. Query matching skills
-  const { data: skills, error: skillErr } = await supabase
+  // 2. Query direct skills for this team function
+  const { data: directSkills } = await supabase
     .from('skill_registry')
     .select('plugin_name, skill_name, description, content')
     .eq('team_function', team.function)
     .neq('content', 'PENDING_DESKTOP_SEED');
 
-  if (skillErr || !skills || skills.length === 0) return '';
+  // 2b. Query shared skills: source functions that share into this team function
+  const { data: sharedSources } = await supabase
+    .from('skill_sharing')
+    .select('source_function')
+    .eq('target_function', team.function);
+
+  let sharedSkills: any[] = [];
+  const sourceFns = (sharedSources ?? []).map((r: any) => r.source_function).filter(Boolean);
+  if (sourceFns.length > 0) {
+    const { data } = await supabase
+      .from('skill_registry')
+      .select('plugin_name, skill_name, description, content')
+      .in('team_function', sourceFns)
+      .neq('content', 'PENDING_DESKTOP_SEED');
+    sharedSkills = data ?? [];
+  }
+
+  // 2c. Merge and deduplicate by skill_name
+  const seen = new Set<string>();
+  const skills: any[] = [];
+  for (const s of [...(directSkills ?? []), ...sharedSkills]) {
+    if (!seen.has(s.skill_name)) { seen.add(s.skill_name); skills.push(s); }
+  }
+
+  if (skills.length === 0) return '';
 
   // 3. Score each skill
   const promptTokens = tokenize(userPrompt);

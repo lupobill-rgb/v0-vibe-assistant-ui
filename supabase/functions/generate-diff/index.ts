@@ -917,9 +917,9 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Direct dashboard fast path ──────────────────────────────────────
-    // Skip the planner entirely for dashboard requests — single Claude call
-    // BUT never intercept explicit edit/page/html/plan modes — those have their own pipelines
-    if (isDashboardRequest(prompt) && (!mode || mode === "dashboard")) {
+    // Fast path removed — LLM + department skills determine output format
+    // isDashboardRequest() kept for diagnostics but no longer bypasses the pipeline
+    if (false) {
       try {
         const colorInjection = color_block
           ? `\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
