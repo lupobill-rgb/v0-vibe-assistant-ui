@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import { useTeam } from "@/contexts/TeamContext"
 import { API_URL } from "@/lib/api"
+import Nango from "@nangohq/frontend"
 import {
   Dialog,
   DialogContent,
@@ -74,7 +75,6 @@ export function ConnectDatasourceDialog({
         body: JSON.stringify({
           teamId: currentTeam.id,
           connectorType,
-          redirectUri: window.location.href,
         }),
       })
 
@@ -82,14 +82,21 @@ export function ConnectDatasourceDialog({
         throw new Error(`Failed to initiate connection (${res.status})`)
       }
 
-      const { url } = await res.json()
-      if (url) {
-        window.open(url, "_blank", "width=600,height=700")
-        onConnected?.(connectorType)
-        handleOpenChange(false)
-      } else {
-        throw new Error("No connect URL returned")
+      const { sessionToken, connectionId } = await res.json()
+      if (!sessionToken) {
+        throw new Error("No session token returned")
       }
+
+      const nango = new Nango()
+      await nango.openConnectUI({
+        sessionToken,
+        onEvent: (event) => {
+          if (event.type === "connect") {
+            onConnected?.(connectorType)
+            handleOpenChange(false)
+          }
+        },
+      })
     } catch (err) {
       setError((err as Error).message)
     } finally {
