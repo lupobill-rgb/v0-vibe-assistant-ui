@@ -179,8 +179,7 @@ async function bootstrap() {
       if (!secretKey) {
         return res.status(500).json({ error: 'NANGO_SECRET_KEY not configured' });
       }
-      const NangoSDK = require('@nangohq/node');
-      const { Nango } = NangoSDK;
+      const { Nango } = require('@nangohq/node');
       const nango = new Nango({ secretKey });
       const connectionId = `${teamId}__${connectorType}`;
       const session = await nango.createConnectSession({
@@ -204,8 +203,8 @@ async function bootstrap() {
       if (!secretKey) {
         return res.status(500).json({ error: 'NANGO_SECRET_KEY not configured' });
       }
-      const NangoSDK = require('@nangohq/node');
-      const nango = new NangoSDK({ secretKey });
+      const { Nango } = require('@nangohq/node');
+      const nango = new Nango({ secretKey });
       const connectorTypes = [
         'salesforce','hubspot','slack','google-analytics-4',
         'mixpanel','airtable','snowflake','postgres','google-bigquery','aws-s3'
@@ -238,8 +237,8 @@ async function bootstrap() {
       if (!secretKey) {
         return res.status(500).json({ error: 'NANGO_SECRET_KEY not configured' });
       }
-      const NangoSDK = require('@nangohq/node');
-      const nango = new NangoSDK({ secretKey });
+      const { Nango } = require('@nangohq/node');
+      const nango = new Nango({ secretKey });
       const connectionId = `${teamId}__${connectorType}`;
       await nango.deleteConnection(connectorType, connectionId);
       res.json({ success: true });
