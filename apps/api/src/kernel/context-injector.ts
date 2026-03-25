@@ -114,6 +114,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   // 4d. Resolve published assets this team can see (own + visible teams)
   const publishedAssets = resolvedTeamId ? await resolvePublishedAssets(sb, resolvedTeamId) : '';
 
+  // 4e. Resolve department skills for this team
+  const deptSkills = resolvedTeamId ? await resolveDepartmentSkills(sb, resolvedTeamId, teamName) : '';
+
   // 5. Format and return
   const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
@@ -128,6 +131,7 @@ Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
+    + deptSkills
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 }
 
@@ -278,128 +282,73 @@ Query via: vibeLoadData('published_assets', {asset_type: '<type>'}) or vibeLoadD
 --- END PUBLISHED ASSETS ---`;
 }
 
-// --- Stop words for keyword overlap scoring ---
-const STOP_WORDS = new Set([
-  'a','an','the','is','are','was','were','be','been','being','have','has','had',
-  'do','does','did','will','would','shall','should','may','might','must','can',
-  'could','i','me','my','we','our','you','your','he','she','it','they','them',
-  'this','that','these','those','of','in','to','for','with','on','at','by',
-  'from','as','into','about','between','through','and','but','or','not','no',
-  'so','if','then','than','too','very','just','also','how','what','when','where',
-  'who','which','why','all','each','every','any','few','more','most','some',
-  'such','only','own','same','other','new','old','make','like','need','want',
-  'use','get','create','build','add','show','please','help',
-]);
+// --- Department mapping from team name ---
+const DEPARTMENT_MAP: Record<string, string> = {
+  sales: 'Sales',
+  marketing: 'Marketing',
+  finance: 'Finance',
+  product: 'Product',
+  engineering: 'Engineering',
+  hr: 'HR / Ops',
+  people: 'HR / Ops',
+  ops: 'HR / Ops',
+  operations: 'HR / Ops',
+  'customer success': 'Customer Success',
+  cs: 'Customer Success',
+  support: 'Customer Success',
+  executive: 'Executive',
+  exec: 'Executive',
+  leadership: 'Executive',
+  design: 'Design',
+};
 
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
-      .filter(w => w.length > 2 && !STOP_WORDS.has(w))
-  );
+function resolveDepartment(teamName: string): string {
+  const lower = teamName.toLowerCase().trim();
+  return DEPARTMENT_MAP[lower] ?? 'General';
 }
-
-function scoreOverlap(skillDesc: string, promptTokens: Set<string>): number {
-  const skillTokens = tokenize(skillDesc);
-  let hits = 0;
-  for (const t of skillTokens) {
-    if (promptTokens.has(t)) hits++;
-  }
-  return hits;
-}
-
-const MAX_OUTPUT_CHARS = 16_000;
 
 /**
  * Resolves department-specific skills from skill_registry for a given team.
- * Scores each skill's description against the user prompt via keyword overlap,
- * returns top 2 (or top 3 if third scores > 50% of top) formatted as a context block.
+ * Maps team name → department, fetches active skills, falls back to General.
  */
 export async function resolveDepartmentSkills(
+  supabase: ReturnType<typeof getPlatformSupabaseClient>,
   teamId: string,
-  userPrompt: string,
-  supabase: { from: (table: string) => any },
+  teamName: string,
 ): Promise<string> {
-  // 1. Fetch the team's function
-  const { data: team, error: teamErr } = await supabase
-    .from('teams')
-    .select('function')
-    .eq('id', teamId)
-    .limit(1)
-    .single();
+  const resolvedDept = resolveDepartment(teamName);
 
-  if (teamErr || !team?.function) return '';
-
-  // 2. Query direct skills for this team function
-  const { data: directSkills } = await supabase
+  // Query skills for the resolved department
+  const { data: skills, error } = await supabase
     .from('skill_registry')
-    .select('plugin_name, skill_name, description, content')
-    .eq('team_function', team.function)
-    .neq('content', 'PENDING_DESKTOP_SEED');
+    .select('skill_name, skill_prompt')
+    .eq('department', resolvedDept)
+    .eq('is_active', true)
+    .order('skill_name', { ascending: true });
 
-  // 2b. Query shared skills: source functions that share into this team function
-  const { data: sharedSources } = await supabase
-    .from('skill_sharing')
-    .select('source_function')
-    .eq('target_function', team.function);
+  if (error) {
+    console.log(`[KERNEL] resolveDepartmentSkills error for team=${teamId}: ${error.message}`);
+    return '';
+  }
 
-  let sharedSkills: any[] = [];
-  const sourceFns = (sharedSources ?? []).map((r: any) => r.source_function).filter(Boolean);
-  if (sourceFns.length > 0) {
-    const { data } = await supabase
+  let finalSkills = skills ?? [];
+
+  // Fallback to General if no skills found for this department
+  if (finalSkills.length === 0 && resolvedDept !== 'General') {
+    const { data: generalSkills } = await supabase
       .from('skill_registry')
-      .select('plugin_name, skill_name, description, content')
-      .in('team_function', sourceFns)
-      .neq('content', 'PENDING_DESKTOP_SEED');
-    sharedSkills = data ?? [];
+      .select('skill_name, skill_prompt')
+      .eq('department', 'General')
+      .eq('is_active', true)
+      .order('skill_name', { ascending: true });
+    finalSkills = generalSkills ?? [];
   }
 
-  // 2c. Merge and deduplicate by skill_name
-  const seen = new Set<string>();
-  const skills: any[] = [];
-  for (const s of [...(directSkills ?? []), ...sharedSkills]) {
-    if (!seen.has(s.skill_name)) { seen.add(s.skill_name); skills.push(s); }
-  }
+  if (finalSkills.length === 0) return '';
 
-  if (skills.length === 0) return '';
-
-  // 3. Score each skill
-  const promptTokens = tokenize(userPrompt);
-  const scored = skills
-    .map((s: any) => ({ ...s, score: scoreOverlap(s.description ?? s.skill_name, promptTokens) }))
-    .sort((a: any, b: any) => b.score - a.score);
-
-  if (scored[0].score === 0) return '';
-
-  // 4. Pick top 2, optionally top 3
-  const topScore = scored[0].score;
-  let picks = scored.slice(0, Math.min(2, scored.length));
-  if (scored.length > 2 && scored[2].score > topScore * 0.5) {
-    picks = scored.slice(0, 3);
-  }
-
-  // 5. Format output, respecting 16k cap
-  let output = '--- DEPARTMENT SKILLS ---\n';
-  let count = 0;
-
-  for (const skill of picks) {
-    const block = `## ${skill.skill_name} (${skill.plugin_name})\n${skill.content}\n---\n`;
-    if (output.length + block.length > MAX_OUTPUT_CHARS) {
-      const remaining = MAX_OUTPUT_CHARS - output.length;
-      if (remaining > 100) {
-        output += block.slice(0, remaining - 4) + '\n---\n';
-        count++;
-      }
-      break;
-    }
-    output += block;
-    count++;
-  }
-
-  if (count === 0) return '';
-
-  const bytes = Buffer.byteLength(output, 'utf-8');
-  console.log(`[kernel] Injected ${count} department skills for team ${teamId} (${bytes} bytes)`);
-  return output;
+  const prompts = finalSkills.map((s: any) => s.skill_prompt).join('\n---\n');
+  console.log(`[KERNEL] Injected ${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}`);
+  return `\nDEPARTMENT SKILLS (${resolvedDept}):\n${prompts}`;
 }
 
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {

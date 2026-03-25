@@ -267,7 +267,8 @@ async function bootstrap() {
         availableSkills = skills?.length ?? 0;
         skillNames = (skills ?? []).map((s: any) => s.skill_name);
       }
-      const sampleInjection = await resolveDepartmentSkills(teamId, 'general overview', sb);
+      const { data: teamRow } = await sb.from('teams').select('name').eq('id', teamId).limit(1).single();
+      const sampleInjection = await resolveDepartmentSkills(sb, teamId, teamRow?.name ?? 'unknown');
 
       res.json({
         context: ctx,
@@ -993,12 +994,8 @@ async function bootstrap() {
       let enrichedPrompt = prompt;
       if (user_id && org) {
         const kernelContext = await resolveKernelContext(user_id, org.id, project.team_id);
-        const deptSkills = project.team_id
-          ? await resolveDepartmentSkills(project.team_id, prompt, getPlatformSupabaseClient())
-          : '';
-        const contextBlock = [kernelContext, deptSkills].filter(Boolean).join('\n');
-        if (contextBlock) {
-          enrichedPrompt = `${contextBlock}\n\nUSER REQUEST:\n${prompt}`;
+        if (kernelContext) {
+          enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
         }
       }
 
