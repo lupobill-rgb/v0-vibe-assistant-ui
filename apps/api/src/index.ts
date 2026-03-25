@@ -180,13 +180,16 @@ async function bootstrap() {
         return res.status(500).json({ error: 'NANGO_SECRET_KEY not configured' });
       }
       const NangoSDK = require('@nangohq/node');
-      const nango = new NangoSDK({ secretKey });
+      const { Nango } = NangoSDK;
+      const nango = new Nango({ secretKey });
       const connectionId = `${teamId}__${connectorType}`;
-      const session = await nango.auth(connectorType, connectionId, {
-        user_id: teamId,
-        ...(redirectUri ? { params: { redirect_uri: redirectUri } } : {}),
+      const session = await nango.createConnectSession({
+        end_user: { id: teamId },
+        allowed_integrations: [connectorType],
+        ...(redirectUri ? { redirect_url: redirectUri } : {}),
       });
-      const url = (session as any).url ?? '';
+      const token = (session as any).data.token;
+      const url = `https://api.nango.dev/oauth/connect/${connectorType}?connect_session_token=${token}&connection_id=${connectionId}`;
       res.json({ url });
     } catch (error: any) {
       console.error('Connector connect error:', error);
