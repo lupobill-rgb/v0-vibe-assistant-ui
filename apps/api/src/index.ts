@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
-import { resolveKernelContext } from './kernel/context-injector';
+import { resolveKernelContext, resolveDepartmentSkills } from './kernel/context-injector';
 import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
 import { promisify } from 'util';
 import multer from 'multer';
@@ -249,10 +249,35 @@ async function bootstrap() {
   // ── Kernel diagnostic (Layer 3 verification) ──
   app.get('/api/kernel-context/:userId/:orgId/:teamId', async (req: Request, res: Response) => {
     try {
-      const ctx = await resolveKernelContext(req.params.userId, req.params.orgId, req.params.teamId);
+      const { userId, orgId, teamId } = req.params;
+      const sb = getPlatformSupabaseClient();
+      const ctx = await resolveKernelContext(userId, orgId, teamId);
+
+      // Resolve department skills diagnostic
+      const { data: team } = await sb.from('teams').select('function').eq('id', teamId).limit(1).single();
+      const teamFunction = team?.function ?? null;
+      let availableSkills = 0;
+      let skillNames: string[] = [];
+      if (teamFunction) {
+        const { data: skills } = await sb
+          .from('skill_registry')
+          .select('skill_name')
+          .eq('team_function', teamFunction)
+          .neq('content', 'PENDING_DESKTOP_SEED');
+        availableSkills = skills?.length ?? 0;
+        skillNames = (skills ?? []).map((s: any) => s.skill_name);
+      }
+      const sampleInjection = await resolveDepartmentSkills(teamId, 'general overview', sb);
+
       res.json({
         context: ctx,
         hasVisibleTeamData: ctx.includes('VISIBLE TEAM DATA'),
+        department_skills: {
+          team_function: teamFunction,
+          available_skills: availableSkills,
+          skill_names: skillNames,
+          sample_injection: sampleInjection.slice(0, 500),
+        },
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
