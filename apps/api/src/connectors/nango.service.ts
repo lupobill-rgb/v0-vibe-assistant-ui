@@ -48,7 +48,7 @@ export class NangoService {
     const connectionId = `${teamId}__${connectorType}`;
     this.logger.log(`Initiating connect session team=${teamId} connector=${connectorType}`);
     const session = await this.nango.createConnectSession({
-      end_user: { id: teamId },
+      tags: { end_user_id: teamId },
       allowed_integrations: [connectorType],
       ...(redirectUri ? { redirect_url: redirectUri } : {}),
     });

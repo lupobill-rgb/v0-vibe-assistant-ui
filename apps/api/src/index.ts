@@ -183,7 +183,7 @@ async function bootstrap() {
       const nango = new Nango({ secretKey });
       const connectionId = `${teamId}__${connectorType}`;
       const session = await nango.createConnectSession({
-        end_user: { id: teamId },
+        tags: { end_user_id: teamId },
         allowed_integrations: [connectorType],
         ...(redirectUri ? { redirect_url: redirectUri } : {}),
       });
