@@ -46,12 +46,14 @@ export class NangoService {
   async getConnectUrl(teamId: string, connectorType: ConnectorType, redirectUri: string): Promise<string> {
     this.ensureConfigured();
     const connectionId = `${teamId}__${connectorType}`;
-    this.logger.log(`Initiating OAuth team=${teamId} connector=${connectorType}`);
-    const session = await this.nango.auth(connectorType, connectionId, {
-      user_id: teamId,
-      ...(redirectUri ? { params: { redirect_uri: redirectUri } } : {}),
+    this.logger.log(`Initiating connect session team=${teamId} connector=${connectorType}`);
+    const session = await this.nango.createConnectSession({
+      end_user: { id: teamId },
+      allowed_integrations: [connectorType],
+      ...(redirectUri ? { redirect_url: redirectUri } : {}),
     });
-    return (session as { url: string }).url ?? '';
+    const token = (session as { data: { token: string } }).data.token;
+    return `https://api.nango.dev/oauth/connect/${connectorType}?connect_session_token=${token}&connection_id=${connectionId}`;
   }
 
   async getConnection(teamId: string, connectorType: ConnectorType): Promise<NangoConnection | null> {
