@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import { useTeam } from "@/contexts/TeamContext"
+import { API_URL } from "@/lib/api"
 import {
   Dialog,
   DialogContent,
@@ -65,12 +66,10 @@ export function ConnectDatasourceDialog({
     setError("")
 
     try {
-      const res = await fetch("https://ptaqytvztkhjpuawdxng.supabase.co/functions/v1/connectors/connect", {
+      const res = await fetch(`${API_URL}/connectors/connect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""}`,
         },
         body: JSON.stringify({
           teamId: currentTeam.id,
