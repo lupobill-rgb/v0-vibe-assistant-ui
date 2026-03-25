@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Body, Param, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Logger, BadRequestException } from '@nestjs/common';
 import { NangoService, ConnectorType } from './nango.service';
 
 interface ConnectDto {
@@ -19,14 +19,18 @@ export class ConnectorsController {
    */
   @Post('connect')
   async connect(@Body() body: ConnectDto): Promise<{ sessionToken: string; connectionId: string }> {
+    if (!body?.teamId || !body?.connectorType) {
+      throw new BadRequestException('Missing required fields: teamId, connectorType');
+    }
     this.logger.log(
       `Connect request — team=${body.teamId} connector=${body.connectorType}`,
     );
-    return this.nangoService.getConnectUrl(
+    const { sessionToken, connectionId } = await this.nangoService.getConnectUrl(
       body.teamId,
       body.connectorType,
       body.redirectUri,
     );
+    return { sessionToken, connectionId };
   }
 
   /**
