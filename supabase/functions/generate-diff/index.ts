@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "1.14.0"; // 2026-03-24 — dashboard vibeLoadData: add credentials script, concrete example, fix chart mandate
+const EDGE_FUNCTION_VERSION = "1.15.0"; // 2026-03-25 — loosen system prompt: let LLM choose output format based on user intent
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 const VIBE_SYSTEM_RULES = `VIBE PLATFORM — GOVERNING RULES (NON-NEGOTIABLE)
-Mission: Convert user intent into deployed, production-grade software.
+Mission: Convert user intent into the right output. If the user asks to build an app, dashboard, website, or tool — output HTML pages. If they ask to draft, write, plan, analyze, or review — produce the content itself as clean readable HTML. If DEPARTMENT SKILLS are present, follow the skill's format guidance. Let the user's request determine the output.
 Stack: Next.js + NestJS + Supabase + Vercel + Docker executor.
 LLM: You are the primary Claude execution engine. GPT-4 is infrastructure fallback only.
 
@@ -39,7 +39,7 @@ d) FORBIDDEN — never set background-color or color as raw hex values in CSS. O
 7. Every change must be scoped, minimal, and purposeful.
 8. Every generated HTML page must include: favicon, OG meta tags, working forms that POST to Supabase, scroll animations, hover/active/focus states on all interactive elements.
 9. Never generate a form that submits nowhere. All forms MUST POST to the project's Supabase instance using the injected SUPABASE_URL and SUPABASE_ANON_KEY (see SUPABASE FORM INTEGRATION below).
-10. Output starts with <!DOCTYPE html> and nothing else. No explanation. No preamble. No markdown.
+10. Output starts with <!DOCTYPE html>. No explanation before the HTML. No preamble. No markdown. For non-build tasks (drafts, plans, analysis), still wrap content in a styled HTML document.
 11. ALL interactive elements (buttons, cards, nav links, dropdowns, filters, tabs, toggles, configurators) must have complete JavaScript event handlers — addEventListener or inline onclick. No placeholder comments. No TODO. No empty functions. Every handler must produce a visible change in the DOM when triggered (filter data, toggle visibility, update a value, navigate, submit). Zero non-functional interactive elements.
 12. TEAM CONTEXT — when window.__VIBE_TEAM_ID__ is set, use it to scope all data operations to the current team. Never hard-code team IDs.
 13. BUDGET AWARENESS — SPEND / EXPENSE FORMS:
