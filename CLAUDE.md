@@ -94,3 +94,44 @@ The following components are locked. **No changes without explicit approval.**
 - Customer API keys. All LLM calls through our accounts.
 - Whole-file rewrites. Diffs only.
 - Push to `lupobill-rgb` for bug fixes — always use `UbiGrowth/VIBE`.
+
+## CURRENT SPRINT: REVENUE SPRINT (March 26, 2026)
+
+Governing doc: VIBE_NorthStar_v7_0.docx Sprint prompts: VIBE_Revenue_Sprint_Prompts.md Design standard: VIBE_Design_System_Spec.md
+
+Sprint Sequence — Execute in order. Do NOT skip or reorder.
+
+1A. Thin wrapper (replace VIBE_SYSTEM_RULES) → Edge Function
+1B. resolveDepartmentSkills() → context-injector.ts
+2. Auth identity fix → frontend call sites
+3. Nango HubSpot live → apps/api/src/connectors/
+4. Design system + dashboard quality → context-injector.ts + skill_registry
+5. Edit/iterate flow → API + Edge Function
+6. File upload stability → upload handler
+7A. Stripe backend → apps/api/src/billing/
+7B. Stripe frontend → UpgradeModal + PricingPage
+8. Smoke test gate → manual verification
+
+Current Position: SPRINT 1A
+
+### Billing
+
+STRIPE_SECRET_KEY → Railway env only (never Vercel, never frontend)
+STRIPE_WEBHOOK_SECRET → Railway env only
+Pricing: Starter(free) / Pro($49) / Growth($99) / Team($199) / Enterprise(custom)
+
+### Design System
+
+Every build output must follow DESIGN_SYSTEM_RULES. Injected by context-injector.ts AFTER department skills, BEFORE user prompt. Brand tokens from kernel drive color palette. Light/dark follows user intent.
+
+### Governing Documents (priority order)
+
+1. CLAUDE.md (this file) — session enforcement
+2. VIBE_NorthStar_v7_0.docx — strategic direction (Autonomous Company OS)
+3. VIBE_NorthStar_v6_0_Addendum.docx — wrapper architecture
+4. VIBE_Revenue_Sprint_Prompts.md — current sprint sequence
+5. VIBE_Design_System_Spec.md — Figma-quality output standard
+
+### HARD STOP
+
+DO NOT START ANY v7.0 (Reactive Kernel / autonomous execution) WORK UNTIL ALL 8 REVENUE SPRINTS PASS AND CUSTOMERS ARE PAYING. No exceptions. Revenue first. Autonomy second.
