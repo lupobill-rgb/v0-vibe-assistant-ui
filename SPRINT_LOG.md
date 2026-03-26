@@ -6,7 +6,7 @@ Last updated: 2026-03-26
 |--------|--------------------------------------|--------|----------|----------|-------|
 | 1A     | Thin wrapper replaces VIBE_SYSTEM_RULES | ✅     | 2026-03-26 | yes    | buildVibeSystemRules(teamName, orgName) + supabase helpers isolated |
 | 1B     | resolveDepartmentSkills()            | ✅     | 2026-03-26 | yes    | Fixed schema: team_function/content columns, shouldInjectSupabaseHelpers |
-| 2      | Auth identity fix                    | ⬜     |          |          |       |
+| 2      | Auth identity fix                    | ✅     | 2026-03-26 | yes    | Fixed intake kernel-context: passes real user_id + org_id + team_id (3-param endpoint) |
 | 3      | Nango HubSpot live                   | ⬜     |          |          |       |
 | 4      | Design system + dashboard quality    | ⬜     |          |          |       |
 | 5      | Edit/iterate flow                    | ⬜     |          |          |       |
