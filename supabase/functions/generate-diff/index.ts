@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.2.0"; // 2026-03-26 — Sprint 1B: conditional SUPABASE_HELPERS via __INJECT_SUPABASE_HELPERS__ marker
+const EDGE_FUNCTION_VERSION = "2.3.0"; // 2026-03-26 — Chart enforcement appended to user message for dashboard prompts
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -777,6 +777,69 @@ function isDashboardRequest(prompt: string): boolean {
   return DASHBOARD_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
+// ── Dashboard chart enforcement (appended to user message, not system) ──
+function isDashboardPrompt(prompt: string): boolean {
+  const signals = ['dashboard', 'pipeline', 'kpi', 'metrics',
+    'analytics', 'chart', 'revenue', 'performance', 'tracking',
+    'overview', 'report'];
+  const lower = prompt.toLowerCase();
+  return signals.some(s => lower.includes(s));
+}
+
+const CHART_ENFORCEMENT = `
+
+MANDATORY CHART REQUIREMENT:
+This dashboard MUST include Chart.js charts. Do NOT skip charts.
+Do NOT build an empty dashboard waiting for real data.
+
+STEP 1: Include this script tag in <head>:
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+STEP 2: Generate realistic sample data appropriate to what the user
+asked for. If they asked for a sales pipeline, generate realistic
+deal values, stage distributions, rep names, and monthly trends.
+If marketing, generate campaign metrics. If finance, generate budget
+numbers. Make the data look real — varied amounts, realistic ratios,
+plausible names. The user should look at this and think "that could
+be my data."
+
+STEP 3: Include AT LEAST 3 Chart.js charts. Choose chart types that
+best fit the data:
+- Bar or horizontal bar for comparisons (value by category)
+- Line for trends over time (monthly, weekly)
+- Doughnut or pie for distribution (deals by stage, spend by channel)
+
+Each chart MUST follow this exact pattern:
+<canvas id="uniqueChartId" style="max-height:300px"></canvas>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  new Chart(document.getElementById('uniqueChartId').getContext('2d'), {
+    type: 'bar',
+    data: { labels: [...], datasets: [{ label: '...', data: [...], ... }] },
+    options: { responsive: true, plugins: { tooltip: { enabled: true } } }
+  });
+});
+</script>
+
+EVERY chart script MUST be wrapped in DOMContentLoaded.
+EVERY canvas MUST have a unique id.
+NEVER use ES module imports. Use the global Chart object from CDN.
+
+STEP 4: Include 4-6 KPI cards with generated sample values.
+Each KPI card shows: value, label, trend arrow (▲ or ▼), percent
+change vs prior period. Generate numbers that tell a coherent story
+with the chart data.
+
+STEP 5: All date range buttons (7D/30D/90D/1Y/ALL) must filter
+the sample data. Store all data in a JavaScript array. The filter
+function regenerates chart data and updates KPI values based on
+the selected range.
+
+Do NOT build an empty dashboard. ALWAYS generate sample data.
+If no connector is active, note at the bottom:
+"Showing sample data. Connect your data source for live numbers."
+`;
+
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -1016,6 +1079,11 @@ STRUCTURAL REQUIREMENTS:
     const vibeRules = buildVibeSystemRules(team_name, org_name);
     const systemMsg = vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
+
+    // Append chart enforcement to user message for dashboard prompts
+    if (isDashboardPrompt(prompt)) {
+      prompt = prompt + CHART_ENFORCEMENT;
+    }
 
     // Try the requested model first
     let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
