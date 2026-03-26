@@ -862,6 +862,21 @@ async function callLLM(systemMsg: string, userPrompt: string, maxTokens = 2048):
   return result.diff;
 }
 
+function getGuidedNextSteps(prompt: string, mode: string): string[] {
+  if (mode === "plan") return [];
+  const lower = prompt.toLowerCase();
+  const dataKeywords = /\b(revenue|pipeline|sales|dashboard|analytics|data|metrics|performance|report|forecast|crm|contacts|deals)\b/;
+  const alreadyConnected = /\b(uploaded|csv|connected|hubspot|salesforce|airtable)\b/;
+  if (dataKeywords.test(lower) && !alreadyConnected.test(lower)) {
+    return [
+      "Connect your CRM (HubSpot or Salesforce) to populate this dashboard with live data",
+      "Upload a CSV file with your data to see real numbers instead of placeholders",
+      "Go to Marketplace → Connectors to set up your data sources",
+    ];
+  }
+  return [];
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1025,6 +1040,7 @@ STRUCTURAL REQUIREMENTS:
         fallback_used: fallbackUsed,
         original_model: fallbackUsed ? originalModel : undefined,
         version: EDGE_FUNCTION_VERSION,
+        guided_next_steps: getGuidedNextSteps(prompt, mode || "diff"),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
