@@ -1,9 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
-import { Search, Plus, Package } from "lucide-react"
+import { Search, Plus, Package, Zap } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+
+type Skill = { id: string; department: string; skill_name: string; skill_prompt: string; is_active: boolean }
 
 /* ── Connector definitions ── */
 const CONNECTORS = [
@@ -28,6 +31,40 @@ export default function MarketplacePage() {
   const [tab, setTab] = useState<"browse" | "installed">("browse")
   const [connectOpen, setConnectOpen] = useState(false)
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set())
+  const [section, setSection] = useState<"connectors" | "skills">("connectors")
+  const [skills, setSkills] = useState<Skill[]>([])
+  const [skillDept, setSkillDept] = useState<string>("All")
+  const [skillSearch, setSkillSearch] = useState("")
+
+  useEffect(() => {
+    supabase.from("skill_registry").select("id, department, skill_name, skill_prompt, is_active").order("department").order("skill_name")
+      .then(({ data }) => { if (data) setSkills(data as Skill[]) })
+  }, [])
+
+  const departments = useMemo(() => {
+    const depts = Array.from(new Set(skills.map((s) => s.department))).sort()
+    return ["All", ...depts]
+  }, [skills])
+
+  const filteredSkills = useMemo(() => {
+    let list = skills
+    if (skillDept !== "All") list = list.filter((s) => s.department === skillDept)
+    if (skillSearch.trim()) {
+      const q = skillSearch.toLowerCase()
+      list = list.filter((s) => s.skill_name.toLowerCase().includes(q) || s.department.toLowerCase().includes(q) || s.skill_prompt?.toLowerCase().includes(q))
+    }
+    return list
+  }, [skills, skillDept, skillSearch])
+
+  const skillsByDept = useMemo(() => {
+    const map = new Map<string, Skill[]>()
+    for (const s of filteredSkills) {
+      const arr = map.get(s.department) || []
+      arr.push(s)
+      map.set(s.department, arr)
+    }
+    return map
+  }, [filteredSkills])
 
   const filtered = useMemo(() => {
     let list = [...CONNECTORS]
@@ -54,14 +91,72 @@ export default function MarketplacePage() {
               <Package className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Connect Your Data</h1>
-              <p className="text-sm md:text-base text-slate-400 mt-1">Plug in your tools. VIBE builds with live data.</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Marketplace</h1>
+              <p className="text-sm md:text-base text-slate-400 mt-1">Connect data sources and browse AI skills for your team.</p>
             </div>
+          </div>
+          <div className="max-w-6xl mx-auto px-6 pb-4 flex gap-2">
+            <button onClick={() => setSection("connectors")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "connectors" ? "bg-[#A855F7] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
+              <Package className="w-4 h-4" /> Connectors
+            </button>
+            <button onClick={() => setSection("skills")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "skills" ? "bg-[#A855F7] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
+              <Zap className="w-4 h-4" /> Skills <span className="text-xs opacity-75">({skills.length})</span>
+            </button>
           </div>
         </div>
 
         {/* ── Main content: sidebar + grid ── */}
-        <div className="flex-1 flex flex-col md:flex-row max-w-6xl mx-auto w-full">
+        {section === "skills" && (
+          <div className="flex-1 flex flex-col md:flex-row max-w-6xl mx-auto w-full">
+            <aside className="w-full md:w-[200px] shrink-0 border-b md:border-b-0 md:border-r border-border/50 px-4 py-4 md:py-6">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hidden md:block">Departments</p>
+              <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-visible">
+                {departments.map((d) => (
+                  <button key={d} onClick={() => setSkillDept(d)} className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${skillDept === d ? "bg-[#A855F7] text-white border-[#A855F7]" : "bg-card text-muted-foreground border-border hover:border-[#A855F7]/50 hover:text-foreground"}`}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </aside>
+            <div className="flex-1 px-4 md:px-6 py-4 md:py-6">
+              <div className="relative mb-6">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <input type="text" placeholder="Search skills..." value={skillSearch} onChange={(e) => setSkillSearch(e.target.value)} className="w-full h-10 pl-9 pr-3 rounded-lg bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#A855F7]/50 focus:border-[#A855F7] transition-colors" />
+              </div>
+              {filteredSkills.length === 0 && (
+                <div className="text-center py-16 text-muted-foreground">
+                  <Zap className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                  <p className="font-medium">No skills found</p>
+                  <p className="text-sm mt-1">Try a different search term or department.</p>
+                </div>
+              )}
+              {Array.from(skillsByDept.entries()).map(([dept, deptSkills]) => (
+                <div key={dept} className="mb-8">
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">{dept}</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {deptSkills.map((s) => (
+                      <div key={s.id} className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30">
+                        <div className="absolute top-3 right-3 flex items-end gap-1.5">
+                          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{s.department}</span>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${s.is_active ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${s.is_active ? "bg-green-400" : "bg-zinc-400"}`} />
+                            {s.is_active ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-3 mb-2">
+                          <span className="text-2xl leading-none">⚡</span>
+                          <h3 className="font-semibold text-base text-foreground truncate pr-24">{s.skill_name}</h3>
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{s.skill_prompt ? s.skill_prompt.slice(0, 100) + (s.skill_prompt.length > 100 ? "…" : "") : "No description"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex-1 flex flex-col md:flex-row max-w-6xl mx-auto w-full" style={{ display: section === "connectors" ? undefined : "none" }}>
           {/* Left sidebar — categories */}
           <aside className="w-full md:w-[200px] shrink-0 border-b md:border-b-0 md:border-r border-border/50 px-4 py-4 md:py-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hidden md:block">Categories</p>
