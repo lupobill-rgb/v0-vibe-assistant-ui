@@ -73,6 +73,20 @@ function verifyPreviewToken(token: string, requestedJobId: string): boolean {
   }
 }
 
+function getGuidedNextSteps(prompt: string): string[] {
+  const lower = prompt.toLowerCase();
+  const dataKeywords = /\b(revenue|pipeline|sales|dashboard|analytics|data|metrics|performance|report|forecast|crm|contacts|deals)\b/;
+  const alreadyConnected = /\b(uploaded|csv|connected|hubspot|salesforce|airtable)\b/;
+  if (dataKeywords.test(lower) && !alreadyConnected.test(lower)) {
+    return [
+      'Connect your CRM (HubSpot or Salesforce) to populate this dashboard with live data',
+      'Upload a CSV file with your data to see real numbers instead of placeholders',
+      'Go to Marketplace → Connectors to set up your data sources',
+    ];
+  }
+  return [];
+}
+
 // Ensure repos directory exists
 try {
   if (!fs.existsSync(REPOS_BASE_DIR)) {
@@ -1710,7 +1724,8 @@ Include ALL rows from the original data with their final calculated values. This
           job_timeline = null;
         }
       }
-      res.json({ ...task, job_timeline });
+      const guided_next_steps = getGuidedNextSteps(task.user_prompt ?? '');
+      res.json({ ...task, job_timeline, guided_next_steps });
     } catch (error) {
       console.error('Error fetching task:', error);
       res.status(500).json({ error: 'Failed to fetch task' });
