@@ -1202,6 +1202,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             return { eligible: false, reason: `HTTP ${status}: ${text.slice(0, 120)}` };
           };
 
+          // Pass team/org identity to edge function for thin wrapper interpolation
+          const orgName = org?.name ?? '';
           const edgeCall = async (payload: any): Promise<{ text: string; ok: boolean; status: number }> => {
             const model = payload.model || resolvedModel;
             const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
@@ -1213,7 +1215,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 const res = await fetch(edgeFunctionUrl, {
                   method: 'POST',
                   headers: { ...headers },
-                  body: JSON.stringify({ ...payload, model: m }),
+                  body: JSON.stringify({ ...payload, model: m, team_name: teamName, org_name: orgName }),
                   signal: controller.signal,
                 });
                 const text = await res.text();

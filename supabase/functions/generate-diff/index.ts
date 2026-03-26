@@ -1,18 +1,22 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.0.0"; // 2026-03-25 — v6.0 wrapper architecture: VIBE_SYSTEM_RULES → 5-line wrapper + skill injection
+const EDGE_FUNCTION_VERSION = "2.1.0"; // 2026-03-26 — Sprint 1A: thin wrapper with teamName/orgName, supabase helpers isolated
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VIBE_SYSTEM_RULES = `You are VIBE, the AI execution engine for this team.
+function buildVibeSystemRules(teamName?: string, orgName?: string): string {
+  const team = teamName || 'this team';
+  const org = orgName || 'the platform';
+  return `You are VIBE, the AI execution engine for ${team} on the ${org} platform.
 Output exactly what the user's intent requires — no more, no less.
 If the user asks to build, produce a complete deployable artifact.
 If the user asks to draft, analyze, or plan, produce that content directly.
 Follow any DEPARTMENT SKILLS injected below precisely.`;
+}
 
 // ── Supabase helper scripts (conditionally injected) ─────────────────────
 
@@ -889,7 +893,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    let { prompt, context, model = "claude", system, max_tokens, mode, color_block } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string };
+    let { prompt, context, model = "claude", system, max_tokens, mode, color_block, team_name, org_name } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string; team_name?: string; org_name?: string };
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -912,7 +916,7 @@ Deno.serve(async (req: Request) => {
         const colorInjection = color_block
           ? `\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
           : "";
-        const directSystem = VIBE_SYSTEM_RULES + "\n" + DASHBOARD_SYSTEM + colorInjection;
+        const directSystem = buildVibeSystemRules(team_name, org_name) + "\n" + DASHBOARD_SYSTEM + colorInjection;
         const directResult = await PROVIDERS[model](directSystem, prompt, 16384);
 
         // Validate we got HTML back
@@ -937,7 +941,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Build system message: select prompt based on mode, always prepend VIBE_SYSTEM_RULES
+    // Build system message: select prompt based on mode, always prepend vibeRules
     let baseSystemMsg: string;
     let defaultMaxTokens = 4096;
 
@@ -1003,8 +1007,10 @@ STRUCTURAL REQUIREMENTS:
     const colorInjection = color_block
       ? `\n\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\nThe HTML file already contains this block in <head> — do not remove it, do not override it, do not add competing color declarations:\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
       : "";
-    const supabaseBlock = (mode !== "plan" && needsSupabaseHelpers(prompt)) ? "\n" + SUPABASE_HELPERS : "";
-    const systemMsg = VIBE_SYSTEM_RULES + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
+    // Supabase helpers are defined (SUPABASE_HELPERS) but NOT auto-injected.
+    // Sprint 1B will inject them conditionally via context-injector department skills.
+    const vibeRules = buildVibeSystemRules(team_name, org_name);
+    const systemMsg = vibeRules + "\n" + baseSystemMsg + colorInjection;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
 
     // Try the requested model first
