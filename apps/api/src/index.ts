@@ -1000,6 +1000,10 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
         }
       }
 
+      // Prior-job context: inject existing pages so the LLM patches instead of rebuilding.
+      // Single injection point — the duplicate getPriorDiffForProject() call was removed
+      // to prevent the known double-injection bug (prior context appearing twice in prompt).
+      const promptLenBefore = enrichedPrompt.length;
       const { data: priorJob } = await getPlatformSupabaseClient()
         .from('jobs')
         .select('last_diff')
@@ -1023,38 +1027,18 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               })
               .map((p) => `PAGE: ${p.name}\n${p.html}`)
               .join('\n---\n');
-            if (existingPages) {
+            // Deduplication guard: only inject if not already present in prompt
+            if (existingPages && !enrichedPrompt.includes('EXISTING PAGES (patch these')) {
               enrichedPrompt =
-                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\n${enrichedPrompt}`;
+                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Modify it to incorporate the change. Do NOT regenerate from scratch. Return the COMPLETE updated file with the change applied. Preserve everything that was not mentioned in the change request.\n\n${enrichedPrompt}`;
+              console.log(`[ITERATE] Prior context injected for project ${project_id} — prompt grew from ${promptLenBefore} to ${enrichedPrompt.length} chars (+${enrichedPrompt.length - promptLenBefore})`);
             }
           }
         } catch {
           // Ignore malformed historical last_diff payloads and continue as first build.
         }
-      }
-
-      // Prior-job context: inject existing pages so the LLM patches instead of rebuilding
-      const priorDiff = await storage.getPriorDiffForProject(project_id);
-      if (priorDiff) {
-        try {
-          const pages = JSON.parse(priorDiff) as { name: string; html: string }[];
-          if (Array.isArray(pages) && pages.length > 0) {
-            const pagesContext = pages
-              .filter((p) => {
-                const h = (p.html ?? '').trimStart();
-                // Skip truncated/broken pages (< 2KB is likely incomplete)
-                if ((p.html ?? '').length < 2000) return false;
-                return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
-              })
-              .map(p => `PAGE: ${p.name}\n${p.html}`)
-              .join('\n---\n');
-            if (pagesContext) {
-              enrichedPrompt = `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${pagesContext}\n\n${enrichedPrompt}`;
-            }
-          }
-        } catch {
-          // last_diff not valid JSON array — skip context injection
-        }
+      } else {
+        console.log(`[ITERATE] No prior output found for project ${project_id} — treating as new build`);
       }
 
       if (org) {
