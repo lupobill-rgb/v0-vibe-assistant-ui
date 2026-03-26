@@ -9,7 +9,7 @@ Last updated: 2026-03-26
 | 2      | Auth identity fix                    | ⬜     |          |          |       |
 | 3      | Nango HubSpot live                   | ⬜     |          |          |       |
 | 4      | Design system + dashboard quality    | ⬜     |          |          |       |
-| 5      | Edit/iterate flow                    | ⬜     |          |          |       |
+| 5      | Edit/iterate flow                    | ✅     | 2026-03-26 | pending  | Fixed double prior-diff injection; added dedup guard + [ITERATE] logging |
 | 6      | File upload stability                | ⬜     |          |          |       |
 | 7A     | Stripe backend                       | ⬜     |          |          |       |
 | 7B     | Stripe frontend                      | ⬜     |          |          |       |
