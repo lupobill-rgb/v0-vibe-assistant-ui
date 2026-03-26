@@ -23,6 +23,7 @@ import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
 import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
+import stripeBillingRouter from './billing/billing.controller';
 import financeRouter from './routes/finance';
 import { getPlatformSupabaseClient } from './supabase/client';
 import {
@@ -165,6 +166,9 @@ async function bootstrap() {
   // Body parser for custom Express routes (NestJS handles its own controllers)
   app.use('/api/supabase', express.json(), supabaseRouter);
   app.use('/api/preview', express.json(), previewRouter);
+  // Stripe billing routes (webhook uses raw body — must be before express.json)
+  app.use('/api/billing', stripeBillingRouter);
+  // Legacy billing usage/export/budget routes
   app.use('/api/billing', express.json(), billingRouter);
   app.use('/api/finance', financeRouter);
 
@@ -894,6 +898,21 @@ async function bootstrap() {
     }
   });
 
+  // ── Credit increment helper ──
+  async function incrementOrgCredits(projectId: string) {
+    try {
+      const org = await storage.getOrgForProject(projectId);
+      if (!org) return;
+      const used = (org as any).credits_used_this_period || 0;
+      await getPlatformSupabaseClient()
+        .from('organizations')
+        .update({ credits_used_this_period: used + 1 })
+        .eq('id', org.id);
+    } catch (err: any) {
+      console.warn(`[billing] Failed to increment credits: ${err.message}`);
+    }
+  }
+
   // ── Job routes ──
 
   // POST /jobs - Create a new VIBE task
@@ -929,6 +948,42 @@ async function bootstrap() {
 
       // Budget enforcement via org
       const org = await storage.getOrgForProject(project_id);
+
+      // ── Tier limit enforcement ──
+      if (org) {
+        const { getTierLimits, checkLimit, getNextTier } = await import('./billing/tiers');
+        type TierSlug = import('./billing/tiers').TierSlug;
+        const tierSlug = ((org as any).tier_slug || 'starter') as TierSlug;
+        const limits = getTierLimits(tierSlug);
+
+        // Check project limit
+        const orgProjects = await storage.listProjectsByOrg(org.id);
+        const projectCheck = checkLimit(orgProjects.length, limits.projects);
+        if (!projectCheck.allowed) {
+          return res.status(402).json({
+            error: 'limit_exceeded',
+            limitType: 'projects',
+            current: projectCheck.current,
+            max: projectCheck.max,
+            tierSlug,
+            nextTier: getNextTier(tierSlug),
+          });
+        }
+
+        // Check credit limit
+        const creditsUsed = (org as any).credits_used_this_period || 0;
+        const creditCheck = checkLimit(creditsUsed, limits.creditsPerMonth);
+        if (!creditCheck.allowed) {
+          return res.status(402).json({
+            error: 'limit_exceeded',
+            limitType: 'credits',
+            current: creditCheck.current,
+            max: creditCheck.max,
+            tierSlug,
+            nextTier: getNextTier(tierSlug),
+          });
+        }
+      }
 
       // Kernel context injection: prepend team/role/brand identity to prompt
       let enrichedPrompt = prompt;
@@ -1166,6 +1221,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
               await storage.logEvent(taskId, `[DEBUG] Fix applied after ${debugResult.iterations} iteration(s). ${debugResult.healedIssues ?? 0} component issue(s) healed.`, 'success');
               await storage.updateTaskState(taskId, 'completed');
+              await incrementOrgCredits(project_id);
             } else {
               await storage.logEvent(taskId, `[DEBUG] Agent failed: ${debugResult.summary}`, 'error');
               await storage.updateTaskState(taskId, 'failed');
@@ -1333,6 +1389,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               });
               await storage.updateTaskState(taskId, 'completed');
               await storage.logEvent(taskId, 'App job completed successfully (fast path)', 'info');
+              await incrementOrgCredits(project_id);
               return;
             } catch (appErr: any) {
               await storage.logEvent(taskId, `App fast path failed (${appErr.message}), falling back to planner pipeline`, 'warning');
@@ -1495,6 +1552,7 @@ Include ALL rows from the original data with their final calculated values. This
               });
               await storage.updateTaskState(taskId, 'completed');
               await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
+              await incrementOrgCredits(project_id);
               return;
             } catch (dashErr: any) {
               await storage.logEvent(taskId, `Dashboard fast path failed (${dashErr.message}), falling back to planner pipeline`, 'warning');
@@ -1670,6 +1728,7 @@ Include ALL rows from the original data with their final calculated values. This
           });
           await storage.updateTaskState(taskId, 'completed');
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
+          await incrementOrgCredits(project_id);
           // Store assistant response in conversation after successful build (best-effort)
           if (resolvedConversationId) {
             try {
