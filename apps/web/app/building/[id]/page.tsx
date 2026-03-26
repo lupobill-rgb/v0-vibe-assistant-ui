@@ -9,7 +9,21 @@ import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
 import { createJob, publishJob } from "@/lib/api"
 
-interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; [key: string]: unknown }
+interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; guided_next_steps?: string[]; [key: string]: unknown }
+
+function getGuidedNextSteps(prompt: string): string[] {
+  const lower = prompt.toLowerCase()
+  const dataKeywords = /\b(revenue|pipeline|sales|dashboard|analytics|data|metrics|performance|report|forecast|crm|contacts|deals)\b/
+  const alreadyConnected = /\b(uploaded|csv|connected|hubspot|salesforce|airtable)\b/
+  if (dataKeywords.test(lower) && !alreadyConnected.test(lower)) {
+    return [
+      'Connect your CRM (HubSpot or Salesforce) to populate this dashboard with live data',
+      'Upload a CSV file with your data to see real numbers instead of placeholders',
+      'Go to Marketplace \u2192 Connectors to set up your data sources',
+    ]
+  }
+  return []
+}
 
 interface PageData { name: string; filename: string; html: string }
 
@@ -122,6 +136,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [copied, setCopied] = useState(false)
   const [projectName, setProjectName] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [nudgeDismissed, setNudgeDismissed] = useState(false)
   const router = useRouter()
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
@@ -188,7 +203,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         {
           const { data: initial } = await supabase
             .from('jobs')
-            .select('execution_state, last_diff, project_id')
+            .select('execution_state, last_diff, project_id, user_prompt')
             .eq('id', resolvedId)
             .maybeSingle()
           if (cancelled) return
@@ -204,7 +219,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           try {
             const { data } = await supabase
               .from('jobs')
-              .select('execution_state, last_diff, project_id')
+              .select('execution_state, last_diff, project_id, user_prompt')
               .eq('id', resolvedId)
               .maybeSingle()
             if (cancelled) break
@@ -274,6 +289,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     return () => { if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current) }
   }, [])
 
+  const guidedNextSteps = useMemo(() => getGuidedNextSteps(task?.user_prompt ?? ''), [task?.user_prompt])
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
 
@@ -464,6 +480,30 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             </div>
             <iframe src={previewUrl} sandbox="allow-scripts allow-same-origin"
               className="flex-1 w-full border-0 bg-white" title="Generated website preview" />
+            {task?.execution_state === 'completed' && guidedNextSteps.length > 0 && !nudgeDismissed && (
+              <div style={{
+                padding: '14px 20px', borderTop: '1px solid #1e1e2a',
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(56,189,248,0.08))',
+                fontFamily: 'Inter, sans-serif', position: 'relative', flexShrink: 0
+              }}>
+                <button onClick={() => setNudgeDismissed(true)} style={{
+                  position: 'absolute', top: 10, right: 10, background: 'none', border: 'none',
+                  color: '#6b7280', cursor: 'pointer', padding: 4
+                }}><X className="w-3.5 h-3.5" /></button>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#f0f0ff', marginBottom: 8, fontFamily: "'Space Grotesk', sans-serif" }}>
+                  {'💡 Make this dashboard live with real data'}
+                </p>
+                <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {guidedNextSteps.map((step, i) => (
+                    <li key={i} style={{ fontSize: 12, color: '#a5b4fc', lineHeight: 1.5 }}>
+                      {step.includes('Marketplace') ? (
+                        <Link href="/marketplace" style={{ color: '#818cf8', textDecoration: 'underline', textUnderlineOffset: 2 }}>{step}</Link>
+                      ) : step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ) : isComplete ? (
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-4">
