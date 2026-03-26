@@ -3,9 +3,10 @@ import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Loader2, CheckCircle2, X, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject, createJob, API_URL } from "@/lib/api"
+import { createProject, createJob, API_URL, type LimitExceededError } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
+import { UpgradeModal } from "@/components/billing/UpgradeModal"
 type Message = { role: "assistant" | "user"; text: string }
 type Stage = "idle" | "intake" | "building"
 const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Your job is to ask 2-3 short, focused questions to understand exactly what they need before building.
@@ -21,7 +22,7 @@ Rules:
 Focus on: what type of output (app/site/dashboard), what data/entities are involved, who will use it.`
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
-  const { currentTeam } = useTeam()
+  const { currentTeam, currentOrg } = useTeam()
   const [prompt, setPrompt] = useState("")
   const projectIdRef = useRef<string | undefined>(undefined)
   const [focused, setFocused] = useState(false)
@@ -207,6 +208,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     }
   }
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
+  const [upgradeModal, setUpgradeModal] = useState<LimitExceededError | null>(null)
   const buildViaVercel = async (finalPrompt: string): Promise<string> => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 180000)
@@ -265,6 +267,12 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         upload_id: uploadIdRef.current,
         conversation_id: conversationId,
       })
+      if (result.limit_exceeded) {
+        setUpgradeModal(result.limit_exceeded)
+        setSubmitting(false)
+        setStage("idle")
+        return
+      }
       if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
       if (result.conversation_id) setConversationId(result.conversation_id)
       const jobId = result.task_id
@@ -310,10 +318,22 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setError(null)
     conversationRef.current = []
   }
+  const upgradeModalEl = upgradeModal && (
+    <UpgradeModal
+      isOpen
+      onClose={() => setUpgradeModal(null)}
+      limitType={upgradeModal.limitType}
+      current={upgradeModal.current}
+      max={upgradeModal.max}
+      currentTier={upgradeModal.currentTier}
+      nextTier={upgradeModal.nextTier}
+      orgId={currentOrg?.id ?? currentTeam?.id ?? ""}
+    />
+  )
   // ── INTAKE MODE ──
   if (stage === "intake" || stage === "building") {
     return (
-      <div className="px-4 sm:px-6 -mt-8 relative z-10">
+      <div className="px-4 sm:px-6 -mt-8 relative z-10">{upgradeModalEl}
         <div className="bg-card rounded-3xl border border-border shadow-2xl shadow-black/20">
           <div className="p-4 sm:p-6">
             {/* Original prompt */}
@@ -424,7 +444,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   }
   // ── IDLE MODE ──
   return (
-    <div className="px-4 sm:px-6 -mt-8 relative z-10">
+    <div className="px-4 sm:px-6 -mt-8 relative z-10">{upgradeModalEl}
       <div
         className={cn(
           "bg-card rounded-3xl border border-border shadow-2xl shadow-black/20 transition-all duration-300",

@@ -33,6 +33,7 @@ import {
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
 import { supabase } from "@/lib/supabase"
+import { fetchBillingStatus, type BillingStatus } from "@/lib/api"
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
@@ -82,6 +83,12 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
   const activeProjectId = pathname.startsWith("/projects/") ? (params?.id as string | undefined) : undefined
   const [dialogOpen, setDialogOpen] = useState(false)
   const [connectDatasourceOpen, setConnectDatasourceOpen] = useState(false)
+  const [billing, setBilling] = useState<BillingStatus | null>(null)
+
+  useEffect(() => {
+    if (!currentOrg?.id) return
+    fetchBillingStatus(currentOrg.id).then((data) => setBilling(data))
+  }, [currentOrg?.id])
 
   // Close switcher on outside click
   useEffect(() => {
@@ -300,6 +307,30 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
             return linkContent
           })}
         </nav>
+
+        {/* Billing Status */}
+        {!collapsed && billing && (
+          <div className="px-3 py-2 border-t border-sidebar-border flex-shrink-0">
+            <Link
+              href="/pricing"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs hover:bg-sidebar-accent/50 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-sidebar-foreground capitalize">
+                  {billing.tier_slug === "starter" ? "Free" : billing.tier_slug}
+                </span>
+                <span className="text-muted-foreground">
+                  {" · "}{billing.credits_used} / {billing.credits_limit} credits
+                </span>
+              </div>
+              {billing.tier_slug === "starter" && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shrink-0">
+                  Upgrade
+                </span>
+              )}
+            </Link>
+          </div>
+        )}
 
         {/* Bottom Section */}
         <div className="px-3 py-2 border-t border-sidebar-border flex flex-col gap-1 flex-shrink-0">
