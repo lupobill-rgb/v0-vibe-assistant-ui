@@ -1,5 +1,106 @@
 import { getPlatformSupabaseClient } from '../supabase/client';
 
+// ── Design System Rules (Sprint 4) ──────────────────────────────────────────
+// Injected after department skills, before Supabase helpers.
+// Template vars: {BRAND_PRIMARY}, {BRAND_SECONDARY}, {TEAM_NAME}, {ORG_NAME}
+const DESIGN_SYSTEM_RULES = `
+--- DESIGN SYSTEM ---
+
+You are producing production-grade, deployment-ready UI. Every output must look like it was designed by a senior product designer and built by a senior frontend engineer. Not a prototype. Not a wireframe. A finished product.
+
+BRAND CONTEXT:
+Primary: {BRAND_PRIMARY}
+Team: {TEAM_NAME} | Org: {ORG_NAME}
+
+COLOR SYSTEM — derive full palette from brand primary:
+--color-primary: {BRAND_PRIMARY}
+--color-primary-hover: primary darkened 10%
+--color-primary-subtle: primary at 8% opacity
+--color-surface: determined by user intent (light or dark)
+--color-surface-raised: 1 step lighter/darker than surface
+--color-text-primary: high contrast against surface (min 7:1)
+--color-text-secondary: medium contrast (min 4.5:1)
+--color-text-muted: low contrast for labels (min 3:1)
+--color-border: 6-8% opacity of text color
+--color-success: #059669
+--color-warning: #D97706
+--color-error: #DC2626
+--color-info: #2563EB
+If intent implies dark: surface #0F0F14, text #F1F1F4
+If intent implies light: surface #FAFAFA, text #111111
+If ambiguous: warm primary = light, cool primary = dark
+
+TYPOGRAPHY — system fonts only:
+--font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif
+--font-mono: 'SF Mono', Consolas, monospace
+Scale: 0.75rem(xs) 0.8125rem(sm) 0.875rem(base) 1rem(lg) 1.25rem(xl) 1.5rem(2xl) 1.875rem(3xl)
+Weights: 400(body) 500(emphasis) 600(headings) 700(KPI values)
+Letter-spacing: -0.01em on xl+, 0.01em on xs
+
+SPACING — 4px base unit, multiples only: 4 8 12 16 20 24 32 40 48 64
+Card padding: 20-24px. Section gaps: 24-32px. Page margins: 24px mobile, 48px desktop.
+
+BORDERS + SHADOWS:
+Radius: 6px(buttons) 8px(cards) 12px(panels) 16px(hero) 9999px(pills)
+Shadows: sm(1px 2px 4%) md(2px 8px 6%) lg(8px 24px 8%) xl(16px 48px 10%)
+On dark: use borders instead of shadows.
+
+LAYOUT:
+Full viewport width for dashboards. NEVER narrow centered column.
+CSS Grid for page layout. Flexbox for components.
+Sidebar: 240px fixed desktop, collapsible mobile.
+Dashboard grids: repeat(auto-fit, minmax(280px, 1fr))
+ALWAYS responsive: sm:640 md:768 lg:1024 xl:1280
+
+COMPONENT PATTERNS:
+
+KPI Card: surface-raised bg, radius-12, shadow-sm. Value: 1.875rem bold. Label: 0.75rem uppercase muted, letter-spacing 0.05em. Trend: inline arrow SVG. Green=up+good, red=down+bad. Show % change.
+
+Chart: surface-raised bg, radius-12. Header: 1rem semibold + 0.8125rem muted subtitle. Chart.js: brand primary as main color, 0.1 alpha for fills. Gridlines: border color 50% opacity. Tooltips: overlay bg, radius-6, shadow-md.
+
+Table: radius-12, overflow hidden. Header: 0.75rem uppercase, 600 weight, muted. Rows: border-bottom 1px. Hover: primary-subtle bg. Sortable: arrow on hover. Pagination at 20 rows.
+
+Button: Primary: brand bg, white text, radius-6. Hover: darken 8%. Secondary: transparent, 1px border, brand text. Ghost: no border, muted text. Padding: 8px 16px. Font: 0.8125rem 500 weight. Transition: 150ms ease.
+
+Sidebar: 240px fixed. Items: 0.8125rem, pad 8px/16px. Active: primary-subtle bg + primary text + 500 weight. Section headers: 0.75rem uppercase muted.
+
+Empty State: centered, 48px icon, description text, primary action button. Loading: skeleton rectangles matching layout shape, 1.5s pulse animation.
+
+ANTI-PATTERNS — NEVER:
+Rainbow chart palettes. More than 2 fonts. Shadows on dark bg.
+Center-aligned body text. ALL CAPS beyond labels. Horizontal scroll.
+Fixed pixel widths on containers. Bare HTML without design system.
+Placeholder text as only empty state. Animation that delays usability.
+
+--- END DESIGN SYSTEM ---`;
+
+/**
+ * Darkens a hex color by a given percentage (0–100).
+ */
+function darkenHex(hex: string, percent: number): string {
+  const h = hex.replace('#', '');
+  const r = Math.max(0, Math.round(parseInt(h.substring(0, 2), 16) * (1 - percent / 100)));
+  const g = Math.max(0, Math.round(parseInt(h.substring(2, 4), 16) * (1 - percent / 100)));
+  const b = Math.max(0, Math.round(parseInt(h.substring(4, 6), 16) * (1 - percent / 100)));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * Resolves the DESIGN_SYSTEM_RULES block with real brand values.
+ */
+function resolveDesignSystemBlock(
+  brandPrimary: string,
+  brandSecondary: string,
+  teamName: string,
+  orgName: string,
+): string {
+  return DESIGN_SYSTEM_RULES
+    .replace(/\{BRAND_PRIMARY\}/g, brandPrimary)
+    .replace(/\{BRAND_SECONDARY\}/g, brandSecondary)
+    .replace(/\{TEAM_NAME\}/g, teamName)
+    .replace(/\{ORG_NAME\}/g, orgName);
+}
+
 /**
  * Resolves the kernel context string injected before every job prompt.
  * Queries team membership, data scopes, and brand tokens for the given user+org.
@@ -99,8 +200,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
 
   const companyName = brand?.company_name ?? 'unknown';
   const brandVoice = brand?.brand_voice ?? '';
-  const primaryColor = brand?.primary_color ?? '';
+  const primaryColor = brand?.primary_color ?? '#7C3AED';
   const fontHeading = brand?.font_heading ?? '';
+  const secondaryColor = (brand as any)?.secondary_color ?? darkenHex(primaryColor, 20);
 
   // 4. Resolve uploaded data tables for this user
   const uploadedData = await resolveUploadedData(sb, userId);
@@ -121,6 +223,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
 
+  // 6. Resolve design system block with brand values
+  const designSystemBlock = resolveDesignSystemBlock(primaryColor, secondaryColor, teamName, companyName);
+
   return `TEAM CONTEXT:
 Org: ${companyName}
 Team: ${teamName}
@@ -132,6 +237,7 @@ Brand color fallback (only use if user prompt specifies no colors): ${primaryCol
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
     + deptSkills
+    + '\n' + designSystemBlock
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 }
 
