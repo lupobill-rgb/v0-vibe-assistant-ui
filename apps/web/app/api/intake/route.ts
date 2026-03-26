@@ -113,7 +113,7 @@ async function fetchUploadSummary(uploadId: string): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  const { messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id } = await request.json()
+  const { messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id, user_id, org_id } = await request.json()
 
   try {
     if (edit) {
@@ -204,11 +204,12 @@ export async function POST(request: Request) {
     // ALWAYS fetch file content when an upload exists — every call, not just the first
     let intakeSystem = INTAKE_SYSTEM
 
-    // Inject team + budget context when team_id is present
-    if (team_id) {
+    // Inject team + budget context when team_id and user_id are present
+    if (team_id && user_id) {
       try {
+        const resolvedOrgId = org_id || process.env.NEXT_PUBLIC_ORG_ID || '3de82e57-4813-4ad6-83bd-2adb461604f0'
         const kernelRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'}/api/kernel-context/${team_id}/${process.env.NEXT_PUBLIC_ORG_ID || '3de82e57-4813-4ad6-83bd-2adb461604f0'}`,
+          `${process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'}/api/kernel-context/${user_id}/${resolvedOrgId}/${team_id}`,
           { headers: { 'Content-Type': 'application/json' } }
         )
         if (kernelRes.ok) {

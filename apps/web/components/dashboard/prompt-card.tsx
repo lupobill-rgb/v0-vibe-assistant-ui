@@ -21,7 +21,7 @@ Rules:
 Focus on: what type of output (app/site/dashboard), what data/entities are involved, who will use it.`
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
-  const { currentTeam } = useTeam()
+  const { currentTeam, currentOrg } = useTeam()
   const [prompt, setPrompt] = useState("")
   const projectIdRef = useRef<string | undefined>(undefined)
   const [focused, setFocused] = useState(false)
@@ -118,10 +118,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, upload_id: uploadIdRef.current, team_id: currentTeam?.id, project_id: projectIdRef.current }),
+        body: JSON.stringify({ messages, upload_id: uploadIdRef.current, team_id: currentTeam?.id, org_id: currentOrg?.id, user_id: user?.id, project_id: projectIdRef.current }),
         signal: controller.signal,
       })
       const data = await res.json()
