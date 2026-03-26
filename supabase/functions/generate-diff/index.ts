@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.3.0"; // 2026-03-26 — Chart enforcement appended to user message for dashboard prompts
+const EDGE_FUNCTION_VERSION = "2.4.0"; // 2026-03-26 — Landing page content enforcement appended to user message
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -840,6 +840,77 @@ If no connector is active, note at the bottom:
 "Showing sample data. Connect your data source for live numbers."
 `;
 
+// ── Landing page content enforcement (appended to user message, not system) ──
+function isLandingPagePrompt(prompt: string): boolean {
+  const signals = ['landing page', 'landing', 'webinar', 'signup',
+    'registration', 'conversion', 'lead gen', 'launch', 'waitlist',
+    'coming soon', 'event page', 'promo'];
+  const lower = prompt.toLowerCase();
+  return signals.some(s => lower.includes(s));
+}
+
+const LANDING_PAGE_ENFORCEMENT = `
+
+MANDATORY LANDING PAGE CONTENT:
+This is a landing page. It MUST have visible, readable content.
+Do NOT generate empty sections or blank hero areas.
+
+REQUIRED SECTIONS (generate ALL with real content):
+
+1. HERO SECTION:
+   - Large headline (text-3xl or bigger, white text on gradient)
+   - Subheadline (text-lg, slightly transparent white)
+   - Primary CTA button (prominent, contrasting color)
+   - Optional: hero image, video embed, or animated element
+   The hero MUST have visible text content. Not just a gradient background.
+
+2. REGISTRATION/SIGNUP FORM (if event or webinar):
+   - Name, Email, Company fields minimum
+   - Submit button with clear action text ("Register Now", "Save My Spot")
+   - Form must call vibeSubmitForm() on submit
+   - Brief value prop next to form ("Join 500+ leaders...")
+
+3. ABOUT/VALUE SECTION:
+   - 3-4 benefit cards or feature highlights
+   - Each card: icon or emoji, title, 1-2 sentence description
+   - Use a grid layout (2x2 or 3-column)
+
+4. SPEAKERS/TEAM SECTION (if event or webinar):
+   - 3-4 speaker cards with: name, title, company, brief bio
+   - Use placeholder avatar circles with initials
+   - Generate realistic speaker names and titles
+
+5. AGENDA/SCHEDULE (if event or webinar):
+   - 4-6 time slots with session titles and descriptions
+   - Format: time | session title | speaker name
+   - Generate realistic agenda items related to the topic
+
+6. SOCIAL PROOF:
+   - 3 testimonial quotes or company logos
+   - "Trusted by teams at..." with 4-5 company names
+
+7. FINAL CTA:
+   - Repeat the primary call to action
+   - Urgency element ("Limited spots", "Register by [date]")
+
+8. FOOTER:
+   - Company name, links, copyright
+
+VISUAL RULES:
+- Hero gradient must have TEXT on top of it, not just color
+- All text must be readable (white on dark gradient, dark on light bg)
+- Sections alternate background colors for visual rhythm
+- Mobile responsive — stack columns on small screens
+- Smooth scroll to sections from nav links
+
+Generate ALL content based on the user's topic. If they said "Q3 webinar
+about AI", generate AI-related headlines, speaker bios about AI leaders,
+agenda items about AI implementation, etc. Make it feel real and specific.
+
+Do NOT leave any section empty. Do NOT use placeholder text like
+"Lorem ipsum" or "[Your content here]".
+`;
+
 /** Call Anthropic Claude and return { diff, usage }. Throws on failure. */
 async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -1080,9 +1151,11 @@ STRUCTURAL REQUIREMENTS:
     const systemMsg = vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
 
-    // Append chart enforcement to user message for dashboard prompts
+    // Append content enforcement to user message based on intent
     if (isDashboardPrompt(prompt)) {
       prompt = prompt + CHART_ENFORCEMENT;
+    } else if (isLandingPagePrompt(prompt)) {
+      prompt = prompt + LANDING_PAGE_ENFORCEMENT;
     }
 
     // Try the requested model first
