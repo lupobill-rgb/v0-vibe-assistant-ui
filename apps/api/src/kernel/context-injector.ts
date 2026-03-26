@@ -1,5 +1,13 @@
 import { getPlatformSupabaseClient } from '../supabase/client';
 
+// --- Chart.js loading rules injected into every dashboard/chart context ---
+const CHART_LOADING_RULES = `
+CHART.JS LOADING — CRITICAL:
+- Chart.js CDN MUST be in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+- Each chart <script> goes IMMEDIATELY after its <canvas>, using an IIFE: (function(){ new Chart(document.getElementById('id'), config); })();
+- Every <canvas> needs a unique id and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+- Use getElementById, NEVER querySelector. Use the global Chart object, NEVER ES module imports.`;
+
 /**
  * Resolves the kernel context string injected before every job prompt.
  * Queries team membership, data scopes, and brand tokens for the given user+org.
@@ -132,6 +140,7 @@ Brand color fallback (only use if user prompt specifies no colors): ${primaryCol
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
     + deptSkills
+    + CHART_LOADING_RULES
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 }
 
