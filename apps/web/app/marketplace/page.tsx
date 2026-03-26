@@ -6,7 +6,7 @@ import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource
 import { Search, Plus, Package, Zap } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 
-type Skill = { id: string; department: string; skill_name: string; skill_prompt: string; is_active: boolean }
+type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean }
 
 /* ── Connector definitions ── */
 const CONNECTORS = [
@@ -37,18 +37,18 @@ export default function MarketplacePage() {
   const [skillSearch, setSkillSearch] = useState("")
 
   useEffect(() => {
-    supabase.from("skill_registry").select("id, department, skill_name, skill_prompt, is_active").order("department").order("skill_name")
+    supabase.from("skill_registry").select("id, team_function, skill_name, description, is_active").order("team_function").order("skill_name")
       .then(({ data }) => { if (data) setSkills(data as Skill[]) })
   }, [])
 
   const departments = useMemo(() => {
-    const depts = Array.from(new Set(skills.map((s) => s.department))).sort()
+    const depts = Array.from(new Set(skills.map((s) => s.team_function))).sort()
     return ["All", ...depts]
   }, [skills])
 
   const filteredSkills = useMemo(() => {
     let list = skills
-    if (skillDept !== "All") list = list.filter((s) => s.department === skillDept)
+    if (skillDept !== "All") list = list.filter((s) => s.team_function === skillDept)
     if (skillSearch.trim()) {
       const q = skillSearch.toLowerCase()
       list = list.filter((s) => s.skill_name.toLowerCase().includes(q))
@@ -59,9 +59,9 @@ export default function MarketplacePage() {
   const skillsByDept = useMemo(() => {
     const map = new Map<string, Skill[]>()
     for (const s of filteredSkills) {
-      const arr = map.get(s.department) || []
+      const arr = map.get(s.team_function) || []
       arr.push(s)
-      map.set(s.department, arr)
+      map.set(s.team_function, arr)
     }
     return map
   }, [filteredSkills])
@@ -137,7 +137,7 @@ export default function MarketplacePage() {
                     {deptSkills.map((s) => (
                       <div key={s.id} className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30">
                         <div className="absolute top-3 right-3 flex items-end gap-1.5">
-                          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{s.department}</span>
+                          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{s.team_function}</span>
                           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${s.is_active ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${s.is_active ? "bg-green-400" : "bg-zinc-400"}`} />
                             {s.is_active ? "Active" : "Inactive"}
@@ -147,7 +147,7 @@ export default function MarketplacePage() {
                           <span className="text-2xl leading-none">⚡</span>
                           <h3 className="font-semibold text-base text-foreground truncate pr-24">{s.skill_name}</h3>
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{s.skill_prompt ? s.skill_prompt.slice(0, 120) + (s.skill_prompt.length > 120 ? "…" : "") : "No description"}</p>
+                        <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{s.description ? s.description.slice(0, 120) + (s.description.length > 120 ? "…" : "") : "No description"}</p>
                       </div>
                     ))}
                   </div>
