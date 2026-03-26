@@ -7,7 +7,7 @@ Last updated: 2026-03-26
 | 1A     | Thin wrapper replaces VIBE_SYSTEM_RULES | ✅     | 2026-03-26 | yes    | buildVibeSystemRules(teamName, orgName) + supabase helpers isolated |
 | 1B     | resolveDepartmentSkills()            | ✅     | 2026-03-26 | yes    | Fixed schema: team_function/content columns, shouldInjectSupabaseHelpers |
 | 2      | Auth identity fix                    | ⬜     |          |          |       |
-| 3      | Nango HubSpot live                   | ⬜     |          |          |       |
+| 3      | Nango HubSpot live                   | ✅     | 2026-03-26 | pending  | NangoService + HubSpot deals/contacts proxy, connector_instances table, marketplace preselect |
 | 4      | Design system + dashboard quality    | ⬜     |          |          |       |
 | 5      | Edit/iterate flow                    | ⬜     |          |          |       |
 | 6      | File upload stability                | ⬜     |          |          |       |

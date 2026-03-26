@@ -20,6 +20,24 @@ export interface NangoConnection {
   credentials?: Record<string, unknown>;
 }
 
+export interface HubSpotDeal {
+  id: string;
+  name: string;
+  stage: string;
+  amount: number | null;
+  close_date: string | null;
+  owner: string | null;
+  company: string | null;
+}
+
+export interface HubSpotContact {
+  id: string;
+  name: string;
+  email: string;
+  company: string | null;
+  last_activity: string | null;
+}
+
 @Injectable()
 export class NangoService {
   private readonly logger = new Logger(NangoService.name);
@@ -90,7 +108,56 @@ export class NangoService {
         (checks[i] as PromiseFulfilledResult<NangoConnection | null>).value !== null,
     );
   }
-}
-// rebuild-175237
 
-// rebuild-175256
+  async fetchHubSpotDeals(teamId: string): Promise<HubSpotDeal[]> {
+    this.ensureConfigured();
+    const connectionId = `${teamId}__${ConnectorType.HUBSPOT}`;
+    this.logger.log(`Fetching HubSpot deals connection=${connectionId}`);
+    const resp = await this.nango.proxy({
+      method: 'GET',
+      endpoint: '/crm/v3/objects/deals',
+      providerConfigKey: ConnectorType.HUBSPOT,
+      connectionId,
+      params: {
+        limit: '100',
+        properties: 'dealname,dealstage,amount,closedate,hubspot_owner_id,hs_lastmodifieddate',
+        associations: 'companies',
+      },
+    });
+    const results = resp?.data?.results ?? [];
+    return results.map((d: any) => ({
+      id: d.id,
+      name: d.properties?.dealname ?? '',
+      stage: d.properties?.dealstage ?? '',
+      amount: d.properties?.amount ? Number(d.properties.amount) : null,
+      close_date: d.properties?.closedate ?? null,
+      owner: d.properties?.hubspot_owner_id ?? null,
+      company: d.associations?.companies?.results?.[0]?.id ?? null,
+    }));
+  }
+
+  async fetchHubSpotContacts(teamId: string): Promise<HubSpotContact[]> {
+    this.ensureConfigured();
+    const connectionId = `${teamId}__${ConnectorType.HUBSPOT}`;
+    this.logger.log(`Fetching HubSpot contacts connection=${connectionId}`);
+    const resp = await this.nango.proxy({
+      method: 'GET',
+      endpoint: '/crm/v3/objects/contacts',
+      providerConfigKey: ConnectorType.HUBSPOT,
+      connectionId,
+      params: {
+        limit: '100',
+        properties: 'firstname,lastname,email,company,notes_last_updated',
+        associations: 'companies',
+      },
+    });
+    const results = resp?.data?.results ?? [];
+    return results.map((c: any) => ({
+      id: c.id,
+      name: [c.properties?.firstname, c.properties?.lastname].filter(Boolean).join(' '),
+      email: c.properties?.email ?? '',
+      company: c.properties?.company ?? null,
+      last_activity: c.properties?.notes_last_updated ?? null,
+    }));
+  }
+}

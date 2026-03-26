@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { useTeam } from "@/contexts/TeamContext"
 import { API_URL } from "@/lib/api"
@@ -38,17 +38,23 @@ interface ConnectDatasourceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onConnected?: (connectorType: string) => void
+  preselectedConnector?: string
 }
 
 export function ConnectDatasourceDialog({
   open,
   onOpenChange,
   onConnected,
+  preselectedConnector,
 }: ConnectDatasourceDialogProps) {
   const { currentTeam } = useTeam()
-  const [connectorType, setConnectorType] = useState("")
+  const [connectorType, setConnectorType] = useState(preselectedConnector ?? "")
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (open && preselectedConnector) setConnectorType(preselectedConnector)
+  }, [open, preselectedConnector])
 
   const resetForm = () => {
     setConnectorType("")
