@@ -51,7 +51,7 @@ export default function MarketplacePage() {
     if (skillDept !== "All") list = list.filter((s) => s.department === skillDept)
     if (skillSearch.trim()) {
       const q = skillSearch.toLowerCase()
-      list = list.filter((s) => s.skill_name.toLowerCase().includes(q) || s.department.toLowerCase().includes(q) || s.skill_prompt?.toLowerCase().includes(q))
+      list = list.filter((s) => s.skill_name.toLowerCase().includes(q))
     }
     return list
   }, [skills, skillDept, skillSearch])
@@ -147,7 +147,7 @@ export default function MarketplacePage() {
                           <span className="text-2xl leading-none">⚡</span>
                           <h3 className="font-semibold text-base text-foreground truncate pr-24">{s.skill_name}</h3>
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{s.skill_prompt ? s.skill_prompt.slice(0, 100) + (s.skill_prompt.length > 100 ? "…" : "") : "No description"}</p>
+                        <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{s.skill_prompt ? s.skill_prompt.slice(0, 120) + (s.skill_prompt.length > 120 ? "…" : "") : "No description"}</p>
                       </div>
                     ))}
                   </div>
@@ -156,7 +156,7 @@ export default function MarketplacePage() {
             </div>
           </div>
         )}
-        <div className="flex-1 flex flex-col md:flex-row max-w-6xl mx-auto w-full" style={{ display: section === "connectors" ? undefined : "none" }}>
+        {section === "connectors" && <div className="flex-1 flex flex-col md:flex-row max-w-6xl mx-auto w-full">
           {/* Left sidebar — categories */}
           <aside className="w-full md:w-[200px] shrink-0 border-b md:border-b-0 md:border-r border-border/50 px-4 py-4 md:py-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hidden md:block">Categories</p>
@@ -281,7 +281,7 @@ export default function MarketplacePage() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Dialog wiring */}
