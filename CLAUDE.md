@@ -112,7 +112,7 @@ Sprint Sequence — Execute in order. Do NOT skip or reorder.
 7B. Stripe frontend → UpgradeModal + PricingPage
 8. Smoke test gate → manual verification
 
-Current Position: SPRINT 1A
+Current Position: SPRINT 1B ✅ → next: SPRINT 2
 
 ### Billing
 

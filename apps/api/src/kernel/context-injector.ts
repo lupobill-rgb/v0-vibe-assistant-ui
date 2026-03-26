@@ -282,29 +282,33 @@ Query via: vibeLoadData('published_assets', {asset_type: '<type>'}) or vibeLoadD
 --- END PUBLISHED ASSETS ---`;
 }
 
-// --- Department mapping from team name ---
+// --- Department mapping from team name → skill_registry.team_function ---
 const DEPARTMENT_MAP: Record<string, string> = {
-  sales: 'Sales',
-  marketing: 'Marketing',
-  finance: 'Finance',
-  product: 'Product',
-  engineering: 'Engineering',
-  hr: 'HR / Ops',
-  people: 'HR / Ops',
-  ops: 'HR / Ops',
-  operations: 'HR / Ops',
-  'customer success': 'Customer Success',
-  cs: 'Customer Success',
-  support: 'Customer Success',
-  executive: 'Executive',
-  exec: 'Executive',
-  leadership: 'Executive',
-  design: 'Design',
+  sales: 'sales',
+  marketing: 'marketing',
+  finance: 'finance',
+  product: 'product',
+  engineering: 'engineering',
+  hr: 'hr',
+  people: 'hr',
+  ops: 'operations',
+  operations: 'operations',
+  'customer success': 'support',
+  cs: 'support',
+  support: 'support',
+  executive: 'admin',
+  exec: 'admin',
+  leadership: 'admin',
+  design: 'design',
+  data: 'data',
+  analytics: 'data',
+  legal: 'legal',
+  admin: 'admin',
 };
 
 function resolveDepartment(teamName: string): string {
   const lower = teamName.toLowerCase().trim();
-  return DEPARTMENT_MAP[lower] ?? 'General';
+  return DEPARTMENT_MAP[lower] ?? 'admin';
 }
 
 /**
@@ -318,11 +322,11 @@ export async function resolveDepartmentSkills(
 ): Promise<string> {
   const resolvedDept = resolveDepartment(teamName);
 
-  // Query skills for the resolved department
+  // Query skills for the resolved department (team_function column, content column)
   const { data: skills, error } = await supabase
     .from('skill_registry')
-    .select('skill_name, skill_prompt')
-    .eq('department', resolvedDept)
+    .select('skill_name, content')
+    .eq('team_function', resolvedDept)
     .eq('is_active', true)
     .order('skill_name', { ascending: true });
 
@@ -333,22 +337,41 @@ export async function resolveDepartmentSkills(
 
   let finalSkills = skills ?? [];
 
-  // Fallback to General if no skills found for this department
-  if (finalSkills.length === 0 && resolvedDept !== 'General') {
-    const { data: generalSkills } = await supabase
+  // Fallback to admin if no skills found for this department
+  if (finalSkills.length === 0 && resolvedDept !== 'admin') {
+    const { data: adminSkills } = await supabase
       .from('skill_registry')
-      .select('skill_name, skill_prompt')
-      .eq('department', 'General')
+      .select('skill_name, content')
+      .eq('team_function', 'admin')
       .eq('is_active', true)
       .order('skill_name', { ascending: true });
-    finalSkills = generalSkills ?? [];
+    finalSkills = adminSkills ?? [];
   }
 
   if (finalSkills.length === 0) return '';
 
-  const prompts = finalSkills.map((s: any) => s.skill_prompt).join('\n---\n');
-  console.log(`[KERNEL] Injected ${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}`);
-  return `\nDEPARTMENT SKILLS (${resolvedDept}):\n${prompts}`;
+  const skillBlock = finalSkills
+    .map((s: any) => `[${s.skill_name}]\n${s.content}`)
+    .join('\n\n');
+  const needsHelpers = shouldInjectSupabaseHelpers(skillBlock);
+  console.log(`[KERNEL] Injected ${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}, supabaseHelpers=${needsHelpers}`);
+  return `\n--- DEPARTMENT SKILLS (${resolvedDept}) ---\n${skillBlock}\n--- END DEPARTMENT SKILLS ---`
+    + (needsHelpers ? '\n__INJECT_SUPABASE_HELPERS__' : '');
+}
+
+/**
+ * Determines whether Supabase helper scripts (vibeSubmitForm, vibeLoadData, vibeLogSpend)
+ * should be injected based on the skill content.
+ */
+function shouldInjectSupabaseHelpers(skillBlock: string): boolean {
+  const dataKeywords = [
+    'form', 'submit', 'crud', 'write', 'save', 'log',
+    'track', 'store', 'insert', 'update', 'delete',
+    'vibesubmitform', 'vibeloaddata', 'vibelogspend',
+    'supabase', 'database', 'data table',
+  ];
+  const lower = skillBlock.toLowerCase();
+  return dataKeywords.some(kw => lower.includes(kw));
 }
 
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {

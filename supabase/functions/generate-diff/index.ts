@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.1.0"; // 2026-03-26 — Sprint 1A: thin wrapper with teamName/orgName, supabase helpers isolated
+const EDGE_FUNCTION_VERSION = "2.2.0"; // 2026-03-26 — Sprint 1B: conditional SUPABASE_HELPERS via __INJECT_SUPABASE_HELPERS__ marker
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1007,10 +1007,14 @@ STRUCTURAL REQUIREMENTS:
     const colorInjection = color_block
       ? `\n\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\nThe HTML file already contains this block in <head> — do not remove it, do not override it, do not add competing color declarations:\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
       : "";
-    // Supabase helpers are defined (SUPABASE_HELPERS) but NOT auto-injected.
-    // Sprint 1B will inject them conditionally via context-injector department skills.
+    // Supabase helpers injected conditionally when context-injector signals via __INJECT_SUPABASE_HELPERS__ marker
+    const supabaseBlock = prompt.includes('__INJECT_SUPABASE_HELPERS__') ? "\n" + SUPABASE_HELPERS : "";
+    if (supabaseBlock) {
+      // Strip the marker from the prompt so it doesn't leak into LLM context
+      prompt = prompt.replace('__INJECT_SUPABASE_HELPERS__', '');
+    }
     const vibeRules = buildVibeSystemRules(team_name, org_name);
-    const systemMsg = vibeRules + "\n" + baseSystemMsg + colorInjection;
+    const systemMsg = vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
 
     // Try the requested model first
