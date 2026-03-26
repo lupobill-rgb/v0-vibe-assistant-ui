@@ -104,13 +104,38 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       const parsed = JSON.parse(text)
       if (parsed.ready) return parsed
     } catch {}
-    // Extract JSON object from surrounding text
-    const match = text.match(/\{[^{}]*"ready"\s*:\s*true[^{}]*\}/)
-    if (match) {
+    // Strip markdown code blocks and retry
+    const stripped = text.replace(/```(?:json)?\s*\n?/g, '').replace(/\n?```\s*$/g, '').trim()
+    if (stripped !== text) {
       try {
-        const parsed = JSON.parse(match[0])
+        const parsed = JSON.parse(stripped)
         if (parsed.ready) return parsed
       } catch {}
+    }
+    // Find JSON object by matching brace depth (handles nested {} in enrichedPrompt)
+    const start = text.indexOf('{')
+    if (start >= 0) {
+      let depth = 0
+      let inString = false
+      let escaped = false
+      for (let i = start; i < text.length; i++) {
+        const ch = text[i]
+        if (escaped) { escaped = false; continue }
+        if (ch === '\\' && inString) { escaped = true; continue }
+        if (ch === '"') { inString = !inString; continue }
+        if (inString) continue
+        if (ch === '{') depth++
+        else if (ch === '}') {
+          depth--
+          if (depth === 0) {
+            try {
+              const parsed = JSON.parse(text.slice(start, i + 1))
+              if (parsed.ready) return parsed
+            } catch {}
+            break
+          }
+        }
+      }
     }
     return null
   }
