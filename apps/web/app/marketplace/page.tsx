@@ -5,6 +5,8 @@ import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
 import { Search, Plus, Package, Zap } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { useTeam } from "@/contexts/TeamContext"
+import { API_URL } from "@/lib/api"
 
 type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean }
 
@@ -26,6 +28,7 @@ const CONNECTORS = [
 const CATEGORIES = ["All", "CRM", "Analytics", "Database", "Storage", "Messaging", "DevTools"] as const
 
 export default function MarketplacePage() {
+  const { currentTeam } = useTeam()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState<string>("All")
   const [tab, setTab] = useState<"browse" | "installed">("browse")
@@ -40,6 +43,16 @@ export default function MarketplacePage() {
     supabase.from("skill_registry").select("id, team_function, skill_name, description, is_active").order("team_function").order("skill_name")
       .then(({ data }) => { if (data) setSkills(data as Skill[]) })
   }, [])
+
+  useEffect(() => {
+    if (!currentTeam?.id) return
+    fetch(`${API_URL}/connectors/${currentTeam.id}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { connectors: string[] } | null) => {
+        if (data?.connectors) setConnectedIds(new Set(data.connectors))
+      })
+      .catch(() => {})
+  }, [currentTeam?.id])
 
   const departments = useMemo(() => {
     const depts = Array.from(new Set(skills.map((s) => s.team_function))).sort()
