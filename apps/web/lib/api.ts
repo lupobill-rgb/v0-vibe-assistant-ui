@@ -551,14 +551,22 @@ export async function createCheckoutSession(
   email?: string,
   orgName?: string,
 ): Promise<{ checkoutUrl?: string; error?: string }> {
+  // Auto-fetch email from Supabase auth if not provided
+  let resolvedEmail = email
+  if (!resolvedEmail) {
+    const { data: { user } } = await supabase.auth.getUser()
+    resolvedEmail = user?.email ?? undefined
+  }
+  const resolvedOrgName = orgName || 'My Organization'
+
   const res = await fetch(`${API_URL}/api/billing/checkout`, {
     method: 'POST',
     headers: baseHeaders(),
     body: JSON.stringify({
       orgId,
       tierSlug,
-      email,
-      orgName,
+      email: resolvedEmail,
+      orgName: resolvedOrgName,
       successUrl: typeof window !== 'undefined' ? window.location.origin + '?checkout=success' : undefined,
       cancelUrl: typeof window !== 'undefined' ? window.location.origin : undefined,
     }),
