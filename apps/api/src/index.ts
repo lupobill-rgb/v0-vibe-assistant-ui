@@ -345,6 +345,24 @@ async function bootstrap() {
         return res.status(404).json({ error: 'Team not found' });
       }
 
+      // ── Tier-based project limit enforcement ──
+      if (team.org_id) {
+        const { tier_slug } = await storage.getOrgTier(team.org_id);
+        const limits = VibeStorage.TIER_LIMITS[tier_slug] || VibeStorage.TIER_LIMITS.starter;
+        const projectCount = await storage.getProjectCountForOrg(team.org_id);
+        if (projectCount >= limits.projects) {
+          const nextTier = tier_slug === 'starter' ? 'pro' : tier_slug === 'pro' ? 'growth' : 'team';
+          return res.status(402).json({
+            error: 'limit_exceeded',
+            limitType: 'projects',
+            current: projectCount,
+            max: limits.projects,
+            currentTier: tier_slug,
+            nextTier,
+          });
+        }
+      }
+
       const projectId = uuidv4();
       const repoDir = path.join(REPOS_BASE_DIR, team.org_id, team_id, projectId);
 
@@ -415,6 +433,24 @@ async function bootstrap() {
       const team = await storage.getTeam(team_id);
       if (!team) {
         return res.status(404).json({ error: 'Team not found' });
+      }
+
+      // ── Tier-based project limit enforcement ──
+      if (team.org_id) {
+        const { tier_slug } = await storage.getOrgTier(team.org_id);
+        const limits = VibeStorage.TIER_LIMITS[tier_slug] || VibeStorage.TIER_LIMITS.starter;
+        const projectCount = await storage.getProjectCountForOrg(team.org_id);
+        if (projectCount >= limits.projects) {
+          const nextTier = tier_slug === 'starter' ? 'pro' : tier_slug === 'pro' ? 'growth' : 'team';
+          return res.status(402).json({
+            error: 'limit_exceeded',
+            limitType: 'projects',
+            current: projectCount,
+            max: limits.projects,
+            currentTier: tier_slug,
+            nextTier,
+          });
+        }
       }
 
       const projectId = uuidv4();
