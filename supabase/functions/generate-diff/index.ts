@@ -836,8 +836,11 @@ function regenerates chart data and updates KPI values based on
 the selected range.
 
 Do NOT build an empty dashboard. ALWAYS generate sample data.
-If no connector is active, note at the bottom:
-"Showing sample data. Connect your data source for live numbers."
+At the BOTTOM of every dashboard using sample data, you MUST include this exact HTML banner as the last element before </body>:
+
+<div id="vibe-data-nudge" style="margin-top:2rem;padding:1rem 1.5rem;background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(59,130,246,0.08));border:1px solid rgba(124,58,237,0.2);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;"><div><p style="margin:0;font-weight:600;font-size:0.875rem;">📊 Showing sample data</p><p style="margin:4px 0 0;font-size:0.8125rem;opacity:0.7;">Connect your CRM or data source to populate this dashboard with real numbers.</p></div><button onclick="vibePrompt('Connect my data source')" style="padding:8px 20px;background:#7C3AED;color:white;border:none;border-radius:8px;font-size:0.8125rem;font-weight:500;cursor:pointer;">Connect Data Source</button></div>
+
+This banner is MANDATORY on every dashboard that uses sample data. Same enforcement level as charts.
 `;
 
 // ── Landing page content enforcement (appended to user message, not system) ──
