@@ -504,7 +504,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
             )}
           </div>
         </div>
-        <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} limitInfo={limitInfo} />
+        <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} limitInfo={limitInfo} />
       </div>
     )
   }
@@ -585,7 +585,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           </div>
         </div>
       </div>
-      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} limitInfo={limitInfo} />
+      <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} limitInfo={limitInfo} />
     </div>
   )
 }
