@@ -256,11 +256,19 @@ export async function createJob(params: {
     headers: baseHeaders(),
     body: JSON.stringify({ ...params, user_id: user?.id }),
   })
+<<<<<<< HEAD
   const body = await response.json()
   if (response.status === 402 && body.error === 'limit_exceeded') {
     return { error: 'limit_exceeded', limit_exceeded: body as LimitExceededError }
   }
   return body
+=======
+  const data = await response.json()
+  if (response.status === 402 && data.error === 'limit_exceeded') {
+    return { error: 'limit_exceeded', limit_exceeded: data as LimitExceededError }
+  }
+  return data
+>>>>>>> origin/claude/stripe-frontend-integration-4wsh7
 }
 
 export async function fetchJob(taskId: string): Promise<Task | null> {
@@ -515,4 +523,49 @@ export async function fetchBillingInfo(): Promise<BillingInfo | null> {
   } catch {
     return null
   }
+}
+
+// ── Billing (Stripe) ────────────────────────────────────────────────────────
+
+export interface BillingStatus {
+  tier_slug: string
+  credits_used: number
+  credits_limit: number
+  projects_used: number
+  projects_limit: number
+  workspaces_limit: number
+  builders_limit: number
+}
+
+export async function fetchBillingStatus(orgId: string): Promise<BillingStatus | null> {
+  try {
+    const res = await fetch(`${API_URL}/api/billing/status?orgId=${orgId}`, {
+      headers: getHeaders(),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function createCheckoutSession(
+  orgId: string,
+  tierSlug: string,
+): Promise<{ checkoutUrl?: string; error?: string }> {
+  const res = await fetch(`${API_URL}/api/billing/checkout`, {
+    method: 'POST',
+    headers: baseHeaders(),
+    body: JSON.stringify({ orgId, tierSlug }),
+  })
+  return res.json()
+}
+
+export interface LimitExceededError {
+  error: 'limit_exceeded'
+  limitType: 'projects' | 'credits' | 'workspaces' | 'builders'
+  current: number
+  max: number
+  currentTier: string
+  nextTier: string
 }

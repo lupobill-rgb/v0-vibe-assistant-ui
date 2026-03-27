@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Loader2, CheckCircle2, X, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createProject, createJob, linkUploadToProject, API_URL, type LimitExceededError } from "@/lib/api"
-import { UpgradeModal } from "@/components/dialogs/upgrade-modal"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
+import { UpgradeModal } from "@/components/billing/UpgradeModal"
 type Message = { role: "assistant" | "user"; text: string }
 type Stage = "idle" | "intake" | "building"
 const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Your job is to ask 2-3 short, focused questions to understand exactly what they need before building.

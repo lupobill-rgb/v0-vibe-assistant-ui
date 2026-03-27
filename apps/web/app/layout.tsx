@@ -4,6 +4,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { CommandPalette } from '@/components/command-palette'
 import { AuthGuard } from '@/components/auth-guard'
 import { TeamProvider } from '@/contexts/TeamContext'
+import { Toaster } from '@/components/ui/sonner'
 
 export const metadata: Metadata = {
   title: 'VIBE - AI Coding Assistant',
@@ -38,6 +39,7 @@ export default function RootLayout({
             </TeamProvider>
           </AuthGuard>
           <CommandPalette />
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
