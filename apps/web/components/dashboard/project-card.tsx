@@ -82,24 +82,18 @@ export function ProjectCard({ project, lastDiff }: { project: Project; lastDiff?
         {/* Thumbnail */}
         <div className="relative aspect-[16/10] bg-secondary overflow-hidden">
           {previewHtml ? (
-            <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", overflow: "hidden" }}>
               <iframe
                 srcDoc={previewHtml}
                 sandbox="allow-scripts"
                 title={`${project.name} preview`}
+                className="absolute inset-0 border-none pointer-events-none"
                 style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "1280px",
-                  height: "800px",
-                  border: "none",
-                  pointerEvents: "none",
+                  width: "400%",
+                  height: "400%",
                   transform: "scale(0.25)",
                   transformOrigin: "top left",
                 }}
               />
-            </div>
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-[#4F8EFF]/20 via-[#A855F7]/20 to-[#EC4899]/20" />
           )}
