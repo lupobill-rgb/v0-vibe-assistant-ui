@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Body, Param, Logger, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException } from '@nestjs/common';
 import { NangoService, ConnectorType } from './nango.service';
 
 interface ConnectDto {
@@ -31,6 +31,30 @@ export class ConnectorsController {
       body.redirectUri,
     );
     return { sessionToken, connectionId };
+  }
+
+  /**
+   * GET /connectors/hubspot/deals
+   * Fetches HubSpot deals via Nango proxy.
+   */
+  @Get('hubspot/deals')
+  async getHubSpotDeals(@Query('teamId') teamId: string) {
+    if (!teamId) throw new BadRequestException('Missing required query param: teamId');
+    this.logger.log(`HubSpot deals request — team=${teamId}`);
+    const deals = await this.nangoService.fetchHubSpotDeals(teamId);
+    return { deals };
+  }
+
+  /**
+   * GET /connectors/hubspot/contacts
+   * Fetches HubSpot contacts via Nango proxy.
+   */
+  @Get('hubspot/contacts')
+  async getHubSpotContacts(@Query('teamId') teamId: string) {
+    if (!teamId) throw new BadRequestException('Missing required query param: teamId');
+    this.logger.log(`HubSpot contacts request — team=${teamId}`);
+    const contacts = await this.nangoService.fetchHubSpotContacts(teamId);
+    return { contacts };
   }
 
   /**

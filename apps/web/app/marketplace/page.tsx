@@ -33,6 +33,7 @@ export default function MarketplacePage() {
   const [category, setCategory] = useState<string>("All")
   const [tab, setTab] = useState<"browse" | "installed">("browse")
   const [connectOpen, setConnectOpen] = useState(false)
+  const [preselectedConnector, setPreselectedConnector] = useState("")
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set())
   const [section, setSection] = useState<"connectors" | "skills">("connectors")
   const [skills, setSkills] = useState<Skill[]>([])
@@ -272,7 +273,7 @@ export default function MarketplacePage() {
                     {/* Action */}
                     {!isConnected && (
                       <button
-                        onClick={() => setConnectOpen(true)}
+                        onClick={() => { setPreselectedConnector(c.id); setConnectOpen(true) }}
                         className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#A855F7] hover:text-[#A855F7] transition-colors"
                       >
                         Connect
@@ -285,7 +286,7 @@ export default function MarketplacePage() {
               {/* Add Custom Connector card */}
               {tab === "browse" && (
                 <button
-                  onClick={() => setConnectOpen(true)}
+                  onClick={() => { setPreselectedConnector(""); setConnectOpen(true) }}
                   className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-4 text-muted-foreground hover:border-[#A855F7]/50 hover:text-foreground transition-colors min-h-[180px]"
                 >
                   <Plus className="w-8 h-8 mb-2 opacity-60" />
@@ -302,6 +303,7 @@ export default function MarketplacePage() {
         open={connectOpen}
         onOpenChange={setConnectOpen}
         onConnected={handleConnected}
+        preselectedConnector={preselectedConnector}
       />
     </AppShell>
   )
