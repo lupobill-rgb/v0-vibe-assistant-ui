@@ -51,6 +51,26 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     const saved = sessionStorage.getItem("vibe_upload_id")
     if (saved) uploadIdRef.current = saved
   }
+  const handleLimitError = (err: unknown): boolean => {
+    const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : ''
+    const obj = err as Record<string, unknown> | undefined
+    if (
+      msg.includes('limit_exceeded') ||
+      obj?.error === 'limit_exceeded' ||
+      obj?.limit_exceeded
+    ) {
+      const info = (obj?.limit_exceeded ?? obj?.data ?? {
+        limitType: 'projects', current: 0, max: 3, currentTier: 'starter', nextTier: 'pro',
+      }) as LimitExceededError
+      setLimitInfo(info)
+      setUpgradeOpen(true)
+      setSubmitting(false)
+      setStage('idle')
+      return true
+    }
+    return false
+  }
+
   const handleAttach = () => fileInputRef.current?.click()
   const clearUpload = () => {
     uploadIdRef.current = undefined
@@ -187,6 +207,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     if (!selectedProjectId && !projectIdRef.current) {
       console.log("[VIBE] startIntake: creating project with upload_id =", uploadIdRef.current)
       const project = await createProject(generateSmartName(prompt), undefined, currentTeam?.id, uploadIdRef.current)
+      if (project.limit_exceeded) {
+        setLimitInfo(project.limit_exceeded)
+        setUpgradeOpen(true)
+        setIntaking(false)
+        setStage('idle')
+        return
+      }
       if (project.id) {
         projectIdRef.current = project.id
         console.log("[VIBE] startIntake: project created =", project.id)
@@ -214,6 +241,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
     } catch (err) {
+      if (handleLimitError(err)) return
       const msg = err instanceof Error ? err.message : "Failed to connect to AI."
       setError(`${msg} You can retry or skip to build.`)
     } finally {
@@ -240,6 +268,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages((m) => [...m, { role: "assistant", text: reply }])
     } catch (err) {
+      if (handleLimitError(err)) return
       const msg = err instanceof Error ? err.message : "Something went wrong."
       setError(`${msg} You can retry or skip to build with what we have.`)
     } finally {
@@ -292,6 +321,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       if (!projectId) {
         console.log("[VIBE] fireJob: creating project...")
         const project = await createProject(generateSmartName(finalPrompt), undefined, currentTeam?.id, uploadIdRef.current)
+        if (project.limit_exceeded) {
+          setLimitInfo(project.limit_exceeded)
+          setUpgradeOpen(true)
+          setSubmitting(false)
+          setStage("idle")
+          return
+        }
         if (project.error || !project.id) throw new Error(project.error || "Failed to create project")
         projectId = project.id
         console.log("[VIBE] fireJob: project created:", projectId)
@@ -330,6 +366,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       }, 2000)
     } catch (err) {
       console.error("[VIBE] fireJob: error:", err)
+      if (handleLimitError(err)) return
       setError(err instanceof Error ? err.message : "Failed to start build")
       setSubmitting(false)
       setStage("idle")
@@ -467,6 +504,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
             )}
           </div>
         </div>
+        <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} limitInfo={limitInfo} />
       </div>
     )
   }

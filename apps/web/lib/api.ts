@@ -134,12 +134,21 @@ export async function fetchProjects(): Promise<Project[]> {
   return data ?? []
 }
 
+export interface LimitExceededError {
+  error: 'limit_exceeded'
+  limitType: 'projects' | 'credits' | 'workspaces' | 'builders'
+  current: number
+  max: number
+  currentTier: string
+  nextTier: string
+}
+
 export async function createProject(
   name: string,
   repositoryUrl?: string,
   teamId?: string,
   uploadId?: string,
-): Promise<{ id?: string; error?: string }> {
+): Promise<{ id?: string; error?: string; limit_exceeded?: LimitExceededError }> {
   const body: Record<string, string> = { name }
   if (repositoryUrl) body.repository_url = repositoryUrl
   if (teamId) body.team_id = teamId
@@ -149,7 +158,11 @@ export async function createProject(
     headers: baseHeaders(),
     body: JSON.stringify(body),
   })
-  return response.json()
+  const data = await response.json()
+  if (response.status === 402 && data.error === 'limit_exceeded') {
+    return { error: 'limit_exceeded', limit_exceeded: data as LimitExceededError }
+  }
+  return data
 }
 
 /** Link a user_upload record to a project (best-effort, never blocks). */
@@ -229,15 +242,6 @@ export async function fetchJobs(): Promise<Task[]> {
   }
 }
 
-export interface LimitExceededError {
-  error: 'limit_exceeded'
-  limitType: 'projects' | 'credits'
-  current: number
-  max: number
-  currentTier: string
-  nextTier: string
-}
-
 export async function createJob(params: {
   prompt: string
   project_id: string
@@ -256,19 +260,11 @@ export async function createJob(params: {
     headers: baseHeaders(),
     body: JSON.stringify({ ...params, user_id: user?.id }),
   })
-<<<<<<< HEAD
-  const body = await response.json()
-  if (response.status === 402 && body.error === 'limit_exceeded') {
-    return { error: 'limit_exceeded', limit_exceeded: body as LimitExceededError }
-  }
-  return body
-=======
   const data = await response.json()
   if (response.status === 402 && data.error === 'limit_exceeded') {
     return { error: 'limit_exceeded', limit_exceeded: data as LimitExceededError }
   }
   return data
->>>>>>> origin/claude/stripe-frontend-integration-4wsh7
 }
 
 export async function fetchJob(taskId: string): Promise<Task | null> {
@@ -559,13 +555,4 @@ export async function createCheckoutSession(
     body: JSON.stringify({ orgId, tierSlug }),
   })
   return res.json()
-}
-
-export interface LimitExceededError {
-  error: 'limit_exceeded'
-  limitType: 'projects' | 'credits' | 'workspaces' | 'builders'
-  current: number
-  max: number
-  currentTier: string
-  nextTier: string
 }
