@@ -504,7 +504,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
             )}
           </div>
         </div>
-        <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} limitInfo={limitInfo} />
+        <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} limitType={limitInfo?.limitType ?? "projects"} current={limitInfo?.current ?? 0} max={limitInfo?.max ?? 3} currentTier={limitInfo?.currentTier ?? "starter"} nextTier={limitInfo?.nextTier ?? "pro"} orgId={currentOrg?.id ?? ""} />
       </div>
     )
   }
@@ -585,7 +585,8 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           </div>
         </div>
       </div>
-      <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} limitInfo={limitInfo} />
+      <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} limitType={limitInfo?.limitType ?? "projects"} current={limitInfo?.current ?? 0} max={limitInfo?.max ?? 3} currentTier={limitInfo?.currentTier ?? "starter"} nextTier={limitInfo?.nextTier ?? "pro"} orgId={currentOrg?.id ?? ""} />
     </div>
   )
 }
+
