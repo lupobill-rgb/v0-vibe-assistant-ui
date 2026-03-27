@@ -209,6 +209,7 @@ export default function SelectTeamPage() {
 
       if (insertErr) throw insertErr
 
+      document.cookie = "vibe_has_team=1; path=/; max-age=3600; samesite=lax"
       localStorage.setItem("vibe_active_team", team.id)
       router.replace("/")
     } catch {
@@ -253,6 +254,7 @@ export default function SelectTeamPage() {
 
       if (memberErr) throw memberErr
 
+      document.cookie = "vibe_has_team=1; path=/; max-age=3600; samesite=lax"
       localStorage.setItem("vibe_active_team", newTeam.id)
       router.replace("/")
     } catch {

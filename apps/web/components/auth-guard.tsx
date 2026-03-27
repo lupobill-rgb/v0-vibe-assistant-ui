@@ -10,8 +10,8 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    // Skip auth check on the login page itself
-    if (pathname === "/login") {
+    // Skip auth check on public pages
+    if (pathname === "/login" || pathname === "/select-team" || pathname === "/pricing") {
       setReady(true)
       return
     }
