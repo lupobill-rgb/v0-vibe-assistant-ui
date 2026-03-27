@@ -55,6 +55,9 @@ function parseDiff(raw: string): PageData[] {
   }
   // Strip markdown fences
   html = html.replace(/^`html?\s*\n?/i, '').replace(/\n?`\s*$/i, '')
+  // Strip LLM preamble text before the first HTML tag
+  const firstTagIdx = html.indexOf('<')
+  if (firstTagIdx > 0) html = html.substring(firstTagIdx)
   if (!html.trim()) return []
   return [{ name: 'Preview', filename: 'index.html', html }]
 }
