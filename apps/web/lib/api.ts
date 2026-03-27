@@ -152,6 +152,15 @@ export async function createProject(
   return response.json()
 }
 
+/** Link a user_upload record to a project (best-effort, never blocks). */
+export async function linkUploadToProject(uploadId: string, projectId: string): Promise<void> {
+  try {
+    await supabase.from('user_uploads').update({ project_id: projectId }).eq('id', uploadId)
+  } catch {
+    // Best-effort — the job handler also links on build start
+  }
+}
+
 export async function importGithubProject(
   repoUrl: string,
 ): Promise<{ id?: string; error?: string }> {
@@ -220,6 +229,15 @@ export async function fetchJobs(): Promise<Task[]> {
   }
 }
 
+export interface LimitExceededError {
+  error: 'limit_exceeded'
+  limitType: 'projects' | 'credits'
+  current: number
+  max: number
+  currentTier: string
+  nextTier: string
+}
+
 export async function createJob(params: {
   prompt: string
   project_id: string
@@ -231,14 +249,18 @@ export async function createJob(params: {
   debug_job_id?: string
   upload_id?: string
   conversation_id?: string
-}): Promise<{ task_id?: string; conversation_id?: string; error?: string }> {
+}): Promise<{ task_id?: string; conversation_id?: string; error?: string; limit_exceeded?: LimitExceededError }> {
   const { data: { user } } = await supabase.auth.getUser()
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',
     headers: baseHeaders(),
     body: JSON.stringify({ ...params, user_id: user?.id }),
   })
-  return response.json()
+  const body = await response.json()
+  if (response.status === 402 && body.error === 'limit_exceeded') {
+    return { error: 'limit_exceeded', limit_exceeded: body as LimitExceededError }
+  }
+  return body
 }
 
 export async function fetchJob(taskId: string): Promise<Task | null> {

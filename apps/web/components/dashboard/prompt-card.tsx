@@ -3,7 +3,8 @@ import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Loader2, CheckCircle2, X, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createProject, createJob, API_URL } from "@/lib/api"
+import { createProject, createJob, linkUploadToProject, API_URL, type LimitExceededError } from "@/lib/api"
+import { UpgradeModal } from "@/components/dialogs/upgrade-modal"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 type Message = { role: "assistant" | "user"; text: string }
@@ -41,12 +42,20 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     uploadId?: string
     filename?: string
   }>({ status: "idle", progress: 0, message: "" })
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [limitInfo, setLimitInfo] = useState<LimitExceededError | null>(null)
   // Ref to keep upload_id accessible across async closures without stale capture
   const uploadIdRef = useRef<string | undefined>(undefined)
+  // Restore upload_id from sessionStorage on mount (survives refresh during intake)
+  if (typeof window !== "undefined" && !uploadIdRef.current) {
+    const saved = sessionStorage.getItem("vibe_upload_id")
+    if (saved) uploadIdRef.current = saved
+  }
   const handleAttach = () => fileInputRef.current?.click()
   const clearUpload = () => {
     uploadIdRef.current = undefined
     uploadPromiseRef.current = null
+    sessionStorage.removeItem("vibe_upload_id")
     setUploadState({ status: "idle", progress: 0, message: "" })
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
@@ -88,6 +97,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         })
         const uid = result.upload_id
         uploadIdRef.current = uid
+        if (uid) sessionStorage.setItem("vibe_upload_id", uid)
         console.log("[VIBE] Upload complete, uploadIdRef.current =", uid)
         setUploadState({ status: "done", progress: 100, message: `✓ ${file.name} ready — ${(result.row_count ?? 0).toLocaleString()} rows loaded.`, uploadId: uid, filename: file.name })
       } catch (err) {
@@ -180,6 +190,10 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       if (project.id) {
         projectIdRef.current = project.id
         console.log("[VIBE] startIntake: project created =", project.id)
+        // Link the upload record to the project so the reference survives intake Q&A
+        if (uploadIdRef.current) {
+          linkUploadToProject(uploadIdRef.current, project.id).catch(() => {})
+        }
       }
     }
     // Include file context so the intake AI knows about the attachment
@@ -281,6 +295,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         if (project.error || !project.id) throw new Error(project.error || "Failed to create project")
         projectId = project.id
         console.log("[VIBE] fireJob: project created:", projectId)
+        if (uploadIdRef.current) linkUploadToProject(uploadIdRef.current, projectId).catch(() => {})
       }
       // Step 2: Create job record via Railway (sets state to 'queued')
       console.log("[VIBE] fireJob: creating job via Railway...")
@@ -291,6 +306,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         upload_id: uploadIdRef.current,
         conversation_id: conversationId,
       })
+      if (result.limit_exceeded) {
+        setLimitInfo(result.limit_exceeded)
+        setUpgradeOpen(true)
+        setSubmitting(false)
+        setStage("idle")
+        return
+      }
       if (result.error || !result.task_id) throw new Error(result.error || "Failed to create job")
       if (result.conversation_id) setConversationId(result.conversation_id)
       const jobId = result.task_id
@@ -525,6 +547,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           </div>
         </div>
       </div>
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} limitInfo={limitInfo} />
     </div>
   )
 }

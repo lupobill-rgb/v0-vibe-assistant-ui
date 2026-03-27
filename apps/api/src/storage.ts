@@ -206,7 +206,7 @@ function eventRowToVibeEvent(row: JobEventRow): VibeEvent {
   };
 }
 
-class VibeStorage {
+export class VibeStorage {
   // EventEmitters for real-time log streaming (in-memory, not stored in DB)
   private logEmitters = new Map<string, EventEmitter>();
 
@@ -814,6 +814,44 @@ class VibeStorage {
         { onConflict: 'org_id' }
       );
     if (error) throw new Error(`Failed to set tenant budget: ${error.message}`);
+  }
+
+  // ── Tier enforcement ──
+
+  static readonly TIER_LIMITS: Record<string, { projects: number; credits: number }> = {
+    starter: { projects: 3, credits: 50 },
+    pro: { projects: 15, credits: 500 },
+    growth: { projects: 50, credits: 2000 },
+    team: { projects: 200, credits: 10000 },
+    enterprise: { projects: Infinity, credits: Infinity },
+  };
+
+  async getOrgTier(orgId: string): Promise<{ tier_slug: string; credits_used_this_period: number }> {
+    const { data, error } = await this.sb
+      .from('organizations')
+      .select('tier_slug, credits_used_this_period')
+      .eq('id', orgId)
+      .single();
+    if (error || !data) return { tier_slug: 'starter', credits_used_this_period: 0 };
+    return {
+      tier_slug: (data as Record<string, unknown>).tier_slug as string || 'starter',
+      credits_used_this_period: ((data as Record<string, unknown>).credits_used_this_period as number) || 0,
+    };
+  }
+
+  async getProjectCountForOrg(orgId: string): Promise<number> {
+    const projectIds = await this.getProjectIdsForOrg(orgId);
+    return projectIds.length;
+  }
+
+  async incrementCreditsUsed(orgId: string): Promise<void> {
+    // Read current count then write incremented value
+    const { credits_used_this_period } = await this.getOrgTier(orgId);
+    const { error } = await this.sb
+      .from('organizations')
+      .update({ credits_used_this_period: credits_used_this_period + 1 })
+      .eq('id', orgId);
+    if (error) console.warn(`[BILLING] Failed to increment credits for org ${orgId}: ${error.message}`);
   }
 
   // ── Usage metrics ──

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import express from 'express';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-import { storage } from './storage';
+import { storage, VibeStorage } from './storage';
 import path from 'path';
 import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
@@ -930,6 +930,35 @@ async function bootstrap() {
       // Budget enforcement via org
       const org = await storage.getOrgForProject(project_id);
 
+      // ── Tier-based project limit enforcement ──
+      if (org) {
+        const { tier_slug, credits_used_this_period } = await storage.getOrgTier(org.id);
+        const limits = VibeStorage.TIER_LIMITS[tier_slug] || VibeStorage.TIER_LIMITS.starter;
+        const projectCount = await storage.getProjectCountForOrg(org.id);
+        if (projectCount >= limits.projects) {
+          const nextTier = tier_slug === 'starter' ? 'pro' : tier_slug === 'pro' ? 'growth' : 'team';
+          return res.status(402).json({
+            error: 'limit_exceeded',
+            limitType: 'projects',
+            current: projectCount,
+            max: limits.projects,
+            currentTier: tier_slug,
+            nextTier,
+          });
+        }
+        if (credits_used_this_period >= limits.credits) {
+          const nextTier = tier_slug === 'starter' ? 'pro' : tier_slug === 'pro' ? 'growth' : 'team';
+          return res.status(402).json({
+            error: 'limit_exceeded',
+            limitType: 'credits',
+            current: credits_used_this_period,
+            max: limits.credits,
+            currentTier: tier_slug,
+            nextTier,
+          });
+        }
+      }
+
       // Kernel context injection: prepend team/role/brand identity to prompt
       let enrichedPrompt = prompt;
       if (user_id && org) {
@@ -1166,6 +1195,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
               await storage.logEvent(taskId, `[DEBUG] Fix applied after ${debugResult.iterations} iteration(s). ${debugResult.healedIssues ?? 0} component issue(s) healed.`, 'success');
               await storage.updateTaskState(taskId, 'completed');
+              if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
             } else {
               await storage.logEvent(taskId, `[DEBUG] Agent failed: ${debugResult.summary}`, 'error');
               await storage.updateTaskState(taskId, 'failed');
@@ -1332,6 +1362,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 llm_total_tokens: appData.usage?.total_tokens ?? 0,
               });
               await storage.updateTaskState(taskId, 'completed');
+              if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
               await storage.logEvent(taskId, 'App job completed successfully (fast path)', 'info');
               return;
             } catch (appErr: any) {
@@ -1494,6 +1525,7 @@ Include ALL rows from the original data with their final calculated values. This
                 llm_total_tokens: dashData.usage?.total_tokens ?? 0,
               });
               await storage.updateTaskState(taskId, 'completed');
+              if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
               await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
               return;
             } catch (dashErr: any) {
@@ -1669,6 +1701,7 @@ Include ALL rows from the original data with their final calculated values. This
             llm_total_tokens: totalTokens,
           });
           await storage.updateTaskState(taskId, 'completed');
+          if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
           // Store assistant response in conversation after successful build (best-effort)
           if (resolvedConversationId) {
