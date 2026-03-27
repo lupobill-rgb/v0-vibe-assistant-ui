@@ -548,11 +548,20 @@ export async function fetchBillingStatus(orgId: string): Promise<BillingStatus |
 export async function createCheckoutSession(
   orgId: string,
   tierSlug: string,
+  email?: string,
+  orgName?: string,
 ): Promise<{ checkoutUrl?: string; error?: string }> {
   const res = await fetch(`${API_URL}/api/billing/checkout`, {
     method: 'POST',
     headers: baseHeaders(),
-    body: JSON.stringify({ orgId, tierSlug }),
+    body: JSON.stringify({
+      orgId,
+      tierSlug,
+      email,
+      orgName,
+      successUrl: typeof window !== 'undefined' ? window.location.origin + '?checkout=success' : undefined,
+      cancelUrl: typeof window !== 'undefined' ? window.location.origin : undefined,
+    }),
   })
   return res.json()
 }
