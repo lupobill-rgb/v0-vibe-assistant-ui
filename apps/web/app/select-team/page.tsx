@@ -19,7 +19,11 @@ import {
   Crown,
   Plus,
   Loader2,
+  X,
 } from "lucide-react"
+
+const TEAM_ROLES = ["IC", "Lead", "Manager", "Director", "Executive", "Admin"] as const
+type TeamRole = (typeof TEAM_ROLES)[number]
 
 const TEAM_FUNCTIONS = [
   "Sales",
@@ -94,6 +98,8 @@ export default function SelectTeamPage() {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState<string | null>(null)
   const [error, setError] = useState("")
+  const [rolePickTeam, setRolePickTeam] = useState<OrgTeam | null>(null)
+  const [selectedRole, setSelectedRole] = useState<TeamRole>("IC")
 
   // Create team form state
   const [showCreate, setShowCreate] = useState(false)
@@ -193,7 +199,15 @@ export default function SelectTeamPage() {
     loadData()
   }, [loadData])
 
-  const joinTeam = async (team: OrgTeam) => {
+  const openRolePicker = (team: OrgTeam) => {
+    setSelectedRole("IC")
+    setRolePickTeam(team)
+  }
+
+  const confirmJoin = async () => {
+    if (!rolePickTeam) return
+    const team = rolePickTeam
+    setRolePickTeam(null)
     setJoining(team.id)
     try {
       const { data: auth } = await supabase.auth.getUser()
@@ -204,7 +218,7 @@ export default function SelectTeamPage() {
         .insert({
           team_id: team.id,
           user_id: auth.user.id,
-          role: "member",
+          role: selectedRole,
         })
 
       if (insertErr) throw insertErr
@@ -249,7 +263,7 @@ export default function SelectTeamPage() {
         .insert({
           team_id: newTeam.id,
           user_id: auth.user.id,
-          role: "Lead",
+          role: "Admin",
         })
 
       if (memberErr) throw memberErr
@@ -304,7 +318,7 @@ export default function SelectTeamPage() {
                 return (
                   <button
                     key={team.id}
-                    onClick={() => joinTeam(team)}
+                    onClick={() => openRolePicker(team)}
                     disabled={!!joining}
                     className={`group relative rounded-xl border bg-gradient-to-b ${colorClasses} p-5 text-left transition-all hover:scale-[1.02] hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
@@ -411,6 +425,48 @@ export default function SelectTeamPage() {
                   Back to team list
                 </button>
               )}
+            </div>
+          </div>
+        )}
+        {/* Role Picker Modal */}
+        {rolePickTeam && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-xl mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-foreground">
+                  What&apos;s your role?
+                </h2>
+                <button
+                  onClick={() => setRolePickTeam(null)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Joining <span className="font-medium text-foreground">{rolePickTeam.name}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2 mb-5">
+                {TEAM_ROLES.map((role) => (
+                  <button
+                    key={role}
+                    onClick={() => setSelectedRole(role)}
+                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                      selectedRole === role
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                    }`}
+                  >
+                    {role}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={confirmJoin}
+                className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+              >
+                Join as {selectedRole}
+              </button>
             </div>
           </div>
         )}
