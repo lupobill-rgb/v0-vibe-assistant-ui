@@ -13,22 +13,23 @@ import {
 import { createCheckoutSession } from "@/lib/api"
 
 const TIER_INFO: Record<string, { name: string; price: string; highlight: string }> = {
-  pro: { name: "Pro", price: "$49/mo", highlight: "15 projects, 500 credits" },
-  growth: { name: "Growth", price: "$99/mo", highlight: "50 projects, 1,200 credits" },
-  team: { name: "Team", price: "$199/mo", highlight: "Unlimited projects, 2,500 credits" },
+  pro: { name: "Pro", price: "$49/mo", highlight: "15 projects, 500 credits, 5 connectors" },
+  growth: { name: "Growth", price: "$99/mo", highlight: "50 projects, 1,200 credits, 15 connectors" },
+  team: { name: "Team", price: "$199/mo", highlight: "Unlimited projects, 2,500 credits, unlimited connectors" },
 }
 
 const LIMIT_HEADINGS: Record<string, string> = {
-  projects: "You've reached your project limit",
-  credits: "You've used all your build credits this month",
+  projects: "Upgrade for more projects",
+  credits: "Upgrade for more build credits",
   workspaces: "You need more workspaces",
   builders: "You need more builder seats",
+  connectors: "Upgrade to connect your CRM",
 }
 
 interface UpgradeModalProps {
   isOpen: boolean
   onClose: () => void
-  limitType: "projects" | "credits" | "workspaces" | "builders"
+  limitType: "projects" | "credits" | "workspaces" | "builders" | "connectors"
   current: number
   max: number
   currentTier: string

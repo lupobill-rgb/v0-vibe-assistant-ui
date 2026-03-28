@@ -818,12 +818,12 @@ export class VibeStorage {
 
   // ── Tier enforcement ──
 
-  static readonly TIER_LIMITS: Record<string, { projects: number; credits: number }> = {
-    starter: { projects: 3, credits: 50 },
-    pro: { projects: 15, credits: 500 },
-    growth: { projects: 50, credits: 2000 },
-    team: { projects: 200, credits: 10000 },
-    enterprise: { projects: Infinity, credits: Infinity },
+  static readonly TIER_LIMITS: Record<string, { projects: number; credits: number; connectors: number }> = {
+    starter: { projects: 3, credits: 50, connectors: 0 },
+    pro: { projects: 15, credits: 500, connectors: 5 },
+    growth: { projects: 50, credits: 1200, connectors: 15 },
+    team: { projects: Infinity, credits: 2500, connectors: Infinity },
+    enterprise: { projects: Infinity, credits: Infinity, connectors: Infinity },
   };
 
   async getOrgTier(orgId: string): Promise<{ tier_slug: string; credits_used_this_period: number }> {

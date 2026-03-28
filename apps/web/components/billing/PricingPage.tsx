@@ -8,40 +8,59 @@ import { cn } from "@/lib/utils"
 
 const TIERS = [
   {
+    slug: "starter",
+    name: "Starter",
+    price: "Free",
+    period: "",
+    target: "Individual",
+    limits: { workspaces: 1, builders: 1, projects: 3, credits: 50 },
+    features: ["3 projects", "50 build credits/mo", "Sample data only", "1 builder"],
+    recommended: false,
+    connectorNote: "Sample data only — connect your CRM on Pro+",
+  },
+  {
     slug: "pro",
     name: "Pro",
     price: "$49",
     period: "/mo",
+    target: "Power users",
     limits: { workspaces: 3, builders: 5, projects: 15, credits: 500 },
-    features: ["5 connectors", "Standard agents", "Email support"],
+    features: ["15 projects", "500 credits/mo", "5 connectors", "Standard agents", "Email support"],
     recommended: false,
+    connectorNote: null,
   },
   {
     slug: "growth",
     name: "Growth",
     price: "$99",
     period: "/mo",
-    limits: { workspaces: 10, builders: 15, projects: 50, credits: 1200 },
-    features: ["15 connectors", "Advanced agents", "Reactive kernel", "Priority support"],
+    target: "Small teams",
+    limits: { workspaces: 5, builders: 15, projects: 50, credits: 1200 },
+    features: ["50 projects", "1,200 credits/mo", "15 connectors", "Advanced agents", "Reactive kernel", "Priority support"],
     recommended: true,
+    connectorNote: null,
   },
   {
     slug: "team",
     name: "Team",
     price: "$199",
     period: "/mo",
+    target: "Departments",
     limits: { workspaces: 25, builders: 50, projects: "Unlimited", credits: 2500 },
-    features: ["Unlimited connectors", "All agents", "Full kernel", "Dedicated support", "SSO"],
+    features: ["Unlimited projects", "2,500 credits/mo", "Unlimited connectors", "All agents", "Full kernel", "Dedicated support", "SSO"],
     recommended: false,
+    connectorNote: null,
   },
   {
     slug: "enterprise",
     name: "Enterprise",
     price: "Custom",
     period: "",
+    target: "Org-wide",
     limits: { workspaces: "Unlimited", builders: "Unlimited", projects: "Unlimited", credits: "Unlimited" },
     features: ["Everything in Team", "Custom integrations", "SLA guarantee", "On-prem option"],
     recommended: false,
+    connectorNote: null,
   },
 ]
 
@@ -90,7 +109,7 @@ export function PricingPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {TIERS.map((tier) => {
           const isCurrent = tier.slug === currentTier
           const isEnterprise = tier.slug === "enterprise"
@@ -150,6 +169,13 @@ export function PricingPage() {
                     className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-secondary text-muted-foreground cursor-not-allowed"
                   >
                     Current Plan
+                  </button>
+                ) : tier.slug === "starter" ? (
+                  <button
+                    disabled
+                    className="w-full px-4 py-2.5 rounded-xl text-sm font-medium border border-border text-foreground cursor-default"
+                  >
+                    Get Started Free
                   </button>
                 ) : isEnterprise ? (
                   <a

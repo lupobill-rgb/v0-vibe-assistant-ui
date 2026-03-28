@@ -5,6 +5,7 @@ export interface TierLimits {
   builders: number;
   projects: number;   // -1 = unlimited
   creditsPerMonth: number; // -1 = unlimited
+  connectors: number; // -1 = unlimited
   priceMonthly: number;   // cents (USD)
   tierDisplayName: string;
 }
@@ -14,31 +15,35 @@ const TIER_LIMITS: Record<TierSlug, TierLimits> = {
     workspaces: 1,
     builders: 1,
     projects: 3,
-    creditsPerMonth: 30,
+    creditsPerMonth: 50,
+    connectors: 0,
     priceMonthly: 0,
     tierDisplayName: 'VIBE Starter',
   },
   pro: {
     workspaces: 3,
-    builders: 3,
+    builders: 5,
     projects: 15,
     creditsPerMonth: 500,
+    connectors: 5,
     priceMonthly: 4900,
     tierDisplayName: 'VIBE Pro',
   },
   growth: {
     workspaces: 5,
-    builders: 7,
+    builders: 15,
     projects: 50,
     creditsPerMonth: 1200,
+    connectors: 15,
     priceMonthly: 9900,
     tierDisplayName: 'VIBE Growth',
   },
   team: {
-    workspaces: 10,
-    builders: 15,
+    workspaces: 25,
+    builders: 50,
     projects: -1,
     creditsPerMonth: 2500,
+    connectors: -1,
     priceMonthly: 19900,
     tierDisplayName: 'VIBE Team',
   },
@@ -47,6 +52,7 @@ const TIER_LIMITS: Record<TierSlug, TierLimits> = {
     builders: -1,
     projects: -1,
     creditsPerMonth: -1,
+    connectors: -1,
     priceMonthly: 0,
     tierDisplayName: 'VIBE Enterprise',
   },
