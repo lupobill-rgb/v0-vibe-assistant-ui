@@ -970,7 +970,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    let { prompt, context, model = "claude", system, max_tokens, mode, color_block, team_name, org_name } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string; team_name?: string; org_name?: string };
+    let { prompt, context, model = "claude", system, max_tokens, mode, color_block, team_name, org_name, inject_supabase_helpers } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string; team_name?: string; org_name?: string; inject_supabase_helpers?: boolean };
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -1051,10 +1051,13 @@ STRUCTURAL REQUIREMENTS:
     const colorInjection = color_block
       ? `\n\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\nThe HTML file already contains this block in <head> — do not remove it, do not override it, do not add competing color declarations:\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
       : "";
-    // Supabase helpers injected conditionally when context-injector signals via __INJECT_SUPABASE_HELPERS__ marker
-    const supabaseBlock = prompt.includes('__INJECT_SUPABASE_HELPERS__') ? "\n" + SUPABASE_HELPERS : "";
-    if (supabaseBlock) {
-      // Strip the marker from the prompt so it doesn't leak into LLM context
+    // Supabase helpers injected when API signals via structured flag (or legacy marker fallback)
+    let supabaseBlock = "";
+    if (inject_supabase_helpers) {
+      supabaseBlock = "\n" + SUPABASE_HELPERS;
+    } else if (prompt.includes('__INJECT_SUPABASE_HELPERS__')) {
+      // Legacy fallback: strip marker from prompt if still present
+      supabaseBlock = "\n" + SUPABASE_HELPERS;
       prompt = prompt.replace('__INJECT_SUPABASE_HELPERS__', '');
     }
     const vibeRules = buildVibeSystemRules(team_name, org_name);

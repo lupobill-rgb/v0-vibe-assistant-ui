@@ -195,7 +195,7 @@ async function bootstrap() {
     try {
       const { userId, orgId, teamId } = req.params;
       const sb = getPlatformSupabaseClient();
-      const ctx = await resolveKernelContext(userId, orgId, teamId);
+      const kernel = await resolveKernelContext(userId, orgId, teamId);
 
       // Resolve department skills diagnostic
       const { data: team } = await sb.from('teams').select('function').eq('id', teamId).limit(1).single();
@@ -215,13 +215,14 @@ async function bootstrap() {
       const sampleInjection = await resolveDepartmentSkills(sb, teamId, teamRow?.name ?? 'unknown');
 
       res.json({
-        context: ctx,
-        hasVisibleTeamData: ctx.includes('VISIBLE TEAM DATA'),
+        context: kernel.context,
+        injectSupabaseHelpers: kernel.injectSupabaseHelpers,
+        hasVisibleTeamData: kernel.context.includes('VISIBLE TEAM DATA'),
         department_skills: {
           team_function: teamFunction,
           available_skills: availableSkills,
           skill_names: skillNames,
-          sample_injection: sampleInjection.slice(0, 500),
+          sample_injection: sampleInjection.text.slice(0, 500),
         },
       });
     } catch (error: any) {
@@ -231,10 +232,11 @@ async function bootstrap() {
 
   app.get('/api/kernel-context/:userId/:orgId', async (req: Request, res: Response) => {
     try {
-      const ctx = await resolveKernelContext(req.params.userId, req.params.orgId);
+      const kernel = await resolveKernelContext(req.params.userId, req.params.orgId);
       res.json({
-        context: ctx,
-        hasVisibleTeamData: ctx.includes('VISIBLE TEAM DATA'),
+        context: kernel.context,
+        injectSupabaseHelpers: kernel.injectSupabaseHelpers,
+        hasVisibleTeamData: kernel.context.includes('VISIBLE TEAM DATA'),
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1001,10 +1003,12 @@ async function bootstrap() {
 
       // Kernel context injection: prepend team/role/brand identity to prompt
       let enrichedPrompt = prompt;
+      let injectSupabaseHelpers = false;
       if (user_id && org) {
-        const kernelContext = await resolveKernelContext(user_id, org.id, project.team_id);
-        if (kernelContext) {
-          enrichedPrompt = `${kernelContext}\n\nUSER REQUEST:\n${prompt}`;
+        const kernel = await resolveKernelContext(user_id, org.id, project.team_id);
+        if (kernel.context) {
+          enrichedPrompt = `${kernel.context}\n\nUSER REQUEST:\n${prompt}`;
+          injectSupabaseHelpers = kernel.injectSupabaseHelpers;
         }
       }
 
@@ -1269,7 +1273,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
                 const res = await fetch(edgeFunctionUrl, {
                   method: 'POST',
                   headers: { ...headers },
-                  body: JSON.stringify({ ...payload, model: m, team_name: teamName, org_name: orgName }),
+                  body: JSON.stringify({ ...payload, model: m, team_name: teamName, org_name: orgName, inject_supabase_helpers: injectSupabaseHelpers }),
                   signal: controller.signal,
                 });
                 const text = await res.text();

@@ -12,7 +12,7 @@ CHART.JS LOADING — CRITICAL:
  * Resolves the kernel context string injected before every job prompt.
  * Queries team membership, data scopes, and brand tokens for the given user+org.
  */
-export async function resolveKernelContext(userId: string, orgId: string, teamId?: string): Promise<string> {
+export async function resolveKernelContext(userId: string, orgId: string, teamId?: string): Promise<{ context: string; injectSupabaseHelpers: boolean }> {
   const sb = getPlatformSupabaseClient();
   console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}, teamId=${teamId ?? 'auto'}`);
 
@@ -123,13 +123,15 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   const publishedAssets = resolvedTeamId ? await resolvePublishedAssets(sb, resolvedTeamId) : '';
 
   // 4e. Resolve department skills for this team
-  const deptSkills = resolvedTeamId ? await resolveDepartmentSkills(sb, resolvedTeamId, teamName) : '';
+  const deptSkillsResult = resolvedTeamId
+    ? await resolveDepartmentSkills(sb, resolvedTeamId, teamName)
+    : { text: '', needsSupabaseHelpers: false };
 
   // 5. Format and return
   const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
 
-  return `TEAM CONTEXT:
+  const contextStr = `TEAM CONTEXT:
 Org: ${companyName}
 Team: ${teamName}
 Role: ${role}
@@ -139,9 +141,14 @@ Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
-    + deptSkills
+    + deptSkillsResult.text
     + CHART_LOADING_RULES
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
+
+  return {
+    context: contextStr,
+    injectSupabaseHelpers: deptSkillsResult.needsSupabaseHelpers,
+  };
 }
 
 async function resolveUploadedData(supabase: ReturnType<typeof getPlatformSupabaseClient>, userId: string): Promise<string> {
@@ -328,7 +335,7 @@ export async function resolveDepartmentSkills(
   supabase: ReturnType<typeof getPlatformSupabaseClient>,
   teamId: string,
   teamName: string,
-): Promise<string> {
+): Promise<{ text: string; needsSupabaseHelpers: boolean }> {
   const resolvedDept = resolveDepartment(teamName);
 
   // Query skills for the resolved department (team_function column, content column)
@@ -341,7 +348,7 @@ export async function resolveDepartmentSkills(
 
   if (error) {
     console.log(`[KERNEL] resolveDepartmentSkills error for team=${teamId}: ${error.message}`);
-    return '';
+    return { text: '', needsSupabaseHelpers: false };
   }
 
   let finalSkills = skills ?? [];
@@ -357,15 +364,17 @@ export async function resolveDepartmentSkills(
     finalSkills = adminSkills ?? [];
   }
 
-  if (finalSkills.length === 0) return '';
+  if (finalSkills.length === 0) return { text: '', needsSupabaseHelpers: false };
 
   const skillBlock = finalSkills
     .map((s: any) => `[${s.skill_name}]\n${s.content}`)
     .join('\n\n');
   const needsHelpers = shouldInjectSupabaseHelpers(skillBlock);
   console.log(`[KERNEL] Injected ${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}, supabaseHelpers=${needsHelpers}`);
-  return `\n--- DEPARTMENT SKILLS (${resolvedDept}) ---\n${skillBlock}\n--- END DEPARTMENT SKILLS ---`
-    + (needsHelpers ? '\n__INJECT_SUPABASE_HELPERS__' : '');
+  return {
+    text: `\n--- DEPARTMENT SKILLS (${resolvedDept}) ---\n${skillBlock}\n--- END DEPARTMENT SKILLS ---`,
+    needsSupabaseHelpers: needsHelpers,
+  };
 }
 
 /**
