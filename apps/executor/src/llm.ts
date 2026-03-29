@@ -75,7 +75,7 @@ import { getSupabaseClient } from './supabase-client';
 
 // ── Provider types & config ───────────────────────────────────────────
 
-export type ModelProvider = 'openai' | 'anthropic';
+export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'fireworks';
 
 export interface RouterConfig {
   model: string;
@@ -100,8 +100,10 @@ export interface MeteringRecord {
 // ── Cost rates (USD per 1M tokens) ────────────────────────────────────
 
 const COST_RATES: Record<ModelProvider, { input: number; output: number }> = {
-  openai: { input: 2.5, output: 10 },
   anthropic: { input: 3, output: 15 },
+  openai: { input: 2.5, output: 10 },
+  google: { input: 0.1, output: 0.4 },
+  fireworks: { input: 0.9, output: 0.9 },
 };
 
 function calculateCost(provider: ModelProvider, inputTokens: number, outputTokens: number): number {
@@ -112,8 +114,9 @@ function calculateCost(provider: ModelProvider, inputTokens: number, outputToken
 // ── Environment ───────────────────────────────────────────────────────
 
 const _envProvider = process.env.DEFAULT_LLM_PROVIDER;
+const VALID_PROVIDERS: ModelProvider[] = ['anthropic', 'openai', 'google', 'fireworks'];
 export const DEFAULT_PROVIDER: ModelProvider =
-  _envProvider === 'openai' || _envProvider === 'anthropic' ? _envProvider : 'anthropic';
+  VALID_PROVIDERS.includes(_envProvider as ModelProvider) ? (_envProvider as ModelProvider) : 'anthropic';
 
 const _parsedBudget = parseFloat(process.env.JOB_BUDGET_LIMIT_USD || '5');
 const JOB_BUDGET_LIMIT = Number.isFinite(_parsedBudget) && _parsedBudget > 0 ? _parsedBudget : 5;
@@ -194,7 +197,37 @@ export async function callLLM(
   let inputTokens: number;
   let outputTokens: number;
 
-  if (config.provider === 'openai') {
+  // ── LiteLLM proxy routing ────────────────────────────────────────
+  // If LITELLM_PROXY_URL is set, route ALL calls through LiteLLM proxy
+  // which handles provider selection and failover transparently.
+  const litellmUrl = process.env.LITELLM_PROXY_URL;
+  if (litellmUrl) {
+    const modelName = config.maxTokens > 4096 ? 'vibe-builder' : 'vibe-editor';
+    const res = await fetch(`${litellmUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [
+          { role: 'system', content: context },
+          { role: 'user', content: prompt },
+        ],
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`LiteLLM proxy error (${res.status}): ${errText}`);
+    }
+    const data = await res.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    };
+    content = data.choices?.[0]?.message?.content || '';
+    inputTokens = data.usage?.prompt_tokens || 0;
+    outputTokens = data.usage?.completion_tokens || 0;
+  } else if (config.provider === 'openai') {
     const client = getOpenAIClient();
     const res = await client.chat.completions.create({
       model: config.model,
@@ -208,7 +241,66 @@ export async function callLLM(
     content = res.choices[0]?.message?.content || '';
     inputTokens = res.usage?.prompt_tokens || 0;
     outputTokens = res.usage?.completion_tokens || 0;
+  } else if (config.provider === 'google') {
+    // Google Gemini via REST API
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) throw new Error('GOOGLE_API_KEY environment variable is not set');
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: context }] },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: config.maxTokens, temperature: config.temperature },
+        }),
+      },
+    );
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Gemini API error (${res.status}): ${errText}`);
+    }
+    const data = await res.json() as {
+      candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
+      usageMetadata: { promptTokenCount: number; candidatesTokenCount: number };
+    };
+    content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    inputTokens = data.usageMetadata?.promptTokenCount || 0;
+    outputTokens = data.usageMetadata?.candidatesTokenCount || 0;
+  } else if (config.provider === 'fireworks') {
+    // DeepSeek V3 via Fireworks AI
+    const apiKey = process.env.FIREWORKS_API_KEY;
+    if (!apiKey) throw new Error('FIREWORKS_API_KEY environment variable is not set');
+    const res = await fetch('https://api.fireworks.ai/inference/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+        messages: [
+          { role: 'system', content: context },
+          { role: 'user', content: prompt },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Fireworks API error (${res.status}): ${errText}`);
+    }
+    const data = await res.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    };
+    content = data.choices?.[0]?.message?.content || '';
+    inputTokens = data.usage?.prompt_tokens || 0;
+    outputTokens = data.usage?.completion_tokens || 0;
   } else {
+    // Default: Anthropic
     const client = getAnthropicClient();
     const res = await client.messages.create({
       model: config.model,

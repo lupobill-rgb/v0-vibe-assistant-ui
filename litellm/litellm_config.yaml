@@ -1,0 +1,95 @@
+# VIBE LLM Redundancy — LiteLLM Proxy Configuration
+# Deployed as a Railway sidecar alongside the NestJS API.
+# See docs/llm-redundancy-plan.md for architecture details.
+
+model_list:
+  # ── vibe-builder: Page building (primary pipeline) ──────────────────
+  - model_name: vibe-builder
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 16384
+      timeout: 30
+    model_info:
+      max_input_tokens: 200000
+
+  - model_name: vibe-builder
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      max_tokens: 16384
+      timeout: 30
+    model_info:
+      max_input_tokens: 128000
+
+  - model_name: vibe-builder
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GOOGLE_API_KEY
+      max_tokens: 16384
+      timeout: 30
+    model_info:
+      max_input_tokens: 1000000
+
+  - model_name: vibe-builder
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/deepseek-v3
+      api_key: os.environ/FIREWORKS_API_KEY
+      max_tokens: 16384
+      timeout: 30
+    model_info:
+      max_input_tokens: 128000
+
+  # ── vibe-editor: NLP edits (lightweight operations) ─────────────────
+  - model_name: vibe-editor
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 4096
+      timeout: 30
+    model_info:
+      max_input_tokens: 200000
+
+  - model_name: vibe-editor
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+      max_tokens: 4096
+      timeout: 30
+    model_info:
+      max_input_tokens: 128000
+
+  - model_name: vibe-editor
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GOOGLE_API_KEY
+      max_tokens: 4096
+      timeout: 30
+    model_info:
+      max_input_tokens: 1000000
+
+router_settings:
+  routing_strategy: simple-shuffle   # tries providers in order defined
+  num_retries: 2                     # retry 2x on primary before cascade
+  timeout: 30                        # 30s per-request timeout
+  retry_after: 5                     # wait 5s between retries
+  allowed_fails: 3                   # mark provider unhealthy after 3 fails
+  cooldown_time: 60                  # unhealthy provider cooldown (seconds)
+  fallbacks:
+    - vibe-builder: [vibe-builder]
+    - vibe-editor: [vibe-editor]
+
+general_settings:
+  max_budget: 500                    # daily dollar cap across all providers
+  budget_duration: 1d
+  alerting:
+    - slack
+  alerting_threshold: 80             # alert at 80% of budget
+
+litellm_settings:
+  drop_params: true                  # drop unsupported params per provider
+  set_verbose: false
+  max_budget: 500
+  budget_duration: daily
+  num_retries: 2
+  request_timeout: 30

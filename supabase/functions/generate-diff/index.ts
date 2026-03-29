@@ -894,9 +894,6 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
 
-  // gpt-4-turbo supports max 4096 completion tokens
-  const clampedTokens = Math.min(maxTokens, 4096);
-
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -904,8 +901,8 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4-turbo",
-      max_tokens: clampedTokens,
+      model: "gpt-4o",
+      max_tokens: Math.min(maxTokens, 16384),
       messages: [
         { role: "system", content: systemMsg },
         { role: "user", content: prompt },
@@ -928,10 +925,115 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
   };
 }
 
-const PROVIDERS: Record<string, (s: string, p: string, m?: number) => Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } }>> = {
+/** Call Google Gemini and return { diff, usage }. Throws on failure. */
+async function callGemini(systemMsg: string, prompt: string, maxTokens = 4096) {
+  const apiKey = Deno.env.get("GOOGLE_API_KEY");
+  if (!apiKey) throw new Error("GOOGLE_API_KEY not configured");
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemMsg }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens },
+      }),
+    },
+  );
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error?.message ?? JSON.stringify(data));
+  }
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const usageMeta = data.usageMetadata;
+
+  return {
+    diff: text,
+    usage: {
+      input_tokens: usageMeta?.promptTokenCount ?? 0,
+      output_tokens: usageMeta?.candidatesTokenCount ?? 0,
+      total_tokens: (usageMeta?.promptTokenCount ?? 0) + (usageMeta?.candidatesTokenCount ?? 0),
+    },
+  };
+}
+
+/** Call DeepSeek V3 via Fireworks AI and return { diff, usage }. Throws on failure. */
+async function callFireworks(systemMsg: string, prompt: string, maxTokens = 4096) {
+  const apiKey = Deno.env.get("FIREWORKS_API_KEY");
+  if (!apiKey) throw new Error("FIREWORKS_API_KEY not configured");
+
+  const res = await fetch("https://api.fireworks.ai/inference/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "accounts/fireworks/models/deepseek-v3",
+      max_tokens: Math.min(maxTokens, 16384),
+      messages: [
+        { role: "system", content: systemMsg },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error?.message ?? JSON.stringify(data));
+  }
+
+  return {
+    diff: data.choices?.[0]?.message?.content ?? "",
+    usage: {
+      input_tokens: data.usage?.prompt_tokens ?? 0,
+      output_tokens: data.usage?.completion_tokens ?? 0,
+      total_tokens: data.usage?.total_tokens ?? 0,
+    },
+  };
+}
+
+// ── Provider registry & failover chain ───────────────────────────────
+
+type ProviderFn = (s: string, p: string, m?: number) => Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } }>;
+
+const PROVIDERS: Record<string, ProviderFn> = {
   claude: callClaude,
   gpt: callGpt,
+  gemini: callGemini,
+  fireworks: callFireworks,
 };
+
+/** Context window limits per provider (input tokens). Used to skip providers that can't fit the request. */
+const PROVIDER_CONTEXT_LIMITS: Record<string, number> = {
+  claude: 200_000,
+  gpt: 128_000,
+  gemini: 1_000_000,
+  fireworks: 128_000,
+};
+
+/** Ordered failover chains. Primary pipeline cascades through all 4 providers. */
+const FAILOVER_CHAIN: Record<string, string[]> = {
+  claude: ["gpt", "gemini", "fireworks"],
+  gpt: ["claude", "gemini", "fireworks"],
+  gemini: ["claude", "gpt", "fireworks"],
+  fireworks: ["claude", "gpt", "gemini"],
+};
+
+/** Rough token estimate (~3.5 chars per token, conservative). */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
+
+/** Check if a provider can fit the estimated request size. */
+function fitsProvider(provider: string, estimatedTokens: number): boolean {
+  const limit = PROVIDER_CONTEXT_LIMITS[provider];
+  return limit ? estimatedTokens < limit * 0.9 : true; // 90% safety margin
+}
 
 function flipModel(model: string): string {
   return model === "claude" ? "gpt" : "claude";
@@ -1076,27 +1178,80 @@ STRUCTURAL REQUIREMENTS:
       prompt = prompt + LANDING_PAGE_ENFORCEMENT;
     }
 
-    // Try the requested model first
+    // ── Multi-provider failover (see docs/llm-redundancy-plan.md) ──────
+    // Try requested model first, then cascade through failover chain.
+    // Skip providers whose context window can't fit the request.
+    // Failover is PRE-stream only — no mid-stream provider switches.
     let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
     let fallbackUsed = false;
     let originalModel = model;
+    let usedModel = model;
 
-    try {
-      result = await PROVIDERS[model](systemMsg, prompt, resolvedMaxTokens);
-    } catch (primaryErr) {
-      // Primary model failed — try the other provider
-      const fallbackModel = flipModel(model);
-      console.warn(`Primary model "${model}" failed: ${primaryErr.message}. Falling back to "${fallbackModel}".`);
+    const estimatedTokenCount = estimateTokens(systemMsg + prompt);
+    const chain = FAILOVER_CHAIN[model] || ["gpt", "gemini", "fireworks"];
+    const errors: string[] = [];
 
+    // Try primary provider first (with 1 retry)
+    if (PROVIDERS[model] && fitsProvider(model, estimatedTokenCount)) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          result = await PROVIDERS[model](systemMsg, prompt, resolvedMaxTokens);
+          break;
+        } catch (err) {
+          const msg = `${model} attempt ${attempt + 1}: ${err.message}`;
+          errors.push(msg);
+          console.warn(`[LLM Failover] ${msg}`);
+          // On rate limit, skip retry and go to fallback immediately
+          if (err.message?.includes("429") || err.message?.includes("529")) break;
+        }
+      }
+    } else if (!fitsProvider(model, estimatedTokenCount)) {
+      errors.push(`${model}: request (~${estimatedTokenCount} tokens) exceeds context window`);
+    }
+
+    // If primary failed, cascade through fallback chain
+    if (!result!) {
+      for (const fallback of chain) {
+        if (!PROVIDERS[fallback]) continue;
+        if (!fitsProvider(fallback, estimatedTokenCount)) {
+          errors.push(`${fallback}: request exceeds context window (${PROVIDER_CONTEXT_LIMITS[fallback]})`);
+          continue;
+        }
+
+        try {
+          result = await PROVIDERS[fallback](systemMsg, prompt, resolvedMaxTokens);
+          fallbackUsed = true;
+          usedModel = fallback;
+          console.warn(`[LLM Failover] Succeeded on fallback provider: ${fallback}`);
+          break;
+        } catch (err) {
+          const msg = `${fallback}: ${err.message}`;
+          errors.push(msg);
+          console.warn(`[LLM Failover] ${msg}`);
+        }
+      }
+    }
+
+    if (!result!) {
+      throw new Error(`All LLM providers failed. ${errors.join(" | ")}`);
+    }
+
+    // JSON validation for plan mode (structured output)
+    if (mode === "plan" && result.diff) {
       try {
-        result = await PROVIDERS[fallbackModel](systemMsg, prompt, resolvedMaxTokens);
-        fallbackUsed = true;
-        originalModel = model;
-      } catch (fallbackErr) {
-        // Both providers failed
-        throw new Error(
-          `Both models failed. ${model}: ${primaryErr.message} | ${fallbackModel}: ${fallbackErr.message}`
-        );
+        JSON.parse(result.diff);
+      } catch {
+        // Try to extract JSON from the response
+        const jsonMatch = result.diff.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+        if (jsonMatch) {
+          try {
+            JSON.parse(jsonMatch[1]);
+            result.diff = jsonMatch[1];
+          } catch {
+            // If still invalid and we haven't exhausted retries, this is caught by the caller
+            console.warn("[LLM Failover] Plan mode returned invalid JSON, passing through for caller to handle");
+          }
+        }
       }
     }
 
@@ -1104,7 +1259,7 @@ STRUCTURAL REQUIREMENTS:
       JSON.stringify({
         diff: result.diff,
         usage: result.usage,
-        model: fallbackUsed ? flipModel(model) : model,
+        model: usedModel,
         mode: mode || "diff",
         fallback_used: fallbackUsed,
         original_model: fallbackUsed ? originalModel : undefined,

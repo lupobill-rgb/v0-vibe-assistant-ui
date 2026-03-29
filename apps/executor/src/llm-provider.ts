@@ -91,34 +91,148 @@ class GeminiProvider implements LLMProvider {
   private model: string;
 
   constructor(model?: string) {
-    this.model = model || 'gemini-pro';
+    this.model = model || 'gemini-2.0-flash';
   }
 
-  async generate(systemPrompt: string, userPrompt: string): Promise<LLMResponse> {
-    let mod: any;
-    try {
-      mod = require('@google/generative-ai');
-    } catch {
-      throw new Error(
-        'Gemini provider requires @google/generative-ai package. Run: npm install @google/generative-ai'
-      );
+  async generate(systemPrompt: string, userPrompt: string, maxTokens = 4096): Promise<LLMResponse> {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) throw new Error('GOOGLE_API_KEY environment variable is not set');
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: { maxOutputTokens: maxTokens },
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API error (${response.status}): ${errText}`);
     }
-    const genAI = new mod.GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
-    const model = genAI.getGenerativeModel({ model: this.model });
-    const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
-    const text = result.response.text();
-    
-    // Gemini doesn't always provide usage data in the same way
-    const usageMetadata = result.response.usageMetadata;
-    const inputTokens = usageMetadata?.promptTokenCount || 0;
-    const outputTokens = usageMetadata?.candidatesTokenCount || 0;
-    
+
+    const data = await response.json() as {
+      candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
+      usageMetadata: { promptTokenCount: number; candidatesTokenCount: number };
+    };
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const inputTokens = data.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = data.usageMetadata?.candidatesTokenCount || 0;
+
     return {
       text,
       usage: {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         total_tokens: inputTokens + outputTokens,
+      },
+    };
+  }
+}
+
+class FireworksProvider implements LLMProvider {
+  readonly name = 'fireworks';
+  private model: string;
+
+  constructor(model?: string) {
+    this.model = model || 'accounts/fireworks/models/deepseek-v3';
+  }
+
+  async generate(systemPrompt: string, userPrompt: string, maxTokens = 4096): Promise<LLMResponse> {
+    const apiKey = process.env.FIREWORKS_API_KEY;
+    if (!apiKey) throw new Error('FIREWORKS_API_KEY environment variable is not set');
+
+    const response = await fetch('https://api.fireworks.ai/inference/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Fireworks API error (${response.status}): ${errText}`);
+    }
+
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    };
+    const text = data.choices?.[0]?.message?.content || '';
+    const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
+    return {
+      text,
+      usage: {
+        input_tokens: usage.prompt_tokens,
+        output_tokens: usage.completion_tokens,
+        total_tokens: usage.total_tokens,
+      },
+    };
+  }
+}
+
+/**
+ * LiteLLM Proxy provider — routes through the LiteLLM sidecar service.
+ * This is the recommended provider when LiteLLM is deployed on Railway.
+ * It handles multi-provider failover transparently.
+ */
+class LiteLLMProvider implements LLMProvider {
+  readonly name = 'litellm';
+  private model: string;
+  private proxyUrl: string;
+
+  constructor(model?: string) {
+    this.model = model || 'vibe-builder';
+    this.proxyUrl = process.env.LITELLM_PROXY_URL || 'http://localhost:4000';
+  }
+
+  async generate(systemPrompt: string, userPrompt: string, maxTokens = 4096): Promise<LLMResponse> {
+    const response = await fetch(`${this.proxyUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`LiteLLM proxy error (${response.status}): ${errText}`);
+    }
+
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    };
+    const text = data.choices?.[0]?.message?.content || '';
+    const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
+    return {
+      text,
+      usage: {
+        input_tokens: usage.prompt_tokens,
+        output_tokens: usage.completion_tokens,
+        total_tokens: usage.total_tokens,
       },
     };
   }
@@ -133,6 +247,11 @@ export function createLLMProvider(provider?: string, model?: string): LLMProvide
     case 'gemini':
     case 'google':
       return new GeminiProvider(model);
+    case 'fireworks':
+    case 'deepseek':
+      return new FireworksProvider(model);
+    case 'litellm':
+      return new LiteLLMProvider(model);
     case 'openai':
     default:
       return new OpenAIProvider(model);
