@@ -18,19 +18,15 @@ import http from 'node:http';
 
 // ── Re-implement the edge function's core logic for unit testing ─────────────
 
-const VIBE_SYSTEM_RULES = `VIBE PLATFORM — GOVERNING RULES (NON-NEGOTIABLE)
-Mission: Convert user intent into deployed, production-grade software.
-Stack: Next.js + NestJS + Supabase + Vercel + Docker executor.
-LLM: You are the primary Claude execution engine. GPT-4 is infrastructure fallback only (rate limit / timeout / 529).
-
-Rules — apply to every output:
-1. Reliability over cleverness. Working output beats clever broken output.
-2. Atomic diffs only. Never whole-file rewrites unless explicitly instructed.
-3. Secure by default: no secrets in output, RLS on, least privilege.
-4. Never silently fail. Return plain-English explanation if task cannot complete.
-5. No raw stack traces in user-facing output. Ever.
-6. OSS patterns first. No custom primitives when a standard approach exists.
-7. Every change must be scoped, minimal, and purposeful.`;
+function buildVibeSystemRules(teamName?: string, orgName?: string): string {
+  const team = teamName || 'this team';
+  const org = orgName || 'the platform';
+  return `You are VIBE, the AI execution engine for ${team} on the ${org} platform.
+Output exactly what the user's intent requires — no more, no less.
+If the user asks to build, produce a complete deployable artifact.
+If the user asks to draft, analyze, or plan, produce that content directly.
+Follow any DEPARTMENT SKILLS injected below precisely.`;
+}
 
 const PLAN_SYSTEM =
   "You are VIBE, an AI website planner. " +
@@ -136,6 +132,8 @@ function buildSystemMessage(params: {
   mode?: string;
   context?: string;
   max_tokens?: number;
+  team_name?: string;
+  org_name?: string;
 }): { systemMsg: string; resolvedMaxTokens: number } {
   let baseSystemMsg: string;
   let defaultMaxTokens = 4096;
@@ -156,8 +154,9 @@ function buildSystemMessage(params: {
       (params.context ? "\nProject context:\n" + params.context : "");
   }
 
+  const vibeRules = buildVibeSystemRules(params.team_name, params.org_name);
   return {
-    systemMsg: VIBE_SYSTEM_RULES + "\n" + baseSystemMsg,
+    systemMsg: vibeRules + "\n" + baseSystemMsg,
     resolvedMaxTokens: params.max_tokens || defaultMaxTokens,
   };
 }
@@ -340,20 +339,31 @@ describe('Edge Function — PLAN_SYSTEM page count rules', () => {
   });
 });
 
-describe('Edge Function — VIBE_SYSTEM_RULES always prepended', () => {
+describe('Edge Function — thin wrapper (buildVibeSystemRules) always prepended', () => {
   const modes = ['plan', 'page', 'html', undefined];
 
   for (const mode of modes) {
-    it(`prepends VIBE_SYSTEM_RULES for mode=${mode ?? 'default'}`, () => {
+    it(`prepends thin wrapper for mode=${mode ?? 'default'}`, () => {
       const { systemMsg } = buildSystemMessage({ mode });
       assert.ok(
-        systemMsg.startsWith('VIBE PLATFORM'),
-        `System message for mode=${mode ?? 'default'} should start with VIBE_SYSTEM_RULES`,
+        systemMsg.startsWith('You are VIBE, the AI execution engine'),
+        `System message for mode=${mode ?? 'default'} should start with thin wrapper`,
       );
       assert.ok(
-        systemMsg.includes('NON-NEGOTIABLE'),
-        'Should include NON-NEGOTIABLE header',
+        systemMsg.includes('DEPARTMENT SKILLS'),
+        'Should reference department skills',
       );
     });
   }
+
+  it('interpolates team and org names', () => {
+    const { systemMsg } = buildSystemMessage({ mode: 'plan', team_name: 'Sales', org_name: 'Acme Corp' });
+    assert.ok(systemMsg.includes('for Sales on the Acme Corp platform'), 'Should interpolate team and org');
+  });
+
+  it('uses defaults when team/org not provided', () => {
+    const { systemMsg } = buildSystemMessage({ mode: 'plan' });
+    assert.ok(systemMsg.includes('for this team'), 'Should use default team name');
+    assert.ok(systemMsg.includes('the platform'), 'Should use default org name');
+  });
 });
