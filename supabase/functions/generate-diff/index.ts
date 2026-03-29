@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.4.0"; // 2026-03-26 — Landing page content enforcement appended to user message
+const EDGE_FUNCTION_VERSION = "2.5.0"; // 2026-03-29 — Design system dedup, phantom refs fixed, dead code removed, token logging
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -131,6 +131,30 @@ function needsSupabaseHelpers(prompt: string): boolean {
   return SUPABASE_HELPER_SIGNALS.test(prompt);
 }
 
+// ── Shared design system constants (deduplicated across modes) ──────────
+
+const DESIGN_SYSTEM_CORE = `DESIGN SYSTEM — non-negotiable:
+- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
+- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
+- All headings: Space Grotesk font-weight 700+. All body: Inter.`;
+
+const SCROLL_ANIMATIONS = `SCROLL ANIMATIONS — required:
+Add this script before </body>:
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if(e.isIntersecting) { e.target.classList.add('animate-in'); } });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+</script>
+Add to <style>: .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .animate-in { opacity: 1; transform: translateY(0); }`;
+
+const FORM_RULES = `FORMS — every form must work via Supabase (see SUPABASE FORM INTEGRATION injected above):
+- Use <form onsubmit="return vibeSubmitForm(event, this)" data-form-name="contact">
+- Include name and email fields minimum with required attribute
+- Submit button type="submit" with descriptive text
+- Add <div class="form-success hidden">Thank you! We'll be in touch.</div> after the submit button
+- Include the vibeSubmitForm script before </body> (see SUPABASE FORM INTEGRATION above)`;
+
 // ── Mode-specific system prompts ─────────────────────────────────────────
 
 const PLAN_SYSTEM =
@@ -156,7 +180,7 @@ const PLAN_SYSTEM =
   '{"pages":[{"name":"index","title":"Acme","description":"Landing page"}],"color_scheme":{"bg":"#ffffff","text":"#111827","primary":"#7c3aed","surface":"#f8fafc","border":"#e2e8f0","mode":"light"}}';
 
 const MULTI_PAGE_SYSTEM = `You are VIBE, an AI website builder generating one page of a multi-page website.
-Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
+Start <style> with the :root block from the PRE-BUILT COLOR BLOCK injected below. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 Return a complete, self-contained HTML page. Output starts with <!DOCTYPE html> — no explanation, no preamble.
 
 ALWAYS inject in <head>:
@@ -169,10 +193,7 @@ ALWAYS inject in <head>:
 <meta property="og:description" content="PAGE_DESCRIPTION">
 <meta property="og:type" content="website">
 
-DESIGN SYSTEM — non-negotiable:
-- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
-- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
-- All headings: Space Grotesk font-weight 700+. All body: Inter.
+${DESIGN_SYSTEM_CORE}
 - Navbar: sticky top-0 bg-[var(--surface)] backdrop-blur-md border-b border-[var(--border)] z-50
 - Active nav link: text-[var(--primary)] border-b-2 border-[var(--primary)]
 - Cards: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--primary)] transition-all duration-300
@@ -182,23 +203,10 @@ DESIGN SYSTEM — non-negotiable:
 - Max content width 1200px centered. Section padding py-24 px-6.
 - Every page shares identical navbar and footer.
 
-SCROLL ANIMATIONS — required on every page:
-Add this script before </body>:
-<script>
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if(e.isIntersecting) { e.target.classList.add('animate-in'); } });
-}, { threshold: 0.1 });
-document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
-</script>
-Add to <style>: .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .animate-in { opacity: 1; transform: translateY(0); }
+${SCROLL_ANIMATIONS}
 Apply fade-up class to all cards, sections, and feature blocks.
 
-FORMS — every form must work via Supabase (see SUPABASE FORM INTEGRATION in VIBE_SYSTEM_RULES):
-- Use <form onsubmit="return vibeSubmitForm(event, this)" data-form-name="contact">
-- Include name, email fields minimum with required attribute
-- Submit button type="submit" with descriptive text
-- Add <div class="form-success hidden">Thank you! We'll be in touch.</div> after the submit button
-- Include the vibeSubmitForm script before </body> (see VIBE_SYSTEM_RULES)
+${FORM_RULES}
 
 STRUCTURE — include all sections:
 1. Sticky navbar: logo left, page nav center (mark current page active with aria-current="page"), CTA button right.
@@ -226,7 +234,7 @@ FORBIDDEN: No JSX. No React. No import statements. No markdown fences. No explan
 const PAGE_SYSTEM = MULTI_PAGE_SYSTEM;
 
 const SINGLE_PAGE_SYSTEM = `You are VIBE, an AI website builder producing best-in-class single-page sites.
-Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
+Start <style> with the :root block from the PRE-BUILT COLOR BLOCK injected below. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 Return a complete, self-contained HTML site. Output starts with <!DOCTYPE html> — no explanation, no preamble.
 
 ALWAYS inject in <head>:
@@ -238,10 +246,7 @@ ALWAYS inject in <head>:
 <meta property="og:description" content="SITE_DESCRIPTION">
 <meta property="og:type" content="website">
 
-DESIGN SYSTEM — non-negotiable:
-- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
-- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
-- All headings: Space Grotesk font-weight 700+. All body: Inter.
+${DESIGN_SYSTEM_CORE}
 - Hero: min-h-screen flex items-center justify-center background: var(--bg)
 - Navbar: sticky top-0 bg-[var(--surface)] backdrop-blur-md border-b border-[var(--border)] z-50
 - Cards: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--primary)] transition-all duration-300
@@ -250,23 +255,10 @@ DESIGN SYSTEM — non-negotiable:
 - Inputs: bg-[var(--surface)] border border-[var(--border)] rounded-xl text-[var(--text)] px-4 py-3 focus:border-[var(--primary)] focus:outline-none focus:ring-2 w-full
 - Max content width 1200px centered. Section padding py-24 px-6.
 
-SCROLL ANIMATIONS — required:
-Add this script before </body>:
-<script>
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if(e.isIntersecting) { e.target.classList.add('animate-in'); } });
-}, { threshold: 0.1 });
-document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
-</script>
-Add to <style>: .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .animate-in { opacity: 1; transform: translateY(0); }
+${SCROLL_ANIMATIONS}
 Apply fade-up class to all cards, feature blocks, testimonials, and stat numbers.
 
-FORMS — every form must work via Supabase (see SUPABASE FORM INTEGRATION in VIBE_SYSTEM_RULES):
-- Use <form onsubmit="return vibeSubmitForm(event, this)" data-form-name="contact">
-- Include name and email fields minimum with required attribute
-- Submit button type="submit" with descriptive text
-- Add <div class="form-success hidden">Thank you! We'll be in touch.</div> after the submit button
-- Include the vibeSubmitForm script before </body> (see VIBE_SYSTEM_RULES)
+${FORM_RULES}
 
 STRUCTURE — include all sections in order:
 1. Sticky glassmorphism navbar: logo left, anchor links center, CTA right.
@@ -329,7 +321,7 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
       })();
       </script>
 
-Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
+Start <style> with the :root block from the PRE-BUILT COLOR BLOCK injected below. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
 You are VIBE, an AI dashboard builder producing world-class, production-ready dashboard interfaces.
 Return a complete, self-contained HTML dashboard. Load data via vibeLoadData() when Supabase tables are referenced; use realistic fallback constants only when no table context is provided. All styling via Tailwind CDN.
@@ -340,13 +332,10 @@ ALWAYS inject these in <head>:
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
-DESIGN SYSTEM — non-negotiable:
-- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
-- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class for backgrounds/text.
+${DESIGN_SYSTEM_CORE}
 - Sidebar: bg-[var(--surface)] border-r border-[var(--border)]
 - Cards: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--primary)] transition-all
 - Semantic colors allowed for status only: Success: #10b981. Warning: #f59e0b. Danger: #ef4444.
-- All headings: Space Grotesk font-bold. All body: Inter.
 - Topbar: bg-[var(--surface)] backdrop-blur-md border-b border-[var(--border)] sticky top-0 z-50
 LAYOUT:
 - CSS Grid: grid grid-cols-[256px_1fr] min-h-screen
@@ -525,7 +514,7 @@ HEAD must include:
 <script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";<\/script>
 Placeholders are replaced at deploy time. In all other JS, use window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__ (see Rule 15).
 
-Start <style> with the :root block from VIBE_SYSTEM_RULES rule COLORS. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
+Start <style> with the :root block from the PRE-BUILT COLOR BLOCK injected below. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
 REQUIRED LAYOUT:
 <body>
@@ -727,55 +716,6 @@ The sidebar nav must be built dynamically in DOMContentLoaded based on an array 
 
 Output MUST start with <!DOCTYPE html> and end with </html>.
 Any other output format causes a blank page for the customer.`;
-
-const DESIGN_PHASE_VISUAL = `You are a Global Design Director building a scalable design system for VIBE.
-Brand personality: MODERN / TECHNICAL / BOLD.
-Deliver:
-1. Color tokens — primary, secondary, semantic, neutral + dark mode (JSON)
-2. Typography — 9-step scale, font pairing rationale
-3. Spatial system — 8px grid, spacing tokens
-4. Component inventory — 30+ components with interaction states
-5. Responsive breakpoints — mobile/tablet/desktop adaptive rules
-6. Motion principles — transition curves, durations, micro-interaction rules
-7. Accessibility — WCAG AA contrast ratios
-Output format: THREE blocks — design-tokens.json, globals.css variables, component-registry.md.
-No prose. Structured output only.`;
-
-const DESIGN_PHASE_SYSTEMS = `You are a Dashboard Data Architect.
-For the given dashboard request, produce a JSON spec that the Builder Agent
-will use to generate Chart.js implementations.
-Rules:
-- Every page MUST have at least 2 charts with explicit chart types
-- Each chart MUST have a unique canvasId, chartType, labels array (6+ items),
-  and datasets array with data values
-- Chart types allowed: bar, line, doughnut, pie (NEVER horizontalBar — use bar with indexAxis:'y')
-- KPIs must have realistic numeric values and units
-- Table columns must match the dashboard domain
-Output ONLY this JSON structure, no other text:
-{
-  "pages": [{"name": string, "route": string, "description": string}],
-  "charts": [{
-    "pageRoute": string,
-    "canvasId": string,
-    "chartType": "bar"|"line"|"doughnut"|"pie",
-    "title": string,
-    "labels": string[],
-    "datasets": [{"label": string, "data": number[]}]
-  }],
-  "kpis": [{"pageRoute": string, "label": string, "value": string, "unit": string}],
-  "table": {"columns": string[]}
-}`;
-
-// ── Dashboard request detection ─────────────────────────────────────────
-const DASHBOARD_KEYWORDS = [
-  "dashboard", "analytics", "chart", "pipeline", "report",
-  "tracker", "metrics", "kpi", "visualiz",
-];
-
-function isDashboardRequest(prompt: string): boolean {
-  const lower = prompt.toLowerCase();
-  return DASHBOARD_KEYWORDS.some((kw) => lower.includes(kw));
-}
 
 // ── Dashboard chart enforcement (appended to user message, not system) ──
 function isDashboardPrompt(prompt: string): boolean {
@@ -1045,39 +985,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Direct dashboard fast path ──────────────────────────────────────
-    // Fast path removed — LLM + department skills determine output format
-    // isDashboardRequest() kept for diagnostics but no longer bypasses the pipeline
-    if (false) {
-      try {
-        const colorInjection = color_block
-          ? `\nPRE-BUILT COLOR BLOCK (server-resolved, non-negotiable):\n${color_block}\nUse var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL color decisions. Never use raw hex values.\n`
-          : "";
-        const directSystem = buildVibeSystemRules(team_name, org_name) + "\n" + DASHBOARD_SYSTEM + colorInjection;
-        const directResult = await PROVIDERS[model](directSystem, prompt, 16384);
-
-        // Validate we got HTML back
-        const html = directResult.diff.trim();
-        if (html.startsWith("<!DOCTYPE html>") || html.startsWith("<!doctype html>")) {
-          return new Response(
-            JSON.stringify({
-              diff: html,
-              usage: directResult.usage,
-              model,
-              mode: "dashboard",
-              fast_path: true,
-              version: EDGE_FUNCTION_VERSION,
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        // If response isn't valid HTML, fall through to normal pipeline
-        console.warn("Dashboard fast path returned non-HTML, falling through to pipeline.");
-      } catch (fastPathErr) {
-        console.warn(`Dashboard fast path failed: ${(fastPathErr as Error).message}. Falling through to pipeline.`);
-      }
-    }
-
     // Build system message: select prompt based on mode, always prepend vibeRules
     let baseSystemMsg: string;
     let defaultMaxTokens = 4096;
@@ -1153,6 +1060,11 @@ STRUCTURAL REQUIREMENTS:
     const vibeRules = buildVibeSystemRules(team_name, org_name);
     const systemMsg = vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
+
+    // Log token budget usage for monitoring (1 token ≈ 4 chars)
+    const estSystemTokens = Math.ceil(systemMsg.length / 4);
+    const estPromptTokens = Math.ceil(prompt.length / 4);
+    console.log(`[token-budget] mode=${mode || 'diff'} model=${model} system≈${estSystemTokens}tok prompt≈${estPromptTokens}tok total≈${estSystemTokens + estPromptTokens}tok maxOutput=${resolvedMaxTokens}`);
 
     // Append content enforcement to user message based on intent
     if (isDashboardPrompt(prompt)) {
