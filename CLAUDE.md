@@ -87,6 +87,10 @@ The following components are locked. **No changes without explicit approval.**
 - Any change to prompt structure, output format, or routing logic risks breaking a proven path.
 - Future enhancements (multi-page dashboards, iterative refinement) must be built as **new modes**, not modifications to this path.
 
+## LLM Redundancy
+
+LLM failover architecture spec: see `docs/llm-redundancy-plan.md` — implement per that spec when working on LLM routing, provider integration, or failover logic. Key files: `litellm/litellm_config.yaml` (proxy config), `apps/executor/src/llm-failover.ts` (failover orchestrator), `supabase/functions/generate-diff/index.ts` (edge function with 4-provider chain).
+
 ## Never
 
 - Silent failures. Always return plain-English explanation + next action.

@@ -22,7 +22,7 @@ export interface RouterDiffResult {
  */
 export async function callEdgeFunction(params: {
   prompt: string;
-  model?: 'claude' | 'gpt';
+  model?: ModelId;
   system?: string;
   max_tokens?: number;
 }): Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number }; model: string }> {
@@ -62,14 +62,38 @@ export async function callEdgeFunction(params: {
   };
 }
 
-function flipModel(model: 'claude' | 'gpt'): 'claude' | 'gpt' {
+/** Supported model identifiers for the edge function */
+type ModelId = 'claude' | 'gpt' | 'gemini' | 'fireworks';
+
+/** Ordered failover chains per primary model */
+const FAILOVER_CHAINS: Record<ModelId, ModelId[]> = {
+  claude: ['gpt', 'gemini', 'fireworks'],
+  gpt: ['claude', 'gemini', 'fireworks'],
+  gemini: ['claude', 'gpt', 'fireworks'],
+  fireworks: ['claude', 'gpt', 'gemini'],
+};
+
+/** Context window limits (input tokens) per model. Used to skip models that can't fit the request. */
+const CONTEXT_LIMITS: Record<ModelId, number> = {
+  claude: 200_000,
+  gpt: 128_000,
+  gemini: 1_000_000,
+  fireworks: 128_000,
+};
+
+/** Rough token estimate (~3.5 chars per token). */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
+
+function flipModel(model: ModelId): ModelId {
   return model === 'claude' ? 'gpt' : 'claude';
 }
 
 async function callEdgeDiff(
   fullPrompt: string,
   context: string,
-  model: 'claude' | 'gpt',
+  model: ModelId,
   systemPrompt?: string
 ): Promise<{
   diff: string;
@@ -120,7 +144,7 @@ async function callEdgeDiff(
 export async function generateDiff(
   prompt: string,
   context: string,
-  options: { model: 'claude' | 'gpt'; taskId: string; systemPrompt?: string },
+  options: { model: ModelId; taskId: string; systemPrompt?: string },
   previousError?: string
 ): Promise<RouterDiffResult> {
   const startTime = Date.now();
@@ -131,37 +155,57 @@ export async function generateDiff(
     fullPrompt += `\n\n---\n\nPREVIOUS ERROR (please fix and regenerate the diff):\n${previousError}`;
   }
 
-  let result: { diff: string; summary?: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
-  let usedModel = options.model;
+  let result: { diff: string; summary?: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } } | undefined;
+  let usedModel: ModelId = options.model;
+  const errors: string[] = [];
+  const estimatedTokens = estimateTokens(fullPrompt + context);
 
-  try {
-    result = await callEdgeDiff(fullPrompt, context, options.model, options.systemPrompt);
-  } catch (primaryErr) {
-    // Primary model failed — try the other provider
-    const fallbackModel = flipModel(options.model);
-    await storage.logEvent(
-      options.taskId,
-      `LLM primary model "${options.model}" failed: ${(primaryErr as Error).message}. Falling back to "${fallbackModel}".`,
-      'warning'
-    );
+  // Build the full chain: primary first, then fallbacks
+  const chain: ModelId[] = [options.model, ...(FAILOVER_CHAINS[options.model] || [])];
+
+  for (const model of chain) {
+    // Context window pre-check (Section 6.3 of redundancy plan)
+    const limit = CONTEXT_LIMITS[model];
+    if (limit && estimatedTokens >= limit * 0.9) {
+      const msg = `${model}: request (~${estimatedTokens} tokens) exceeds context window (${limit})`;
+      errors.push(msg);
+      await storage.logEvent(options.taskId, `[LLM Failover] Skipping ${msg}`, 'info');
+      continue;
+    }
 
     try {
-      result = await callEdgeDiff(fullPrompt, context, fallbackModel, options.systemPrompt);
-      usedModel = fallbackModel;
-    } catch (fallbackErr) {
-      // Both providers failed
-      throw new Error(
-        `Both LLM providers failed. ${options.model}: ${(primaryErr as Error).message} | ${fallbackModel}: ${(fallbackErr as Error).message}`
-      );
+      result = await callEdgeDiff(fullPrompt, context, model, options.systemPrompt);
+      usedModel = model;
+      break;
+    } catch (err) {
+      const message = (err as Error).message;
+      errors.push(`${model}: ${message}`);
+
+      if (model === options.model) {
+        await storage.logEvent(
+          options.taskId,
+          `LLM primary model "${model}" failed: ${message}. Cascading to fallback chain.`,
+          'warning'
+        );
+      } else {
+        await storage.logEvent(
+          options.taskId,
+          `LLM fallback "${model}" failed: ${message}. Trying next provider.`,
+          'warning'
+        );
+      }
     }
   }
 
+  if (!result) {
+    throw new Error(`All LLM providers failed. ${errors.join(' | ')}`);
+  }
+
   const latencyMs = Date.now() - startTime;
-  const modelLabel = usedModel === 'claude' ? 'claude (via edge fn)' : 'gpt (via edge fn)';
   const fallbackNote = usedModel !== options.model ? ` (fallback from ${options.model})` : '';
   await storage.logEvent(
     options.taskId,
-    `LLM call complete: model=${modelLabel}${fallbackNote} input_tokens=${result.usage.input_tokens} output_tokens=${result.usage.output_tokens} latency=${latencyMs}ms`,
+    `LLM call complete: model=${usedModel} (via edge fn)${fallbackNote} input_tokens=${result.usage.input_tokens} output_tokens=${result.usage.output_tokens} latency=${latencyMs}ms`,
     'info'
   );
 
