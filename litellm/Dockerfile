@@ -6,4 +6,4 @@ COPY litellm_config.yaml /app/config.yaml
 
 EXPOSE 4000
 
-CMD ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug", "false"]
+CMD ["--config", "/app/config.yaml", "--port", "4000"]
