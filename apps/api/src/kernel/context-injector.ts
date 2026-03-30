@@ -131,10 +131,8 @@ export function shouldInjectHelpers(resolvedSkills: string, prompt: string): boo
  * vibeLogSpend is ONLY injected when department = 'finance' OR prompt
  * contains 'budget' or 'spend'.
  */
-function shouldInjectSpendHelper(department: string, prompt: string): boolean {
-  if (department === 'finance') return true;
-  const lower = prompt.toLowerCase();
-  return lower.includes('budget') || lower.includes('spend');
+function shouldInjectSpendHelper(department: string, _prompt: string): boolean {
+  return department === 'finance';
 }
 
 // --- Chart.js loading rules injected into every dashboard/chart context ---
