@@ -888,16 +888,18 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           let fallbacks = 0;
           let retries = 0;
 
-          /** Classify whether an error is eligible for LLM fallback (429/529/timeout only). */
-          const isFallbackEligible = (status: number, text: string, err?: any): { eligible: boolean; reason: string } => {
-            if (status === 402) return { eligible: true, reason: `HTTP 402 payment required` };
-            if (status === 429) return { eligible: true, reason: `HTTP 429 rate limit` };
-            if (status === 504) return { eligible: true, reason: `HTTP 504 gateway timeout` };
-            if (status === 529) return { eligible: true, reason: `HTTP 529 overloaded` };
-            if (err?.code === 'ETIMEDOUT') return { eligible: true, reason: `ETIMEDOUT` };
-            if (err?.type === 'request-timeout') return { eligible: true, reason: `request-timeout` };
-            if (err?.name === 'AbortError') return { eligible: true, reason: `fetch aborted (timeout)` };
-            return { eligible: false, reason: `HTTP ${status}: ${text.slice(0, 120)}` };
+          /** Classify error type: 'timeout' retries Claude only, 'rate-limit' allows GPT fallback. */
+          const classifyError = (status: number, text: string, err?: any): { type: 'timeout' | 'rate-limit' | 'none'; reason: string } => {
+            // Timeout errors — retry Claude, NEVER fall back to GPT-4
+            if (status === 504) return { type: 'timeout', reason: `HTTP 504 gateway timeout` };
+            if (err?.code === 'ETIMEDOUT') return { type: 'timeout', reason: `ETIMEDOUT` };
+            if (err?.type === 'request-timeout') return { type: 'timeout', reason: `request-timeout` };
+            if (err?.name === 'AbortError') return { type: 'timeout', reason: `fetch aborted (timeout)` };
+            // Rate-limit / overload — eligible for GPT-4 fallback
+            if (status === 402) return { type: 'rate-limit', reason: `HTTP 402 payment required` };
+            if (status === 429) return { type: 'rate-limit', reason: `HTTP 429 rate limit` };
+            if (status === 529) return { type: 'rate-limit', reason: `HTTP 529 overloaded` };
+            return { type: 'none', reason: `HTTP ${status}: ${text.slice(0, 120)}` };
           };
 
           // Pass team/org identity to edge function for thin wrapper interpolation
@@ -906,8 +908,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
             const model = payload.model || resolvedModel;
             const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
               const controller = new AbortController();
-              // Dashboard mode now uses single LLM call — 140s keeps us under Supabase 150s wall-time limit
-              const fetchTimeoutMs = payload.mode === 'dashboard' ? 140_000 : 120_000;
+              // Dashboard mode uses single LLM call — 180s client timeout (Supabase 150s wall-time applies server-side)
+              const fetchTimeoutMs = payload.mode === 'dashboard' ? 180_000 : 120_000;
               const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
               try {
                 const res = await fetch(edgeFunctionUrl, {
@@ -928,8 +930,20 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               result = await attempt(model);
             } catch (fetchErr: any) {
               // Network-level error (timeout, DNS, etc.)
-              const classification = isFallbackEligible(0, '', fetchErr);
-              if (classification.eligible) {
+              const classification = classifyError(0, '', fetchErr);
+              if (classification.type === 'timeout') {
+                // Timeout — retry Claude once with backoff, then fail. Never GPT-4.
+                console.log(`[LLM-TIMEOUT] retrying Claude: ${classification.reason}`);
+                retries += 1;
+                await new Promise(r => setTimeout(r, 2000 + Math.floor(Math.random() * 1000)));
+                try {
+                  return await attempt(model);
+                } catch (retryErr: any) {
+                  console.error(`[LLM-TIMEOUT] Claude retry failed: ${retryErr?.message || retryErr}`);
+                  return { text: JSON.stringify({ error: 'Build timed out. Please try again.' }), ok: false, status: 504 };
+                }
+              }
+              if (classification.type === 'rate-limit') {
                 console.log(`[LLM-FALLBACK] triggered on fetch error: ${classification.reason}`);
                 fallbacks += 1;
                 const fallbackModel = model === 'claude' ? 'gpt' : 'claude';
@@ -940,13 +954,24 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
 
             if (result.ok) return result;
 
-            const classification = isFallbackEligible(result.status, result.text);
-            if (!classification.eligible) {
+            const classification = classifyError(result.status, result.text);
+            if (classification.type === 'none') {
               // Non-retriable error — fail fast, no fallback
               return result;
             }
 
-            // Retriable error — one retry with same model, then fallback
+            if (classification.type === 'timeout') {
+              // HTTP 504 — retry Claude once, then return error. Never GPT-4.
+              console.log(`[LLM-TIMEOUT] retrying Claude: ${classification.reason}`);
+              retries += 1;
+              await new Promise(r => setTimeout(r, 2000 + Math.floor(Math.random() * 1000)));
+              result = await attempt(model);
+              if (result.ok) return result;
+              console.error(`[LLM-TIMEOUT] Claude retry failed, returning error`);
+              return { text: JSON.stringify({ error: 'Build timed out. Please try again.' }), ok: false, status: 504 };
+            }
+
+            // Rate-limit (429/529/402) — one retry with same model, then GPT fallback
             console.log(`[LLM-FALLBACK] retry triggered: ${classification.reason}`);
             retries += 1;
             await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 250)));
