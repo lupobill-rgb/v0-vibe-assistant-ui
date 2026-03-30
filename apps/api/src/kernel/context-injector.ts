@@ -7,6 +7,136 @@ DESIGN SYSTEM — non-negotiable:
 - Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
 - All headings: Space Grotesk font-weight 700+. All body: Inter.`;
 
+// --- Supabase helper scripts (conditionally injected) ---
+const SUPABASE_FORM_HELPERS = `
+SUPABASE FORM INTEGRATION — required on every page with a form:
+Inject this script in <head> (platform replaces placeholders at deploy time):
+<script>
+window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";
+window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";
+</script>
+Every <form> must use this pattern instead of action="...formspree...":
+<form onsubmit="return vibeSubmitForm(event, this)">
+Add this script before </body>:
+<script>
+async function vibeSubmitForm(e, form) {
+  e.preventDefault();
+  const btn = form.querySelector('[type=submit]');
+  const origText = btn.textContent;
+  btn.textContent = 'Sending...'; btn.disabled = true;
+  const data = Object.fromEntries(new FormData(form));
+  try {
+    const res = await fetch(window.__VIBE_SUPABASE_URL__ + '/rest/v1/form_submissions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': window.__VIBE_SUPABASE_ANON_KEY__,
+        'Authorization': 'Bearer ' + window.__VIBE_SUPABASE_ANON_KEY__,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ project_id: document.body.dataset.projectId || '', page_route: location.pathname, form_name: form.dataset.formName || 'contact', payload: data })
+    });
+    if (res.ok) { form.reset(); const msg = form.querySelector('.form-success'); if (msg) msg.classList.remove('hidden'); }
+    else { alert('Something went wrong. Please try again.'); }
+  } catch { alert('Network error. Please try again.'); }
+  finally { btn.textContent = origText; btn.disabled = false; }
+  return false;
+}
+</script>
+
+LIVE DATA INTEGRATION — required on ALL pages that display Supabase data (including dashboards):
+The <head> SUPABASE_URL/ANON_KEY script (see above) must also be present.
+Add this script before </body>:
+<script>
+async function vibeLoadData(table,filters={}){
+  const url=window.__VIBE_SUPABASE_URL__;
+  const key=window.__VIBE_SUPABASE_ANON_KEY__;
+  if(!url||!key)return[];
+  let ep=url+'/rest/v1/'+table+'?select=*';
+  Object.entries(filters).forEach(([k,v])=>{ep+='&'+k+'=eq.'+v;});
+  const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+key}});
+  return r.ok?await r.json():[];
+}
+</script>
+VARIABLE NAMES — in all JS code, read credentials from window.__VIBE_SUPABASE_URL__, window.__VIBE_SUPABASE_ANON_KEY__, and window.__VIBE_TEAM_ID__. The double-underscore placeholders (__SUPABASE_URL__ etc.) are ONLY valid inside the <head> assignment scripts where the platform replaces them at deploy time.`;
+
+const SUPABASE_SPEND_HELPER = `
+SPEND FORM INTEGRATION — required on any page with an expense or spend form:
+The <head> SUPABASE_URL/ANON_KEY script (see above) must also be present.
+Add this script in <head> (platform replaces __TEAM_ID__ at deploy time):
+<script>window.__VIBE_TEAM_ID__="__TEAM_ID__";</script>
+Use this form pattern:
+<form onsubmit="return vibeLogSpend(event, this)">
+  <select name="category" required>...</select>
+  <input name="amount" type="number" step="0.01" min="0" required />
+  <input name="description" type="text" />
+  <input name="vendor" type="text" />
+  <input name="date" type="date" />
+  <button type="submit">Log Spend</button>
+</form>
+Add this script before </body>:
+<script>
+async function vibeLogSpend(e, form) {
+  e.preventDefault();
+  const btn = form.querySelector('[type=submit]');
+  const origText = btn.textContent;
+  btn.textContent = 'Saving...'; btn.disabled = true;
+  const fd = Object.fromEntries(new FormData(form));
+  try {
+    const res = await fetch(window.__VIBE_SUPABASE_URL__ + '/rest/v1/team_spend', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': window.__VIBE_SUPABASE_ANON_KEY__,
+        'Authorization': 'Bearer ' + window.__VIBE_SUPABASE_ANON_KEY__,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({
+        team_id: window.__VIBE_TEAM_ID__,
+        category: fd.category,
+        amount: parseFloat(fd.amount),
+        description: fd.description || '',
+        vendor: fd.vendor || '',
+        quarter: Math.ceil((new Date().getMonth() + 1) / 3),
+        spend_date: fd.date || new Date().toISOString().split('T')[0]
+      })
+    });
+    if (res.ok) {
+      form.reset();
+      const msg = form.querySelector('.form-success');
+      if (msg) msg.classList.remove('hidden');
+      else { const t = document.createElement('div'); t.textContent = 'Spend logged successfully!'; t.className = 'text-green-600 mt-2 font-medium'; form.appendChild(t); setTimeout(() => t.remove(), 3000); }
+    } else { alert('Failed to log spend. Please try again.'); }
+  } catch { alert('Network error. Please try again.'); }
+  finally { btn.textContent = origText; btn.disabled = false; }
+  return false;
+}
+</script>`;
+
+const HELPER_KEYWORDS = [
+  'form', 'submit', 'save', 'dashboard', 'data', 'report',
+  'spend', 'budget', 'table', 'list', 'load', 'fetch',
+];
+
+/**
+ * Returns true if resolvedSkills or prompt contains data-related keywords
+ * that warrant injecting vibeSubmitForm / vibeLoadData helpers.
+ */
+export function shouldInjectHelpers(resolvedSkills: string, prompt: string): boolean {
+  const combined = (resolvedSkills + ' ' + prompt).toLowerCase();
+  return HELPER_KEYWORDS.some(kw => combined.includes(kw));
+}
+
+/**
+ * vibeLogSpend is ONLY injected when department = 'finance' OR prompt
+ * contains 'budget' or 'spend'.
+ */
+function shouldInjectSpendHelper(department: string, prompt: string): boolean {
+  if (department === 'finance') return true;
+  const lower = prompt.toLowerCase();
+  return lower.includes('budget') || lower.includes('spend');
+}
+
 // --- Chart.js loading rules injected into every dashboard/chart context ---
 const CHART_LOADING_RULES = `
 CHART.JS LOADING — CRITICAL:
@@ -19,7 +149,7 @@ CHART.JS LOADING — CRITICAL:
  * Resolves the kernel context string injected before every job prompt.
  * Queries team membership, data scopes, and brand tokens for the given user+org.
  */
-export async function resolveKernelContext(userId: string, orgId: string, teamId?: string): Promise<{ context: string; injectSupabaseHelpers: boolean }> {
+export async function resolveKernelContext(userId: string, orgId: string, teamId?: string, prompt?: string): Promise<{ context: string; injectSupabaseHelpers: boolean }> {
   const sb = getPlatformSupabaseClient();
   console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}, teamId=${teamId ?? 'auto'}`);
 
@@ -131,12 +261,23 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
 
   // 4e. Resolve department skills for this team
   const deptSkillsResult = resolvedTeamId
-    ? await resolveDepartmentSkills(sb, resolvedTeamId, teamName)
+    ? await resolveDepartmentSkills(sb, resolvedTeamId, teamName, prompt)
     : { text: '', needsSupabaseHelpers: false };
 
   // 5. Format and return
   const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
+
+  // Conditional helper injection — skill-driven, not always-on
+  const resolvedDept = resolveDepartment(teamName);
+  const userPrompt = prompt ?? '';
+  const injectHelpers = shouldInjectHelpers(deptSkillsResult.text, userPrompt);
+  const injectSpend = shouldInjectSpendHelper(resolvedDept, userPrompt);
+  let helperBlock = '';
+  if (injectHelpers) {
+    helperBlock = SUPABASE_FORM_HELPERS;
+    if (injectSpend) helperBlock += SUPABASE_SPEND_HELPER;
+  }
 
   const contextStr = `TEAM CONTEXT:
 Org: ${companyName}
@@ -149,13 +290,14 @@ Brand color fallback (only use if user prompt specifies no colors): ${primaryCol
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
     + deptSkillsResult.text
+    + helperBlock
     + DESIGN_SYSTEM_RULES
     + CHART_LOADING_RULES
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 
   return {
     context: contextStr,
-    injectSupabaseHelpers: deptSkillsResult.needsSupabaseHelpers,
+    injectSupabaseHelpers: injectHelpers,
   };
 }
 
@@ -328,28 +470,54 @@ const DEPARTMENT_MAP: Record<string, string> = {
   analytics: 'data',
   legal: 'legal',
   admin: 'admin',
+  general: 'general',
 };
 
 function resolveDepartment(teamName: string): string {
   const lower = teamName.toLowerCase().trim();
-  return DEPARTMENT_MAP[lower] ?? 'admin';
+  return DEPARTMENT_MAP[lower] ?? 'general';
+}
+
+const MAX_SKILL_BYTES = 16 * 1024; // 16KB cap on injected skill text
+
+/**
+ * Tokenises a string into lowercase alpha-numeric words for scoring.
+ */
+function tokenize(text: string): Set<string> {
+  return new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+}
+
+/**
+ * Scores a skill against prompt tokens using keyword overlap
+ * on skill_name + description.
+ */
+function scoreSkill(skill: { skill_name: string; description: string | null }, promptTokens: Set<string>): number {
+  const skillText = `${skill.skill_name} ${skill.description ?? ''}`;
+  const skillTokens = tokenize(skillText);
+  let score = 0;
+  for (const token of skillTokens) {
+    if (promptTokens.has(token)) score++;
+  }
+  return score;
 }
 
 /**
  * Resolves department-specific skills from skill_registry for a given team.
- * Maps team name → department, fetches active skills, falls back to General.
+ * Maps team name → department, fetches active skills, scores against prompt,
+ * returns top 2–3 skills capped at 16KB. Falls back to 'general' department.
  */
 export async function resolveDepartmentSkills(
   supabase: ReturnType<typeof getPlatformSupabaseClient>,
   teamId: string,
   teamName: string,
+  prompt?: string,
 ): Promise<{ text: string; needsSupabaseHelpers: boolean }> {
   const resolvedDept = resolveDepartment(teamName);
 
-  // Query skills for the resolved department (team_function column, content column)
+  // Query skills for the resolved department
   const { data: skills, error } = await supabase
     .from('skill_registry')
-    .select('skill_name, content')
+    .select('skill_name, description, content')
     .eq('team_function', resolvedDept)
     .eq('is_active', true)
     .order('skill_name', { ascending: true });
@@ -361,43 +529,46 @@ export async function resolveDepartmentSkills(
 
   let finalSkills = skills ?? [];
 
-  // Fallback to admin if no skills found for this department
-  if (finalSkills.length === 0 && resolvedDept !== 'admin') {
-    const { data: adminSkills } = await supabase
+  // Fallback to 'general' if no skills found for this department
+  if (finalSkills.length === 0 && resolvedDept !== 'general') {
+    const { data: generalSkills } = await supabase
       .from('skill_registry')
-      .select('skill_name, content')
-      .eq('team_function', 'admin')
+      .select('skill_name, description, content')
+      .eq('team_function', 'general')
       .eq('is_active', true)
       .order('skill_name', { ascending: true });
-    finalSkills = adminSkills ?? [];
+    finalSkills = generalSkills ?? [];
   }
 
   if (finalSkills.length === 0) return { text: '', needsSupabaseHelpers: false };
 
-  const skillBlock = finalSkills
+  // Score skills against prompt and select top 2-3
+  let selected: typeof finalSkills;
+  if (prompt && prompt.trim().length > 0) {
+    const promptTokens = tokenize(prompt);
+    const scored = finalSkills.map(s => ({ skill: s, score: scoreSkill(s, promptTokens) }));
+    scored.sort((a, b) => b.score - a.score);
+    // Take top 3, but at least 2 if available
+    selected = scored.slice(0, 3).map(s => s.skill);
+  } else {
+    // No prompt — return up to 3 skills (alphabetical)
+    selected = finalSkills.slice(0, 3);
+  }
+
+  // Concatenate content and cap at 16KB
+  let skillBlock = selected
     .map((s: any) => `[${s.skill_name}]\n${s.content}`)
     .join('\n\n');
-  const needsHelpers = shouldInjectSupabaseHelpers(skillBlock);
-  console.log(`[KERNEL] Injected ${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}, supabaseHelpers=${needsHelpers}`);
+  if (skillBlock.length > MAX_SKILL_BYTES) {
+    skillBlock = skillBlock.slice(0, MAX_SKILL_BYTES);
+  }
+
+  const needsHelpers = shouldInjectHelpers(skillBlock, prompt ?? '');
+  console.log(`[KERNEL] Injected ${selected.length}/${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}, supabaseHelpers=${needsHelpers}`);
   return {
     text: `\n--- DEPARTMENT SKILLS (${resolvedDept}) ---\n${skillBlock}\n--- END DEPARTMENT SKILLS ---`,
     needsSupabaseHelpers: needsHelpers,
   };
-}
-
-/**
- * Determines whether Supabase helper scripts (vibeSubmitForm, vibeLoadData, vibeLogSpend)
- * should be injected based on the skill content.
- */
-function shouldInjectSupabaseHelpers(skillBlock: string): boolean {
-  const dataKeywords = [
-    'form', 'submit', 'crud', 'write', 'save', 'log',
-    'track', 'store', 'insert', 'update', 'delete',
-    'vibesubmitform', 'vibeloaddata', 'vibelogspend',
-    'supabase', 'database', 'data table',
-  ];
-  const lower = skillBlock.toLowerCase();
-  return dataKeywords.some(kw => lower.includes(kw));
 }
 
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {
