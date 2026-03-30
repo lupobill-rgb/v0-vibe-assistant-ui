@@ -248,7 +248,7 @@ export async function POST(request: Request) {
           hasActiveConnectors = connectors.some((c: { status?: string }) => c.status === 'active')
         }
         if (isDashboard && !hasActiveConnectors) {
-          intakeSystem += `\n\nIMPORTANT: This team has no data connector yet. Do NOT ask about data sources, uploads, or file formats. Proceed to build using realistic sample data. Do NOT present options or menus before building. After you have enough context to build, output the ready JSON immediately. Data connection will be offered as a Guided Next Step after the build completes.`
+          intakeSystem += `\n\nOVERRIDE — no connectors are active. Skip ALL questions. Output the ready JSON on your FIRST reply. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
         }
       } catch (connErr) {
         console.warn('[INTAKE] connector check failed — proceeding without:', connErr)
