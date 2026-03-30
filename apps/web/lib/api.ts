@@ -266,10 +266,14 @@ export async function createJob(params: {
   upload_id?: string
   conversation_id?: string
 }): Promise<{ task_id?: string; conversation_id?: string; error?: string; limit_exceeded?: LimitExceededError }> {
+  // Include user_id in body as fallback for when SUPABASE_JWT_SECRET is not
+  // configured on the API server and JWT verification is skipped.
+  const { data: { session } } = await supabase.auth.getSession()
+  const body = { ...params, user_id: session?.user?.id }
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify(params),
+    body: JSON.stringify(body),
   })
   const data = await response.json()
   if (response.status === 402 && data.error === 'limit_exceeded') {
