@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { fetchBillingInfo, type BillingInfo } from "@/lib/api"
+import { fetchBillingInfo, fetchBillingStatus, createCheckoutSession, type BillingInfo, type BillingStatus } from "@/lib/api"
+import { useTeam } from "@/contexts/TeamContext"
 import {
   CheckCircle2,
   XCircle,
@@ -13,17 +14,7 @@ import {
   BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const PLAN_FEATURES = [
-  { label: "AI Jobs per month", free: "50", pro: "Unlimited" },
-  { label: "LLM tokens per job", free: "50,000", pro: "500,000" },
-  { label: "Concurrent jobs", free: "1", pro: "5" },
-  { label: "GitHub PR creation", free: "✓", pro: "✓" },
-  { label: "Preflight pipeline", free: "✓", pro: "✓" },
-  { label: "Priority queue", free: "—", pro: "✓" },
-  { label: "Custom LLM provider", free: "—", pro: "✓" },
-  { label: "Team workspaces", free: "—", pro: "✓" },
-]
+import { PricingPage } from "./PricingPage"
 
 function StatCard({
   label,
@@ -55,17 +46,40 @@ function StatCard({
 }
 
 export function BillingDashboard() {
+  const { currentOrg } = useTeam()
   const [billing, setBilling] = useState<BillingInfo | null>(null)
+  const [status, setStatus] = useState<BillingStatus | null>(null)
   const [loading, setLoading] = useState(true)
+  const [upgrading, setUpgrading] = useState(false)
 
   useEffect(() => {
-    fetchBillingInfo()
-      .then((data) => {
-        setBilling(data)
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }, [])
+    const load = async () => {
+      const [info, bs] = await Promise.all([
+        fetchBillingInfo(),
+        currentOrg?.id ? fetchBillingStatus(currentOrg.id) : null,
+      ])
+      setBilling(info)
+      setStatus(bs)
+      setLoading(false)
+    }
+    load().catch(() => setLoading(false))
+  }, [currentOrg?.id])
+
+  const currentTier = status?.tier_slug ?? "starter"
+  const creditsUsed = status?.credits_used ?? 0
+  const creditsLimit = status?.credits_limit ?? 50
+
+  const handleUpgrade = async () => {
+    if (!currentOrg?.id) return
+    setUpgrading(true)
+    try {
+      const nextTier = currentTier === "starter" ? "pro" : currentTier === "pro" ? "growth" : "team"
+      const result = await createCheckoutSession(currentOrg.id, nextTier)
+      if (result.checkoutUrl) window.location.href = result.checkoutUrl
+    } finally {
+      setUpgrading(false)
+    }
+  }
 
   const fmtTokens = (n: number) =>
     n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
@@ -88,19 +102,26 @@ export function BillingDashboard() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-2xl font-bold text-foreground capitalize">
-                  {billing?.plan ?? "Free"}
+                  {currentTier}
                 </span>
                 <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   Active
                 </span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Community tier — perfect for personal projects and experimentation
+                {creditsUsed}/{creditsLimit} credits used this period
               </p>
             </div>
-            <button className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white hover:opacity-90 transition-opacity">
-              Upgrade to Pro
-            </button>
+            {currentTier !== "enterprise" && currentTier !== "team" && (
+              <button
+                onClick={handleUpgrade}
+                disabled={upgrading}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2"
+              >
+                {upgrading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Upgrade
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -180,59 +201,8 @@ export function BillingDashboard() {
         </div>
       )}
 
-      {/* Plan Comparison */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#4F8EFF]/20 to-[#A855F7]/20 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-[#4F8EFF]" />
-          </div>
-          <h2 className="text-sm font-semibold text-foreground">Plan Comparison</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60">
-                <th className="text-left px-5 py-3 text-muted-foreground font-medium">Feature</th>
-                <th className="text-center px-5 py-3 text-muted-foreground font-medium">
-                  <span className="inline-flex items-center gap-1">
-                    Free
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
-                      Current
-                    </span>
-                  </span>
-                </th>
-                <th className="text-center px-5 py-3 font-medium">
-                  <span className="bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] bg-clip-text text-transparent">
-                    Pro
-                  </span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {PLAN_FEATURES.map((f, i) => (
-                <tr
-                  key={f.label}
-                  className={cn(
-                    "border-b border-border/40",
-                    i === PLAN_FEATURES.length - 1 && "border-0"
-                  )}
-                >
-                  <td className="px-5 py-3 text-muted-foreground">{f.label}</td>
-                  <td className="px-5 py-3 text-center text-foreground">{f.free}</td>
-                  <td className="px-5 py-3 text-center font-medium bg-gradient-to-r from-[#4F8EFF]/5 to-[#A855F7]/5">
-                    {f.pro}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-5 py-4 border-t border-border/60 flex justify-end">
-          <button className="px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white hover:opacity-90 transition-opacity">
-            Upgrade to Pro
-          </button>
-        </div>
-      </div>
+      {/* Pricing Tiers */}
+      <PricingPage />
     </div>
   )
 }
