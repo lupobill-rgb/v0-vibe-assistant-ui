@@ -163,7 +163,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     const t = text.trimStart().toLowerCase()
     return t.startsWith('<!doctype') || t.startsWith('<html')
   }
-  const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
+  const callClaude = async (messages: { role: string; content: string }[]): Promise<{ text: string; ready?: boolean; enrichedPrompt?: string; summary?: string }> => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {
@@ -177,7 +177,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
-      return data.text ?? ""
+      return { text: data.text ?? "", ready: data.ready, enrichedPrompt: data.enrichedPrompt, summary: data.summary }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         throw new Error("AI took too long to respond. Please try again.")
@@ -224,8 +224,16 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       : ""
     conversationRef.current = [{ role: "user", content: prompt.trim() + fileNote }]
     try {
-      const reply = await callClaude(conversationRef.current)
-      // Check if Claude is already ready
+      const response = await callClaude(conversationRef.current)
+      const reply = response.text
+      // Server-side ready detection (prevents raw JSON in chat)
+      if (response.ready && response.enrichedPrompt) {
+        setEnrichedPrompt(response.enrichedPrompt)
+        setMessages([{ role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        await fireJob(response.enrichedPrompt)
+        return
+      }
+      // Client-side fallback: check if Claude is already ready
       const ready = tryParseReady(reply)
       if (ready) {
         setEnrichedPrompt(ready.enrichedPrompt)
@@ -257,8 +265,16 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     conversationRef.current.push({ role: "user", content: answer })
     setIntaking(true)
     try {
-      const reply = await callClaude(conversationRef.current)
-      // Check if Claude is ready to build
+      const response = await callClaude(conversationRef.current)
+      const reply = response.text
+      // Server-side ready detection (prevents raw JSON in chat)
+      if (response.ready && response.enrichedPrompt) {
+        setMessages((m) => [...m, { role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        setEnrichedPrompt(response.enrichedPrompt)
+        await fireJob(response.enrichedPrompt)
+        return
+      }
+      // Client-side fallback: check if Claude is ready to build
       const ready = tryParseReady(reply)
       if (ready) {
         setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${ready.summary}` }])
