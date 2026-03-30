@@ -113,9 +113,9 @@ async function fetchUploadSummary(uploadId: string): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  const { messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id, user_id, org_id } = await request.json()
-
+  let messages, build, edit, editPrompt, context, project_id, upload_id, team_id, user_id, org_id
   try {
+    ({ messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id, user_id, org_id } = await request.json())
     if (edit) {
       const prompt = editPrompt || messages?.[messages.length - 1]?.content || ''
       let trimmedContext = context ?? ''
