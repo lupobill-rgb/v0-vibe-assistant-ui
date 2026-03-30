@@ -22,7 +22,7 @@ Rules:
 Focus on: what type of output (app/site/dashboard), what data/entities are involved, who will use it.`
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
-  const { currentTeam, currentOrg } = useTeam()
+  const { currentTeam, currentOrg, loading: teamLoading } = useTeam()
   const [prompt, setPrompt] = useState("")
   const projectIdRef = useRef<string | undefined>(undefined)
   const [focused, setFocused] = useState(false)
@@ -193,7 +193,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     }
   }
   const startIntake = async () => {
-    if (!prompt.trim() || submitting) return
+    if (!prompt.trim() || submitting || teamLoading) return
     setStage("intake")
     setIntaking(true)
     setMessages([])
@@ -570,7 +570,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
             </div>
             <button
               onClick={startIntake}
-              disabled={!prompt.trim() || submitting}
+              disabled={!prompt.trim() || submitting || teamLoading}
               className={cn(
                 "flex items-center justify-center gap-2 px-4 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-200",
                 prompt.trim() && !submitting

@@ -205,6 +205,9 @@ export async function POST(request: Request) {
     let intakeSystem = INTAKE_SYSTEM
 
     // Inject team + budget context when team_id and user_id are present
+    if (!team_id) {
+      console.warn('[INTAKE] team_id missing — intake will run without team context')
+    }
     if (team_id && user_id) {
       try {
         const resolvedOrgId = org_id || process.env.NEXT_PUBLIC_ORG_ID || '3de82e57-4813-4ad6-83bd-2adb461604f0'
