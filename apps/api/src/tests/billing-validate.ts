@@ -1,3 +1,4 @@
+export {}
 /**
  * VIBE Billing Validation — Sprint 7 Verification
  * Validates Stripe billing endpoints against the live Railway API.

@@ -1,3 +1,4 @@
+export {}
 /**
  * VIBE Smoke Test Gate — Sprint 8
  * Runs LP-01, DASH-01, SITE-01 against the live Edge Function.
