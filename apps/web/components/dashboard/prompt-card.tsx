@@ -169,6 +169,10 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     }
     return null
   }
+  const isHtmlResponse = (text: string): boolean => {
+    const t = text.trimStart().toLowerCase()
+    return t.startsWith('<!doctype') || t.startsWith('<html')
+  }
   const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
@@ -238,6 +242,12 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         await fireJob(ready.enrichedPrompt)
         return
       }
+      // Detect raw HTML returned instead of Q&A text — route to build
+      if (isHtmlResponse(reply)) {
+        setMessages([{ role: "assistant", text: "Building your app..." }])
+        await fireJob(prompt.trim())
+        return
+      }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
     } catch (err) {
@@ -263,6 +273,13 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
         setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${ready.summary}` }])
         setEnrichedPrompt(ready.enrichedPrompt)
         await fireJob(ready.enrichedPrompt)
+        return
+      }
+      // Detect raw HTML returned instead of Q&A text — route to build
+      if (isHtmlResponse(reply)) {
+        setMessages((m) => [...m, { role: "assistant", text: "Building your app..." }])
+        const collected = conversationRef.current.filter(m => m.role === 'user').map(m => m.content).join('\n\n')
+        await fireJob(collected)
         return
       }
       conversationRef.current.push({ role: "assistant", content: reply })

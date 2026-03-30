@@ -62,9 +62,30 @@ function parseDiff(raw: string): PageData[] {
   return [{ name: 'Preview', filename: 'index.html', html }]
 }
 
-function buildBlobUrl(pages: PageData[], activeFile: string): string | null {
+function buildBlobUrl(pages: PageData[], activeFile: string, teamId?: string): string | null {
   const page = pages.find((p) => p.filename === activeFile) || pages[0]
   if (!page) return null
+
+  // Substitute template placeholders with real values
+  let html = page.html
+    .replace(/__SUPABASE_URL__/g, SUPABASE_URL)
+    .replace(/__SUPABASE_ANON_KEY__/g, SUPABASE_ANON_KEY)
+    .replace(/__TEAM_ID__/g, teamId || '')
+
+  // Inject credentials fallback script for HTML that doesn't use placeholders
+  const credentialsScript = '<script>' +
+    'window.__VIBE_SUPABASE_URL__=window.__VIBE_SUPABASE_URL__||' + JSON.stringify(SUPABASE_URL) + ';' +
+    'window.__VIBE_SUPABASE_ANON_KEY__=window.__VIBE_SUPABASE_ANON_KEY__||' + JSON.stringify(SUPABASE_ANON_KEY) + ';' +
+    (teamId ? 'window.__VIBE_TEAM_ID__=window.__VIBE_TEAM_ID__||' + JSON.stringify(teamId) + ';' : '') +
+    '</script>'
+  if (html.toLowerCase().includes('<head>')) {
+    html = html.replace(/(<head[^>]*>)/i, `$1\n${credentialsScript}`)
+  } else if (html.toLowerCase().includes('<html')) {
+    html = html.replace(/(<html[^>]*>)/i, `$1\n${credentialsScript}`)
+  } else {
+    html = credentialsScript + '\n' + html
+  }
+
   // Inject router script to handle #filename.html navigation
   const routerScript = pages.length > 1 ? '<script>' +
     'window.addEventListener("hashchange",function(){' +
@@ -76,7 +97,7 @@ function buildBlobUrl(pages: PageData[], activeFile: string): string | null {
     'e.preventDefault();window.parent.postMessage({vibeNavigate:h.slice(1)},window.location.origin);' +
     '}});' +
     '</script>' : ''
-  const html = page.html.replace('</body>', routerScript + '</body>')
+  html = html.replace('</body>', routerScript + '</body>')
   const blob = new Blob([html], { type: 'text/html' })
   return URL.createObjectURL(blob)
 }
@@ -138,6 +159,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [projectName, setProjectName] = useState('')
+  const [projectTeamId, setProjectTeamId] = useState<string | undefined>()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [nudgeDismissed, setNudgeDismissed] = useState(false)
   const router = useRouter()
@@ -195,8 +217,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         if (cancelled) return
         if (!hasSession) { console.warn('[VIBE] No auth session after retries'); return }
 
-        const { data: proj } = await supabase.from('projects').select('name').eq('id', id).maybeSingle()
+        const { data: proj } = await supabase.from('projects').select('name, team_id').eq('id', id).maybeSingle()
         if (!cancelled && proj?.name) setProjectName(proj.name)
+        if (!cancelled && proj?.team_id) setProjectTeamId(proj.team_id)
 
         const resolvedId = await resolveJobId()
         if (!resolvedId || cancelled) return
@@ -282,10 +305,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     // Revoke previous blob URL before creating a new one
     if (prevBlobRef.current) { URL.revokeObjectURL(prevBlobRef.current); prevBlobRef.current = null }
     if (pages.length === 0) return null
-    const url = buildBlobUrl(pages, activeFile)
+    const url = buildBlobUrl(pages, activeFile, projectTeamId)
     prevBlobRef.current = url
     return url
-  }, [pages, activeFile])
+  }, [pages, activeFile, projectTeamId])
 
   // Revoke on final unmount
   useEffect(() => {
