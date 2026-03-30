@@ -161,3 +161,12 @@ export class NangoService {
     }));
   }
 }
+
+/**
+ * Standalone NangoService instance for non-DI contexts (e.g. context-injector).
+ */
+let _standalone: NangoService | null = null;
+export function getNangoService(): NangoService {
+  if (!_standalone) _standalone = new NangoService();
+  return _standalone;
+}

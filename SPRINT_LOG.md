@@ -1,22 +1,15 @@
 # VIBE Revenue Sprint Log
 
-Last updated: 2026-03-26
+Last updated: 2026-03-30
 
 | Sprint | Description                          | Status | Deployed | Verified | Notes |
 |--------|--------------------------------------|--------|----------|----------|-------|
 | 1A     | Thin wrapper replaces VIBE_SYSTEM_RULES | ✅     | 2026-03-26 | yes    | buildVibeSystemRules(teamName, orgName) + supabase helpers isolated |
 | 1B     | resolveDepartmentSkills()            | ✅     | 2026-03-26 | yes    | Fixed schema: team_function/content columns, shouldInjectSupabaseHelpers |
-<<<<<<< HEAD
-| 2      | Auth identity fix                    | ✅     | 2026-03-26 | yes    | Real user IDs flowing through all call sites |
-| 3      | Nango HubSpot live                   | ✅     | 2026-03-26 | yes    | Deal + contact data endpoints working |
-| 4      | Design system + dashboard quality    | ✅     | 2026-03-26 | yes    | DESIGN_SYSTEM_RULES injected in context-injector.ts; 68 skills updated with interactivity rules |
-| 5      | Edit/iterate flow                    | ⬜     |          |          |       |
-=======
-| 2      | Auth identity fix                    | ⬜     |          |          |       |
-| 3      | Nango HubSpot live                   | ⬜     |          |          |       |
+| 2      | Auth identity fix                    | ✅     | 2026-03-30 | yes    | JWT from frontend, extractUserId from verified token on API |
+| 3      | Nango HubSpot live                   | ✅     | 2026-03-30 | pending  | NangoService direct call, HubSpot deals+contacts injected into kernel context |
 | 4      | Design system + dashboard quality    | ⬜     |          |          |       |
 | 5      | Edit/iterate flow                    | ✅     | 2026-03-26 | pending  | Fixed double prior-diff injection; added dedup guard + [ITERATE] logging |
->>>>>>> origin/claude/fix-prompt-iterate-flow-PhJwf
 | 6      | File upload stability                | ⬜     |          |          |       |
 | 7A     | Stripe backend                       | ⬜     |          |          |       |
 | 7B     | Stripe frontend                      | ⬜     |          |          |       |

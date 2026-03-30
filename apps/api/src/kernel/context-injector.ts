@@ -1,4 +1,5 @@
 import { getPlatformSupabaseClient } from '../supabase/client';
+import { getNangoService, ConnectorType } from '../connectors/nango.service';
 
 // --- Design system rules injected AFTER department skills, BEFORE user prompt ---
 const DESIGN_SYSTEM_RULES = `
@@ -248,8 +249,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   // 4. Resolve uploaded data tables for this user
   const uploadedData = await resolveUploadedData(sb, userId);
 
-  // 4b. Resolve active Nango connectors for this team
+  // 4b. Resolve active Nango connectors + live HubSpot data for this team
   const activeConnectors = resolvedTeamId ? await resolveActiveConnectors(resolvedTeamId) : [];
+  const hubSpotData = resolvedTeamId ? await resolveHubSpotData(resolvedTeamId) : '';
 
   // 4c. Resolve budget context for this team
   const budgetContext = resolvedTeamId ? await resolveBudgetContext(sb, resolvedTeamId) : '';
@@ -287,6 +289,7 @@ Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
+    + hubSpotData
     + deptSkillsResult.text
     + helperBlock
     + DESIGN_SYSTEM_RULES
@@ -571,22 +574,62 @@ export async function resolveDepartmentSkills(
 
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {
   try {
-    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-    const res = await fetch(
-      `${supabaseUrl}/functions/v1/connectors/${teamId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${supabaseAnonKey}`,
-          'apikey': supabaseAnonKey,
-        },
-      }
-    );
-    if (!res.ok) return [];
-    const data: any = await res.json();
-    return Array.isArray(data?.connectors) ? data.connectors : [];
+    const nango = getNangoService();
+    return await nango.listActiveConnections(teamId);
   } catch (err) {
     console.error('[KERNEL] resolveActiveConnectors error:', err);
     return [];
+  }
+}
+
+/**
+ * Fetches live HubSpot deal + contact summaries when the team has an active
+ * HubSpot connection. Injected into kernel context so the LLM can build
+ * dashboards with real data.
+ */
+async function resolveHubSpotData(teamId: string): Promise<string> {
+  try {
+    const nango = getNangoService();
+    const connection = await nango.getConnection(teamId, ConnectorType.HUBSPOT);
+    if (!connection) return '';
+
+    const [deals, contacts] = await Promise.all([
+      nango.fetchHubSpotDeals(teamId).catch(() => []),
+      nango.fetchHubSpotContacts(teamId).catch(() => []),
+    ]);
+
+    if (deals.length === 0 && contacts.length === 0) return '';
+
+    const lines: string[] = [];
+    lines.push('\n--- HUBSPOT LIVE DATA ---');
+
+    if (deals.length > 0) {
+      const totalValue = deals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+      const stages = new Map<string, number>();
+      for (const d of deals) {
+        stages.set(d.stage, (stages.get(d.stage) ?? 0) + 1);
+      }
+      lines.push(`Deals: ${deals.length} total, pipeline value $${totalValue.toLocaleString()}`);
+      lines.push(`Stages: ${[...stages.entries()].map(([s, n]) => `${s}(${n})`).join(', ')}`);
+      // Include top 10 deals for the LLM to reference
+      lines.push('Recent deals:');
+      for (const d of deals.slice(0, 10)) {
+        lines.push(`  - ${d.name}: ${d.stage} | $${d.amount ?? 0} | close ${d.close_date ?? 'TBD'}`);
+      }
+    }
+
+    if (contacts.length > 0) {
+      lines.push(`Contacts: ${contacts.length} total`);
+      for (const c of contacts.slice(0, 10)) {
+        lines.push(`  - ${c.name} <${c.email}>${c.company ? ` @ ${c.company}` : ''}`);
+      }
+    }
+
+    lines.push('--- END HUBSPOT LIVE DATA ---');
+    console.log(`[KERNEL] HubSpot data injected: ${deals.length} deals, ${contacts.length} contacts for team ${teamId}`);
+    return lines.join('\n');
+  } catch (err) {
+    console.error('[KERNEL] resolveHubSpotData error:', err);
+    return '';
   }
 }
