@@ -6,7 +6,7 @@ export const MAX_INITIAL_PAGES = 6;
 export const INITIAL_BUILD_BUDGETS = {
   maxWallTimeMs: 420_000,
   maxModelCalls: 12,
-  maxTokensOut: 12_000,
+  maxTokensOut: 60_000,
   stepDeadlinesMs: {
     planning: 120_000,
     building: 360_000,
@@ -19,12 +19,12 @@ export const INITIAL_BUILD_BUDGETS = {
 } as const;
 
 export const DASHBOARD_BUILD_BUDGETS = {
-  maxWallTimeMs: 240_000,       // 4 min total (3-phase pipeline is slower)
+  maxWallTimeMs: 360_000,       // 6 min total — full-content dashboards need headroom
   maxModelCalls: 24,
-  maxTokensOut: 30_000,
+  maxTokensOut: 60_000,
   stepDeadlinesMs: {
     planning: 120_000,          // 120s — app builds need time
-    building: 180_000,          // 3 min (includes 2 design phase calls)
+    building: 300_000,          // 5 min — full-content builds with design phases
     validating: 120_000,        // 2 min
     security: 20_000,           // 20s
     ux: 30_000,                 // 30s
