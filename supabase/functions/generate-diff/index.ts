@@ -116,9 +116,11 @@ async function vibeLoadData(table,filters={}){
   const url=window.__VIBE_SUPABASE_URL__;
   const key=window.__VIBE_SUPABASE_ANON_KEY__;
   if(!url||!key)return[];
+  let token=key;
+  try{const ref=url.split('//')[1].split('.')[0];const s=JSON.parse(localStorage.getItem('sb-'+ref+'-auth-token')||'{}');if(s.access_token)token=s.access_token;}catch(e){}
   let ep=url+'/rest/v1/'+table+'?select=*';
   Object.entries(filters).forEach(([k,v])=>{ep+='&'+k+'=eq.'+v;});
-  const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+key}});
+  const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});
   return r.ok?await r.json():[];
 }
 </script>
@@ -306,9 +308,11 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
       async function vibeLoadData(table,filters={}){
         const url=window.__VIBE_SUPABASE_URL__;const key=window.__VIBE_SUPABASE_ANON_KEY__;
         if(!url||!key)return[];
+        let token=key;
+        try{const ref=url.split('//')[1].split('.')[0];const s=JSON.parse(localStorage.getItem('sb-'+ref+'-auth-token')||'{}');if(s.access_token)token=s.access_token;}catch(e){}
         let ep=url+'/rest/v1/'+table+'?select=*';
         Object.entries(filters).forEach(([k,v])=>{ep+='&'+k+'=eq.'+v;});
-        const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+key}});
+        const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});
         return r.ok?await r.json():[];
       }
       </script>
