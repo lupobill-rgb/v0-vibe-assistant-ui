@@ -101,18 +101,30 @@ export interface HealthStatus {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Base headers required by every API call */
-function baseHeaders(extra?: Record<string, string>): Record<string, string> {
+/** Retrieve the current Supabase session access token (JWT). */
+async function getAccessToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.access_token ?? null
+}
+
+/** Base headers required by every API call (includes auth token when available) */
+async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const token = await getAccessToken()
   return {
     'Content-Type': 'application/json',
     'X-Tenant-Id': TENANT_ID,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...extra,
   }
 }
 
-/** GET headers (no Content-Type needed) */
-function getHeaders(): Record<string, string> {
-  return { 'X-Tenant-Id': TENANT_ID }
+/** GET headers with auth (no Content-Type needed) */
+async function authGetHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken()
+  return {
+    'X-Tenant-Id': TENANT_ID,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  }
 }
 
 // ── Projects ───────────────────────────────────────────────────────────────
@@ -155,7 +167,7 @@ export async function createProject(
   if (uploadId) body.upload_id = uploadId
   const response = await fetch(`${API_URL}/projects`, {
     method: 'POST',
-    headers: baseHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   })
   const data = await response.json()
@@ -179,7 +191,7 @@ export async function importGithubProject(
 ): Promise<{ id?: string; error?: string }> {
   const response = await fetch(`${API_URL}/projects/import/github`, {
     method: 'POST',
-    headers: baseHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify({ repo_url: repoUrl }),
   })
   return response.json()
@@ -188,7 +200,7 @@ export async function importGithubProject(
 export async function fetchProject(id: string): Promise<Project | null> {
   try {
     const response = await fetch(`${API_URL}/projects/${id}`, {
-      headers: getHeaders(),
+      headers: await authGetHeaders(),
     })
     if (!response.ok) return null
     return response.json()
@@ -200,18 +212,18 @@ export async function fetchProject(id: string): Promise<Project | null> {
 export async function deleteProject(id: string): Promise<{ error?: string }> {
   const response = await fetch(`${API_URL}/projects/${id}`, {
     method: 'DELETE',
-    headers: getHeaders(),
+    headers: await authGetHeaders(),
   })
   return response.json()
 }
 
 export async function publishJob(jobId: string): Promise<{ published_url?: string; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.id) return { error: 'Not authenticated' }
+  const token = await getAccessToken()
+  if (!token) return { error: 'Not authenticated' }
   const response = await fetch(`${API_URL}/jobs/${jobId}/publish`, {
     method: 'POST',
-    headers: baseHeaders(),
-    body: JSON.stringify({ user_id: user.id }),
+    headers: await authHeaders(),
+    body: JSON.stringify({}),
   })
   return response.json()
 }
@@ -219,7 +231,7 @@ export async function publishJob(jobId: string): Promise<{ published_url?: strin
 export async function fetchProjectJobs(projectId: string): Promise<Task[]> {
   try {
     const response = await fetch(`${API_URL}/projects/${projectId}/jobs`, {
-      headers: getHeaders(),
+      headers: await authGetHeaders(),
     })
     if (!response.ok) return []
     return response.json()
@@ -233,7 +245,7 @@ export async function fetchProjectJobs(projectId: string): Promise<Task[]> {
 export async function fetchJobs(): Promise<Task[]> {
   try {
     const response = await fetch(`${API_URL}/jobs`, {
-      headers: getHeaders(),
+      headers: await authGetHeaders(),
     })
     if (!response.ok) return []
     return response.json()
@@ -254,11 +266,10 @@ export async function createJob(params: {
   upload_id?: string
   conversation_id?: string
 }): Promise<{ task_id?: string; conversation_id?: string; error?: string; limit_exceeded?: LimitExceededError }> {
-  const { data: { user } } = await supabase.auth.getUser()
   const response = await fetch(`${API_URL}/jobs`, {
     method: 'POST',
-    headers: baseHeaders(),
-    body: JSON.stringify({ ...params, user_id: user?.id }),
+    headers: await authHeaders(),
+    body: JSON.stringify(params),
   })
   const data = await response.json()
   if (response.status === 402 && data.error === 'limit_exceeded') {
@@ -270,7 +281,7 @@ export async function createJob(params: {
 export async function fetchJob(taskId: string): Promise<Task | null> {
   try {
     const response = await fetch(`${API_URL}/jobs/${taskId}`, {
-      headers: getHeaders(),
+      headers: await authGetHeaders(),
     })
     if (!response.ok) return null
     return response.json()
@@ -452,7 +463,7 @@ export async function generateMultiPageSite(
 export async function fetchConversations(projectId: string): Promise<Conversation[]> {
   try {
     const response = await fetch(`${API_URL}/projects/${projectId}/conversations`, {
-      headers: getHeaders(),
+      headers: await authGetHeaders(),
     })
     if (!response.ok) return []
     return response.json()
@@ -464,7 +475,7 @@ export async function fetchConversations(projectId: string): Promise<Conversatio
 export async function fetchConversation(conversationId: string): Promise<Conversation | null> {
   try {
     const response = await fetch(`${API_URL}/conversations/${conversationId}`, {
-      headers: getHeaders(),
+      headers: await authGetHeaders(),
     })
     if (!response.ok) return null
     return response.json()
@@ -477,11 +488,10 @@ export async function createConversation(
   projectId: string,
   title?: string,
 ): Promise<Conversation | null> {
-  const { data: { user } } = await supabase.auth.getUser()
   const response = await fetch(`${API_URL}/projects/${projectId}/conversations`, {
     method: 'POST',
-    headers: baseHeaders(),
-    body: JSON.stringify({ title, created_by: user?.id }),
+    headers: await authHeaders(),
+    body: JSON.stringify({ title }),
   })
   if (!response.ok) return null
   return response.json()
@@ -536,7 +546,7 @@ export interface BillingStatus {
 export async function fetchBillingStatus(orgId: string): Promise<BillingStatus | null> {
   try {
     const res = await fetch(`${API_URL}/api/billing/status?orgId=${orgId}`, {
-      headers: getHeaders(),
+      headers: await authGetHeaders(),
     })
     if (!res.ok) return null
     return res.json()
@@ -561,7 +571,7 @@ export async function createCheckoutSession(
 
   const res = await fetch(`${API_URL}/api/billing/checkout`, {
     method: 'POST',
-    headers: baseHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify({
       orgId,
       tierSlug,

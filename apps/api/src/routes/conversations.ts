@@ -1,6 +1,21 @@
 import { Router, Request, Response } from 'express';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
+
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+
+/** Extract user_id from JWT Authorization header, falling back to body field. */
+function extractUserId(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ') && JWT_SECRET) {
+    try {
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: ['HS256'] }) as Record<string, unknown>;
+      return (payload.sub as string) ?? null;
+    } catch { /* fall through */ }
+  }
+  return (req.body?.created_by as string) ?? null;
+}
 
 const router = Router();
 
@@ -10,7 +25,8 @@ router.post('/projects/:id/conversations', express.json(), async (req: Request, 
     const project = await storage.getProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const { title, created_by } = req.body;
+    const { title } = req.body;
+    const created_by = extractUserId(req) ?? undefined;
     const conversation = await storage.createConversation({
       project_id: req.params.id,
       title,

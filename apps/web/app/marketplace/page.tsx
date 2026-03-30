@@ -47,12 +47,16 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     if (!currentTeam?.id) return
-    fetch(`${API_URL}/connectors/${currentTeam.id}`)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetch(`${API_URL}/connectors/${currentTeam.id}`, {
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      })
       .then((r) => r.ok ? r.json() : null)
       .then((data: { connectors: string[] } | null) => {
         if (data?.connectors) setConnectedIds(new Set(data.connectors))
       })
       .catch(() => {})
+    })
   }, [currentTeam?.id])
 
   const departments = useMemo(() => {

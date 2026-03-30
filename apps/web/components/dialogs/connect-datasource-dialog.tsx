@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { useTeam } from "@/contexts/TeamContext"
 import { API_URL } from "@/lib/api"
+import { supabase } from "@/lib/supabase"
 import Nango from "@nangohq/frontend"
 import {
   Dialog,
@@ -73,10 +74,12 @@ export function ConnectDatasourceDialog({
     setError("")
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${API_URL}/connectors/connect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}),
         },
         body: JSON.stringify({
           teamId: currentTeam.id,

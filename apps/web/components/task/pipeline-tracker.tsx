@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { fetchJob, subscribeToJobUpdates, createJob, type Task, API_URL } from "@/lib/api"
 import type { AgentResultSummary } from "@/lib/api"
+import { supabase } from "@/lib/supabase"
 import { extractFixes } from "@/lib/pipeline-utils"
 
 export type StepStatus = "done" | "active" | "pending" | "error"
@@ -173,9 +174,13 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
     setApplyingFix(fixIndex)
     setFixResult(null)
     try {
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${API_URL}/jobs/${taskId}/diff/apply`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ fix_index: fixIndex }),
       })
       const data = await res.json()

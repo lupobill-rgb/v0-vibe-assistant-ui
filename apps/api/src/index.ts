@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { resolveKernelContext } from './kernel/context-injector';
 import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
 import { promisify } from 'util';
@@ -47,6 +48,27 @@ const PUBLISHED_DIR = process.env.PUBLISHED_DIR || '/tmp/published';
 const PREVIEW_TOKEN_SECRET = process.env.PREVIEW_TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
 const PREVIEW_TOKEN_EXPIRY_MS = 72 * 60 * 60 * 1000; // 72 hours
 const FRONTEND_BASE_URL = process.env.FRONTEND_URL || 'https://vibe-web-tau.vercel.app';
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+
+/**
+ * Extract user_id from a verified Supabase JWT in the Authorization header.
+ * Falls back to body.user_id for backwards compatibility during migration.
+ */
+function extractUserId(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ') && JWT_SECRET) {
+    try {
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, {
+        algorithms: ['HS256'],
+      }) as Record<string, unknown>;
+      return (payload.sub as string) ?? null;
+    } catch {
+      // Token invalid — fall through to body fallback
+    }
+  }
+  // Backwards compat: accept body.user_id if no valid JWT
+  return (req.body?.user_id as string) ?? null;
+}
 
 function signPreviewToken(jobId: string): string {
   const payload = JSON.stringify({ jobId, exp: Date.now() + PREVIEW_TOKEN_EXPIRY_MS });
@@ -461,10 +483,10 @@ async function bootstrap() {
   app.post('/jobs/:id/publish', express.json(), async (req: Request, res: Response) => {
     try {
       const jobId = req.params.id;
-      const { user_id } = req.body;
+      const user_id = extractUserId(req);
 
       if (!user_id) {
-        return res.status(400).json({ error: 'Missing required field: user_id' });
+        return res.status(401).json({ error: 'Authentication required: provide a valid Authorization header' });
       }
 
       const job = await storage.getTask(jobId);
@@ -543,12 +565,13 @@ async function bootstrap() {
   // POST /jobs - Create a new VIBE task
   app.post('/jobs', express.json(), async (req: Request, res: Response) => {
     try {
-      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', user_id, type = 'standard', debug_job_id, upload_id: bodyUploadId, conversation_id } = req.body;
+      const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', type = 'standard', debug_job_id, upload_id: bodyUploadId, conversation_id } = req.body;
+      const user_id = extractUserId(req);
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
       const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
 
       if (!user_id) {
-        return res.status(401).json({ error: 'Authentication required: user_id is missing' });
+        return res.status(401).json({ error: 'Authentication required: provide a valid Authorization header' });
       }
       if (!prompt) {
         return res.status(400).json({ error: 'Missing required field: prompt' });
