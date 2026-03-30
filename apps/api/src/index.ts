@@ -645,7 +645,7 @@ async function bootstrap() {
       let enrichedPrompt = prompt;
       let injectSupabaseHelpers = false;
       if (user_id && org) {
-        const kernel = await resolveKernelContext(user_id, org.id, project.team_id);
+        const kernel = await resolveKernelContext(user_id, org.id, project.team_id, prompt, mode);
         if (kernel.context) {
           enrichedPrompt = `${kernel.context}\n\nUSER REQUEST:\n${prompt}`;
           injectSupabaseHelpers = kernel.injectSupabaseHelpers;
@@ -1306,7 +1306,7 @@ Include ALL rows from the original data with their final calculated values. This
                 route: name === 'index' ? '/' : `/${name}`,
                 html: fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8'),
               }));
-              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt));
+              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt), mode === 'dashboard');
               if (!quality.ok) {
                 await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
                 await storage.logEvent(taskId, `[QA REASONS] ${quality.reasons.join(' | ')}`, 'warn');

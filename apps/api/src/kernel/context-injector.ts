@@ -187,7 +187,7 @@ CHART.JS LOADING — CRITICAL:
  * Resolves the kernel context string injected before every job prompt.
  * Queries team membership, data scopes, and brand tokens for the given user+org.
  */
-export async function resolveKernelContext(userId: string, orgId: string, teamId?: string, prompt?: string): Promise<{ context: string; injectSupabaseHelpers: boolean }> {
+export async function resolveKernelContext(userId: string, orgId: string, teamId?: string, prompt?: string, mode?: string): Promise<{ context: string; injectSupabaseHelpers: boolean }> {
   const sb = getPlatformSupabaseClient();
   console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}, teamId=${teamId ?? 'auto'}`);
 
@@ -298,8 +298,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   // 4d. Resolve published assets this team can see (own + visible teams)
   const publishedAssets = resolvedTeamId ? await resolvePublishedAssets(sb, resolvedTeamId) : '';
 
-  // 4e. Resolve department skills for this team
-  const deptSkillsResult = resolvedTeamId
+  // 4e. Resolve department skills for this team (skip for dashboard — saves ~20K tokens)
+  const isDashboard = mode === 'dashboard';
+  const deptSkillsResult = (resolvedTeamId && !isDashboard)
     ? await resolveDepartmentSkills(sb, resolvedTeamId, teamName, prompt)
     : { text: '', needsSupabaseHelpers: false };
 
@@ -308,10 +309,11 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   console.log(`[KERNEL] Context assembled — team=${teamName}, role=${role}, ownedScopes=${ownedScopes.length}, readScopes=${readScopes.length}, brand=${companyName}`);
 
   // Conditional helper injection — skill-driven, not always-on
+  // Dashboard mode skips form helpers (no forms) but keeps vibeLoadData via CHART_LOADING_RULES
   const resolvedDept = resolveDepartment(teamName);
   const userPrompt = prompt ?? '';
-  const injectHelpers = shouldInjectHelpers(deptSkillsResult.text, userPrompt);
-  const injectSpend = shouldInjectSpendHelper(resolvedDept, userPrompt);
+  const injectHelpers = !isDashboard && shouldInjectHelpers(deptSkillsResult.text, userPrompt);
+  const injectSpend = !isDashboard && shouldInjectSpendHelper(resolvedDept, userPrompt);
   let helperBlock = '';
   if (injectHelpers) {
     helperBlock = SUPABASE_FORM_HELPERS;
