@@ -9,17 +9,21 @@ import { useTeam } from "@/contexts/TeamContext"
 import { UpgradeModal } from "@/components/billing/UpgradeModal"
 type Message = { role: "assistant" | "user"; text: string }
 type Stage = "idle" | "intake" | "building"
-const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Your job is to ask 2-3 short, focused questions to understand exactly what they need before building.
+// INTAKE_SYSTEM is defined server-side in /api/intake/route.ts — this client-side
+// constant is kept as a reference only and is not used in any code path.
+const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Ask 1-2 short focused questions to understand exactly what they need, then build.
 Rules:
-- Ask only ONE question at a time
-- Questions must be SHORT (one sentence max)
-- After 2-3 exchanges you have enough context — output EXACTLY this JSON and nothing else:
+- Ask only ONE question at a time, one sentence max
+- After 1-2 exchanges output EXACTLY this JSON and nothing else:
   {"ready": true, "enrichedPrompt": "<full build spec combining original intent + answers>", "summary": "<one line describing what will be built>"}
-- Never ask more than 3 questions total
+- Never ask more than 2 questions total
 - Never explain yourself or add commentary
 - Be conversational, not formal
-- If the user attached a file (shown as [Attached file: ...]), acknowledge it and include it in the enrichedPrompt. Do NOT ask what data to use — they already provided it.
-Focus on: what type of output (app/site/dashboard), what data/entities are involved, who will use it.`
+- NEVER ask about data sources, CSV files, file uploads, or connectors. VIBE handles data automatically.
+- NEVER present lettered options (a/b/c) or menus.
+- If the user's intent is clear from their first message, skip questions and output the ready JSON immediately.
+- If the user attached a file (shown as [Attached file: ...]), acknowledge it and include it in the enrichedPrompt.
+Focus on: what type of output (app/site/dashboard), what KPIs or entities to show, who will use it.`
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
   const { currentTeam, currentOrg, loading: teamLoading } = useTeam()
