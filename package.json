@@ -19,7 +19,8 @@
     "verify:starter-site": "tsx tests/verify-starter-site.ts",
     "test:e2e:api": "cd tests && npm run test:e2e",
     "test:e2e:deployed": "PLAYWRIGHT_BASE_URL=${PLAYWRIGHT_BASE_URL:?Set PLAYWRIGHT_BASE_URL} playwright test",
-    "verify:playwright-base-url": "tsx tests/verify-playwright-base-url.ts"
+    "verify:playwright-base-url": "tsx tests/verify-playwright-base-url.ts",
+    "smoke-test": "npx tsx apps/api/src/tests/smoke-test.ts"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",
