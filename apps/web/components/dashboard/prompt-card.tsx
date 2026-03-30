@@ -178,9 +178,10 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {
       const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch("/api/intake", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}) },
         body: JSON.stringify({ messages, upload_id: uploadIdRef.current, team_id: currentTeam?.id, org_id: currentOrg?.id, user_id: user?.id, project_id: projectIdRef.current }),
         signal: controller.signal,
       })

@@ -340,9 +340,10 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       const activeIdx = currentPages.findIndex((p) => p.filename === activeFile)
       const targetIdx = activeIdx >= 0 ? activeIdx : 0
       const currentHtml = currentPages[targetIdx]?.html ?? ''
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch('/api/intake', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
         body: JSON.stringify({
           edit: true,
           context: currentHtml,

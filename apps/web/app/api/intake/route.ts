@@ -80,19 +80,24 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
   return data
 }
 
-/** Server-side headers — use service role key to bypass RLS, fall back to anon */
-function sbHeaders(): Record<string, string> {
-  const key = SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY
-  if (!SUPABASE_SERVICE_KEY) console.warn('[INTAKE] SUPABASE_SERVICE_ROLE_KEY not set — user_uploads reads may be blocked by RLS')
-  return { 'apikey': key, 'Authorization': `Bearer ${key}` }
+/** Server-side headers — use service role key to bypass RLS, or forward
+ *  the caller's JWT so RLS resolves as the authenticated user. */
+function sbHeaders(userJwt?: string | null): Record<string, string> {
+  if (SUPABASE_SERVICE_KEY) {
+    return { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+  }
+  // No service key — use the caller's JWT so RLS sees the real user
+  const token = userJwt || SUPABASE_ANON_KEY
+  if (!userJwt) console.warn('[INTAKE] SUPABASE_SERVICE_ROLE_KEY not set and no user JWT — RLS may block queries')
+  return { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
 }
 
 /** Resolve upload_id from project record (single source of truth) */
-async function resolveProjectUploadId(projectId: string): Promise<string | null> {
+async function resolveProjectUploadId(projectId: string, userJwt?: string | null): Promise<string | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(projectId)}&select=upload_id&limit=1`,
-      { headers: sbHeaders() }
+      { headers: sbHeaders(userJwt) }
     )
     if (!res.ok) return null
     const rows = await res.json()
@@ -100,11 +105,11 @@ async function resolveProjectUploadId(projectId: string): Promise<string | null>
   } catch { return null }
 }
 
-async function fetchUploadSummary(uploadId: string): Promise<string | null> {
+async function fetchUploadSummary(uploadId: string, userJwt?: string | null): Promise<string | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/user_uploads?id=eq.${encodeURIComponent(uploadId)}&limit=1`,
-      { headers: sbHeaders() }
+      { headers: sbHeaders(userJwt) }
     )
     if (!res.ok) return null
     const rows = await res.json()
@@ -121,6 +126,8 @@ async function fetchUploadSummary(uploadId: string): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
+  // Extract user JWT from incoming request for authenticated Supabase calls
+  const userJwt = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') || null
   let messages, build, edit, editPrompt, context, project_id, upload_id, team_id, user_id, org_id
   try {
     ({ messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id, user_id, org_id } = await request.json())
@@ -149,7 +156,7 @@ export async function POST(request: Request) {
         try {
           const uploadRes = await fetch(
             `${SUPABASE_URL}/rest/v1/user_uploads?project_id=eq.${encodeURIComponent(project_id)}&order=created_at.desc&limit=1`,
-            { headers: sbHeaders() }
+            { headers: sbHeaders(userJwt) }
           )
           if (uploadRes.ok) {
             const uploads = await uploadRes.json()
@@ -201,7 +208,7 @@ export async function POST(request: Request) {
     // Resolve upload_id: request body → project record (single source of truth)
     let resolvedUploadId = upload_id
     if (!resolvedUploadId && project_id) {
-      resolvedUploadId = await resolveProjectUploadId(project_id)
+      resolvedUploadId = await resolveProjectUploadId(project_id, userJwt)
     }
 
     // ALWAYS fetch file content when an upload exists — every call, not just the first
@@ -256,7 +263,7 @@ export async function POST(request: Request) {
     }
 
     if (resolvedUploadId) {
-      const fileSummary = await fetchUploadSummary(resolvedUploadId)
+      const fileSummary = await fetchUploadSummary(resolvedUploadId, userJwt)
       if (fileSummary) {
         intakeSystem += `\n\nA file is attached to this project. Here is its content:\n${fileSummary}\nDo NOT ask questions that are answered by this data. Read it first, then respond.`
       } else {
