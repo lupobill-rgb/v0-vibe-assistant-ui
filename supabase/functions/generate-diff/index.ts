@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.5.0"; // 2026-03-29 — Design system dedup, phantom refs fixed, dead code removed, token logging
+const EDGE_FUNCTION_VERSION = "2.5.1"; // 2026-03-30 — Fix dashboard chart rendering: resolve CHART_ENFORCEMENT vs DASHBOARD_SYSTEM contradiction, add sample data fallback
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -298,7 +298,7 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
 6. LIVE DATA via vibeLoadData() — MANDATORY for ALL dashboards:
    ALL chart data, KPI values, and table rows MUST be loaded at runtime via vibeLoadData(tableName, filters). No exceptions.
    Show a loading skeleton while data loads. Show an empty state if no rows return.
-   NEVER hardcode sample/demo/placeholder data into the HTML. NEVER use fallback constants for charts, KPIs, or tables.
+   Always define realistic SAMPLE_DATA as a const array fallback. Use vibeLoadData() first, but if it returns [] fall back to SAMPLE_DATA so charts always render.
    NEVER use raw fetch() or XMLHttpRequest — always use vibeLoadData().
    TABLE NAME RESOLUTION: Use table names from TEAM CONTEXT or BUDGET CONTEXT if provided. If no specific table name is given, infer from the domain: sales/GTM→'gtm_deals', budget/finance→'budget_allocations', contacts/CRM→'contacts', analytics→'page_views'. Always filter by team_id: {team_id: window.__VIBE_TEAM_ID__}.
    REQUIRED PATTERN — follow this exactly:
@@ -317,14 +317,18 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
         catch(e){console.error('[VIBE] vibeLoadData fetch failed:',e);return[];}
       }
       </script>
-   c) Load data and populate dashboard in an async IIFE:
+   c) Load data and populate dashboard in an async IIFE.
+      CRITICAL: Always define realistic sample data as a fallback so charts are never empty.
       <script>
       (async function(){
-        const rows = await vibeLoadData('budget_allocations', {team_id: window.__VIBE_TEAM_ID__});
-        if(!rows.length){ document.getElementById('empty-state').style.display='block'; return; }
+        const SAMPLE_DATA = [ /* generate 8-12 realistic rows matching the domain */ ];
+        let rows = await vibeLoadData('budget_allocations', {team_id: window.__VIBE_TEAM_ID__});
+        if(!rows.length){ rows = SAMPLE_DATA; }
         // populate KPI cards, chart datasets, and table rows from rows
       })();
       </script>
+      Generate domain-appropriate sample data (sales→deals, finance→budget lines, marketing→campaigns).
+      This ensures charts always render with visible data, even before the user connects a data source.
 
 Start <style> with the :root block from the PRE-BUILT COLOR BLOCK injected below. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
@@ -1163,7 +1167,10 @@ STRUCTURAL REQUIREMENTS:
     console.log(`[token-budget] mode=${mode || 'diff'} model=${model} system≈${estSystemTokens}tok prompt≈${estPromptTokens}tok total≈${estSystemTokens + estPromptTokens}tok maxOutput=${resolvedMaxTokens}`);
 
     // Append content enforcement to user message based on intent
-    if (isDashboardPrompt(prompt)) {
+    if (isDashboardPrompt(prompt) && mode !== "dashboard") {
+      // Only append CHART_ENFORCEMENT for non-dashboard modes (e.g. page/html)
+      // Dashboard mode already has comprehensive chart instructions in DASHBOARD_SYSTEM;
+      // appending CHART_ENFORCEMENT would contradict its data-sourcing rules.
       prompt = prompt + CHART_ENFORCEMENT;
     } else if (isLandingPagePrompt(prompt)) {
       prompt = prompt + LANDING_PAGE_ENFORCEMENT;
