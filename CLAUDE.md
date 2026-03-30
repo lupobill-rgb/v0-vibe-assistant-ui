@@ -91,6 +91,35 @@ The following components are locked. **No changes without explicit approval.**
 
 LLM failover architecture spec: see `docs/llm-redundancy-plan.md` — implement per that spec when working on LLM routing, provider integration, or failover logic. Key files: `litellm/litellm_config.yaml` (proxy config), `apps/executor/src/llm-failover.ts` (failover orchestrator), `supabase/functions/generate-diff/index.ts` (edge function with 4-provider chain).
 
+## PRE-MERGE REQUIREMENTS — Regression Prevention Gate
+
+Before pushing ANY branch to main, complete ALL of the following. No exceptions.
+
+### Step 1 — Run a test dashboard build
+
+Use the prompt **"show me my pipeline"** on the **Sales** team workspace.
+Wait for the build to complete and preview to render.
+
+### Step 2 — Confirm every check passes
+
+- [ ] Charts render on first load (no follow-up prompt needed)
+- [ ] Navigation links respond to clicks
+- [ ] Buttons respond to clicks
+- [ ] Token count under 30,000 (check Railway logs)
+- [ ] No `[LLM-FALLBACK]` in Railway logs
+- [ ] No `[QA REASONS]` repair pass triggered
+- [ ] No raw "html" text visible in preview
+
+### Step 3 — If ANY check fails
+
+**Do not merge.** Fix the regression on the branch and re-run the smoke test.
+Only proceed to main once every box is checked.
+
+### Step 4 — Document in the PR
+
+Add a "Smoke Test Results" section to the PR description listing what was tested
+and confirming all checks passed. Include the test job ID for traceability.
+
 ## Never
 
 - Silent failures. Always return plain-English explanation + next action.

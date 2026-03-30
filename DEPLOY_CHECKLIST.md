@@ -3,20 +3,36 @@
 
 ---
 
-## Step 1 — Classify Your Change
+## Pre-Merge Smoke Tests (run before EVERY merge to main)
 
-| Change Type | Blast Radius | Smoke Suite Required |
-|---|---|---|
-| System prompt edit | HIGH | YES — all 3 cases |
-| Edge Function deploy | HIGH | YES — all 3 cases |
-| LLM output normalizer | HIGH | YES — all 3 cases |
-| Supabase migration | MEDIUM | Schema + RLS check only |
-| NestJS API route | LOW | Unit test for that route |
-| UI component change | LOW | Manual spot check |
+- [ ] Dashboard builds on first prompt — no follow-up needed
+- [ ] Charts render on first load
+- [ ] Navigation links work
+- [ ] Buttons respond to clicks
+- [ ] Token count < 30,000 (Railway logs)
+- [ ] No `[LLM-FALLBACK]` in logs
+- [ ] No QA repair pass triggered
+- [ ] No raw "html" in preview pane
+- [ ] Edge Function deployed if `generate-diff/index.ts` changed
+
+**Test prompt:** `"show me my pipeline"` on Sales team workspace.
+**Document results in the PR description with the test job ID.**
 
 ---
 
-## Step 2 — Layer 1 Smoke Suite
+## Blast Radius Classification
+
+Before merging, classify the change:
+
+| Blast Radius | Files | Required Testing |
+|---|---|---|
+| **HIGH** | `context-injector.ts`, `index.ts`, `edge-function.ts`, `generate-diff/index.ts` | Full smoke test (all checks above) |
+| **MEDIUM** | `intake/route.ts`, `prompt-card.tsx`, `building/[id]/page.tsx` | Dashboard render test |
+| **LOW** | Migrations, seed data, CSS | Visual check only |
+
+---
+
+## Layer 1 Smoke Suite (HIGH blast radius changes)
 
 Run all 3 cases through the live pipeline. All must pass before merge.
 
@@ -38,16 +54,16 @@ Run all 3 cases through the live pipeline. All must pass before merge.
 
 ---
 
-## Step 3 — Infrastructure Checks
+## Infrastructure Checks
 
 - [ ] Edge Function version confirmed in Railway logs
-- [ ] `last_diff` non-null on all 3 completed test jobs
+- [ ] `last_diff` non-null on all completed test jobs
 - [ ] No raw stack traces surfaced in any job failure
 - [ ] Interactive elements verified — buttons fire, filters respond
 
 ---
 
-## Step 4 — If Blast Radius is MEDIUM or HIGH
+## Security Checks (MEDIUM or HIGH blast radius)
 
 - [ ] Supabase RLS enabled on all affected tables
 - [ ] Full chain verified: `job → project → team → team_members → auth.uid()`
@@ -62,4 +78,4 @@ Run all 3 cases through the live pipeline. All must pass before merge.
 
 ---
 
-_Last updated: 2026-03-19_
+_Last updated: 2026-03-30_
