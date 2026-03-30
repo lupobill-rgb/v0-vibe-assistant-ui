@@ -1201,7 +1201,7 @@ STRUCTURAL REQUIREMENTS:
     }
 
     // If primary failed, cascade through fallback chain
-    if (!result!) {
+    if (!result) {
       for (const fallback of chain) {
         if (!PROVIDERS[fallback]) continue;
         if (!fitsProvider(fallback, estimatedTokenCount)) {
@@ -1223,7 +1223,7 @@ STRUCTURAL REQUIREMENTS:
       }
     }
 
-    if (!result!) {
+    if (!result) {
       throw new Error(`All LLM providers failed. ${errors.join(" | ")}`);
     }
 
