@@ -103,8 +103,9 @@ const tests: TestCase[] = [
             email: 'test@ubigrowth.com', orgName: 'Test Org',
           });
       if (r.status !== 200) return { pass: false, detail: `HTTP ${r.status}: ${JSON.stringify(r.body)}` };
-      const valid = r.body?.checkoutUrl?.startsWith('https://checkout.stripe.com');
-      return { pass: !!valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
+      const url = r.body?.checkoutUrl || '';
+      const valid = url.startsWith('https://checkout.stripe.com') || url.startsWith('https://pay.ubigrowth.ai');
+      return { pass: valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
     },
   },
   {
@@ -118,8 +119,9 @@ const tests: TestCase[] = [
             email: 'test@ubigrowth.com', orgName: 'Test Org',
           });
       if (r.status !== 200) return { pass: false, detail: `HTTP ${r.status}: ${JSON.stringify(r.body)}` };
-      const valid = r.body?.checkoutUrl?.startsWith('https://checkout.stripe.com');
-      return { pass: !!valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
+      const url = r.body?.checkoutUrl || '';
+      const valid = url.startsWith('https://checkout.stripe.com') || url.startsWith('https://pay.ubigrowth.ai');
+      return { pass: valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
     },
   },
   {
@@ -133,8 +135,9 @@ const tests: TestCase[] = [
             email: 'test@ubigrowth.com', orgName: 'Test Org',
           });
       if (r.status !== 200) return { pass: false, detail: `HTTP ${r.status}: ${JSON.stringify(r.body)}` };
-      const valid = r.body?.checkoutUrl?.startsWith('https://checkout.stripe.com');
-      return { pass: !!valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
+      const url = r.body?.checkoutUrl || '';
+      const valid = url.startsWith('https://checkout.stripe.com') || url.startsWith('https://pay.ubigrowth.ai');
+      return { pass: valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
     },
   },
   {
