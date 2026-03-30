@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { GeneratedPage } from "@/lib/api"
@@ -13,7 +13,8 @@ export function PreviewPanel({ pages }: PreviewPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const showTabs = pages.length > 1
 
-  const blobUrl = useMemo(() => {
+  // Build the processed HTML string — used for both srcdoc and the blob link
+  const processedHtml = useMemo(() => {
     const raw = pages[activeIndex]?.html ?? ""
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://ptaqytvztkhjpuawdxng.supabase.co"
@@ -41,9 +42,25 @@ window.__VIBE_SUPABASE_ANON_KEY__ = window.__VIBE_SUPABASE_ANON_KEY__ || ${JSON.
       html = credentialsScript + "\n" + html
     }
 
-    const blob = new Blob([html], { type: "text/html" })
-    return URL.createObjectURL(blob)
+    return html
   }, [pages, activeIndex])
+
+  // Blob URL kept only for the "Open in new tab" link
+  const blobUrl = useMemo(() => {
+    if (!processedHtml) return ""
+    const blob = new Blob([processedHtml], { type: "text/html" })
+    return URL.createObjectURL(blob)
+  }, [processedHtml])
+
+  // Revoke stale blob URLs to avoid memory leaks
+  const prevBlobUrl = useRef("")
+  useEffect(() => {
+    if (prevBlobUrl.current && prevBlobUrl.current !== blobUrl) {
+      URL.revokeObjectURL(prevBlobUrl.current)
+    }
+    prevBlobUrl.current = blobUrl
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl) }
+  }, [blobUrl])
 
   if (pages.length === 0) return null
 
@@ -78,9 +95,11 @@ window.__VIBE_SUPABASE_ANON_KEY__ = window.__VIBE_SUPABASE_ANON_KEY__ || ${JSON.
         </div>
       )}
 
-      {/* Preview iframe */}
+      {/* Preview iframe — srcdoc avoids blob URL race conditions where
+         scripts wouldn't execute on first load */}
       <iframe
-        src={blobUrl}
+        key={activeIndex}
+        srcDoc={processedHtml}
         sandbox="allow-scripts"
         className="w-full border-0"
         style={{ height: 500 }}
