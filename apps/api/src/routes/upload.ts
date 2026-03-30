@@ -1,8 +1,23 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
+import jwt from 'jsonwebtoken';
 import { parse as csvParse } from 'csv-parse/sync';
 import path from 'path';
 import { getPlatformSupabaseClient } from '../supabase/client';
+
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+
+/** Extract user_id from JWT Authorization header, falling back to body field. */
+function extractUserId(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ') && JWT_SECRET) {
+    try {
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: ['HS256'] }) as Record<string, unknown>;
+      return (payload.sub as string) ?? null;
+    } catch { /* fall through */ }
+  }
+  return (req.body?.user_id as string) ?? null;
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -15,9 +30,9 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       return res.status(400).json({ error: 'No file provided. Attach a .csv or .xlsx file.' });
     }
 
-    const userId = req.body?.user_id;
+    const userId = extractUserId(req);
     if (!userId) {
-      return res.status(401).json({ error: 'Authentication required: user_id is missing' });
+      return res.status(401).json({ error: 'Authentication required: provide a valid Authorization header' });
     }
 
     const ext = path.extname(file.originalname).toLowerCase();
@@ -52,9 +67,9 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       const { data: xlsxInserted, error: xlsxError } = await sb
         .from('user_uploads')
         .insert({
-          owner_id: userId,
+          user_id: userId,
           project_id: req.body?.project_id || null,
-          original_filename: file.originalname,
+          filename: file.originalname,
           table_name: xlsxTableName,
           columns: [],
           column_schema: {},
@@ -155,9 +170,9 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     const { data: inserted, error: insertError } = await sb
       .from('user_uploads')
       .insert({
-        owner_id: userId,
+        user_id: userId,
         project_id: req.body?.project_id || null,
-        original_filename: file.originalname,
+        filename: file.originalname,
         table_name: tableName,
         columns,
         column_schema: columnSchema,

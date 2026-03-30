@@ -87,12 +87,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setUploadState({ status: "uploading", progress: 0, message: `Uploading ${file.name}...` })
     const formData = new FormData()
     formData.append("file", file)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user?.id) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
       setUploadState({ status: "error", progress: 0, message: "You must be signed in to upload files." })
       return
     }
-    formData.append("user_id", user.id)
     // Store the upload promise so startIntake() can await it
     const doUpload = async () => {
       try {
@@ -113,6 +112,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
           })
           xhr.addEventListener("error", () => reject(new Error("Network error")))
           xhr.open("POST", `${API_URL}/upload`)
+          xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`)
           xhr.send(formData)
         })
         const uid = result.upload_id

@@ -10,7 +10,7 @@ Last updated: 2026-03-30
 | 3      | Nango HubSpot live                   | ✅     | 2026-03-30 | pending  | NangoService direct call, HubSpot deals+contacts injected into kernel context |
 | 4      | Design system + dashboard quality    | ✅     | 2026-03-30 | pending  | Expanded DESIGN_SYSTEM_RULES (colors, typography, spacing, responsive, components, dashboard layout, motion); created FRONTEND_SKILL.md |
 | 5      | Edit/iterate flow                    | ✅     | 2026-03-26 | pending  | Fixed double prior-diff injection; added dedup guard + [ITERATE] logging |
-| 6      | File upload stability                | ⬜     |          |          |       |
+| 6      | File upload stability                | ✅     | 2026-03-30 | pending  | Fixed owner_id→user_id + original_filename→filename column mismatch; JWT auth on upload; removed spoofable body user_id |
 | 7A     | Stripe backend                       | ⬜     |          |          |       |
 | 7B     | Stripe frontend                      | ⬜     |          |          |       |
 | 8      | Smoke test gate (all 6 tests pass)   | ⬜     |          |          |       |
