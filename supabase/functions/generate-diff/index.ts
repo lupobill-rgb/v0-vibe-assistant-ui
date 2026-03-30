@@ -115,13 +115,14 @@ Add this script before </body>:
 async function vibeLoadData(table,filters={}){
   const url=window.__VIBE_SUPABASE_URL__;
   const key=window.__VIBE_SUPABASE_ANON_KEY__;
-  if(!url||!key){console.error('[VIBE] vibeLoadData: missing URL or key',{url:!!url,key:!!key});return[];}
+  if(!url||!key){console.error('[vibeLoadData] missing URL or key',{url:!!url,key:!!key});return[];}
   let token=key;
   try{const ref=url.split('//')[1].split('.')[0];const s=JSON.parse(localStorage.getItem('sb-'+ref+'-auth-token')||'{}');if(s.access_token)token=s.access_token;}catch(e){}
   let ep=url+'/rest/v1/'+table+'?select=*';
-  Object.entries(filters).forEach(([k,v])=>{ep+='&'+k+'=eq.'+v;});
-  try{const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});if(!r.ok){console.error('[VIBE] vibeLoadData error:',r.status,await r.text());return[];}return await r.json();}
-  catch(e){console.error('[VIBE] vibeLoadData fetch failed:',e);return[];}
+  Object.entries(filters).forEach(([k,v])=>{if(v)ep+='&'+k+'=eq.'+v;});
+  console.log('[vibeLoadData] fetching from:',ep);
+  try{const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});if(!r.ok){console.error('[vibeLoadData] error:',r.status,await r.text());return[];}const rows=await r.json();console.log('[vibeLoadData] result:',rows.length,'rows');return rows;}
+  catch(e){console.error('[vibeLoadData] fetch failed:',e);return[];}
 }
 </script>
 VARIABLE NAMES — in all JS code, read credentials from window.__VIBE_SUPABASE_URL__, window.__VIBE_SUPABASE_ANON_KEY__, and window.__VIBE_TEAM_ID__. The double-underscore placeholders (__SUPABASE_URL__ etc.) are ONLY valid inside the <head> assignment scripts where the platform replaces them at deploy time.
@@ -308,13 +309,14 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
       <script>
       async function vibeLoadData(table,filters={}){
         const url=window.__VIBE_SUPABASE_URL__;const key=window.__VIBE_SUPABASE_ANON_KEY__;
-        if(!url||!key){console.error('[VIBE] vibeLoadData: missing URL or key',{url:!!url,key:!!key});return[];}
+        if(!url||!key){console.error('[vibeLoadData] missing URL or key',{url:!!url,key:!!key});return[];}
         let token=key;
         try{const ref=url.split('//')[1].split('.')[0];const s=JSON.parse(localStorage.getItem('sb-'+ref+'-auth-token')||'{}');if(s.access_token)token=s.access_token;}catch(e){}
         let ep=url+'/rest/v1/'+table+'?select=*';
-        Object.entries(filters).forEach(([k,v])=>{ep+='&'+k+'=eq.'+v;});
-        try{const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});if(!r.ok){console.error('[VIBE] vibeLoadData error:',r.status,await r.text());return[];}return await r.json();}
-        catch(e){console.error('[VIBE] vibeLoadData fetch failed:',e);return[];}
+        Object.entries(filters).forEach(([k,v])=>{if(v)ep+='&'+k+'=eq.'+v;});
+        console.log('[vibeLoadData] fetching from:',ep);
+        try{const r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});if(!r.ok){console.error('[vibeLoadData] error:',r.status,await r.text());return[];}const rows=await r.json();console.log('[vibeLoadData] result:',rows.length,'rows');return rows;}
+        catch(e){console.error('[vibeLoadData] fetch failed:',e);return[];}
       }
       </script>
    c) Load data and populate dashboard in an async IIFE.

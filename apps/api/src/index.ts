@@ -876,9 +876,9 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           const supabaseKey = process.env.SUPABASE_ANON_KEY;
           if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
 
-          // Replace Supabase placeholders in generated HTML so forms work
+          // Replace Supabase placeholders in generated HTML so forms and vibeLoadData work
           const injectSupabaseCredentials = (html: string): string =>
-            html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey);
+            html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey).replace(/__TEAM_ID__/g, project.team_id || '');
 
           const edgeFunctionUrl = `${supabaseUrl}/functions/v1/generate-diff`;
           const headers = {
