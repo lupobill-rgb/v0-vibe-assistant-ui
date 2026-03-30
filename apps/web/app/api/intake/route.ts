@@ -248,7 +248,7 @@ export async function POST(request: Request) {
           hasActiveConnectors = connectors.some((c: { status?: string }) => c.status === 'active')
         }
         if (isDashboard && !hasActiveConnectors) {
-          intakeSystem += `\n\nIMPORTANT: This team has no data source connected.\nBefore asking other questions, let the user know:\n'I notice you don't have a data source connected yet. I can:\n(a) Build with realistic sample data — you can connect your CRM later\n(b) Use a CSV file you upload right now\nWhich do you prefer? Or just say build and I'll use sample data.'\nOnly ask this ONCE, then proceed normally.`
+          intakeSystem += `\n\nIMPORTANT: This team has no data source connected. If no data connector is present, build immediately using realistic sample data. Never ask the user to choose between sample data and CSV upload. Never present lettered options (a/b/c). Build first. If data connection is needed later, surface it as a Guided Next Step after the build completes — not before.`
         }
       } catch (connErr) {
         console.warn('[INTAKE] connector check failed — proceeding without:', connErr)
