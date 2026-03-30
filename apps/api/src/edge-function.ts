@@ -28,6 +28,7 @@ const WEAK_APP_KEYWORDS = [
 const DASHBOARD_KEYWORDS = [
   "dashboard","analytics","chart","report","tracker",
   "metrics","kpi","visualiz","table","scorecard","monitor","list","view",
+  "pipeline","revenue","performance","overview",
 ];
 
 const SITE_KEYWORDS = [

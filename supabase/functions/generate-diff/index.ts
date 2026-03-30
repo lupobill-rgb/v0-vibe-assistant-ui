@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.5.1"; // 2026-03-30 — Fix dashboard chart rendering: resolve CHART_ENFORCEMENT vs DASHBOARD_SYSTEM contradiction, add sample data fallback
+const EDGE_FUNCTION_VERSION = "2.5.2"; // 2026-03-30 — Fix DASHBOARD_SYSTEM internal contradiction: align sample-data-fallback with vibeLoadData, fix STRUCTURAL REQUIREMENTS static table conflict
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -417,7 +417,7 @@ CHART CODE MANDATE — non-negotiable:
 - For hidden sections (display:none), wrap the chart init in setTimeout(()=>{...}, 100) so Chart.js can measure canvas size when switchView reveals it.
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
 - NEVER create a <canvas> without a corresponding new Chart() call in a <script> immediately after it.
-- ALL chart/table/KPI data MUST be loaded via vibeLoadData(). Include the Supabase credentials script in <head> and vibeLoadData() before </body>. Use await vibeLoadData('table_name') inside an async IIFE to populate charts and tables. Show loading skeletons while data loads. Show empty state if no rows return. NEVER use hardcoded sample data — always call vibeLoadData().
+- ALL chart/table/KPI data MUST attempt vibeLoadData() first. Include the Supabase credentials script in <head> and vibeLoadData() before </body>. Use await vibeLoadData('table_name') inside an async IIFE to populate charts and tables. Show loading skeletons while data loads. If vibeLoadData returns [], fall back to SAMPLE_DATA so charts always render with visible data. Charts must NEVER be empty.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
 - 10 realistic rows, no lorem ipsum
@@ -1125,11 +1125,11 @@ The file MUST start with <!DOCTYPE html> and end with </html>.
 `;
       baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
 STRUCTURAL REQUIREMENTS:
-- Include at least 4 KPI stat cards with realistic values
-- Include at least 2 Chart.js charts (bar, line, doughnut, or pie)
+- Include at least 4 KPI stat cards populated via vibeLoadData with SAMPLE_DATA fallback
+- Include at least 2 Chart.js charts (bar, line, doughnut, or pie) — charts must ALWAYS render with data
 - Each chart canvas must have a unique id (e.g. id="chart1", id="chart2")
-- Include a data table with relevant columns for the domain
-- The table must use static HTML only — plain <table> with <thead> and <tbody>
+- Include a data table with relevant columns for the domain, populated via vibeLoadData with SAMPLE_DATA fallback
+- Always define const SAMPLE_DATA with 8-12 realistic domain-appropriate rows so charts and tables are never empty
 - Detect the domain from the user prompt and use contextually relevant metrics
 - Never use alert(), confirm(), or prompt()
 - Never generate React or JSX
