@@ -276,33 +276,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     }
   }
   const [conversationId, setConversationId] = useState<string | undefined>(undefined)
-  const buildViaVercel = async (finalPrompt: string): Promise<string> => {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 180000)
-    try {
-      const res = await fetch("/api/intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: finalPrompt }],
-          build: true,
-          project_id: selectedProjectId,
-        }),
-        signal: controller.signal,
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || `Build failed (${res.status})`)
-      if (!data.html) throw new Error("Build returned empty HTML")
-      return data.html
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error("Build timed out. Please try again.")
-      }
-      throw err
-    } finally {
-      clearTimeout(timeout)
-    }
-  }
   const generateSmartName = (text: string): string => {
     const stopWords = new Set(['a', 'an', 'the', 'to', 'for', 'and', 'or', 'but', 'in', 'on', 'at', 'of', 'with', 'is', 'it', 'me', 'my', 'i', 'we', 'our', 'that', 'this', 'be', 'do', 'build', 'create', 'make', 'please', 'want', 'need', 'like', 'can', 'should', 'would'])
     const words = text.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 0)

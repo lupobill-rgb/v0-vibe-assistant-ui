@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 
 export const maxDuration = 180
 
-const SUPABASE_URL = 'https://ptaqytvztkhjpuawdxng.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0YXF5dHZ6dGtoanB1YXdkeG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDAwNjYsImV4cCI6MjA4NzUxNjA2Nn0.V9lzpPsCZX3X9rdTTa0cTz6Al47wDeMNiVC7WXbTfq4'
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
 
 const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Ask 2-3 short focused questions to understand exactly what they need before building.
@@ -79,12 +80,19 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
   return data
 }
 
+/** Server-side headers — use service role key to bypass RLS, fall back to anon */
+function sbHeaders(): Record<string, string> {
+  const key = SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY
+  if (!SUPABASE_SERVICE_KEY) console.warn('[INTAKE] SUPABASE_SERVICE_ROLE_KEY not set — user_uploads reads may be blocked by RLS')
+  return { 'apikey': key, 'Authorization': `Bearer ${key}` }
+}
+
 /** Resolve upload_id from project record (single source of truth) */
 async function resolveProjectUploadId(projectId: string): Promise<string | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(projectId)}&select=upload_id&limit=1`,
-      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
+      { headers: sbHeaders() }
     )
     if (!res.ok) return null
     const rows = await res.json()
@@ -96,7 +104,7 @@ async function fetchUploadSummary(uploadId: string): Promise<string | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/user_uploads?id=eq.${encodeURIComponent(uploadId)}&limit=1`,
-      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
+      { headers: sbHeaders() }
     )
     if (!res.ok) return null
     const rows = await res.json()
@@ -141,12 +149,7 @@ export async function POST(request: Request) {
         try {
           const uploadRes = await fetch(
             `${SUPABASE_URL}/rest/v1/user_uploads?project_id=eq.${encodeURIComponent(project_id)}&order=created_at.desc&limit=1`,
-            {
-              headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-              },
-            }
+            { headers: sbHeaders() }
           )
           if (uploadRes.ok) {
             const uploads = await uploadRes.json()
@@ -210,7 +213,11 @@ export async function POST(request: Request) {
     }
     if (team_id && user_id) {
       try {
-        const resolvedOrgId = org_id || process.env.NEXT_PUBLIC_ORG_ID || '3de82e57-4813-4ad6-83bd-2adb461604f0'
+        const resolvedOrgId = org_id || process.env.NEXT_PUBLIC_ORG_ID
+        if (!resolvedOrgId) {
+          console.warn('[INTAKE] No org_id in request and NEXT_PUBLIC_ORG_ID not set — skipping kernel context')
+          throw new Error('org_id missing')
+        }
         const kernelRes = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'}/api/kernel-context/${user_id}/${resolvedOrgId}/${team_id}`,
           { headers: { 'Content-Type': 'application/json' } }
