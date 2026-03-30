@@ -232,7 +232,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // FIX 1: Check if team has active connectors — nudge if dashboard-related and none connected
+    // FIX 1: Check if team has active connectors — skip data questions if none connected
     if (team_id) {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'
@@ -248,7 +248,7 @@ export async function POST(request: Request) {
           hasActiveConnectors = connectors.some((c: { status?: string }) => c.status === 'active')
         }
         if (isDashboard && !hasActiveConnectors) {
-          intakeSystem += `\n\nIMPORTANT: This team has no data source connected. If no data connector is present, build immediately using realistic sample data. Never ask the user to choose between sample data and CSV upload. Never present lettered options (a/b/c). Build first. If data connection is needed later, surface it as a Guided Next Step after the build completes — not before.`
+          intakeSystem += `\n\nIMPORTANT: This team has no data connector yet. Do NOT ask about data sources, uploads, or file formats. Proceed to build using realistic sample data. Do NOT present options or menus before building. After you have enough context to build, output the ready JSON immediately. Data connection will be offered as a Guided Next Step after the build completes.`
         }
       } catch (connErr) {
         console.warn('[INTAKE] connector check failed — proceeding without:', connErr)
