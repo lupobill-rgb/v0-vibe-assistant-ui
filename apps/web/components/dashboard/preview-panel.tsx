@@ -100,7 +100,7 @@ window.__VIBE_SUPABASE_ANON_KEY__ = window.__VIBE_SUPABASE_ANON_KEY__ || ${JSON.
       <iframe
         key={activeIndex}
         srcDoc={processedHtml}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
         className="w-full border-0"
         style={{ height: 500 }}
         title={`Preview: ${pages[activeIndex]?.name}`}
