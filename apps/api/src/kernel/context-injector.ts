@@ -4,9 +4,46 @@ import { getNangoService, ConnectorType } from '../connectors/nango.service';
 // --- Design system rules injected AFTER department skills, BEFORE user prompt ---
 const DESIGN_SYSTEM_RULES = `
 DESIGN SYSTEM — non-negotiable:
-- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
-- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
-- All headings: Space Grotesk font-weight 700+. All body: Inter.`;
+
+COLORS:
+- ALL colors via CSS variables: var(--bg), var(--text), var(--primary), var(--surface), var(--border).
+- Never hardcode hex values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
+- Gradients: hero sections and primary CTAs use linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 70%, #06b6d4)).
+- Accent color: #06b6d4 (cyan) for secondary highlights, links, active states.
+
+TYPOGRAPHY:
+- Headings: font-family 'Space Grotesk', sans-serif; font-weight 700+.
+- Body: font-family 'Inter', sans-serif; font-weight 400.
+- Scale: text-xs(0.75rem) text-sm(0.875rem) text-base(1rem) text-lg(1.125rem) text-xl(1.25rem) text-2xl(1.5rem) text-3xl(1.875rem) text-4xl(2.25rem).
+- Line height: headings 1.2, body 1.6.
+
+SPACING & LAYOUT:
+- 8px base grid. All padding/margin/gap in multiples of 0.5rem (8px).
+- Border radius: 0.5rem default, 0.75rem cards, 9999px pills.
+- Max content width: 1280px centered.
+
+RESPONSIVE:
+- Mobile-first. Single breakpoint: @media (min-width: 768px).
+- Cards: single column on mobile, grid on desktop.
+- Navigation: CSS-only hamburger on mobile, horizontal on desktop.
+
+COMPONENTS:
+- Buttons: rounded-lg, font-semibold, px-6 py-3, gradient on primary, border on secondary.
+- Cards: var(--surface) bg, 1px solid var(--border), rounded-xl, p-6, hover:shadow-lg transition.
+- Inputs: var(--surface) bg, var(--border) border, rounded-lg, px-4 py-2, focus:ring-2 focus:ring-[var(--primary)].
+- Navbar: backdrop-blur-md, bg opacity-80, sticky top-0, z-50.
+
+DASHBOARD LAYOUT:
+- Sidebar: 240px fixed, var(--surface) bg, border-right var(--border).
+- KPI cards: grid 4-col on desktop, 2-col tablet, 1-col mobile. Number large (text-3xl font-bold), label small (text-sm opacity-70).
+- Charts: explicit canvas height, Chart.js IIFE pattern, loading skeleton while data loads.
+- Data tables: striped rows, sticky header, horizontal scroll on mobile.
+- Empty states: centered icon + message + CTA. Never show blank areas.
+
+MOTION:
+- Transitions: 200ms ease for hover, 300ms ease for layout changes.
+- Scroll animations: .fade-up with IntersectionObserver (opacity 0→1, translateY 30px→0).
+- No animation on prefers-reduced-motion.`;
 
 // --- Supabase helper scripts (conditionally injected) ---
 const SUPABASE_FORM_HELPERS = `
