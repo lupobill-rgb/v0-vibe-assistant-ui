@@ -83,11 +83,7 @@ DO $$ BEGIN
       USING (
         organization_id IN (
           SELECT o.id FROM organizations o
-<<<<<<< HEAD
-          JOIN teams t ON t.organization_id = o.id
-=======
           JOIN teams t ON t.org_id = o.id
->>>>>>> origin/claude/port-revos-deals-leads-VMJaw
           JOIN team_members tm ON tm.team_id = t.id
           WHERE tm.user_id = auth.uid()
         )
@@ -95,11 +91,7 @@ DO $$ BEGIN
       WITH CHECK (
         organization_id IN (
           SELECT o.id FROM organizations o
-<<<<<<< HEAD
-          JOIN teams t ON t.organization_id = o.id
-=======
           JOIN teams t ON t.org_id = o.id
->>>>>>> origin/claude/port-revos-deals-leads-VMJaw
           JOIN team_members tm ON tm.team_id = t.id
           WHERE tm.user_id = auth.uid()
         )
@@ -117,11 +109,7 @@ DO $$ BEGIN
       USING (
         organization_id IN (
           SELECT o.id FROM organizations o
-<<<<<<< HEAD
-          JOIN teams t ON t.organization_id = o.id
-=======
           JOIN teams t ON t.org_id = o.id
->>>>>>> origin/claude/port-revos-deals-leads-VMJaw
           JOIN team_members tm ON tm.team_id = t.id
           WHERE tm.user_id = auth.uid()
         )
@@ -129,11 +117,7 @@ DO $$ BEGIN
       WITH CHECK (
         organization_id IN (
           SELECT o.id FROM organizations o
-<<<<<<< HEAD
-          JOIN teams t ON t.organization_id = o.id
-=======
           JOIN teams t ON t.org_id = o.id
->>>>>>> origin/claude/port-revos-deals-leads-VMJaw
           JOIN team_members tm ON tm.team_id = t.id
           WHERE tm.user_id = auth.uid()
         )
