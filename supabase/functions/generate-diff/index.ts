@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.5.2"; // 2026-03-30 — Fix DASHBOARD_SYSTEM internal contradiction: align sample-data-fallback with vibeLoadData, fix STRUCTURAL REQUIREMENTS static table conflict
+const EDGE_FUNCTION_VERSION = "2.6.0"; // 2026-03-30 — Remove all SAMPLE_DATA fallbacks; dashboards show empty state when vibeLoadData returns []
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -298,7 +298,7 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
 6. LIVE DATA via vibeLoadData() — MANDATORY for ALL dashboards:
    ALL chart data, KPI values, and table rows MUST be loaded at runtime via vibeLoadData(tableName, filters). No exceptions.
    Show a loading skeleton while data loads. Show an empty state if no rows return.
-   Always define realistic SAMPLE_DATA as a const array fallback. Use vibeLoadData() first, but if it returns [] fall back to SAMPLE_DATA so charts always render.
+   If vibeLoadData() returns an empty array, render an empty state: show the chart/table container with a message "No data yet. Connect your data source to populate this dashboard." Never generate hardcoded data arrays. Never invent metrics.
    NEVER use raw fetch() or XMLHttpRequest — always use vibeLoadData().
    TABLE NAME RESOLUTION: Use table names from TEAM CONTEXT or BUDGET CONTEXT if provided. If no specific table name is given, infer from the domain: sales/GTM→'gtm_deals', budget/finance→'budget_allocations', contacts/CRM→'contacts', analytics→'page_views'. Always filter by team_id: {team_id: window.__VIBE_TEAM_ID__}.
    REQUIRED PATTERN — follow this exactly:
@@ -318,17 +318,18 @@ const DASHBOARD_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLAN
       }
       </script>
    c) Load data and populate dashboard in an async IIFE.
-      CRITICAL: Always define realistic sample data as a fallback so charts are never empty.
       <script>
       (async function(){
-        const SAMPLE_DATA = [ /* generate 8-12 realistic rows matching the domain */ ];
         let rows = await vibeLoadData('budget_allocations', {team_id: window.__VIBE_TEAM_ID__});
-        if(!rows.length){ rows = SAMPLE_DATA; }
+        if(!rows.length){
+          // Show empty state — NEVER fall back to hardcoded data
+          document.querySelectorAll('[data-empty-state]').forEach(el => el.style.display = 'flex');
+          return;
+        }
         // populate KPI cards, chart datasets, and table rows from rows
       })();
       </script>
-      Generate domain-appropriate sample data (sales→deals, finance→budget lines, marketing→campaigns).
-      This ensures charts always render with visible data, even before the user connects a data source.
+      If vibeLoadData returns [], show empty state containers with the message "No data yet. Connect your data source to populate this dashboard." Never generate hardcoded sample data arrays.
 
 Start <style> with the :root block from the PRE-BUILT COLOR BLOCK injected below. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
 
@@ -385,12 +386,12 @@ CHARTS — minimum 2 using Chart.js v3+ (CDN loads v4):
 - Colors: primary var(--primary), accent #06b6d4, success #10b981, warning #f59e0b
 - Chart container: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6
 - Grid lines: rgba(148,163,184,0.1). Chart background: transparent.
-- All data must be realistic and domain-appropriate. Zero lorem ipsum.
+- Zero lorem ipsum. Zero hardcoded data arrays.
 CHART CODE MANDATE — non-negotiable:
 - Every page that contains a chart section MUST include:
   1. A <canvas> element with a unique id
   2. A complete Chart.js new Chart() call
-  3. At least 6 realistic data points — no empty datasets
+  3. Data loaded via vibeLoadData() — if empty, show an empty state message inside the chart container
   4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
 - CANVAS HEIGHT RULE: Every <canvas> MUST have explicit height via BOTH the HTML attribute AND inline CSS. Charts must never expand beyond their container.
   Required format: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
@@ -413,14 +414,14 @@ CHART CODE MANDATE — non-negotiable:
     })();
     </script>
   </div>
-  NEVER use hardcoded chart data. Even when no explicit table name is in context, infer the table name from the domain and use vibeLoadData(). If vibeLoadData returns [], show an empty chart with a message like "No data yet — connect a data source to populate this chart."
+  NEVER use hardcoded chart data. NEVER define SAMPLE_DATA arrays. Even when no explicit table name is in context, infer the table name from the domain and use vibeLoadData(). If vibeLoadData returns [], show an empty state with a message "No data yet. Connect your data source to populate this dashboard."
 - For hidden sections (display:none), wrap the chart init in setTimeout(()=>{...}, 100) so Chart.js can measure canvas size when switchView reveals it.
 - If a chart section is planned, the chart code is mandatory — placeholder text without chart code fails the quality gate.
 - NEVER create a <canvas> without a corresponding new Chart() call in a <script> immediately after it.
-- ALL chart/table/KPI data MUST attempt vibeLoadData() first. Include the Supabase credentials script in <head> and vibeLoadData() before </body>. Use await vibeLoadData('table_name') inside an async IIFE to populate charts and tables. Show loading skeletons while data loads. If vibeLoadData returns [], fall back to SAMPLE_DATA so charts always render with visible data. Charts must NEVER be empty.
+- ALL chart/table/KPI data MUST use vibeLoadData(). Include the Supabase credentials script in <head> and vibeLoadData() before </body>. Use await vibeLoadData('table_name') inside an async IIFE to populate charts and tables. Show loading skeletons while data loads. If vibeLoadData returns [], render an empty state container — NEVER fall back to hardcoded data.
 DATA TABLE:
 - Domain-relevant columns (sales: Company / Contact / Stage / Value / Close Date)
-- 10 realistic rows, no lorem ipsum
+- Rows populated via vibeLoadData(), no hardcoded rows, no lorem ipsum
 - Sticky header: bg-[var(--surface)] text-[var(--text)] opacity-60 text-xs uppercase tracking-wider
 - Row hover: hover:bg-[var(--border)]
 - Status badges: rounded-full px-3 py-1 text-xs font-medium color-coded by status
@@ -462,13 +463,13 @@ MULTI-SECTION NAVIGATION — MANDATORY for dashboards with sidebar nav:
   * Overview: KPI cards + primary charts + data table (the default view).
   * Geographic / Regional: Map visualization or regional breakdown bar chart + stats by region/location. Use Chart.js bar or doughnut chart with geographic labels.
   * Industry / Category: Industry-specific or category-specific breakdown chart + comparison table. Use Chart.js chart with industry/category labels.
-  * Any other nav section: Relevant charts, tables, and KPI cards with realistic data. NO empty sections. NO placeholder text.
+  * Any other nav section: Relevant charts, tables, and KPI cards populated via vibeLoadData(). Show empty state if no data.
 - CRITICAL: Sections hidden with display:none cause Chart.js to render at 0px size. The switchView function above calls chart.resize() to fix this. Additionally, wrap each hidden section's inline chart <script> in setTimeout(()=>{...}, 100) so the chart initializes after the DOM is ready. The chart.resize() in switchView will then correct the size when the section becomes visible.
 DATA SOURCE UI:
 - Supabase in prompt: show "Connect Supabase" button that opens a modal
 - CSV/Excel in prompt: show file upload input with FileReader parsing
 - API in prompt: show endpoint input + Fetch button with loading state
-- Default: realistic placeholder data + "Upload Data" button
+- Default: empty state + "Upload Data" button
 VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - <nav> element present
 - <h1> present
@@ -725,18 +726,15 @@ const CHART_ENFORCEMENT = `
 
 MANDATORY CHART REQUIREMENT:
 This dashboard MUST include Chart.js charts. Do NOT skip charts.
-Do NOT build an empty dashboard waiting for real data.
+ALL chart data MUST come from vibeLoadData(). NEVER generate hardcoded data arrays.
 
 STEP 1: Include this script tag in <head>:
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-STEP 2: Generate realistic sample data appropriate to what the user
-asked for. If they asked for a sales pipeline, generate realistic
-deal values, stage distributions, rep names, and monthly trends.
-If marketing, generate campaign metrics. If finance, generate budget
-numbers. Make the data look real — varied amounts, realistic ratios,
-plausible names. The user should look at this and think "that could
-be my data."
+STEP 2: Load data via vibeLoadData(). Infer the table name from the
+user's domain: sales/GTM→'gtm_deals', finance→'budget_allocations',
+marketing→'campaigns', contacts→'contacts'. Always filter by
+{team_id: window.__VIBE_TEAM_ID__}.
 
 STEP 3: Include AT LEAST 3 Chart.js charts. Choose chart types that
 best fit the data:
@@ -747,35 +745,36 @@ best fit the data:
 Each chart MUST follow this exact pattern:
 <canvas id="uniqueChartId" style="max-height:300px"></canvas>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(async function(){
+  const rows = await vibeLoadData('table_name', {team_id: window.__VIBE_TEAM_ID__});
+  if(!rows.length){
+    document.getElementById('uniqueChartId').parentElement.innerHTML =
+      '<div data-empty-state style="display:flex;align-items:center;justify-content:center;min-height:200px;color:var(--text);opacity:0.6;">No data yet. Connect your data source to populate this dashboard.</div>';
+    return;
+  }
   new Chart(document.getElementById('uniqueChartId').getContext('2d'), {
     type: 'bar',
-    data: { labels: [...], datasets: [{ label: '...', data: [...], ... }] },
+    data: { labels: rows.map(r=>r.name), datasets: [{ label: '...', data: rows.map(r=>r.value), ... }] },
     options: { responsive: true, plugins: { tooltip: { enabled: true } } }
   });
-});
+})();
 </script>
 
-EVERY chart script MUST be wrapped in DOMContentLoaded.
 EVERY canvas MUST have a unique id.
 NEVER use ES module imports. Use the global Chart object from CDN.
+NEVER define SAMPLE_DATA. NEVER invent metrics or placeholder numbers.
 
-STEP 4: Include 4-6 KPI cards with generated sample values.
-Each KPI card shows: value, label, trend arrow (▲ or ▼), percent
-change vs prior period. Generate numbers that tell a coherent story
-with the chart data.
+STEP 4: Include 4-6 KPI cards. Populate values from vibeLoadData() rows.
+If no data, show "--" as the value with the label still visible.
 
-STEP 5: All date range buttons (7D/30D/90D/1Y/ALL) must filter
-the sample data. Store all data in a JavaScript array. The filter
-function regenerates chart data and updates KPI values based on
-the selected range.
+STEP 5: All date range buttons (7D/30D/90D/1Y/ALL) must re-query
+vibeLoadData with appropriate date filters and update the charts.
 
-Do NOT build an empty dashboard. ALWAYS generate sample data.
-At the BOTTOM of every dashboard using sample data, you MUST include this exact HTML banner as the last element before </body>:
-
-<div id="vibe-data-nudge" style="margin-top:2rem;padding:1rem 1.5rem;background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(59,130,246,0.08));border:1px solid rgba(124,58,237,0.2);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;"><div><p style="margin:0;font-weight:600;font-size:0.875rem;">📊 Showing sample data</p><p style="margin:4px 0 0;font-size:0.8125rem;opacity:0.7;">Connect your CRM or data source to populate this dashboard with real numbers.</p></div><button onclick="vibePrompt('Connect my data source')" style="padding:8px 20px;background:#7C3AED;color:white;border:none;border-radius:8px;font-size:0.8125rem;font-weight:500;cursor:pointer;">Connect Data Source</button></div>
-
-This banner is MANDATORY on every dashboard that uses sample data. Same enforcement level as charts.
+EMPTY STATE RULE: If vibeLoadData returns [], show an empty state
+inside each chart/table/KPI container with the message:
+"No data yet. Connect your data source to populate this dashboard."
+Include a "Connect Data Source" button that calls vibePrompt('Connect my data source').
+NEVER generate hardcoded data arrays as a fallback.
 `;
 
 // ── Landing page content enforcement (appended to user message, not system) ──
@@ -1125,11 +1124,11 @@ The file MUST start with <!DOCTYPE html> and end with </html>.
 `;
       baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
 STRUCTURAL REQUIREMENTS:
-- Include at least 4 KPI stat cards populated via vibeLoadData with SAMPLE_DATA fallback
-- Include at least 2 Chart.js charts (bar, line, doughnut, or pie) — charts must ALWAYS render with data
+- Include at least 4 KPI stat cards populated via vibeLoadData — show "--" if no data
+- Include at least 2 Chart.js charts (bar, line, doughnut, or pie) — show empty state message if vibeLoadData returns []
 - Each chart canvas must have a unique id (e.g. id="chart1", id="chart2")
-- Include a data table with relevant columns for the domain, populated via vibeLoadData with SAMPLE_DATA fallback
-- Always define const SAMPLE_DATA with 8-12 realistic domain-appropriate rows so charts and tables are never empty
+- Include a data table with relevant columns for the domain, populated via vibeLoadData — show "No data yet" row if empty
+- NEVER define const SAMPLE_DATA or any hardcoded data arrays — all data comes from vibeLoadData()
 - Detect the domain from the user prompt and use contextually relevant metrics
 - Never use alert(), confirm(), or prompt()
 - Never generate React or JSX
