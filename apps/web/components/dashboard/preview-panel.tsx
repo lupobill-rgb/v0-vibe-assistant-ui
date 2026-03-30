@@ -28,10 +28,24 @@ export function PreviewPanel({ pages }: PreviewPanelProps) {
       .replace(/__SUPABASE_URL__/g, supabaseUrl)
       .replace(/__SUPABASE_ANON_KEY__/g, supabaseAnonKey)
 
-    // Also inject credentials script for HTML that doesn't use placeholders
+    // Inject credentials + vibeLoadData early so chart scripts can call it
     const credentialsScript = `<script>
 window.__VIBE_SUPABASE_URL__ = window.__VIBE_SUPABASE_URL__ || ${JSON.stringify(supabaseUrl)};
 window.__VIBE_SUPABASE_ANON_KEY__ = window.__VIBE_SUPABASE_ANON_KEY__ || ${JSON.stringify(supabaseAnonKey)};
+</script>
+<script>
+async function vibeLoadData(table,filters){
+  filters=filters||{};
+  var url=window.__VIBE_SUPABASE_URL__;var key=window.__VIBE_SUPABASE_ANON_KEY__;
+  if(!url||!key){console.error('[vibeLoadData] missing URL or key');return[];}
+  var token=key;
+  try{var ref=url.split('//')[1].split('.')[0];var s=JSON.parse(localStorage.getItem('sb-'+ref+'-auth-token')||'{}');if(s.access_token)token=s.access_token;}catch(e){}
+  var ep=url+'/rest/v1/'+table+'?select=*';
+  Object.entries(filters).forEach(function(pair){if(pair[1])ep+='&'+pair[0]+'=eq.'+pair[1];});
+  console.log('[vibeLoadData] fetching from:',ep);
+  try{var r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});if(!r.ok){console.error('[vibeLoadData] error:',r.status);return[];}var rows=await r.json();console.log('[vibeLoadData] result:',rows.length,'rows');return rows;}
+  catch(e){console.error('[vibeLoadData] fetch failed:',e);return[];}
+}
 </script>`
 
     if (html.toLowerCase().includes("<head>")) {
