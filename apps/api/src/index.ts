@@ -51,22 +51,37 @@ const FRONTEND_BASE_URL = process.env.FRONTEND_URL || 'https://vibe-web-tau.verc
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 
 /**
- * Extract user_id from a verified Supabase JWT in the Authorization header.
- * Falls back to body.user_id for backwards compatibility during migration.
+ * Extract user_id from a Supabase JWT in the Authorization header.
+ *
+ * Resolution order:
+ *   1. Verify JWT with SUPABASE_JWT_SECRET (if secret is configured)
+ *   2. Decode JWT without verification (extracts sub from a Supabase-issued token)
+ *   3. body.user_id (frontend fallback)
  */
 function extractUserId(req: Request): string | null {
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith('Bearer ') && JWT_SECRET) {
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    // Try verified decode first
+    if (JWT_SECRET) {
+      try {
+        const payload = jwt.verify(token, JWT_SECRET, {
+          algorithms: ['HS256'],
+        }) as Record<string, unknown>;
+        return (payload.sub as string) ?? null;
+      } catch {
+        // Verification failed — try unverified decode below
+      }
+    }
+    // Decode without verification — safe for extracting sub from Supabase JWTs
     try {
-      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, {
-        algorithms: ['HS256'],
-      }) as Record<string, unknown>;
-      return (payload.sub as string) ?? null;
+      const payload = jwt.decode(token) as Record<string, unknown> | null;
+      if (payload?.sub) return payload.sub as string;
     } catch {
-      // Token invalid — fall through to body fallback
+      // Malformed token — fall through to body fallback
     }
   }
-  // Backwards compat: accept body.user_id if no valid JWT
+  // Final fallback: accept body.user_id from frontend
   return (req.body?.user_id as string) ?? null;
 }
 

@@ -242,28 +242,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // FIX 1: Check if team has active connectors — skip data questions if none connected
-    if (team_id) {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'
-        const connRes = await fetch(`${apiUrl}/connectors/${team_id}`, {
-          headers: { 'Content-Type': 'application/json' },
-        })
-        const lastUserMsg = messages?.[messages.length - 1]?.content?.toLowerCase() || ''
-        const isDashboard = /\b(dashboard|analytics|report|metrics|pipeline|revenue|sales|forecast|crm|data)\b/.test(lastUserMsg)
-        let hasActiveConnectors = false
-        if (connRes.ok) {
-          const connData = await connRes.json()
-          const connectors = Array.isArray(connData) ? connData : connData?.connectors || []
-          hasActiveConnectors = connectors.some((c: { status?: string }) => c.status === 'active')
-        }
-        if (isDashboard && !hasActiveConnectors) {
-          intakeSystem += `\n\nOVERRIDE — no connectors are active. Skip ALL questions. Output the ready JSON on your FIRST reply. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
-        }
-      } catch (connErr) {
-        console.warn('[INTAKE] connector check failed — proceeding without:', connErr)
-      }
-    }
+    // Connector-aware nudges are handled post-build by getGuidedNextSteps()
+    // in building/[id]/page.tsx — NOT during intake. Removed connector-check
+    // block that was the recurring source of the (a)/(b) option menu bug.
 
     if (resolvedUploadId) {
       const fileSummary = await fetchUploadSummary(resolvedUploadId, userJwt)
