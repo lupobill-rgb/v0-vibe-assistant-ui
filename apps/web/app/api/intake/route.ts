@@ -7,19 +7,17 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.e
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
 
-const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Ask 1-2 short focused questions to understand exactly what they need, then build.
+const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Enrich their prompt and output the ready JSON immediately. Do NOT ask questions.
 
 Rules:
-- Ask only ONE question at a time, one sentence max
-- After 1-2 exchanges output EXACTLY this JSON and nothing else:
-  {"ready": true, "enrichedPrompt": "<complete build spec>", "summary": "<one line>"}
-- Never ask more than 2 questions total
-- Be conversational not formal
-- Focus on: what type of output (app/dashboard/site), what KPIs or entities to show, who uses it
-- NEVER ask about data sources, databases, CSV files, file uploads, connectors, or where data comes from. VIBE handles data automatically — always use realistic sample data for the build spec. If the user needs a live data connection, that is surfaced as a Guided Next Step after the build.
-- NEVER present lettered options (a/b/c) or menus. Ask plain questions or output the ready JSON.
-- If the user's intent is clear from their first message, skip questions entirely and output the ready JSON immediately.
-- IMPORTANT: If the user has attached a file and its content is shown below, READ IT FIRST. Do NOT ask questions that are already answered by the file data (column names, team names, departments, categories, amounts, etc.). Extract what you need from the file and proceed to build faster — you may only need 0 questions.`
+- Read the user's message and infer intent: what type of output (app/dashboard/site), what KPIs or entities to show, and who uses it.
+- Output EXACTLY this JSON and nothing else — no preamble, no questions, no explanation:
+  {"ready": true, "enrichedPrompt": "<complete build spec based on user intent>", "summary": "<one-line summary>"}
+- NEVER ask questions. NEVER ask for clarification. Infer reasonable defaults and build.
+- NEVER present lettered options (a/b/c) or menus.
+- NEVER ask about data sources, databases, CSV files, file uploads, connectors, or where data comes from. VIBE handles data automatically — always use realistic sample data for the build spec.
+- If the user has attached a file and its content is shown below, READ IT FIRST. Extract column names, team names, departments, categories, amounts, etc. and incorporate them into the enrichedPrompt.
+- The enrichedPrompt should be a detailed, complete build specification that includes: output type, layout sections, KPIs/metrics to display, chart types, color preferences if mentioned, and any domain-specific details.`
 
 const APP_SYSTEM = `You are VIBE, a full-stack app builder.
 BUILD A WORKING APPLICATION. NOT a website. NOT a landing page. NOT a marketing page.
@@ -126,6 +124,44 @@ async function fetchUploadSummary(uploadId: string, userJwt?: string | null): Pr
       `Sample data (first ${sampleRows.length} rows):\n${JSON.stringify(sampleRows, null, 2)}\n` +
       `[END FILE DATA]`
   } catch { return null }
+}
+
+/** Server-side ready JSON parser — mirrors prompt-card.tsx tryParseReady but runs before the response reaches the frontend */
+function tryParseReadyServer(text: string): { ready: true; enrichedPrompt: string; summary?: string } | null {
+  // Direct parse
+  try {
+    const p = JSON.parse(text)
+    if (p.ready && p.enrichedPrompt) return p
+  } catch {}
+  // Strip markdown fences
+  const stripped = text.replace(/```(?:json)?\s*\n?/g, '').replace(/\n?```\s*$/g, '').trim()
+  if (stripped !== text) {
+    try {
+      const p = JSON.parse(stripped)
+      if (p.ready && p.enrichedPrompt) return p
+    } catch {}
+  }
+  // Brace-depth extraction
+  const start = text.indexOf('{')
+  if (start >= 0) {
+    let depth = 0, inStr = false, esc = false
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i]
+      if (esc) { esc = false; continue }
+      if (ch === '\\' && inStr) { esc = true; continue }
+      if (ch === '"') { inStr = !inStr; continue }
+      if (inStr) continue
+      if (ch === '{') depth++
+      else if (ch === '}' && --depth === 0) {
+        try {
+          const p = JSON.parse(text.slice(start, i + 1))
+          if (p.ready && p.enrichedPrompt) return p
+        } catch {}
+        break
+      }
+    }
+  }
+  return null
 }
 
 export async function POST(request: Request) {
@@ -255,7 +291,14 @@ export async function POST(request: Request) {
       }
     }
 
-    const text = await callAnthropic(anthropicMessages, intakeSystem, 500)
+    const text = await callAnthropic(anthropicMessages, intakeSystem, 2000)
+
+    // Server-side ready JSON detection — prevent raw JSON from ever reaching the chat UI
+    const readyParsed = tryParseReadyServer(text)
+    if (readyParsed) {
+      return NextResponse.json({ text: readyParsed.summary ? `Got it — building: ${readyParsed.summary}` : 'Starting build...', ready: true, enrichedPrompt: readyParsed.enrichedPrompt, summary: readyParsed.summary || '' })
+    }
+
     return NextResponse.json({ text })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
