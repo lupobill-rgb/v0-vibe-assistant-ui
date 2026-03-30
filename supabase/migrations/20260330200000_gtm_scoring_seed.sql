@@ -38,9 +38,9 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='gtm_prospect_scores' AND policyname='gtm_prospect_scores_org_member') THEN
     CREATE POLICY gtm_prospect_scores_org_member ON gtm_prospect_scores FOR ALL
       USING (organization_id IN (
-        SELECT o.id FROM organizations o JOIN teams t ON t.organization_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()))
+        SELECT o.id FROM organizations o JOIN teams t ON t.org_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()))
       WITH CHECK (organization_id IN (
-        SELECT o.id FROM organizations o JOIN teams t ON t.organization_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()));
+        SELECT o.id FROM organizations o JOIN teams t ON t.org_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()));
   END IF;
 END $$;
 
@@ -48,9 +48,9 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='gtm_prospect_signals' AND policyname='gtm_prospect_signals_org_member') THEN
     CREATE POLICY gtm_prospect_signals_org_member ON gtm_prospect_signals FOR ALL
       USING (organization_id IN (
-        SELECT o.id FROM organizations o JOIN teams t ON t.organization_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()))
+        SELECT o.id FROM organizations o JOIN teams t ON t.org_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()))
       WITH CHECK (organization_id IN (
-        SELECT o.id FROM organizations o JOIN teams t ON t.organization_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()));
+        SELECT o.id FROM organizations o JOIN teams t ON t.org_id=o.id JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=auth.uid()));
   END IF;
 END $$;
 
