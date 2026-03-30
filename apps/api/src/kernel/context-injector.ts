@@ -1,5 +1,12 @@
 import { getPlatformSupabaseClient } from '../supabase/client';
 
+// --- Design system rules injected AFTER department skills, BEFORE user prompt ---
+const DESIGN_SYSTEM_RULES = `
+DESIGN SYSTEM — non-negotiable:
+- Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
+- Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
+- All headings: Space Grotesk font-weight 700+. All body: Inter.`;
+
 // --- Chart.js loading rules injected into every dashboard/chart context ---
 const CHART_LOADING_RULES = `
 CHART.JS LOADING — CRITICAL:
@@ -142,6 +149,7 @@ Brand color fallback (only use if user prompt specifies no colors): ${primaryCol
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
     + deptSkillsResult.text
+    + DESIGN_SYSTEM_RULES
     + CHART_LOADING_RULES
     + (activeConnectors.length > 0 ? `\nACTIVE DATA CONNECTORS:\n${activeConnectors.map(c => `- ${c}`).join('\n')}\nUse these connector names when referencing live data sources.` : '');
 

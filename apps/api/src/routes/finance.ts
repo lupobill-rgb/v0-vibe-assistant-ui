@@ -86,4 +86,15 @@ router.post('/upload-plan', upload.single('file'), async (req: Request, res: Res
   }
 });
 
+// Multer error handler (oversized files, wrong type)
+router.use((err: any, _req: Request, res: Response, next: Function) => {
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'File too large. Maximum size is 5 MB.' });
+  }
+  if (err?.name === 'MulterError' || err?.message?.includes('Only CSV')) {
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
+});
+
 export default router;
