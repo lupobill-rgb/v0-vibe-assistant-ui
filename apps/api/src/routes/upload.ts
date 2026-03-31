@@ -64,7 +64,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       const { data: xlsxInserted, error: xlsxError } = await sb
         .from('user_uploads')
         .insert({
-          user_id: userId,
+          owner_id: userId,
           project_id: req.body?.project_id || null,
           original_filename: file.originalname,
           table_name: xlsxTableName,
@@ -167,7 +167,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     const { data: inserted, error: insertError } = await sb
       .from('user_uploads')
       .insert({
-        user_id: userId,
+        owner_id: userId,
         project_id: req.body?.project_id || null,
         original_filename: file.originalname,
         table_name: tableName,
