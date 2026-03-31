@@ -332,8 +332,16 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       : ""
     conversationRef.current = [{ role: "user", content: prompt.trim() + fileNote }]
     try {
-      const reply = await callClaude(conversationRef.current)
-      // Check if Claude is already ready
+      const response = await callClaude(conversationRef.current)
+      const reply = response.text
+      // Server-side ready detection
+      if (response.ready && response.enrichedPrompt) {
+        setEnrichedPrompt(response.enrichedPrompt)
+        setMessages([{ role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        await fireJob(response.enrichedPrompt)
+        return
+      }
+      // Client-side fallback
       const ready = tryParseReady(reply)
       if (ready) {
         setEnrichedPrompt(ready.enrichedPrompt)
@@ -365,8 +373,16 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     conversationRef.current.push({ role: "user", content: answer })
     setIntaking(true)
     try {
-      const reply = await callClaude(conversationRef.current)
-      // Check if Claude is ready to build
+      const response = await callClaude(conversationRef.current)
+      const reply = response.text
+      // Server-side ready detection
+      if (response.ready && response.enrichedPrompt) {
+        setMessages((m) => [...m, { role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        setEnrichedPrompt(response.enrichedPrompt)
+        await fireJob(response.enrichedPrompt)
+        return
+      }
+      // Client-side fallback
       const ready = tryParseReady(reply)
       if (ready) {
         setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${ready.summary}` }])
