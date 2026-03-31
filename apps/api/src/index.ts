@@ -872,8 +872,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
           }
 
           await storage.updateTaskState(taskId, 'calling_llm');
-          const supabaseUrl = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
-          const supabaseKey = process.env.SUPABASE_ANON_KEY;
+          const supabaseUrl = (process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co').trim();
+          const supabaseKey = process.env.SUPABASE_ANON_KEY?.trim();
           if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY not configured');
 
           // Replace Supabase placeholders and ensure vibeLoadData is defined in <head>
