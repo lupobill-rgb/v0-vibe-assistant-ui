@@ -9,17 +9,8 @@ import { useTeam } from "@/contexts/TeamContext"
 import { UpgradeModal } from "@/components/billing/UpgradeModal"
 type Message = { role: "assistant" | "user"; text: string }
 type Stage = "idle" | "intake" | "building"
-const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Your job is to ask 2-3 short, focused questions to understand exactly what they need before building.
-Rules:
-- Ask only ONE question at a time
-- Questions must be SHORT (one sentence max)
-- After 2-3 exchanges you have enough context — output EXACTLY this JSON and nothing else:
-  {"ready": true, "enrichedPrompt": "<full build spec combining original intent + answers>", "summary": "<one line describing what will be built>"}
-- Never ask more than 3 questions total
-- Never explain yourself or add commentary
-- Be conversational, not formal
-- If the user attached a file (shown as [Attached file: ...]), acknowledge it and include it in the enrichedPrompt. Do NOT ask what data to use — they already provided it.
-Focus on: what type of output (app/site/dashboard), what data/entities are involved, who will use it.`
+type DataPath = "connected" | "upload" | "manual" | "sample" | null
+// INTAKE_SYSTEM prompt lives server-side only: /api/intake/route.ts
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
   const { currentTeam, currentOrg, loading: teamLoading } = useTeam()
@@ -44,6 +35,8 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   }>({ status: "idle", progress: 0, message: "" })
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [limitInfo, setLimitInfo] = useState<LimitExceededError | null>(null)
+  const [dataPath, setDataPath] = useState<DataPath>(null)
+  const [activeConnectors, setActiveConnectors] = useState<string[]>([])
   // Ref to keep upload_id accessible across async closures without stale capture
   const uploadIdRef = useRef<string | undefined>(undefined)
   // Restore upload_id from sessionStorage on mount (survives refresh during intake)
@@ -197,8 +190,113 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       clearTimeout(timeout)
     }
   }
+  const checkConnectorsAndGreet = async (): Promise<boolean> => {
+    if (!currentTeam?.id) return false
+    try {
+      const res = await fetch(`${API_URL}/connectors/${currentTeam.id}`, {
+        headers: { Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` }
+      })
+      const data = await res.json()
+      const connected: string[] = Array.isArray(data)
+        ? data.filter((c: any) => c.status === "active").map((c: any) => c.connector_type)
+        : []
+      setActiveConnectors(connected)
+      // If file already uploaded, skip greeting and go straight to build
+      if (uploadIdRef.current) return false
+      // Show greeting with data path buttons — no LLM call
+      const connectorLine = connected.length > 0
+        ? `I can see you have ${connected.join(", ")} connected.`
+        : `I don't see any data connectors set up yet.`
+      setMessages([{
+        role: "assistant",
+        text: `Hi! I'm ready to build. ${connectorLine} How would you like to bring in data?\n\n__DATA_PATH_OPTIONS__`
+      }])
+      setStage("intake")
+      setDataPath(null)
+      return true // waiting for user to pick a path — no LLM call yet
+    } catch {
+      return false // on error, skip greeting and build normally
+    }
+  }
+
+  // Called when user clicks a data path button — sets path then re-enters startIntake
+  const pickDataPath = (path: DataPath) => {
+    setDataPath(path)
+    // Use a ref trick to let state flush, then call startIntake with path resolved
+    setTimeout(() => startIntakeWithPath(path), 0)
+  }
+
+  const startIntakeWithPath = async (resolvedPath: DataPath) => {
+    if (!prompt.trim() || submitting || teamLoading) return
+    setStage("intake")
+    setIntaking(true)
+    setMessages([])
+    if (uploadPromiseRef.current) {
+      await uploadPromiseRef.current
+    }
+    if (!selectedProjectId && !projectIdRef.current) {
+      const project = await createProject(generateSmartName(prompt), undefined, currentTeam?.id, uploadIdRef.current)
+      if (project.limit_exceeded) {
+        setLimitInfo(project.limit_exceeded)
+        setUpgradeOpen(true)
+        setIntaking(false)
+        setStage('idle')
+        return
+      }
+      if (project.id) {
+        projectIdRef.current = project.id
+        if (uploadIdRef.current) linkUploadToProject(uploadIdRef.current, project.id).catch(() => {})
+      }
+    }
+    const pathNote = resolvedPath === "connected" ? `\n[Data source: connected CRM (${activeConnectors.join(", ")})]`
+      : resolvedPath === "upload" ? `\n[Data source: file upload]`
+      : resolvedPath === "manual" ? `\n[Data source: manual entry]`
+      : `\n[Data source: sample data]`
+    const fileNote = uploadIdRef.current && uploadState.filename ? `\n[Attached file: ${uploadState.filename}]` : ""
+    conversationRef.current = [{ role: "user", content: prompt.trim() + pathNote + fileNote }]
+    try {
+      const response = await callClaude(conversationRef.current)
+      const reply = response.text
+      if (response.ready && response.enrichedPrompt) {
+        setEnrichedPrompt(response.enrichedPrompt)
+        setMessages([{ role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        await fireJob(response.enrichedPrompt)
+        return
+      }
+      const ready = tryParseReady(reply)
+      if (ready) {
+        setEnrichedPrompt(ready.enrichedPrompt)
+        setMessages([{ role: "assistant", text: `Got it — building: ${ready.summary}` }])
+        await fireJob(ready.enrichedPrompt)
+        return
+      }
+      if (isHtmlResponse(reply)) {
+        setMessages([{ role: "assistant", text: "Building your app..." }])
+        await fireJob(prompt.trim())
+        return
+      }
+      conversationRef.current.push({ role: "assistant", content: reply })
+      setMessages([{ role: "assistant", text: reply }])
+    } catch (err) {
+      if (handleLimitError(err)) return
+      const msg = err instanceof Error ? err.message : "Failed to connect to AI."
+      setError(`${msg} You can retry or skip to build.`)
+    } finally {
+      setIntaking(false)
+    }
+  }
+
   const startIntake = async () => {
     if (!prompt.trim() || submitting || teamLoading) return
+
+    // If no data path chosen yet and no file uploaded, show greeting first (no LLM call)
+    if (dataPath === null && !uploadIdRef.current) {
+      setIntaking(true)
+      const waiting = await checkConnectorsAndGreet()
+      setIntaking(false)
+      if (waiting) return // stay on greeting screen until user picks a path
+    }
+
     setStage("intake")
     setIntaking(true)
     setMessages([])
@@ -384,6 +482,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     setUserInput("")
     setEnrichedPrompt("")
     setError(null)
+    setDataPath(null)
     conversationRef.current = []
   }
   // ── INTAKE MODE ──
@@ -428,7 +527,27 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
                     "text-sm rounded-2xl px-3 py-2 max-w-[80%]",
                     m.role === "assistant" ? "bg-secondary text-foreground" : "bg-primary/10 text-foreground"
                   )}>
-                    {m.text}
+                    {m.text.includes("__DATA_PATH_OPTIONS__") ? (
+                      <div>
+                        <p className="mb-3">{m.text.replace("\n\n__DATA_PATH_OPTIONS__", "")}</p>
+                        <div className="flex flex-col gap-2">
+                          {activeConnectors.length > 0 && (
+                            <button onClick={() => pickDataPath("connected")}
+                              className="text-left px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors">
+                              Use {activeConnectors.join(", ")} (connected)
+                            </button>
+                          )}
+                          <button onClick={() => pickDataPath("upload")}
+                            className="text-left px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/70 text-foreground text-xs font-medium transition-colors border border-border/50">
+                            Upload a CSV or spreadsheet
+                          </button>
+                          <button onClick={() => pickDataPath("sample")}
+                            className="text-left px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/70 text-foreground text-xs font-medium transition-colors border border-border/50">
+                            Use sample data (build now, connect later)
+                          </button>
+                        </div>
+                      </div>
+                    ) : m.text}
                   </div>
                 </div>
               ))}
