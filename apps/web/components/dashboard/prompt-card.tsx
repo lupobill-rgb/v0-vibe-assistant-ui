@@ -34,6 +34,8 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   }>({ status: "idle", progress: 0, message: "" })
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [limitInfo, setLimitInfo] = useState<LimitExceededError | null>(null)
+  const [dataPath, setDataPath] = useState<string | null>(null)
+  const [activeConnectors, setActiveConnectors] = useState<string[]>([])
   // Ref to keep upload_id accessible across async closures without stale capture
   const uploadIdRef = useRef<string | undefined>(undefined)
   // Restore upload_id from sessionStorage on mount (survives refresh during intake)
@@ -187,6 +189,32 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       clearTimeout(timeout)
     }
   }
+  const checkConnectorsAndGreet = async (): Promise<boolean> => {
+    if (!currentTeam?.id) return false
+    try {
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      const res = await fetch(`${API_URL}/connectors/${currentTeam.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      const connected: string[] = Array.isArray(data)
+        ? data.filter((c: any) => c.status === "active").map((c: any) => c.connector_type)
+        : []
+      setActiveConnectors(connected)
+      if (uploadIdRef.current) return false
+      const connectorLine = connected.length > 0
+        ? `I can see you have **${connected.join(", ")}** connected.`
+        : `I do not see any data connectors set up yet.`
+      setMessages([{ role: "assistant", text: `Hi! I am ready to build. ${connectorLine} How would you like to bring in data?\n\n__DATA_PATH_OPTIONS__` }])
+      setStage("intake")
+      setDataPath(null)
+      return true
+    } catch {
+      return false
+    }
+  }
+
   const startIntake = async () => {
     if (!prompt.trim() || submitting || teamLoading) return
     setStage("intake")
