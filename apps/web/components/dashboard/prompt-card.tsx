@@ -420,47 +420,36 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
             {/* Conversation */}
             <div className="space-y-3 mb-4">
               {messages.map((m, i) => (
-                <div key={i} className={cn("flex items-start gap-3", m.role === "user" && "flex-row-reverse")}>
-                  <div className={cn(
-                    "w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-                    m.role === "assistant" ? "bg-primary/20" : "bg-secondary"
-                  )}>
-                    {m.role === "assistant"
-                      ? <Bot className="w-3 h-3 text-primary" />
-                      : <User className="w-3 h-3 text-muted-foreground" />
-                    }
+                m.text.includes("__DATA_PATH_OPTIONS__") ? (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <Bot className="w-3 h-3 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-foreground mb-3">{m.text.replace("__DATA_PATH_OPTIONS__", "")}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {activeConnectors.length > 0 && (
+                          <button onClick={() => { setDataPath("connected"); startIntake() }}
+                            className="text-left px-3 py-2 rounded-xl border border-primary/40 bg-primary/5 hover:bg-primary/10 text-sm font-medium text-primary transition-colors">
+                            Use {activeConnectors[0]} data
+                          </button>
+                        )}
+                        <button onClick={() => { setDataPath("upload"); fileInputRef.current?.click() }}
+                          className="text-left px-3 py-2 rounded-xl border border-border hover:border-primary/40 bg-muted/30 text-sm font-medium transition-colors">
+                          Upload a file
+                        </button>
+                        <button onClick={() => { setDataPath("manual"); startIntake() }}
+                          className="text-left px-3 py-2 rounded-xl border border-border hover:border-primary/40 bg-muted/30 text-sm font-medium transition-colors">
+                          Enter data manually
+                        </button>
+                        <button onClick={() => { setDataPath("sample"); startIntake() }}
+                          className="text-left px-3 py-2 rounded-xl border border-border hover:border-primary/40 bg-muted/30 text-sm font-medium transition-colors">
+                          Use sample data
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className={cn(
-                    "text-sm rounded-2xl px-3 py-2 max-w-[80%]",
-                    m.role === "assistant" ? "bg-secondary text-foreground" : "bg-primary/10 text-foreground"
-                  )}>
-                    {m.text}
-                  </div>
-                </div>
-              ))}
-              {intaking && (
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <Bot className="w-3 h-3 text-primary" />
-                  </div>
-                  <div className="bg-secondary rounded-2xl px-3 py-2">
-                    <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                  </div>
-                </div>
-              )}
-              {stage === "building" && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground px-9">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Building your project...
-                </div>
-              )}
-            </div>
-            {/* Answer input */}
-            {stage === "intake" && !intaking && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  value={userInput}
+                ) :
                   onChange={(e) => setUserInput(e.target.value)}
                   onKeyDown={handleAnswerKeyDown}
                   placeholder="Type your answer..."
