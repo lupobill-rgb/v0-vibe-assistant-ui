@@ -9,7 +9,17 @@ import { useTeam } from "@/contexts/TeamContext"
 import { UpgradeModal } from "@/components/billing/UpgradeModal"
 type Message = { role: "assistant" | "user"; text: string }
 type Stage = "idle" | "intake" | "building"
-// INTAKE_SYSTEM prompt lives server-side only: /api/intake/route.ts
+const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Your job is to ask 2-3 short, focused questions to understand exactly what they need before building.
+Rules:
+- Ask only ONE question at a time
+- Questions must be SHORT (one sentence max)
+- After 2-3 exchanges you have enough context — output EXACTLY this JSON and nothing else:
+  {"ready": true, "enrichedPrompt": "<full build spec combining original intent + answers>", "summary": "<one line describing what will be built>"}
+- Never ask more than 3 questions total
+- Never explain yourself or add commentary
+- Be conversational, not formal
+- If the user attached a file (shown as [Attached file: ...]), acknowledge it and include it in the enrichedPrompt. Do NOT ask what data to use — they already provided it.
+Focus on: what type of output (app/site/dashboard), what data/entities are involved, who will use it.`
 export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
   const router = useRouter()
   const { currentTeam, currentOrg, loading: teamLoading } = useTeam()
@@ -34,11 +44,8 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   }>({ status: "idle", progress: 0, message: "" })
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [limitInfo, setLimitInfo] = useState<LimitExceededError | null>(null)
-  const [dataPath, setDataPath] = useState<string | null>(null)
-  const [activeConnectors, setActiveConnectors] = useState<string[]>([])
   // Ref to keep upload_id accessible across async closures without stale capture
   const uploadIdRef = useRef<string | undefined>(undefined)
-  const turnCountRef = useRef<number>(0)
   // Restore upload_id from sessionStorage on mount (survives refresh during intake)
   if (typeof window !== "undefined" && !uploadIdRef.current) {
     const saved = sessionStorage.getItem("vibe_upload_id")
@@ -166,7 +173,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     const t = text.trimStart().toLowerCase()
     return t.startsWith('<!doctype') || t.startsWith('<html')
   }
-  const callClaude = async (messages: { role: string; content: string }[]): Promise<{ text: string; ready?: boolean; enrichedPrompt?: string; summary?: string }> => {
+  const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {
@@ -180,7 +187,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
-      return { text: data.text ?? "", ready: data.ready, enrichedPrompt: data.enrichedPrompt, summary: data.summary }
+      return data.text ?? ""
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         throw new Error("AI took too long to respond. Please try again.")
@@ -190,32 +197,6 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       clearTimeout(timeout)
     }
   }
-  const checkConnectorsAndGreet = async (): Promise<boolean> => {
-    if (!currentTeam?.id) return false
-    try {
-      const session = await supabase.auth.getSession()
-      const token = session.data.session?.access_token
-      const res = await fetch(`${API_URL}/connectors/${currentTeam.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const data = await res.json()
-      const connected: string[] = Array.isArray(data)
-        ? data.filter((c: any) => c.status === "active").map((c: any) => c.connector_type)
-        : []
-      setActiveConnectors(connected)
-      if (uploadIdRef.current) return false
-      const connectorLine = connected.length > 0
-        ? `I can see you have **${connected.join(", ")}** connected.`
-        : `I do not see any data connectors set up yet.`
-      setMessages([{ role: "assistant", text: `Hi! I am ready to build. ${connectorLine} How would you like to bring in data?\n\n__DATA_PATH_OPTIONS__` }])
-      setStage("intake")
-      setDataPath(null)
-      return true
-    } catch {
-      return false
-    }
-  }
-
   const startIntake = async () => {
     if (!prompt.trim() || submitting || teamLoading) return
     setStage("intake")
@@ -252,34 +233,24 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       ? `\n[Attached file: ${uploadState.filename}]`
       : ""
     conversationRef.current = [{ role: "user", content: prompt.trim() + fileNote }]
-    turnCountRef.current = 0
     try {
-      const response = await callClaude(conversationRef.current)
-      const reply = response.text
-      // Server-side ready detection (prevents raw JSON in chat)
-      if (response.ready && response.enrichedPrompt && turnCountRef.current > 0) {
-        setEnrichedPrompt(response.enrichedPrompt)
-        setMessages([{ role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
-        await fireJob(response.enrichedPrompt)
-        return
-      }
-      // Client-side fallback: check if Claude is already ready
+      const reply = await callClaude(conversationRef.current)
+      // Check if Claude is already ready
       const ready = tryParseReady(reply)
-      if (ready && turnCountRef.current > 0) {
+      if (ready) {
         setEnrichedPrompt(ready.enrichedPrompt)
         setMessages([{ role: "assistant", text: `Got it — building: ${ready.summary}` }])
         await fireJob(ready.enrichedPrompt)
         return
       }
       // Detect raw HTML returned instead of Q&A text — route to build
-      if (isHtmlResponse(reply) && turnCountRef.current > 0) {
+      if (isHtmlResponse(reply)) {
         setMessages([{ role: "assistant", text: "Building your app..." }])
         await fireJob(prompt.trim())
         return
       }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
-      turnCountRef.current++
     } catch (err) {
       if (handleLimitError(err)) return
       const msg = err instanceof Error ? err.message : "Failed to connect to AI."
@@ -296,25 +267,17 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     conversationRef.current.push({ role: "user", content: answer })
     setIntaking(true)
     try {
-      const response = await callClaude(conversationRef.current)
-      const reply = response.text
-      // Server-side ready detection (prevents raw JSON in chat)
-      if (response.ready && response.enrichedPrompt && turnCountRef.current > 0) {
-        setMessages((m) => [...m, { role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
-        setEnrichedPrompt(response.enrichedPrompt)
-        await fireJob(response.enrichedPrompt)
-        return
-      }
-      // Client-side fallback: check if Claude is ready to build
+      const reply = await callClaude(conversationRef.current)
+      // Check if Claude is ready to build
       const ready = tryParseReady(reply)
-      if (ready && turnCountRef.current > 0) {
+      if (ready) {
         setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${ready.summary}` }])
         setEnrichedPrompt(ready.enrichedPrompt)
         await fireJob(ready.enrichedPrompt)
         return
       }
       // Detect raw HTML returned instead of Q&A text — route to build
-      if (isHtmlResponse(reply) && turnCountRef.current > 0) {
+      if (isHtmlResponse(reply)) {
         setMessages((m) => [...m, { role: "assistant", text: "Building your app..." }])
         const collected = conversationRef.current.filter(m => m.role === 'user').map(m => m.content).join('\n\n')
         await fireJob(collected)
@@ -412,7 +375,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); startIntake() }
   }
-  const handleAnswerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+  const handleAnswerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") { e.preventDefault(); sendAnswer() }
   }
   const reset = () => {
@@ -451,47 +414,46 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
             {/* Conversation */}
             <div className="space-y-3 mb-4">
               {messages.map((m, i) => (
-                m.text.includes("__DATA_PATH_OPTIONS__") ? (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                      <Bot className="w-3 h-3 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-foreground mb-3">{m.text.replace("__DATA_PATH_OPTIONS__", "")}</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {activeConnectors.length > 0 && (
-                          <button onClick={() => { setDataPath("connected"); startIntake() }}
-                            className="text-left px-3 py-2 rounded-xl border border-primary/40 bg-primary/5 hover:bg-primary/10 text-sm font-medium text-primary transition-colors">
-                            Use {activeConnectors[0]} data
-                          </button>
-                        )}
-                        <button onClick={() => { setDataPath("upload"); fileInputRef.current?.click() }}
-                          className="text-left px-3 py-2 rounded-xl border border-border hover:border-primary/40 bg-muted/30 text-sm font-medium transition-colors">
-                          Upload a file
-                        </button>
-                        <button onClick={() => { setDataPath("manual"); startIntake() }}
-                          className="text-left px-3 py-2 rounded-xl border border-border hover:border-primary/40 bg-muted/30 text-sm font-medium transition-colors">
-                          Enter data manually
-                        </button>
-                        <button onClick={() => { setDataPath("sample"); startIntake() }}
-                          className="text-left px-3 py-2 rounded-xl border border-border hover:border-primary/40 bg-muted/30 text-sm font-medium transition-colors">
-                          Use sample data
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) :
                 <div key={i} className={cn("flex items-start gap-3", m.role === "user" && "flex-row-reverse")}>
-                  <div className={cn("w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5", m.role === "assistant" ? "bg-primary/20" : "bg-secondary")}>
-                    {m.role === "assistant" ? <Bot className="w-3 h-3 text-primary" /> : <User className="w-3 h-3 text-muted-foreground" />}
+                  <div className={cn(
+                    "w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+                    m.role === "assistant" ? "bg-primary/20" : "bg-secondary"
+                  )}>
+                    {m.role === "assistant"
+                      ? <Bot className="w-3 h-3 text-primary" />
+                      : <User className="w-3 h-3 text-muted-foreground" />
+                    }
                   </div>
-                  <p className="text-sm leading-relaxed text-foreground">{m.text}</p>
+                  <div className={cn(
+                    "text-sm rounded-2xl px-3 py-2 max-w-[80%]",
+                    m.role === "assistant" ? "bg-secondary text-foreground" : "bg-primary/10 text-foreground"
+                  )}>
+                    {m.text}
+                  </div>
                 </div>
               ))}
+              {intaking && (
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                    <Bot className="w-3 h-3 text-primary" />
+                  </div>
+                  <div className="bg-secondary rounded-2xl px-3 py-2">
+                    <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                  </div>
+                </div>
+              )}
+              {stage === "building" && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground px-9">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Building your project...
+                </div>
+              )}
             </div>
-            {stage === "intake" && !intaking && (
+            {/* Answer input */}
+            {stage === "intake" && !intaking && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
               <div className="flex gap-2">
-                <textarea
+                <input
+                  autoFocus
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
                   onKeyDown={handleAnswerKeyDown}

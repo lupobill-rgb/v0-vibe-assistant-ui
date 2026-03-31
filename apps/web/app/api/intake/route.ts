@@ -1,32 +1,28 @@
-﻿import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
 export const maxDuration = 180
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
-const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-const INTAKE_SYSTEM = `You are VIBE, an intelligent AI product assistant. Your job is to ask 1-2 smart questions to understand what the user needs, then hand off a complete build spec.
+const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
+
+const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something. Ask 2-3 short focused questions to understand exactly what they need before building.
 
 Rules:
 - Ask only ONE question at a time, one sentence max
-- After 1-2 exchanges output EXACTLY this JSON and nothing else:
+- After 2-3 exchanges output EXACTLY this JSON and nothing else:
   {"ready": true, "enrichedPrompt": "<complete build spec>", "summary": "<one line>"}
-- Never ask more than 2 questions total
-- Be conversational, warm, and direct - not formal
-- Your first question should uncover the most important unknown: who uses it, what decisions it drives, or what the primary metric is
-- Focus on: output type (app/dashboard/site), primary KPIs or entities, who the end user is
-- If the user mentions a department or team, ask what decisions this tool helps them make
-- If the user mentions a metric or data type, ask who reviews it and how often
-- NEVER ask about data sources, file uploads, databases, or connectors - VIBE handles data automatically
-- NEVER present lettered options (a/b/c) or menus
-- ALWAYS ask at least 1 question before building - never output ready JSON on the first message
-- If the user has attached a file, READ IT FIRST and skip questions already answered by the file data`
+- Never ask more than 3 questions
+- Be conversational not formal
+- Focus on: what entities to track, key fields, who uses it
+- IMPORTANT: If the user has attached a file and its content is shown below, READ IT FIRST. Do NOT ask questions that are already answered by the file data (column names, team names, departments, categories, amounts, etc.). Extract what you need from the file and proceed to build faster — you may only need 1 question or none at all.`
+
 const APP_SYSTEM = `You are VIBE, a full-stack app builder.
 BUILD A WORKING APPLICATION. NOT a website. NOT a landing page. NOT a marketing page.
 The app opens directly to a DATA TABLE. ALL data reads and writes use the Supabase REST API. ZERO hardcoded records.
 Output starts with <!DOCTYPE html>. No explanation, no preamble, no markdown.
-CRITICAL - IFRAME SAFETY:
+CRITICAL — IFRAME SAFETY:
 This HTML runs inside a sandboxed iframe. Inline event handlers (onclick, onchange, onsubmit, onmouseover, onfocus, onblur, oninput, onkeydown, onkeyup, onkeypress, etc.) are BLOCKED and will silently fail.
 You MUST attach ALL event listeners in JavaScript using addEventListener or event delegation (document.addEventListener('click', ...)).
 NEVER put event handlers in HTML attributes. NEVER use onclick="..." or onchange="..." or onsubmit="..." anywhere in the HTML.
@@ -84,15 +80,15 @@ async function callEdgeFunction(prompt: string, system: string, maxTokens: numbe
   return data
 }
 
-/** Server-side headers - use service role key to bypass RLS, or forward
+/** Server-side headers — use service role key to bypass RLS, or forward
  *  the caller's JWT so RLS resolves as the authenticated user. */
 function sbHeaders(userJwt?: string | null): Record<string, string> {
   if (SUPABASE_SERVICE_KEY) {
     return { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
   }
-  // No service key - use the caller's JWT so RLS sees the real user
+  // No service key — use the caller's JWT so RLS sees the real user
   const token = userJwt || SUPABASE_ANON_KEY
-  if (!userJwt) console.warn('[INTAKE] SUPABASE_SERVICE_ROLE_KEY not set and no user JWT - RLS may block queries')
+  if (!userJwt) console.warn('[INTAKE] SUPABASE_SERVICE_ROLE_KEY not set and no user JWT — RLS may block queries')
   return { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` }
 }
 
@@ -121,7 +117,7 @@ async function fetchUploadSummary(uploadId: string, userJwt?: string | null): Pr
     const upload = rows[0]
     const columns = upload.columns || Object.keys(upload.column_schema || {})
     const sampleRows = Array.isArray(upload.sample_data) ? upload.sample_data.slice(0, 10) : []
-    return `[ATTACHED FILE DATA - "${upload.original_filename || upload.table_name}"]\n` +
+    return `[ATTACHED FILE DATA — "${upload.original_filename || upload.table_name}"]\n` +
       `Columns: ${JSON.stringify(columns)}\n` +
       `Total rows: ${upload.row_count}\n` +
       `Sample data (first ${sampleRows.length} rows):\n${JSON.stringify(sampleRows, null, 2)}\n` +
@@ -172,7 +168,7 @@ export async function POST(request: Request) {
               const sampleRows = Array.isArray(upload.sample_data)
                 ? JSON.stringify(upload.sample_data.slice(0, 3))
                 : 'N/A'
-              prompt += `\n\nUPLOADED DATA - USE THIS DATA, DO NOT HARDCODE ANYTHING:\n` +
+              prompt += `\n\nUPLOADED DATA — USE THIS DATA, DO NOT HARDCODE ANYTHING:\n` +
                 `Table name: ${upload.table_name}\n` +
                 `Columns: ${JSON.stringify(upload.columns)}\n` +
                 `Total rows: ${upload.row_count}\n` +
@@ -183,7 +179,7 @@ export async function POST(request: Request) {
                 `- Use the real stats above for all KPI values and chart data\n` +
                 `- Build all filters to re-query this table with WHERE clauses matching the filter\n` +
                 `- Column names in queries must exactly match the columns array above\n` +
-                `- This works for any uploaded file - adapt to whatever columns are present`
+                `- This works for any uploaded file — adapt to whatever columns are present`
             }
           }
         } catch (uploadErr) {
@@ -203,30 +199,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ html, usage: data.usage })
     }
 
-    // Intake Q&A - call Anthropic directly for fast responses
+    // Intake Q&A — call Anthropic directly for fast responses
     const anthropicMessages = messages.map((m: { role: string; content: string }) => ({
       role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
       content: m.content,
     }))
 
-    // Resolve upload_id: request body - project record (single source of truth)
+    // Resolve upload_id: request body → project record (single source of truth)
     let resolvedUploadId = upload_id
     if (!resolvedUploadId && project_id) {
       resolvedUploadId = await resolveProjectUploadId(project_id, userJwt)
     }
 
-    // ALWAYS fetch file content when an upload exists - every call, not just the first
+    // ALWAYS fetch file content when an upload exists — every call, not just the first
     let intakeSystem = INTAKE_SYSTEM
 
     // Inject team + budget context when team_id and user_id are present
     if (!team_id) {
-      console.warn('[INTAKE] team_id missing - intake will run without team context')
+      console.warn('[INTAKE] team_id missing — intake will run without team context')
     }
     if (team_id && user_id) {
       try {
         const resolvedOrgId = org_id || process.env.NEXT_PUBLIC_ORG_ID
         if (!resolvedOrgId) {
-          console.warn('[INTAKE] No org_id in request and NEXT_PUBLIC_ORG_ID not set - skipping kernel context')
+          console.warn('[INTAKE] No org_id in request and NEXT_PUBLIC_ORG_ID not set — skipping kernel context')
           throw new Error('org_id missing')
         }
         const kernelRes = await fetch(
@@ -236,14 +232,14 @@ export async function POST(request: Request) {
         if (kernelRes.ok) {
           const kernelData = await kernelRes.json()
           const kernelBlock = kernelData?.context || kernelData?.teamContext || JSON.stringify(kernelData)
-          intakeSystem += `\n\nTEAM CONTEXT (already resolved - do NOT ask the user what team they are on):\n${kernelBlock}\nUse this context to scope all questions and the final enrichedPrompt.`
+          intakeSystem += `\n\nTEAM CONTEXT (already resolved — do NOT ask the user what team they are on):\n${kernelBlock}\nUse this context to scope all questions and the final enrichedPrompt.`
         }
       } catch (kernelErr) {
-        console.warn('[INTAKE] kernel-context fetch failed - proceeding without team context:', kernelErr)
+        console.warn('[INTAKE] kernel-context fetch failed — proceeding without team context:', kernelErr)
       }
     }
 
-    // FIX 1: Check if team has active connectors - skip data questions if none connected
+    // FIX 1: Check if team has active connectors — skip data questions if none connected
     if (team_id) {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'
@@ -259,10 +255,10 @@ export async function POST(request: Request) {
           hasActiveConnectors = connectors.some((c: { status?: string }) => c.status === 'active')
         }
         if (isDashboard && !hasActiveConnectors) {
-          intakeSystem += `\n\nOVERRIDE - no connectors are active. Skip ALL questions. Output the ready JSON on your FIRST reply. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
+          intakeSystem += `\n\nOVERRIDE — no connectors are active. Skip ALL questions. Output the ready JSON on your FIRST reply. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
         }
       } catch (connErr) {
-        console.warn('[INTAKE] connector check failed - proceeding without:', connErr)
+        console.warn('[INTAKE] connector check failed — proceeding without:', connErr)
       }
     }
 
@@ -271,7 +267,7 @@ export async function POST(request: Request) {
       if (fileSummary) {
         intakeSystem += `\n\nA file is attached to this project. Here is its content:\n${fileSummary}\nDo NOT ask questions that are answered by this data. Read it first, then respond.`
       } else {
-        console.warn(`[INTAKE] Could not fetch upload ${resolvedUploadId} - proceeding without file context`)
+        console.warn(`[INTAKE] Could not fetch upload ${resolvedUploadId} — proceeding without file context`)
       }
     }
 
