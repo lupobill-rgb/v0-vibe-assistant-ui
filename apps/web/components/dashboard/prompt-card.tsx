@@ -450,6 +450,18 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
                     </div>
                   </div>
                 ) :
+                <div key={i} className={cn("flex items-start gap-3", m.role === "user" && "flex-row-reverse")}>
+                  <div className={cn("w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5", m.role === "assistant" ? "bg-primary/20" : "bg-secondary")}>
+                    {m.role === "assistant" ? <Bot className="w-3 h-3 text-primary" /> : <User className="w-3 h-3 text-muted-foreground" />}
+                  </div>
+                  <p className="text-sm leading-relaxed text-foreground">{m.text}</p>
+                </div>
+              ))}
+            </div>
+            {stage === "intake" && !intaking && (
+              <div className="flex gap-2">
+                <textarea
+                  value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
                   onKeyDown={handleAnswerKeyDown}
                   placeholder="Type your answer..."
