@@ -882,7 +882,7 @@ if(typeof vibeLoadData==='undefined'){
 async function vibeLoadData(table,filters){filters=filters||{};var url=window.__VIBE_SUPABASE_URL__;var key=window.__VIBE_SUPABASE_ANON_KEY__;if(!url||!key){console.error('[vibeLoadData] missing URL or key');return[];}var token=key;try{var ref=url.split('//')[1].split('.')[0];var s=JSON.parse(localStorage.getItem('sb-'+ref+'-auth-token')||'{}');if(s.access_token)token=s.access_token;}catch(e){}var ep=url+'/rest/v1/'+table+'?select=*';Object.entries(filters).forEach(function(p){if(p[1])ep+='&'+p[0]+'=eq.'+p[1];});console.log('[vibeLoadData] fetching from:',ep);try{var r=await fetch(ep,{headers:{'apikey':key,'Authorization':'Bearer '+token}});if(!r.ok){console.error('[vibeLoadData] error:',r.status);return[];}var rows=await r.json();console.log('[vibeLoadData] result:',rows.length,'rows');return rows;}catch(e){console.error('[vibeLoadData] fetch failed:',e);return[];}
 }}</script>`;
           const injectSupabaseCredentials = (html: string): string => {
-            let result = html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey).replace(/__TEAM_ID__/g, project.team_id || '');
+            let result = html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey).replace(/__TEAM_ID__/g, project.team_id || '').replace(/\bfade-up\b/g, 'animate-in');
             // Inject vibeLoadData into <head> so it's defined before any chart scripts execute
             if (result.toLowerCase().includes('<head>')) {
               result = result.replace(/(<head[^>]*>)/i, `$1\n${VIBE_LOAD_DATA_SCRIPT}`);
