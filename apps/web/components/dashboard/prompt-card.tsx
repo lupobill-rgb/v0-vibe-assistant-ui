@@ -409,7 +409,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); startIntake() }
   }
-  const handleAnswerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleAnswerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     if (e.key === "Enter") { e.preventDefault(); sendAnswer() }
   }
   const reset = () => {
