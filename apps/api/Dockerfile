@@ -19,6 +19,7 @@ RUN npm ci
 RUN npm ci --workspace=apps/api
 
 ARG CACHEBUST
+RUN echo "cache-bust: $CACHEBUST"
 # Copy source
 COPY apps/api ./apps/api
 
