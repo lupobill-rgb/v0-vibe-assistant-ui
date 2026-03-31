@@ -66,7 +66,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
         .insert({
           user_id: userId,
           project_id: req.body?.project_id || null,
-          filename: file.originalname,
+          original_filename: file.originalname,
           table_name: xlsxTableName,
           columns: [],
           column_schema: {},
@@ -87,7 +87,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
 
       return res.json({
         upload_id: xlsxInserted.id,
-        filename: file.originalname,
+        original_filename: file.originalname,
         table_name: xlsxTableName,
         columns: [],
         row_count: rowCount,
@@ -169,7 +169,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       .insert({
         user_id: userId,
         project_id: req.body?.project_id || null,
-        filename: file.originalname,
+        original_filename: file.originalname,
         table_name: tableName,
         columns,
         column_schema: columnSchema,
@@ -190,7 +190,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
 
     return res.json({
       upload_id: inserted.id,
-      filename: file.originalname,
+      original_filename: file.originalname,
       table_name: tableName,
       columns,
       column_schema: columnSchema,
