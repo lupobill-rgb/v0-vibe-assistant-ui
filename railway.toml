@@ -1,12 +1,8 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "apps/api/Dockerfile"
-buildArgs = { CACHEBUST = "${{RAILWAY_GIT_COMMIT_SHA}}" }
+builder = "NIXPACKS"
 
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
-
-# Redeploy trigger: 2026-03-25 — permanent cache bust via RAILWAY_GIT_COMMIT_SHA
