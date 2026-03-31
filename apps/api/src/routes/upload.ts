@@ -1,20 +1,17 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import jwt from 'jsonwebtoken';
 import { parse as csvParse } from 'csv-parse/sync';
 import path from 'path';
 import { getPlatformSupabaseClient } from '../supabase/client';
 
-const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
-
-/** Extract user_id from JWT Authorization header, falling back to body field. */
-function extractUserId(req: Request): string | null {
+/** Extract user_id by validating token against Supabase auth. */
+async function extractUserId(req: Request): Promise<string | null> {
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith('Bearer ') && JWT_SECRET) {
-    try {
-      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: ['HS256'] }) as Record<string, unknown>;
-      return (payload.sub as string) ?? null;
-    } catch { /* fall through */ }
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    const supabase = getPlatformSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser(token);
+    if (user?.id) return user.id;
   }
   return (req.body?.user_id as string) ?? null;
 }
@@ -30,7 +27,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       return res.status(400).json({ error: 'No file provided. Attach a .csv or .xlsx file.' });
     }
 
-    const userId = extractUserId(req);
+    const userId = await extractUserId(req);
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required: provide a valid Authorization header' });
     }
