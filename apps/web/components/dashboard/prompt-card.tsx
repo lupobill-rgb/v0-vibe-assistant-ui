@@ -38,6 +38,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
   const [activeConnectors, setActiveConnectors] = useState<string[]>([])
   // Ref to keep upload_id accessible across async closures without stale capture
   const uploadIdRef = useRef<string | undefined>(undefined)
+  const turnCountRef = useRef<number>(0)
   // Restore upload_id from sessionStorage on mount (survives refresh during intake)
   if (typeof window !== "undefined" && !uploadIdRef.current) {
     const saved = sessionStorage.getItem("vibe_upload_id")
@@ -251,11 +252,12 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       ? `\n[Attached file: ${uploadState.filename}]`
       : ""
     conversationRef.current = [{ role: "user", content: prompt.trim() + fileNote }]
+    turnCountRef.current = 0
     try {
       const response = await callClaude(conversationRef.current)
       const reply = response.text
       // Server-side ready detection (prevents raw JSON in chat)
-      if (response.ready && response.enrichedPrompt) {
+      if (response.ready && response.enrichedPrompt && turnCountRef.current > 0) {
         setEnrichedPrompt(response.enrichedPrompt)
         setMessages([{ role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
         await fireJob(response.enrichedPrompt)
@@ -263,20 +265,21 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       }
       // Client-side fallback: check if Claude is already ready
       const ready = tryParseReady(reply)
-      if (ready) {
+      if (ready && turnCountRef.current > 0) {
         setEnrichedPrompt(ready.enrichedPrompt)
         setMessages([{ role: "assistant", text: `Got it — building: ${ready.summary}` }])
         await fireJob(ready.enrichedPrompt)
         return
       }
       // Detect raw HTML returned instead of Q&A text — route to build
-      if (isHtmlResponse(reply)) {
+      if (isHtmlResponse(reply) && turnCountRef.current > 0) {
         setMessages([{ role: "assistant", text: "Building your app..." }])
         await fireJob(prompt.trim())
         return
       }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
+      turnCountRef.current++
     } catch (err) {
       if (handleLimitError(err)) return
       const msg = err instanceof Error ? err.message : "Failed to connect to AI."
@@ -296,7 +299,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       const response = await callClaude(conversationRef.current)
       const reply = response.text
       // Server-side ready detection (prevents raw JSON in chat)
-      if (response.ready && response.enrichedPrompt) {
+      if (response.ready && response.enrichedPrompt && turnCountRef.current > 0) {
         setMessages((m) => [...m, { role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
         setEnrichedPrompt(response.enrichedPrompt)
         await fireJob(response.enrichedPrompt)
@@ -304,14 +307,14 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       }
       // Client-side fallback: check if Claude is ready to build
       const ready = tryParseReady(reply)
-      if (ready) {
+      if (ready && turnCountRef.current > 0) {
         setMessages((m) => [...m, { role: "assistant", text: `Got it — building: ${ready.summary}` }])
         setEnrichedPrompt(ready.enrichedPrompt)
         await fireJob(ready.enrichedPrompt)
         return
       }
       // Detect raw HTML returned instead of Q&A text — route to build
-      if (isHtmlResponse(reply)) {
+      if (isHtmlResponse(reply) && turnCountRef.current > 0) {
         setMessages((m) => [...m, { role: "assistant", text: "Building your app..." }])
         const collected = conversationRef.current.filter(m => m.role === 'user').map(m => m.content).join('\n\n')
         await fireJob(collected)
