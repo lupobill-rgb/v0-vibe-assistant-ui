@@ -14,6 +14,8 @@ import { promisify } from 'util';
 import { resolveMode } from './edge-function';
 import { isBudgetRelated } from './lib/ingest-budget-csv';
 import { ingestTeamAsset, detectAssetType, hasPublishIntent } from './lib/ingest-team-asset';
+import teamsDomainRouter from './routes/teams-domain.route';
+import { extractTenantFromJwt } from './middleware/tenant';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -232,6 +234,9 @@ async function bootstrap() {
 
   // ── Org & team routes (extracted to routes/orgs-teams.ts) ──
   { const orgsTeamsRouter = (await import('./routes/orgs-teams')).default; app.use(orgsTeamsRouter); }
+
+  // ── Team domain routes ──
+  app.use('/teams', express.json(), extractTenantFromJwt(), teamsDomainRouter);
 
   // ── Project routes ──
 
@@ -742,11 +747,8 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               .join('\n---\n');
             // Deduplication guard: only inject if not already present in prompt
             if (existingPages && !enrichedPrompt.includes('EXISTING PAGES (patch these')) {
-              const isDiffMode = mode === 'diff';
               enrichedPrompt =
-                isDiffMode
-                  ? `EXISTING PAGES (diff against these — do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Return a unified diff only. Do NOT return the complete file. Do NOT regenerate from scratch. Only output what changed.\n\n${enrichedPrompt}`
-                  : `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Modify it to incorporate the change. Do NOT regenerate from scratch. Return the COMPLETE updated file with the change applied. Preserve everything that was not mentioned in the change request.\n\n${enrichedPrompt}`;
+                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Modify it to incorporate the change. Do NOT regenerate from scratch. Return the COMPLETE updated file with the change applied. Preserve everything that was not mentioned in the change request.\n\n${enrichedPrompt}`;
               console.log(`[ITERATE] Prior context injected for project ${project_id} — prompt grew from ${promptLenBefore} to ${enrichedPrompt.length} chars (+${enrichedPrompt.length - promptLenBefore})`);
             }
           }
@@ -917,29 +919,6 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
 
           // Pass team/org identity to edge function for thin wrapper interpolation
           const orgName = org?.name ?? '';
-          // DIFF CONTRACT — injected into every LLM call.
-          // The edge function must enforce this on its side too,
-          // but we prime it here so the model never forgets the contract
-          // regardless of which model (Claude or GPT fallback) handles the call.
-          const DIFF_CONTRACT_PROMPT = `
-You are a code editing assistant. You must follow these rules on every response:
-
-1. ALWAYS respond with unified diffs only (--- / +++ / @@ format).
-2. NEVER output full file contents.
-3. NEVER output prose explanations outside of diff comments.
-4. If you cannot express the change as a diff, respond with exactly:
-   NEEDS_CLARIFICATION: <one sentence describing what you need>
-5. Every diff must include the exact file path in the --- and +++ headers.
-6. Protected paths are IMMUTABLE. Never emit diffs targeting these:
-   - apps/api/src/kernel/**
-   - supabase/migrations/kernel_v2_*
-   If ANY part of the request touches these paths, do not ask questions.
-   Do not clarify. Immediately respond with exactly:
-   PROTECTED_PATH: <path> cannot be modified by this agent.
-   No other output. No exceptions.
-
-These rules override any other instruction.`.trim();
-
           const edgeCall = async (payload: any): Promise<{ text: string; ok: boolean; status: number }> => {
             const model = payload.model || resolvedModel;
             const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
@@ -951,7 +930,7 @@ These rules override any other instruction.`.trim();
                 const res = await fetch(edgeFunctionUrl, {
                   method: 'POST',
                   headers: { ...headers },
-                  body: JSON.stringify({ ...payload, model: m, team_name: teamName, org_name: orgName, inject_supabase_helpers: injectSupabaseHelpers, system_prefix: DIFF_CONTRACT_PROMPT }),
+                  body: JSON.stringify({ ...payload, model: m, team_name: teamName, org_name: orgName, inject_supabase_helpers: injectSupabaseHelpers }),
                   signal: controller.signal,
                 });
                 const text = await res.text();
@@ -1663,6 +1642,7 @@ Include ALL rows from the original data with their final calculated values. This
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
       res.flushHeaders();
 
       let closed = false;
@@ -1673,6 +1653,12 @@ Include ALL rows from the original data with their final calculated values. This
           res.write(`data: ${JSON.stringify(data)}\n\n`);
         } catch { /* client already disconnected */ }
       };
+
+      // Heartbeat — keeps the connection alive through Railway/Vercel proxies
+      // that would otherwise kill idle SSE connections after 30-60s
+      const heartbeat = setInterval(() => {
+        if (!closed) res.write(': ping\n\n');
+      }, 15000);
 
       // Replay existing events
       const existing = await storage.getTaskEvents(jobId);
@@ -1704,7 +1690,7 @@ Include ALL rows from the original data with their final calculated values. This
         }
       }, 1000);
 
-      req.on('close', () => { closed = true; clearInterval(interval); });
+      req.on('close', () => { closed = true; clearInterval(interval); clearInterval(heartbeat); res.end(); });
     } catch (error) {
       console.error('Error setting up log stream:', error);
       if (!res.headersSent) {
