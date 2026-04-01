@@ -767,7 +767,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                     <h3 className="text-sm font-semibold text-white">Push Live</h3>
-                    <button onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}
+                    <button type="button" onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}
                       className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
                   </div>
 
@@ -824,6 +824,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                             className="flex-1 h-9 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
                           />
                           <button
+                            type="button"
                             onClick={handleConnectDomain}
                             disabled={connectingDomain || !customDomain.trim()}
                             style={{
@@ -856,6 +857,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                             background: '#0d0d12', border: '1px solid #1e1e2a', fontFamily: 'monospace', fontSize: 11
                           }}>
                             <button
+                              type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(`${rec.type}\t${rec.name}\t${rec.value}`)
                                 setDomainCopied(key)
@@ -885,6 +887,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                         )
                       })}
                       <button
+                        type="button"
                         onClick={handleVerifyDomain}
                         disabled={verifying}
                         style={{
