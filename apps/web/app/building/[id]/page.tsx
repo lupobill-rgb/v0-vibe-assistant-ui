@@ -7,7 +7,7 @@ import { Check, ChevronDown, ChevronUp, ClipboardCopy, ExternalLink, Globe, Load
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
-import { createJob, publishJob } from "@/lib/api"
+import { createJob, publishJob, API_URL, TENANT_ID } from "@/lib/api"
 
 interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; guided_next_steps?: string[]; [key: string]: unknown }
 
@@ -158,6 +158,13 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [showDomainModal, setShowDomainModal] = useState(false)
+  const [customDomain, setCustomDomain] = useState('')
+  const [dnsInstructions, setDnsInstructions] = useState<{ cname: { type: string; name: string; value: string }; txt: { type: string; name: string; value: string } } | null>(null)
+  const [domainVerified, setDomainVerified] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [connectingDomain, setConnectingDomain] = useState(false)
+  const [domainCopied, setDomainCopied] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('')
   const [projectTeamId, setProjectTeamId] = useState<string | undefined>()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -171,6 +178,71 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     timersRef.current.push(t)
     return t
   }, [])
+
+  const handleConnectDomain = async () => {
+    if (!customDomain.trim() || !projectTeamId) return
+    setConnectingDomain(true)
+    setPublishError(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch(`${API_URL}/teams/${projectTeamId}/domain`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': TENANT_ID,
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ domain: customDomain.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+      setDnsInstructions(data.instructions)
+    } catch (err: any) {
+      setPublishError(err.message)
+    } finally {
+      setConnectingDomain(false)
+    }
+  }
+
+  const handleVerifyDomain = async () => {
+    if (!projectTeamId || !jobId) return
+    setVerifying(true)
+    setPublishError(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch(`${API_URL}/teams/${projectTeamId}/domain/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': TENANT_ID,
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 422) {
+          setPublishError('DNS not found yet, may take up to 48 hours to propagate')
+        } else {
+          throw new Error(data.error || `Verification failed (${res.status})`)
+        }
+        return
+      }
+      setDomainVerified(true)
+      setPublishing(true)
+      try {
+        const result = await publishJob(jobId)
+        if (result.error) { setPublishError(result.error) }
+        else if (result.published_url) { setPublishedUrl(result.published_url); setShowDomainModal(false) }
+      } catch (err: any) { setPublishError(err.message || 'Publish failed') }
+      finally { setPublishing(false) }
+    } catch (err: any) {
+      setPublishError(err.message)
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   // Clean up all tracked timeouts on unmount
   useEffect(() => {
@@ -630,14 +702,16 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               </a>
             )}
             {publishedUrl ? (() => {
-              const shareUrl = typeof window !== 'undefined'
-                ? `${window.location.origin}/s/${jobId}`
-                : `/s/${jobId}`
+              const shareUrl = domainVerified && customDomain
+                ? `https://${customDomain}`
+                : typeof window !== 'undefined'
+                  ? `${window.location.origin}/s/${jobId}`
+                  : `/s/${jobId}`
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
                     <Check className="w-3.5 h-3.5" style={{ color: '#10b981', flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, color: '#10b981', fontWeight: 500 }}>Live</span>
+                    <span style={{ fontSize: 13, color: '#10b981', fontWeight: 500 }}>Live{domainVerified ? ' — Custom Domain' : ''}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <a href={shareUrl} target="_blank" rel="noopener noreferrer"
@@ -670,23 +744,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             })() : (
               <button
                 type="button"
-                onClick={async () => {
-                  if (!jobId || publishing) return
-                  setPublishing(true)
-                  setPublishError(null)
-                  try {
-                    const result = await publishJob(jobId)
-                    if (result.error) {
-                      setPublishError(result.error)
-                    } else if (result.published_url) {
-                      setPublishedUrl(result.published_url)
-                    }
-                  } catch (err: any) {
-                    setPublishError(err.message || 'Publish failed')
-                  } finally {
-                    setPublishing(false)
-                  }
-                }}
+                onClick={() => { if (!jobId || publishing) return; setShowDomainModal(true) }}
                 disabled={publishing}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -700,6 +758,152 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             )}
             {publishError && (
               <p style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{publishError}</p>
+            )}
+
+            {/* ── Push Live modal ── */}
+            {showDomainModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 className="text-sm font-semibold text-white">Push Live</h3>
+                    <button onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}
+                      className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+                  </div>
+
+                  {!dnsInstructions ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {/* Option 1: VIBE URL */}
+                      <button
+                        onClick={async () => {
+                          if (!jobId) return
+                          setPublishing(true)
+                          setPublishError(null)
+                          try {
+                            const result = await publishJob(jobId)
+                            if (result.error) { setPublishError(result.error) }
+                            else if (result.published_url) { setPublishedUrl(result.published_url); setShowDomainModal(false) }
+                          } catch (err: any) { setPublishError(err.message || 'Publish failed') }
+                          finally { setPublishing(false) }
+                        }}
+                        disabled={publishing}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                          padding: '12px 16px', borderRadius: 12,
+                          background: '#0d0d12', border: '1px solid #1e1e2a',
+                          color: '#f0f0ff', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                          textAlign: 'left', opacity: publishing ? 0.5 : 1
+                        }}>
+                        <Globe className="w-4 h-4" style={{ color: '#6366f1', flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontWeight: 600 }}>Publish to VIBE URL</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Get a shareable link instantly</div>
+                        </div>
+                        {publishing && <Loader2 className="w-4 h-4 animate-spin" style={{ marginLeft: 'auto' }} />}
+                      </button>
+
+                      {/* Option 2: Custom domain */}
+                      <div style={{
+                        display: 'flex', flexDirection: 'column', gap: 10, width: '100%',
+                        padding: '12px 16px', borderRadius: 12,
+                        background: '#0d0d12', border: '1px solid #1e1e2a',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Lock className="w-4 h-4" style={{ color: '#a855f7', flexShrink: 0 }} />
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: '#f0f0ff' }}>Use my own domain</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Point your domain to this app</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input
+                            value={customDomain}
+                            onChange={(e) => setCustomDomain(e.target.value)}
+                            placeholder="app.yourdomain.com"
+                            onKeyDown={(e) => { if (e.key === 'Enter' && customDomain.trim() && !connectingDomain) handleConnectDomain() }}
+                            className="flex-1 h-9 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                          />
+                          <button
+                            onClick={handleConnectDomain}
+                            disabled={connectingDomain || !customDomain.trim()}
+                            style={{
+                              height: 36, padding: '0 14px', borderRadius: 8,
+                              background: '#a855f7', border: 'none', color: '#fff',
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                              opacity: (connectingDomain || !customDomain.trim()) ? 0.5 : 1,
+                              display: 'flex', alignItems: 'center', gap: 6
+                            }}>
+                            {connectingDomain ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Connect'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {publishError && (
+                        <p style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{publishError}</p>
+                      )}
+                    </div>
+                  ) : (
+                    /* DNS instructions + verify */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <p style={{ fontSize: 12, color: '#94a3b8' }}>
+                        Add these DNS records with your domain provider:
+                      </p>
+                      {[dnsInstructions.cname, dnsInstructions.txt].map((rec) => {
+                        const key = `${rec.type}-${rec.name}`
+                        return (
+                          <div key={key} style={{
+                            position: 'relative', padding: '10px 14px', borderRadius: 8,
+                            background: '#0d0d12', border: '1px solid #1e1e2a', fontFamily: 'monospace', fontSize: 11
+                          }}>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(`${rec.type}\t${rec.name}\t${rec.value}`)
+                                setDomainCopied(key)
+                                safeTimeout(() => setDomainCopied(null), 2000)
+                              }}
+                              style={{
+                                position: 'absolute', top: 6, right: 6, background: 'none', border: 'none',
+                                cursor: 'pointer', padding: 2
+                              }}>
+                              {domainCopied === key
+                                ? <Check className="w-3 h-3" style={{ color: '#10b981' }} />
+                                : <ClipboardCopy className="w-3 h-3" style={{ color: '#64748b' }} />}
+                            </button>
+                            <div style={{ display: 'flex', gap: 8, color: '#94a3b8' }}>
+                              <span style={{ width: 40 }}>Type</span>
+                              <span style={{ color: '#f0f0ff', fontWeight: 600 }}>{rec.type}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, color: '#94a3b8', marginTop: 4 }}>
+                              <span style={{ width: 40 }}>Name</span>
+                              <span style={{ color: '#f0f0ff', wordBreak: 'break-all' }}>{rec.name}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, color: '#94a3b8', marginTop: 4 }}>
+                              <span style={{ width: 40 }}>Value</span>
+                              <span style={{ color: '#f0f0ff', wordBreak: 'break-all' }}>{rec.value}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      <button
+                        onClick={handleVerifyDomain}
+                        disabled={verifying}
+                        style={{
+                          height: 40, borderRadius: 8, border: '1px solid rgba(168,85,247,0.4)',
+                          background: 'rgba(168,85,247,0.1)', color: '#a855f7',
+                          fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                          opacity: verifying ? 0.5 : 1,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                        }}>
+                        {verifying
+                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking DNS...</>
+                          : "I've added these records — Verify"}
+                      </button>
+                      {publishError && (
+                        <p style={{ fontSize: 12, color: '#ef4444' }}>{publishError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}
