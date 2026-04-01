@@ -745,7 +745,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             })() : (
               <button
                 type="button"
-                onClick={() => { if (!jobId || publishing) return; setShowDomainModal(true) }}
+                onClick={() => setShowDomainModal(true)}
                 disabled={publishing}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
