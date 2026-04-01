@@ -774,7 +774,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                   {!dnsInstructions ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {/* Option 1: VIBE URL */}
-                      <button
+                      <button type="button"
                         onClick={async () => {
                           if (!jobId) return
                           setPublishing(true)
