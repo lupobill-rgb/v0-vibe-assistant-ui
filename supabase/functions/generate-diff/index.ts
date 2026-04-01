@@ -922,7 +922,7 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
 }
 
 /** Call Google Gemini and return { diff, usage }. Throws on failure. */
-async function callGemini(systemMsg: string, prompt: string, maxTokens = 4096) {
+async function callGemini(systemMsg: string, prompt: string, maxTokens = 4096, systemPrefix?: string) {
   const apiKey = Deno.env.get("GOOGLE_API_KEY");
   if (!apiKey) throw new Error("GOOGLE_API_KEY not configured");
 
@@ -932,7 +932,9 @@ async function callGemini(systemMsg: string, prompt: string, maxTokens = 4096) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemMsg }] },
+        systemInstruction: { parts: [{ text: systemPrefix
+            ? `${systemPrefix}\n\n---\n\n${systemMsg}`
+            : systemMsg }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { maxOutputTokens: maxTokens },
       }),
@@ -1068,7 +1070,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    let { prompt, context, model = "claude", system, max_tokens, mode, color_block, team_name, org_name, inject_supabase_helpers } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string; team_name?: string; org_name?: string; inject_supabase_helpers?: boolean };
+    let { prompt, context, model = "claude", system, max_tokens, mode, color_block, team_name, org_name, inject_supabase_helpers, system_prefix } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string; team_name?: string; org_name?: string; inject_supabase_helpers?: boolean; system_prefix?: string };
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
@@ -1159,7 +1161,8 @@ STRUCTURAL REQUIREMENTS:
       prompt = prompt.replace('__INJECT_SUPABASE_HELPERS__', '');
     }
     const vibeRules = buildVibeSystemRules(team_name, org_name);
-    const systemMsg = vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
+    const prefixBlock = system_prefix ? system_prefix + "\n\n---\n\n" : "";
+    const systemMsg = prefixBlock + vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
 
     // Log token budget usage for monitoring (1 token ≈ 4 chars)

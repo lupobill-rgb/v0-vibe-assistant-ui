@@ -742,8 +742,11 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               .join('\n---\n');
             // Deduplication guard: only inject if not already present in prompt
             if (existingPages && !enrichedPrompt.includes('EXISTING PAGES (patch these')) {
+              const isDiffMode = mode === 'diff';
               enrichedPrompt =
-                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Modify it to incorporate the change. Do NOT regenerate from scratch. Return the COMPLETE updated file with the change applied. Preserve everything that was not mentioned in the change request.\n\n${enrichedPrompt}`;
+                isDiffMode
+                  ? `EXISTING PAGES (diff against these — do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Return a unified diff only. Do NOT return the complete file. Do NOT regenerate from scratch. Only output what changed.\n\n${enrichedPrompt}`
+                  : `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Modify it to incorporate the change. Do NOT regenerate from scratch. Return the COMPLETE updated file with the change applied. Preserve everything that was not mentioned in the change request.\n\n${enrichedPrompt}`;
               console.log(`[ITERATE] Prior context injected for project ${project_id} — prompt grew from ${promptLenBefore} to ${enrichedPrompt.length} chars (+${enrichedPrompt.length - promptLenBefore})`);
             }
           }
@@ -914,6 +917,29 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
 
           // Pass team/org identity to edge function for thin wrapper interpolation
           const orgName = org?.name ?? '';
+          // DIFF CONTRACT — injected into every LLM call.
+          // The edge function must enforce this on its side too,
+          // but we prime it here so the model never forgets the contract
+          // regardless of which model (Claude or GPT fallback) handles the call.
+          const DIFF_CONTRACT_PROMPT = `
+You are a code editing assistant. You must follow these rules on every response:
+
+1. ALWAYS respond with unified diffs only (--- / +++ / @@ format).
+2. NEVER output full file contents.
+3. NEVER output prose explanations outside of diff comments.
+4. If you cannot express the change as a diff, respond with exactly:
+   NEEDS_CLARIFICATION: <one sentence describing what you need>
+5. Every diff must include the exact file path in the --- and +++ headers.
+6. Protected paths are IMMUTABLE. Never emit diffs targeting these:
+   - apps/api/src/kernel/**
+   - supabase/migrations/kernel_v2_*
+   If ANY part of the request touches these paths, do not ask questions.
+   Do not clarify. Immediately respond with exactly:
+   PROTECTED_PATH: <path> cannot be modified by this agent.
+   No other output. No exceptions.
+
+These rules override any other instruction.`.trim();
+
           const edgeCall = async (payload: any): Promise<{ text: string; ok: boolean; status: number }> => {
             const model = payload.model || resolvedModel;
             const attempt = async (m: string): Promise<{ text: string; ok: boolean; status: number }> => {
@@ -925,7 +951,7 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
                 const res = await fetch(edgeFunctionUrl, {
                   method: 'POST',
                   headers: { ...headers },
-                  body: JSON.stringify({ ...payload, model: m, team_name: teamName, org_name: orgName, inject_supabase_helpers: injectSupabaseHelpers }),
+                  body: JSON.stringify({ ...payload, model: m, team_name: teamName, org_name: orgName, inject_supabase_helpers: injectSupabaseHelpers, system_prefix: DIFF_CONTRACT_PROMPT }),
                   signal: controller.signal,
                 });
                 const text = await res.text();
