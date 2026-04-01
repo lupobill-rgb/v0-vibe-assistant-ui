@@ -230,6 +230,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         return
       }
       setDomainVerified(true)
+      // Domain verified — now publish the site
       setPublishing(true)
       try {
         const result = await publishJob(jobId)
