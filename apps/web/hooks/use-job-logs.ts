@@ -52,8 +52,15 @@ export function useJobLogs(jobId: string | null): UseJobLogsReturn {
     }
 
     eventSource.onerror = () => {
-      setError('Failed to connect to log stream')
       eventSource.close()
+      // If we already received logs, the job ran — don't show a connection error.
+      // This prevents false "Failed to connect" messages when SSE drops after completion.
+      setLogs((prev) => {
+        if (prev.length === 0) {
+          setError('Failed to connect to log stream')
+        }
+        return prev
+      })
       setIsComplete(true)
     }
 

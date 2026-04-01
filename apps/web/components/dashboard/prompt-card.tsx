@@ -121,7 +121,8 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     await uploadPromiseRef.current
     uploadPromiseRef.current = null
   }
-  const tryParseReady = (text: string): { ready: true; enrichedPrompt: string; summary: string } | null => {
+  const tryParseReady = (text: string | undefined): { ready: true; enrichedPrompt: string; summary: string } | null => {
+    if (!text) return null
     // Try direct parse first
     try {
       const parsed = JSON.parse(text)
@@ -162,11 +163,12 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     }
     return null
   }
-  const isHtmlResponse = (text: string): boolean => {
+  const isHtmlResponse = (text: string | undefined): boolean => {
+    if (!text) return false
     const t = text.trimStart().toLowerCase()
     return t.startsWith('<!doctype') || t.startsWith('<html')
   }
-  const callClaude = async (messages: { role: string; content: string }[]): Promise<string> => {
+  const callClaude = async (messages: { role: string; content: string }[]): Promise<{ text: string; ready?: boolean; enrichedPrompt?: string; summary?: string }> => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {
@@ -180,7 +182,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
-      return data.text ?? ""
+      return { text: data.text ?? "", ready: data.ready, enrichedPrompt: data.enrichedPrompt, summary: data.summary }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         throw new Error("AI took too long to respond. Please try again.")
