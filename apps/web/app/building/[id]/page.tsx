@@ -1,6 +1,7 @@
 "use client"
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Check, ChevronDown, ChevronUp, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Pencil, Plus, Terminal, X } from "lucide-react"
@@ -762,8 +763,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               <p style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{publishError}</p>
             )}
 
-            {/* ── Push Live modal ── */}
-            {showDomainModal && (
+            {/* ── Push Live modal (portal to body to escape overflow:hidden) ── */}
+            {showDomainModal && createPortal(
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style={{ pointerEvents: modalReady ? 'auto' : 'none' }} onPointerDown={e => { if (e.target === e.currentTarget && modalReady) { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) } }}>
                 <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl" onPointerDown={e => e.stopPropagation()}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -908,7 +909,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         )}
