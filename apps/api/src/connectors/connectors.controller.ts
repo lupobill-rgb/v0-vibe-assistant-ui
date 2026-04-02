@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { NangoService, ConnectorType } from './nango.service';
 
 interface ConnectDto {
@@ -67,8 +67,15 @@ export class ConnectorsController {
   async getDecipherSurveys(@Query('teamId') teamId: string) {
     if (!teamId) throw new BadRequestException('Missing required query param: teamId');
     this.logger.log(`Decipher surveys request — team=${teamId}`);
-    const surveys = await this.nangoService.fetchDecipherSurveys(teamId);
-    return { surveys };
+    try {
+      const surveys = await this.nangoService.fetchDecipherSurveys(teamId);
+      return { surveys };
+    } catch (err) {
+      const msg = (err as Error).message ?? 'Unknown error';
+      const stack = (err as Error).stack ?? '';
+      this.logger.error(`Decipher surveys failed: ${msg}\n${stack}`);
+      throw new InternalServerErrorException(`Decipher surveys failed: ${msg}`);
+    }
   }
 
   /**
@@ -85,35 +92,42 @@ export class ConnectorsController {
   ) {
     if (!teamId) throw new BadRequestException('Missing required query param: teamId');
     this.logger.log(`Decipher survey data request — team=${teamId} survey=${surveyPath}`);
-    const responses = await this.nangoService.fetchDecipherSurveyData(teamId, surveyPath, { start, end, limit });
+    try {
+      const responses = await this.nangoService.fetchDecipherSurveyData(teamId, surveyPath, { start, end, limit });
 
-    // Store to Supabase decipher_responses table
-    if (responses.length > 0) {
-      try {
-        const { createClient } = require('@supabase/supabase-js');
-        const sb = createClient(
-          process.env.SUPABASE_URL ?? '',
-          process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-        );
-        const rows = responses.map((r) => ({
-          survey_path: surveyPath,
-          respondent_id: r.respondent_id,
-          response_data: r.response_data,
-          completed_at: r.completed_at,
-          team_id: teamId,
-        }));
-        const { error } = await sb.from('decipher_responses').upsert(rows, {
-          onConflict: 'survey_path,respondent_id',
-          ignoreDuplicates: true,
-        });
-        if (error) this.logger.warn(`Failed to store Decipher responses: ${error.message}`);
-        else this.logger.log(`Stored ${rows.length} Decipher responses for survey=${surveyPath}`);
-      } catch (err) {
-        this.logger.warn(`Decipher storage error: ${(err as Error).message}`);
+      // Store to Supabase decipher_responses table
+      if (responses.length > 0) {
+        try {
+          const { createClient } = require('@supabase/supabase-js');
+          const sb = createClient(
+            process.env.SUPABASE_URL ?? '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+          );
+          const rows = responses.map((r) => ({
+            survey_path: surveyPath,
+            respondent_id: r.respondent_id,
+            response_data: r.response_data,
+            completed_at: r.completed_at,
+            team_id: teamId,
+          }));
+          const { error } = await sb.from('decipher_responses').upsert(rows, {
+            onConflict: 'survey_path,respondent_id',
+            ignoreDuplicates: true,
+          });
+          if (error) this.logger.warn(`Failed to store Decipher responses: ${error.message}`);
+          else this.logger.log(`Stored ${rows.length} Decipher responses for survey=${surveyPath}`);
+        } catch (err) {
+          this.logger.warn(`Decipher storage error: ${(err as Error).message}`);
+        }
       }
-    }
 
-    return { responses, count: responses.length };
+      return { responses, count: responses.length };
+    } catch (err) {
+      const msg = (err as Error).message ?? 'Unknown error';
+      const stack = (err as Error).stack ?? '';
+      this.logger.error(`Decipher survey data failed: ${msg}\n${stack}`);
+      throw new InternalServerErrorException(`Decipher survey data failed: ${msg}`);
+    }
   }
 
   /**
