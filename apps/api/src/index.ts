@@ -1037,6 +1037,10 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
           const resolvedMode = resolveMode(prompt, teamName);
           await storage.logEvent(taskId, `[DIAG] resolvedMode=${resolvedMode} teamName=${teamName} upload_id=${upload_id}`, "info");
 
+          // ── Single-page navigation rule ──
+          // All output must live in one HTML file; nav links show/hide sections via JS.
+          enrichedPrompt += `\n\nNAVIGATION RULE (MANDATORY): Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files. All content must exist in a single HTML file with sections toggled by JS.`;
+
           // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
           if (!upload_id && resolvedMode === 'app') {
             try {

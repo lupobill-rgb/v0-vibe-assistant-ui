@@ -216,14 +216,14 @@ STRUCTURE — include all sections:
 2. Page-specific hero with gradient background and h1.
 3. Minimum 2 content sections relevant to the page purpose.
 4. Footer: nav columns, copyright, consistent across all pages.
-5. Nav links use relative hrefs matching page routes.
-6. Every page links to every other page.
+5. Nav links use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files. All content must exist in a single HTML file with sections toggled by JS.
+6. Every page section is reachable from the nav.
 
 VALIDATOR REQUIREMENTS:
 - <nav> present. <h1> present. Minimum 2 <section> elements.
 - <title> and <meta name="description"> set.
 - CTA button containing: Start, Get, Contact, Book, or Learn.
-- Cross-page nav links to every other page via href="pagename.html".
+- Navigation uses JS onclick to show/hide sections — no href to separate .html files.
 - Zero lorem ipsum.
 
 RESPONSIVE:
@@ -363,7 +363,7 @@ TOPBAR — inline styles only, no Tailwind on nav:
 <nav style="position:sticky;top:0;z-index:50;background:var(--surface);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px;font-family:'Inter',sans-serif;">
   <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.1rem;color:var(--primary);">[BRAND]</span>
   <div style="display:flex;gap:28px;">
-    [LINKS: <a href="pagename.html" style="color:var(--text);opacity:0.7;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
+    [LINKS: <a href="#" data-section="view-[name]" onclick="switchView(event,'view-[name]')" style="color:var(--text);opacity:0.7;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
   </div>
   <a href="#" style="background:var(--primary);color:var(--bg);padding:9px 22px;border-radius:8px;font-weight:600;font-size:0.9rem;text-decoration:none;">Get Started</a>
 </nav>
@@ -480,7 +480,7 @@ VALIDATOR REQUIREMENTS — must pass on first generation, no repair needed:
 - <meta name="description"> set
 - At least one button containing: Export, Connect, Upload, Get, or Start
 - Zero lorem ipsum in any field
-- Before writing nav links, the LLM receives the page list from the plan. Every nav link href must exactly match one of the generated filenames. The planner names pages like: index.html, deals.html, analytics.html. Nav links must use those exact names. Never invent hrefs.
+- Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files. All content must exist in a single HTML file with sections toggled by JS.
 REPAIR RULE — chart preservation:
 - If repairing a page with chart sections, preserve all existing Chart.js code — do not remove or replace canvas elements.
 FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export statements. No useState. No useMemo. No component functions. No markdown fences. No explanation text. No backticks. No raw fetch() — use vibeLoadData() only. No XMLHttpRequest.
@@ -1117,6 +1117,7 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
 ABSOLUTE HARD STOP: This file will be rendered in a plain browser iframe.
 It has NO build system, NO Node.js, NO React, NO webpack, NO Next.js.
 The output MUST be a single self-contained HTML file.
+Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files.
 If you generate ANY of the following the page will be completely blank:
 - import or export statements
 - React, ReactDOM, JSX, TSX
