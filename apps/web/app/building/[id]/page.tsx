@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useMemo, useRef, useState, useReducer, use
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Check, ChevronDown, ChevronUp, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Pencil, Plus, Terminal, X } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Terminal, X } from "lucide-react"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
@@ -101,8 +101,6 @@ function getGuidedNextSteps(prompt: string): string[] {
 
 interface PageData { name: string; filename: string; html: string }
 
-const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
-
 function parseDiff(raw: string): PageData[] {
   const trimmed = raw.trim()
   // Try JSON array first (multi-page)
@@ -176,38 +174,6 @@ function buildBlobUrl(pages: PageData[], activeFile: string, teamId?: string): s
   return URL.createObjectURL(blob)
 }
 
-function AddPageModal({ onSubmit, onClose, isLoading, error }: { onSubmit: (desc: string) => void; onClose: () => void; isLoading: boolean; error: string | null }) {
-  const [desc, setDesc] = useState('')
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl">
-        <h3 className="text-sm font-semibold text-white mb-3">Add a new page</h3>
-        <input
-          autoFocus
-          value={desc}
-          onChange={(e) => { setDesc(e.target.value) }}
-          onKeyDown={(e) => { if (e.key === 'Enter' && desc.trim() && !isLoading) onSubmit(desc.trim()) }}
-          placeholder="e.g. A careers page with open positions and an apply form"
-          className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
-        />
-        {error && (
-          <p className="mt-2 text-xs text-red-400">{error}</p>
-        )}
-        <div className="flex items-center justify-end gap-2 mt-4">
-          <button onClick={onClose} disabled={isLoading}
-            className="h-9 px-4 rounded-lg text-sm text-slate-400 hover:text-white transition-colors">
-            Cancel
-          </button>
-          <button onClick={() => { if (desc.trim()) onSubmit(desc.trim()) }} disabled={isLoading || !desc.trim()}
-            className="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium transition-colors flex items-center gap-2">
-            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : 'Generate Page'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 interface BuildingPageProps { params: Promise<{ id: string }> }
 
 export default function BuildingPage({ params }: BuildingPageProps) {
@@ -217,13 +183,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [jobId, setJobId] = useState<string | null>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [activeFile, setActiveFile] = useState('index.html')
-  const [showAddPage, setShowAddPage] = useState(false)
-  const [addingPage, setAddingPage] = useState(false)
-  const [addPageError, setAddPageError] = useState<string | null>(null)
-  const [editingPageIndex, setEditingPageIndex] = useState<number | null>(null)
-  const [editingHtml, setEditingHtml] = useState('')
   const [editPrompt, setEditPrompt] = useState('')
-  const [successToast, setSuccessToast] = useState<string | null>(null)
   const [editInput, setEditInput] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [updatePrompt, setUpdatePrompt] = useState('')
@@ -655,65 +615,6 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     }
   }
 
-  const handleAddPage = useCallback(async (description: string) => {
-    setAddingPage(true)
-    setAddPageError(null)
-    try {
-      const url = EDGE_FN_URL
-      const body = { prompt: description, model: 'claude', mode: 'html' }
-
-      console.log("[VIBE] Add Page request:", url, body)
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_ANON_KEY },
-        body: JSON.stringify(body),
-      })
-
-      const text = await res.text()
-      console.log("[VIBE] Add Page response:", res.status, text)
-
-      if (!res.ok) throw new Error("Edge Function returned " + res.status)
-
-      let newPage: PageData | null = null
-      try {
-        const payload = JSON.parse(text)
-        if (payload.html) {
-          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.html }
-        } else if (payload.diff) {
-          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: payload.diff }
-        } else if (Array.isArray(payload) && payload[0]?.html) {
-          newPage = payload[0]
-        } else if (payload.pages && Array.isArray(payload.pages)) {
-          newPage = payload.pages[0]
-        }
-      } catch {
-        if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
-          newPage = { name: description.slice(0, 30), filename: description.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.html', html: text }
-        }
-      }
-
-      if (!newPage) {
-        setAddPageError('No page could be parsed from the response. Check console for details.')
-        return
-      }
-
-      const merged = [...pages, newPage]
-      setDiff(JSON.stringify(merged))
-      setActiveFile(newPage.filename)
-      setShowAddPage(false)
-      setAddPageError(null)
-      setSuccessToast('Page added successfully')
-      safeTimeout(() => setSuccessToast(null), 3000)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[VIBE] Failed to generate page:', message)
-      setAddPageError(message)
-    } finally {
-      setAddingPage(false)
-}
-  }, [pages, safeTimeout])
-
   const handleUpdate = useCallback(async () => {
     const projectId = task?.project_id
     if (!updatePrompt.trim() || !projectId || updatingJob) return
@@ -1144,94 +1045,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               )}
             </div>
 
-            {/* PAGES SECTION */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', borderBottom: '1px solid #1e1e2a' }}>
-              {successToast && (
-                <div style={{ fontSize: 12, color: '#10b981', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>
-                  {successToast}
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pages</span>
-                <button
-                  type="button"
-                  onClick={() => setShowAddPage(true)}
-                  style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6366f1', cursor: 'pointer' }}
-                >
-                  + Add page
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {pages.map((p, i) => (
-                  <div key={p.filename}>
-                    <button
-                      onClick={() => setActiveFile(p.filename)}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        width: '100%', padding: '7px 10px', borderRadius: 6,
-                        background: activeFile === p.filename ? 'rgba(99,102,241,0.08)' : 'transparent',
-                        border: 'none', cursor: 'pointer', transition: 'background 0.15s ease'
-                      }}
-                    >
-                      <span style={{
-                        fontSize: 13, fontWeight: activeFile === p.filename ? 500 : 400,
-                        color: activeFile === p.filename ? '#f0f0ff' : '#6b7280',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                      }}>{p.name}</span>
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (editingPageIndex === i) { setEditingPageIndex(null) }
-                          else { setEditingPageIndex(i); setEditingHtml(p.html) }
-                        }}
-                        style={{ flexShrink: 0, marginLeft: 8, color: '#6b7280', cursor: 'pointer', opacity: activeFile === p.filename ? 0.7 : 0 }}
-                        title={`Edit ${p.name}`}
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </span>
-                    </button>
-                    {editingPageIndex === i && (
-                      <div style={{ marginTop: 4, borderRadius: 8, border: '1px solid #1e1e2a', overflow: 'hidden' }}>
-                        <textarea
-                          value={editingHtml}
-                          onChange={(e) => setEditingHtml(e.target.value)}
-                          spellCheck={false}
-                          style={{
-                            width: '100%', height: 192, background: '#0d0d12', color: '#c0c0d0',
-                            fontSize: 12, fontFamily: 'monospace', padding: 12, border: 'none',
-                            resize: 'vertical', outline: 'none'
-                          }}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '8px 12px', background: '#13131a', borderTop: '1px solid #1e1e2a' }}>
-                          <button
-                            onClick={() => setEditingPageIndex(null)}
-                            style={{ background: 'none', border: 'none', fontSize: 12, color: '#6b7280', cursor: 'pointer' }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => {
-                              const updated = pages.map((pg, idx) => idx === i ? { ...pg, html: editingHtml } : pg)
-                              setDiff(JSON.stringify(updated))
-                              setEditingPageIndex(null)
-                            }}
-                            style={{
-                              background: '#6366f1', border: 'none', borderRadius: 6,
-                              padding: '4px 12px', fontSize: 12, fontWeight: 500, color: '#fff', cursor: 'pointer'
-                            }}
-                          >
-                            Save
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* CHAT SECTION — fixed height 260px */}
-            <div style={{ display: 'flex', flexDirection: 'column', height: 260, flexShrink: 0 }}>
+            {/* CHAT SECTION — fills remaining space */}
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               {/* Message history scrollable */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 12, scrollbarWidth: 'none' }}>
                 {chatMessages.map(msg => (
@@ -1377,7 +1192,6 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         </div>
       )}
-      {showAddPage && <AddPageModal onSubmit={handleAddPage} onClose={() => { setShowAddPage(false); setAddPageError(null) }} isLoading={addingPage} error={addPageError} />}
     </div>
   )
 }
