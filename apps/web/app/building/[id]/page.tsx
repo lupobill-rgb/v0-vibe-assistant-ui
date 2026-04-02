@@ -755,12 +755,30 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           )}
         </div>
 
-        {/* ── [3a] BUILD BODY — two-column: thoughts + tools (while building) ── */}
+        {/* ── [3a] BUILD BODY — two-column + input bar (while building) ── */}
         {!isComplete && (
-          <div className={(sidebarOpen ? "flex" : "hidden md:flex")} style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' }}>
-            {/* LEFT COLUMN — avatar bubble + thought stream + typing dots */}
+          <div className={(sidebarOpen ? "flex" : "hidden md:flex")} style={{ flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden' }}>
+            {/* LEFT COLUMN — user bubble + VIBE bubble + thought stream + typing dots */}
             <div style={{ flex: 1, padding: '14px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, scrollbarWidth: 'none' }}>
-              {/* V avatar bubble with current stage thought */}
+              {/* User prompt bubble */}
+              {task?.user_prompt && (
+                <div style={{ display: 'flex', gap: 8, flexDirection: 'row-reverse', alignItems: 'flex-start' }}>
+                  <div style={{
+                    width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 600, background: '#1e1e2a', color: '#6b7280',
+                  }}>BL</div>
+                  <div style={{
+                    maxWidth: '78%', padding: '8px 12px', borderRadius: '10px 0 10px 10px',
+                    background: 'rgba(99,102,241,0.1)', border: '1px solid #1e1e2a',
+                    fontSize: 13, lineHeight: 1.55, color: '#f0f0ff',
+                  }}>
+                    {task.user_prompt}
+                  </div>
+                </div>
+              )}
+              {/* VIBE response bubble */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <div style={{
                   width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
@@ -773,7 +791,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                   background: 'rgba(99,102,241,0.15)', border: '1px solid #1e1e2a',
                   fontSize: 13, lineHeight: 1.55, color: '#a5b4fc',
                 }}>
-                  {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).thought}
+                  Got it. Building your app now...
                 </div>
               </div>
               <ThoughtStream executionState={task?.execution_state} />
@@ -816,9 +834,49 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               })}
             </div>
           </div>
+          {/* Build-phase input bar */}
+          <div style={{ padding: '10px 16px', borderTop: '1px solid #1e1e2a', flexShrink: 0 }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) }
+                }}
+                placeholder="Steer the build or ask a question..."
+                disabled={isEditing}
+                style={{
+                  width: '100%', height: 34, borderRadius: 8,
+                  background: '#0d0d12', border: '1px solid #1e1e2a',
+                  padding: '0 38px 0 12px', fontSize: 13, color: '#f0f0ff',
+                  outline: 'none',
+                  opacity: isEditing ? 0.4 : 1,
+                  transition: 'border-color 0.15s ease',
+                }}
+                onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
+                onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
+              />
+              <button
+                onClick={() => { if (editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) } }}
+                disabled={isEditing || !editPrompt.trim()}
+                style={{
+                  position: 'absolute', right: 3, top: 2, width: 30, height: 30,
+                  borderRadius: 6, border: 'none', cursor: 'pointer',
+                  background: editPrompt.trim() ? '#6366f1' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: editPrompt.trim() ? '#fff' : '#6b7280',
+                  transition: 'all 0.15s ease',
+                }}>
+                {isEditing
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
+              </button>
+            </div>
+          </div>
+          </div>
         )}
 
-        {/* ── [3b] COMPLETE BODY — actions, pages, chat ── */}
+        {/* ── [3b] COMPLETE BODY — actions, chat ── */}
         {isComplete && (
           <div className={(sidebarOpen ? "flex" : "hidden md:flex")} style={{ flexDirection: 'column', flex: 1, minHeight: 0 }}>
             {/* TOP SECTION — Open App + Push Live + publishError */}
@@ -1082,26 +1140,22 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 <div ref={chatBottomRef} />
               </div>
 
-              {/* Input row */}
-              <div style={{ padding: '12px 20px', borderTop: '1px solid #1e1e2a', flexShrink: 0 }}>
+              {/* Single input bar */}
+              <div style={{ padding: '10px 20px', borderTop: '1px solid #1e1e2a', flexShrink: 0 }}>
                 <div style={{ position: 'relative' }}>
-                  <textarea
+                  <input
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        if (chatInput.trim() && !isEditing) handleChat(chatInput.trim())
-                      }
+                      if (e.key === 'Enter' && chatInput.trim() && !isEditing) handleChat(chatInput.trim())
                     }}
-                    placeholder="Ask VIBE to change anything..."
+                    placeholder="Steer the build or ask a question..."
                     disabled={isEditing}
-                    rows={2}
                     style={{
-                      width: '100%', borderRadius: 8, resize: 'none',
+                      width: '100%', height: 34, borderRadius: 8,
                       background: '#0d0d12', border: '1px solid #1e1e2a',
-                      padding: '10px 40px 10px 12px', fontSize: 13, color: '#f0f0ff',
-                      outline: 'none', lineHeight: 1.5,
+                      padding: '0 38px 0 12px', fontSize: 13, color: '#f0f0ff',
+                      outline: 'none',
                       opacity: isEditing ? 0.4 : 1,
                       transition: 'border-color 0.15s ease',
                     }}
@@ -1112,7 +1166,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                     onClick={() => { if (chatInput.trim() && !isEditing) handleChat(chatInput.trim()) }}
                     disabled={isEditing || !chatInput.trim()}
                     style={{
-                      position: 'absolute', right: 6, bottom: 6, width: 30, height: 30,
+                      position: 'absolute', right: 3, top: 2, width: 30, height: 30,
                       borderRadius: 6, border: 'none', cursor: 'pointer',
                       background: chatInput.trim() ? '#6366f1' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1124,38 +1178,6 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                       : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
                   </button>
                 </div>
-
-                {/* Full rebuild input */}
-                {task?.project_id && (
-                  <div style={{ marginTop: 8, position: 'relative' }}>
-                    <input
-                      value={updatePrompt}
-                      onChange={(e) => setUpdatePrompt(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && updatePrompt.trim() && !updatingJob) handleUpdate() }}
-                      placeholder="Start a full rebuild..."
-                      disabled={updatingJob}
-                      style={{
-                        width: '100%', height: 38, borderRadius: 8,
-                        background: '#0d0d12', border: '1px solid #1e1e2a',
-                        padding: '0 36px 0 12px', fontSize: 13, color: '#f0f0ff',
-                        outline: 'none', opacity: updatingJob ? 0.4 : 1,
-                        transition: 'border-color 0.15s ease',
-                      }}
-                      onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
-                      onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
-                    />
-                    <button onClick={handleUpdate} disabled={!updatePrompt.trim() || updatingJob}
-                      style={{
-                        position: 'absolute', right: 4, top: 4, width: 30, height: 30,
-                        borderRadius: 6, border: 'none', cursor: updatePrompt.trim() ? 'pointer' : 'default',
-                        background: updatePrompt.trim() ? '#6366f1' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: updatePrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease',
-                      }}>
-                      {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2.5 16A10 10 0 0 1 21.5 8M21.5 8A10 10 0 0 1 2.5 16"/></svg>}
-                    </button>
-                  </div>
-                )}
 
                 {/* Footer links */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e1e2a' }}>
