@@ -12,14 +12,23 @@ import { createJob, publishJob, API_URL, TENANT_ID } from "@/lib/api"
 
 // ── Thought stream data ──────────────────────────────────────────────────────
 const STAGE_TOOLS: Record<string, { label: string; thought: string; pct: number }> = {
-  default:    { label: 'Starting...',      thought: 'Initialising build environment...',                    pct: 8  },
-  planning:   { label: 'Planning...',      thought: 'Parsing intent and resolving skills from registry...',  pct: 15 },
-  security:   { label: 'Security scan...', thought: 'Running access-control and injection checks...',        pct: 25 },
-  building:   { label: 'Building...',      thought: 'Generating UI components and data bindings...',         pct: 50 },
-  validating: { label: 'Validating...',    thought: 'Verifying schema integrity and prop types...',          pct: 65 },
-  testing:    { label: 'Testing...',       thought: 'Running automated smoke tests on generated pages...',   pct: 75 },
-  qa:         { label: 'Quality check...', thought: 'Checking layout, contrast, and accessibility rules...', pct: 85 },
-  ux:         { label: 'UX review...',     thought: 'Applying design-intelligence patterns from registry...',pct: 92 },
+  default:     { label: 'Starting...',   thought: 'Initialising build environment...',                     pct: 5  },
+  calling_llm: { label: 'Connecting...', thought: 'Connecting to AI and loading skill registry...',        pct: 12 },
+  planning:    { label: 'Planning...',   thought: 'Parsing intent and resolving matched skills...',         pct: 28 },
+  building:    { label: 'Building...',   thought: 'Generating UI components and wiring data bindings...',  pct: 55 },
+  validating:  { label: 'Validating...', thought: 'Verifying schema integrity and component props...',     pct: 72 },
+  ux:          { label: 'UX review...',  thought: 'Applying design-intelligence patterns from registry...', pct: 88 },
+}
+
+// Tool panel entries — shown in right column during build
+const TOOL_STEPS = ['calling_llm', 'planning', 'building', 'validating', 'ux'] as const
+type ToolStep = typeof TOOL_STEPS[number]
+const TOOL_LABELS: Record<ToolStep, string> = {
+  calling_llm: 'AI connect',
+  planning:    'Skill match',
+  building:    'UI gen',
+  validating:  'Validate',
+  ux:          'UX pass',
 }
 
 interface ThoughtEntry { id: number; text: string; done: boolean }
@@ -469,19 +478,38 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatThought, setChatThought] = useState<string | null>(null)
+  const [completedTools, setCompletedTools] = useState<ToolStep[]>([])
   const chatBottomRef = useRef<HTMLDivElement>(null)
   const welcomeSentRef = useRef(false)
+
+  // Track which tool steps have completed based on execution_state progression
+  useEffect(() => {
+    const state = task?.execution_state as ToolStep | undefined
+    if (!state || !TOOL_STEPS.includes(state as ToolStep)) return
+    setCompletedTools(prev => {
+      const idx = TOOL_STEPS.indexOf(state as ToolStep)
+      const done = TOOL_STEPS.slice(0, idx) as unknown as ToolStep[]
+      return [...new Set([...prev, ...done])]
+    })
+  }, [task?.execution_state])
 
   // Fire welcome message once when build completes
   useEffect(() => {
     if (!isComplete || welcomeSentRef.current) return
     welcomeSentRef.current = true
     const prompt = task?.user_prompt ?? ''
+    // Truncate at word boundary
+    const words = prompt.split(' ')
+    let truncated = ''
+    for (const w of words) {
+      if ((truncated + ' ' + w).length > 80) break
+      truncated += (truncated ? ' ' : '') + w
+    }
     const appName = projectName || 'your app'
     setChatMessages([{
       id: Date.now(),
       role: 'vibe',
-      text: `${appName} is ready. I built it from: "${prompt.slice(0, 120)}${prompt.length > 120 ? '...' : ''}". Ask me to change anything — layout, data, pages, or logic.`,
+      text: `${appName} is ready${truncated ? ` — built from "${truncated}${prompt.split(' ').length > truncated.split(' ').length ? '...' : ''}"` : ''}. Ask me to change anything — layout, data, pages, or logic.`,
     }])
   }, [isComplete, task?.user_prompt, projectName])
 
@@ -774,7 +802,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         ) : null}
       </div>
-      <div className="w-full md:w-[280px] flex-shrink-0 flex flex-col order-first md:order-none" style={{ background: '#13131a', fontFamily: 'Inter, sans-serif' }}>
+      <div className="w-full md:w-[560px] flex-shrink-0 flex flex-col order-first md:order-none" style={{ background: '#13131a', fontFamily: 'Inter, sans-serif' }}>
         {/* ── MOBILE TOGGLE ── */}
         <button
           type="button"
@@ -815,29 +843,53 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
         {/* ── PROGRESS BAR (while building) ── */}
         {!isComplete && (
-          <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '12px 20px', borderBottom: '1px solid #1e1e2a' }}>
-            {/* Progress bar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#f0f0ff', flexShrink: 0 }}>
-                {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).label}
-              </span>
-              <span style={{ fontSize: 11, color: '#6366f1', marginLeft: 'auto', flexShrink: 0 }}>
-                {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%
-              </span>
+          <div className={(sidebarOpen ? "flex" : "hidden md:flex")} style={{ padding: '12px 20px', borderBottom: '1px solid #1e1e2a', gap: 0 }}>
+            {/* Left — progress + thought stream */}
+            <div style={{ flex: 1, paddingRight: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#f0f0ff', flexShrink: 0 }}>
+                  {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).label}
+                </span>
+                <span style={{ fontSize: 11, color: '#6366f1', marginLeft: 'auto', flexShrink: 0 }}>
+                  {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%
+                </span>
+              </div>
+              <div style={{ height: 3, borderRadius: 2, background: '#1e1e2a', overflow: 'hidden', marginBottom: 14 }}>
+                <div style={{
+                  height: '100%', borderRadius: 2, background: '#6366f1',
+                  transition: 'width 0.6s ease',
+                  width: `${(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%`
+                }} />
+              </div>
+              <div style={{ maxHeight: 140, overflowY: 'auto', paddingRight: 4, scrollbarWidth: 'none' }}>
+                <ThoughtStream executionState={task?.execution_state} />
+              </div>
             </div>
-            <div style={{ height: 3, borderRadius: 2, background: '#1e1e2a', overflow: 'hidden', marginBottom: 14 }}>
-              <div style={{
-                height: '100%', borderRadius: 2, background: '#6366f1',
-                transition: 'width 0.6s ease',
-                width: `${(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%`
-              }} />
-            </div>
-            {/* Thought stream */}
-            <div style={{
-              maxHeight: 120, overflowY: 'auto', paddingRight: 4,
-              scrollbarWidth: 'none',
-            }}>
-              <ThoughtStream executionState={task?.execution_state} />
+            {/* Right — tool panel */}
+            <div style={{ width: 148, flexShrink: 0, borderLeft: '1px solid #1e1e2a', paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6b7280', marginBottom: 2 }}>Tools</span>
+              {TOOL_STEPS.map(step => {
+                const isDone = completedTools.includes(step)
+                const isActive = task?.execution_state === step
+                return (
+                  <div key={step} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 6, border: '1px solid #1e1e2a', background: isActive ? 'rgba(99,102,241,0.06)' : 'transparent' }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9,
+                      background: isDone ? 'rgba(16,185,129,0.15)' : isActive ? 'rgba(99,102,241,0.15)' : '#1e1e2a',
+                      color: isDone ? '#10b981' : isActive ? '#6366f1' : '#6b7280',
+                    }}>
+                      {isDone ? '✓' : isActive ? <Loader2 style={{ width: 9, height: 9 }} className="animate-spin" /> : '—'}
+                    </div>
+                    <span style={{ fontSize: 11, color: isDone ? '#6b7280' : isActive ? '#a5b4fc' : '#4b5563' }}>
+                      {TOOL_LABELS[step]}
+                    </span>
+                    <span style={{ fontSize: 10, marginLeft: 'auto', color: isDone ? '#10b981' : isActive ? '#6366f1' : '#4b5563' }}>
+                      {isDone ? 'done' : isActive ? 'live' : 'next'}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -1161,25 +1213,26 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
         {/* ── CHAT INPUT ── */}
         <div className={(sidebarOpen ? "flex" : "hidden md:flex")}
-          style={{ flexDirection: 'column', height: isComplete ? 280 : 'auto', borderTop: '1px solid #1e1e2a' }}>
+          style={{ flexDirection: 'column', flex: isComplete ? 1 : 'none', minHeight: 0, borderTop: '1px solid #1e1e2a' }}>
 
           {/* Message history — only when complete */}
           {isComplete && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, scrollbarWidth: 'none' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 12, scrollbarWidth: 'none' }}>
               {chatMessages.map(msg => (
                 <div key={msg.id} style={{ display: 'flex', gap: 8, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
                   <div style={{
-                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 9, fontWeight: 600,
+                    fontSize: 10, fontWeight: 600,
                     background: msg.role === 'vibe' ? 'rgba(99,102,241,0.15)' : '#1e1e2a',
                     color: msg.role === 'vibe' ? '#6366f1' : '#6b7280',
                   }}>
                     {msg.role === 'vibe' ? 'V' : 'BL'}
                   </div>
                   <div style={{
-                    maxWidth: '82%', padding: '7px 10px', borderRadius: msg.role === 'vibe' ? '0 8px 8px 8px' : '8px 0 8px 8px',
-                    fontSize: 12, lineHeight: 1.5,
+                    maxWidth: '78%', padding: '8px 12px',
+                    borderRadius: msg.role === 'vibe' ? '0 10px 10px 10px' : '10px 0 10px 10px',
+                    fontSize: 13, lineHeight: 1.55,
                     background: msg.role === 'vibe' ? '#13131a' : 'rgba(99,102,241,0.1)',
                     border: '1px solid #1e1e2a',
                     color: msg.role === 'vibe' ? '#a5b4fc' : '#f0f0ff',
@@ -1190,9 +1243,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               ))}
               {/* Active thought line */}
               {chatThought && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 30 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 32 }}>
                   <Loader2 style={{ width: 11, height: 11, color: '#6366f1', flexShrink: 0 }} className="animate-spin" />
-                  <span style={{ fontSize: 11, color: '#6366f1', fontStyle: 'italic' }}>{chatThought}</span>
+                  <span style={{ fontSize: 12, color: '#6366f1', fontStyle: 'italic' }}>{chatThought}</span>
                 </div>
               )}
               <div ref={chatBottomRef} />
@@ -1200,7 +1253,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           )}
 
           {/* Input row */}
-          <div style={{ padding: '10px 16px', borderTop: isComplete ? '1px solid #1e1e2a' : 'none', flexShrink: 0 }}>
+          <div style={{ padding: '12px 20px', borderTop: isComplete ? '1px solid #1e1e2a' : 'none', flexShrink: 0 }}>
             <div style={{ position: 'relative' }}>
               <textarea
                 value={isComplete ? chatInput : editPrompt}
