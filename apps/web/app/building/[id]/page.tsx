@@ -746,7 +746,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             })() : (
               <button
                 type="button"
-                onClick={() => { setShowDomainModal(true); setModalReady(false); requestAnimationFrame(() => setModalReady(true)) }}
+                onClick={() => { setShowDomainModal(true); setModalReady(false); safeTimeout(() => setModalReady(true), 500) }}
                 disabled={publishing}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -764,8 +764,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
             {/* ── Push Live modal ── */}
             {showDomainModal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}>
-                <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style={{ pointerEvents: modalReady ? 'auto' : 'none' }} onPointerDown={e => { if (e.target === e.currentTarget && modalReady) { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) } }}>
+                <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl" onPointerDown={e => e.stopPropagation()}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                     <h3 className="text-sm font-semibold text-white">Push Live</h3>
                     <button type="button" onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}
