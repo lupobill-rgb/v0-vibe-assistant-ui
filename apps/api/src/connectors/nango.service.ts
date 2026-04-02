@@ -174,20 +174,34 @@ export class NangoService {
       last_activity: c.properties?.notes_last_updated ?? null,
     }));
   }
-  /* ── Decipher (Forsta) ── */
+  /* ── Decipher (Forsta) — uses team_integrations, not Nango ── */
+
+  private async getDecipherApiKey(teamId: string): Promise<string> {
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(
+      process.env.SUPABASE_URL ?? '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    );
+    const { data, error } = await sb
+      .from('team_integrations')
+      .select('api_key')
+      .eq('team_id', teamId)
+      .eq('provider', 'decipher')
+      .single();
+    if (error || !data?.api_key) {
+      throw new Error(`No Decipher API key found for team=${teamId}`);
+    }
+    return data.api_key;
+  }
 
   async fetchDecipherSurveys(teamId: string): Promise<DecipherSurvey[]> {
-    this.ensureConfigured();
-    const connectionId = `${teamId}__${ConnectorType.DECIPHER}`;
-    this.logger.log(`Fetching Decipher surveys connection=${connectionId}`);
-    const resp = await this.nango.proxy({
-      method: 'GET',
-      endpoint: '/surveys',
-      providerConfigKey: ConnectorType.DECIPHER,
-      connectionId,
-      baseUrlOverride: 'https://v2.decipherinc.com/api/v1',
+    const apiKey = await this.getDecipherApiKey(teamId);
+    this.logger.log(`Fetching Decipher surveys team=${teamId}`);
+    const resp = await fetch('https://v2.decipherinc.com/api/v1/surveys', {
+      headers: { 'x-apikey': apiKey, 'Accept': 'application/json' },
     });
-    const surveys = resp?.data ?? [];
+    if (!resp.ok) throw new Error(`Decipher API error: ${resp.status} ${resp.statusText}`);
+    const surveys = await resp.json();
     return (Array.isArray(surveys) ? surveys : []).map((s: any) => ({
       path: s.path ?? s.survey_path ?? '',
       title: s.title ?? s.name ?? '',
@@ -201,23 +215,19 @@ export class NangoService {
     surveyPath: string,
     params: { start?: string; end?: string; limit?: string },
   ): Promise<DecipherResponse[]> {
-    this.ensureConfigured();
-    const connectionId = `${teamId}__${ConnectorType.DECIPHER}`;
-    this.logger.log(`Fetching Decipher survey data connection=${connectionId} survey=${surveyPath}`);
-    const queryParams: Record<string, string> = { format: 'json' };
-    if (params.start) queryParams.start = params.start;
-    if (params.end) queryParams.end = params.end;
-    if (params.limit) queryParams.limit = params.limit;
+    const apiKey = await this.getDecipherApiKey(teamId);
+    this.logger.log(`Fetching Decipher survey data team=${teamId} survey=${surveyPath}`);
+    const url = new URL(`https://v2.decipherinc.com/api/v1/surveys/${surveyPath}/data`);
+    url.searchParams.set('format', 'json');
+    if (params.start) url.searchParams.set('start', params.start);
+    if (params.end) url.searchParams.set('end', params.end);
+    if (params.limit) url.searchParams.set('limit', params.limit);
 
-    const resp = await this.nango.proxy({
-      method: 'GET',
-      endpoint: `/surveys/${surveyPath}/data`,
-      providerConfigKey: ConnectorType.DECIPHER,
-      connectionId,
-      baseUrlOverride: 'https://v2.decipherinc.com/api/v1',
-      params: queryParams,
+    const resp = await fetch(url.toString(), {
+      headers: { 'x-apikey': apiKey, 'Accept': 'application/json' },
     });
-    const rows = resp?.data ?? [];
+    if (!resp.ok) throw new Error(`Decipher API error: ${resp.status} ${resp.statusText}`);
+    const rows = await resp.json();
     return (Array.isArray(rows) ? rows : []).map((r: any) => ({
       respondent_id: String(r.uuid ?? r.respondent_id ?? r.id ?? ''),
       response_data: r,
