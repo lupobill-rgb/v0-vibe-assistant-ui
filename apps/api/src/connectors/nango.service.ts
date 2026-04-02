@@ -12,6 +12,7 @@ export enum ConnectorType {
   POSTGRES         = 'postgres',
   BIGQUERY         = 'google-bigquery',
   S3               = 'aws-s3',
+  DECIPHER         = 'decipher',
 }
 
 export interface NangoConnection {
@@ -36,6 +37,19 @@ export interface HubSpotContact {
   email: string;
   company: string | null;
   last_activity: string | null;
+}
+
+export interface DecipherSurvey {
+  path: string;
+  title: string;
+  state: string;
+  created: string | null;
+}
+
+export interface DecipherResponse {
+  respondent_id: string;
+  response_data: Record<string, unknown>;
+  completed_at: string | null;
 }
 
 @Injectable()
@@ -158,6 +172,56 @@ export class NangoService {
       email: c.properties?.email ?? '',
       company: c.properties?.company ?? null,
       last_activity: c.properties?.notes_last_updated ?? null,
+    }));
+  }
+  /* ── Decipher (Forsta) ── */
+
+  async fetchDecipherSurveys(teamId: string): Promise<DecipherSurvey[]> {
+    this.ensureConfigured();
+    const connectionId = `${teamId}__${ConnectorType.DECIPHER}`;
+    this.logger.log(`Fetching Decipher surveys connection=${connectionId}`);
+    const resp = await this.nango.proxy({
+      method: 'GET',
+      endpoint: '/surveys',
+      providerConfigKey: ConnectorType.DECIPHER,
+      connectionId,
+      baseUrlOverride: 'https://v2.decipherinc.com/api/v1',
+    });
+    const surveys = resp?.data ?? [];
+    return (Array.isArray(surveys) ? surveys : []).map((s: any) => ({
+      path: s.path ?? s.survey_path ?? '',
+      title: s.title ?? s.name ?? '',
+      state: s.state ?? 'unknown',
+      created: s.created ?? s.date_created ?? null,
+    }));
+  }
+
+  async fetchDecipherSurveyData(
+    teamId: string,
+    surveyPath: string,
+    params: { start?: string; end?: string; limit?: string },
+  ): Promise<DecipherResponse[]> {
+    this.ensureConfigured();
+    const connectionId = `${teamId}__${ConnectorType.DECIPHER}`;
+    this.logger.log(`Fetching Decipher survey data connection=${connectionId} survey=${surveyPath}`);
+    const queryParams: Record<string, string> = { format: 'json' };
+    if (params.start) queryParams.start = params.start;
+    if (params.end) queryParams.end = params.end;
+    if (params.limit) queryParams.limit = params.limit;
+
+    const resp = await this.nango.proxy({
+      method: 'GET',
+      endpoint: `/surveys/${surveyPath}/data`,
+      providerConfigKey: ConnectorType.DECIPHER,
+      connectionId,
+      baseUrlOverride: 'https://v2.decipherinc.com/api/v1',
+      params: queryParams,
+    });
+    const rows = resp?.data ?? [];
+    return (Array.isArray(rows) ? rows : []).map((r: any) => ({
+      respondent_id: String(r.uuid ?? r.respondent_id ?? r.id ?? ''),
+      response_data: r,
+      completed_at: r.date ?? r.completed_at ?? null,
     }));
   }
 }

@@ -33,6 +33,7 @@ const CONNECTORS = [
   { value: "postgres", label: "PostgreSQL" },
   { value: "google-bigquery", label: "Google BigQuery" },
   { value: "aws-s3", label: "AWS S3" },
+  { value: "decipher", label: "Decipher (Forsta)" },
 ]
 
 interface ConnectDatasourceDialogProps {
