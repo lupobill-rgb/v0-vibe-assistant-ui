@@ -495,7 +495,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
   // Fire welcome message once when build completes
   useEffect(() => {
-    if (!isComplete || welcomeSentRef.current) return
+    if (task?.execution_state !== 'completed' || welcomeSentRef.current) return
     welcomeSentRef.current = true
     const prompt = task?.user_prompt ?? ''
     // Truncate at word boundary
@@ -511,7 +511,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       role: 'vibe',
       text: `${appName} is ready${truncated ? ` — built from "${truncated}${prompt.split(' ').length > truncated.split(' ').length ? '...' : ''}"` : ''}. Ask me to change anything — layout, data, pages, or logic.`,
     }])
-  }, [isComplete, task?.user_prompt, projectName])
+  }, [task?.execution_state, task?.user_prompt, projectName])
 
   // Auto-scroll chat to bottom on new messages
   useEffect(() => {
