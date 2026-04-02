@@ -160,7 +160,6 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [showDomainModal, setShowDomainModal] = useState(false)
-  const [modalReady, setModalReady] = useState(false)
   const [customDomain, setCustomDomain] = useState('')
   const [dnsInstructions, setDnsInstructions] = useState<{ cname: { type: string; name: string; value: string }; txt: { type: string; name: string; value: string } } | null>(null)
   const [domainVerified, setDomainVerified] = useState(false)
@@ -747,7 +746,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             })() : (
               <button
                 type="button"
-                onClick={() => { setShowDomainModal(true); setModalReady(false); safeTimeout(() => setModalReady(true), 500) }}
+                onClick={() => setShowDomainModal(true)}
                 disabled={publishing}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -765,8 +764,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
 
             {/* ── Push Live modal (portal to body to escape overflow:hidden) ── */}
             {showDomainModal && createPortal(
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style={{ pointerEvents: modalReady ? 'auto' : 'none' }} onPointerDown={e => { if (e.target === e.currentTarget && modalReady) { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) } }}>
-                <div className="w-full max-w-md rounded-2xl bg-slate-800 border border-slate-700 p-6 shadow-2xl" onPointerDown={e => e.stopPropagation()}>
+              <div
+                role="dialog"
+                aria-modal="true"
+                style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
+              >
+                <div style={{ width: '100%', maxWidth: 448, borderRadius: 16, background: '#1e293b', border: '1px solid #334155', padding: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                     <h3 className="text-sm font-semibold text-white">Push Live</h3>
                     <button type="button" onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}
@@ -778,7 +781,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                       {/* Option 1: VIBE URL */}
                       <button type="button"
                         onClick={async () => {
-                          if (!modalReady || !jobId) return
+                          if (!jobId) return
                           setPublishing(true)
                           setPublishError(null)
                           try {
