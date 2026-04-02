@@ -774,7 +774,9 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                     background: 'rgba(99,102,241,0.1)', border: '1px solid #1e1e2a',
                     fontSize: 13, lineHeight: 1.55, color: '#f0f0ff',
                   }}>
-                    {task.user_prompt}
+                    {task.user_prompt.length > 120
+                      ? task.user_prompt.slice(0, task.user_prompt.lastIndexOf(' ', 120)).trimEnd() + '...'
+                      : task.user_prompt}
                   </div>
                 </div>
               )}
