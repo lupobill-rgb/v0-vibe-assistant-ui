@@ -1252,9 +1252,18 @@ Include ALL rows from the original data with their final calculated values. This
             const planData = JSON.parse(planResult.text);
             if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
             // Edge Function returns { diff: "<JSON string with pages + color_scheme>", mode: "plan", usage }
-            let planPages = typeof planData.diff === 'string'
-              ? JSON.parse(planData.diff)
-              : planData.diff;
+            let planPages: any;
+            if (typeof planData.diff === 'string') {
+              let raw = planData.diff.trim();
+              // Strip markdown code fences if LLM wrapped the response
+              const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+              if (fenceMatch) raw = fenceMatch[1].trim();
+              // Strip trailing commas before } or ] (common LLM mistake)
+              raw = raw.replace(/,\s*([\]}])/g, '$1');
+              planPages = JSON.parse(raw);
+            } else {
+              planPages = planData.diff;
+            }
             // planPages may be { pages: [...], color_scheme: {...} } or a raw array
             const pagesArray = Array.isArray(planPages) ? planPages : planPages?.pages ?? null;
             const llmColorScheme = Array.isArray(planPages) ? null : planPages?.color_scheme ?? null;
