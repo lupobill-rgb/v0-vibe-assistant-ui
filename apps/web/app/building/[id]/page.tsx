@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useRef, useState, useReducer, useLayoutEffect } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -9,6 +9,70 @@ import { PipelineTracker } from "@/components/task/pipeline-tracker"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
 import { createJob, publishJob, API_URL, TENANT_ID } from "@/lib/api"
+
+// ── Thought stream data ──────────────────────────────────────────────────────
+const STAGE_TOOLS: Record<string, { label: string; thought: string; pct: number }> = {
+  default:    { label: 'Starting...',      thought: 'Initialising build environment...',                    pct: 8  },
+  planning:   { label: 'Planning...',      thought: 'Parsing intent and resolving skills from registry...',  pct: 15 },
+  security:   { label: 'Security scan...', thought: 'Running access-control and injection checks...',        pct: 25 },
+  building:   { label: 'Building...',      thought: 'Generating UI components and data bindings...',         pct: 50 },
+  validating: { label: 'Validating...',    thought: 'Verifying schema integrity and prop types...',          pct: 65 },
+  testing:    { label: 'Testing...',       thought: 'Running automated smoke tests on generated pages...',   pct: 75 },
+  qa:         { label: 'Quality check...', thought: 'Checking layout, contrast, and accessibility rules...', pct: 85 },
+  ux:         { label: 'UX review...',     thought: 'Applying design-intelligence patterns from registry...',pct: 92 },
+}
+
+interface ThoughtEntry { id: number; text: string; done: boolean }
+type ThoughtAction = { type: 'push'; text: string } | { type: 'resolve' }
+function thoughtReducer(state: ThoughtEntry[], action: ThoughtAction): ThoughtEntry[] {
+  if (action.type === 'push') {
+    const prev = state.map(t => ({ ...t, done: true }))
+    return [...prev, { id: Date.now(), text: action.text, done: false }]
+  }
+  if (action.type === 'resolve') return state.map(t => ({ ...t, done: true }))
+  return state
+}
+
+function ThoughtStream({ executionState }: { executionState: string | undefined }) {
+  const [thoughts, dispatch] = useReducer(thoughtReducer, [])
+  const prevState = useRef<string | undefined>(undefined)
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (executionState === prevState.current) return
+    prevState.current = executionState
+    const entry = STAGE_TOOLS[executionState ?? ''] ?? STAGE_TOOLS.default
+    dispatch({ type: 'push', text: entry.thought })
+  }, [executionState])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [thoughts])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' }}>
+      {thoughts.map(t => (
+        <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, opacity: t.done ? 0.45 : 1, transition: 'opacity 0.4s ease' }}>
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+            <circle cx="7" cy="7" r="6" stroke={t.done ? '#6b7280' : '#6366f1'} strokeWidth="1.2"/>
+            <path d="M7 4v3.2l1.8 1.3" stroke={t.done ? '#6b7280' : '#6366f1'} strokeWidth="1.1" strokeLinecap="round"/>
+          </svg>
+          <span style={{ fontSize: 12, color: t.done ? '#6b7280' : '#a5b4fc', lineHeight: 1.5, fontStyle: 'italic' }}>
+            {t.text}
+          </span>
+          {!t.done && (
+            <Loader2 style={{ width: 11, height: 11, color: '#6366f1', flexShrink: 0, marginTop: 2 }} className="animate-spin" />
+          )}
+        </div>
+      ))}
+      <div ref={bottomRef} />
+    </div>
+  )
+}
+// ────────────────────────────────────────────────────────────────────────────
+
+type ChatRole = 'vibe' | 'user'
+interface ChatMessage { id: number; role: ChatRole; text: string; thought?: string }
 
 interface Task { task_id: string; execution_state: string; pull_request_link?: string; preview_url?: string; last_diff?: string; user_prompt?: string; job_timeline?: any[]; agent_results?: any[]; project_id?: string; guided_next_steps?: string[]; [key: string]: unknown }
 
@@ -402,6 +466,95 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   }, [task?.execution_state, projectName])
 
   const [editError, setEditError] = useState<string | null>(null)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatThought, setChatThought] = useState<string | null>(null)
+  const chatBottomRef = useRef<HTMLDivElement>(null)
+  const welcomeSentRef = useRef(false)
+
+  // Fire welcome message once when build completes
+  useEffect(() => {
+    if (!isComplete || welcomeSentRef.current) return
+    welcomeSentRef.current = true
+    const prompt = task?.user_prompt ?? ''
+    const appName = projectName || 'your app'
+    setChatMessages([{
+      id: Date.now(),
+      role: 'vibe',
+      text: `${appName} is ready. I built it from: "${prompt.slice(0, 120)}${prompt.length > 120 ? '...' : ''}". Ask me to change anything — layout, data, pages, or logic.`,
+    }])
+  }, [isComplete, task?.user_prompt, projectName])
+
+  // Auto-scroll chat to bottom on new messages
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, chatThought])
+
+  const handleChat = useCallback(async (input: string) => {
+    if (!input.trim() || !diff || isEditing) return
+    const userMsg: ChatMessage = { id: Date.now(), role: 'user', text: input }
+    setChatMessages(prev => [...prev, userMsg])
+    setChatInput('')
+    setIsEditing(true)
+    setEditError(null)
+    setChatThought('Reading current page and preparing edit...')
+    try {
+      const currentPages = parseDiff(diff)
+      const activeIdx = currentPages.findIndex(p => p.filename === activeFile)
+      const targetIdx = activeIdx >= 0 ? activeIdx : 0
+      const currentHtml = currentPages[targetIdx]?.html ?? ''
+      const { data: { session } } = await supabase.auth.getSession()
+      setChatThought('Applying your changes to the UI...')
+      const res = await fetch('/api/intake', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          edit: true,
+          context: currentHtml,
+          messages: [{ role: 'user', content: input }],
+        }),
+      })
+      const json = await res.json()
+      setChatThought(null)
+      if (!res.ok) {
+        const errMsg = json.error || `Request failed (${res.status})`
+        setEditError(errMsg)
+        setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: `I ran into an issue: ${errMsg}. Try rephrasing or simplify the request.` }])
+        return
+      }
+      const editedHtml = json.html || ''
+      // VIBE returned a clarifying question
+      if (editedHtml && !editedHtml.trim().toLowerCase().startsWith('<!doctype') && !editedHtml.trim().startsWith('<html')) {
+        setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: editedHtml.trim() }])
+        return
+      }
+      if (!editedHtml) {
+        setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'No updated HTML received. Try again.' }])
+        return
+      }
+      if (currentHtml.length > 1000 && editedHtml.length < currentHtml.length * 0.6) {
+        setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'Edit appeared truncated so I kept the original. Try a simpler change.' }])
+        return
+      }
+      const updatedPages = currentPages.map((p, i) => i === targetIdx ? { ...p, html: editedHtml } : p)
+      const newDiff = JSON.stringify(updatedPages)
+      setDiff(newDiff)
+      if (jobId) {
+        await supabase.from('jobs').update({ last_diff: newDiff, previous_diff: diff }).eq('id', jobId)
+      }
+      setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'Done — preview updated. What else would you like to change?' }])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setChatThought(null)
+      setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: `Edit failed: ${message}` }])
+    } finally {
+      setIsEditing(false)
+      setChatThought(null)
+    }
+  }, [diff, isEditing, activeFile, jobId])
 
   const handleEdit = async (promptOverride?: string) => {
     const prompt = promptOverride || editInput.trim()
@@ -663,28 +816,28 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         {/* ── PROGRESS BAR (while building) ── */}
         {!isComplete && (
           <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '12px 20px', borderBottom: '1px solid #1e1e2a' }}>
-            <span style={{ fontSize: 13, color: '#f0f0ff', display: 'block', marginBottom: 8 }}>
-              {task?.execution_state === 'planning' ? 'Planning...' :
-               task?.execution_state === 'security' ? 'Security scan...' :
-               task?.execution_state === 'building' ? 'Building...' :
-               task?.execution_state === 'validating' ? 'Validating...' :
-               task?.execution_state === 'testing' ? 'Testing...' :
-               task?.execution_state === 'qa' ? 'Quality check...' :
-               task?.execution_state === 'ux' ? 'UX review...' :
-               task?.execution_state ? String(task.execution_state).replace(/_/g, ' ') : 'Starting...'}
-            </span>
-            <div style={{ height: 3, borderRadius: 2, background: '#1e1e2a', overflow: 'hidden' }}>
+            {/* Progress bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#f0f0ff', flexShrink: 0 }}>
+                {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).label}
+              </span>
+              <span style={{ fontSize: 11, color: '#6366f1', marginLeft: 'auto', flexShrink: 0 }}>
+                {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%
+              </span>
+            </div>
+            <div style={{ height: 3, borderRadius: 2, background: '#1e1e2a', overflow: 'hidden', marginBottom: 14 }}>
               <div style={{
                 height: '100%', borderRadius: 2, background: '#6366f1',
                 transition: 'width 0.6s ease',
-                width: task?.execution_state === 'planning' ? '15%' :
-                       task?.execution_state === 'security' ? '25%' :
-                       task?.execution_state === 'building' ? '50%' :
-                       task?.execution_state === 'validating' ? '65%' :
-                       task?.execution_state === 'testing' ? '75%' :
-                       task?.execution_state === 'qa' ? '85%' :
-                       task?.execution_state === 'ux' ? '92%' : '8%'
+                width: `${(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%`
               }} />
+            </div>
+            {/* Thought stream */}
+            <div style={{
+              maxHeight: 120, overflowY: 'auto', paddingRight: 4,
+              scrollbarWidth: 'none',
+            }}>
+              <ThoughtStream executionState={task?.execution_state} />
             </div>
           </div>
         )}
@@ -1007,56 +1160,95 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         </div>
 
         {/* ── CHAT INPUT ── */}
-        <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '16px 20px' }}>
-          <div style={{ position: 'relative' }}>
-            <textarea
-              value={editPrompt}
-              onChange={(e) => setEditPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && editPrompt.trim() && !isEditing) {
-                  e.preventDefault()
-                  const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p)
-                }
-              }}
-              placeholder="Ask VIBE to change something..."
-              disabled={!isComplete || isEditing}
-              rows={2}
-              style={{
-                width: '100%', borderRadius: 8, resize: 'none',
-                background: '#0d0d12', border: '1px solid #1e1e2a',
-                padding: '10px 40px 10px 12px', fontSize: 13, color: '#f0f0ff',
-                outline: 'none', lineHeight: 1.5,
-                opacity: (!isComplete || isEditing) ? 0.4 : 1,
-                transition: 'border-color 0.15s ease'
-              }}
-              onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
-              onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
-            />
-            <button
-              onClick={() => { if (editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) } }}
-              disabled={!editPrompt.trim() || !isComplete || isEditing}
-              style={{
-                position: 'absolute', right: 6, bottom: 6, width: 30, height: 30,
-                borderRadius: 6, background: editPrompt.trim() ? '#6366f1' : 'transparent',
-                border: 'none', cursor: editPrompt.trim() ? 'pointer' : 'default',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: editPrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease'
-              }}
-            >
-              {isEditing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
-            </button>
-          </div>
-          {editError && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: '#ef4444', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8, padding: '6px 10px' }}>
-              <span>{editError}</span>
-              <button onClick={() => setEditError(null)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: 8 }}>
-                <X className="w-3 h-3" />
-              </button>
+        <div className={(sidebarOpen ? "flex" : "hidden md:flex")}
+          style={{ flexDirection: 'column', height: isComplete ? 280 : 'auto', borderTop: '1px solid #1e1e2a' }}>
+
+          {/* Message history — only when complete */}
+          {isComplete && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, scrollbarWidth: 'none' }}>
+              {chatMessages.map(msg => (
+                <div key={msg.id} style={{ display: 'flex', gap: 8, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
+                  <div style={{
+                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 9, fontWeight: 600,
+                    background: msg.role === 'vibe' ? 'rgba(99,102,241,0.15)' : '#1e1e2a',
+                    color: msg.role === 'vibe' ? '#6366f1' : '#6b7280',
+                  }}>
+                    {msg.role === 'vibe' ? 'V' : 'BL'}
+                  </div>
+                  <div style={{
+                    maxWidth: '82%', padding: '7px 10px', borderRadius: msg.role === 'vibe' ? '0 8px 8px 8px' : '8px 0 8px 8px',
+                    fontSize: 12, lineHeight: 1.5,
+                    background: msg.role === 'vibe' ? '#13131a' : 'rgba(99,102,241,0.1)',
+                    border: '1px solid #1e1e2a',
+                    color: msg.role === 'vibe' ? '#a5b4fc' : '#f0f0ff',
+                  }}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              {/* Active thought line */}
+              {chatThought && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 30 }}>
+                  <Loader2 style={{ width: 11, height: 11, color: '#6366f1', flexShrink: 0 }} className="animate-spin" />
+                  <span style={{ fontSize: 11, color: '#6366f1', fontStyle: 'italic' }}>{chatThought}</span>
+                </div>
+              )}
+              <div ref={chatBottomRef} />
             </div>
           )}
-          {task?.execution_state === 'completed' && task?.project_id && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ position: 'relative' }}>
+
+          {/* Input row */}
+          <div style={{ padding: '10px 16px', borderTop: isComplete ? '1px solid #1e1e2a' : 'none', flexShrink: 0 }}>
+            <div style={{ position: 'relative' }}>
+              <textarea
+                value={isComplete ? chatInput : editPrompt}
+                onChange={(e) => isComplete ? setChatInput(e.target.value) : setEditPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (isComplete && chatInput.trim() && !isEditing) handleChat(chatInput.trim())
+                    else if (!isComplete && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) }
+                  }
+                }}
+                placeholder={isComplete ? "Ask VIBE to change anything..." : "Ask VIBE to change something..."}
+                disabled={isEditing}
+                rows={2}
+                style={{
+                  width: '100%', borderRadius: 8, resize: 'none',
+                  background: '#0d0d12', border: '1px solid #1e1e2a',
+                  padding: '10px 40px 10px 12px', fontSize: 13, color: '#f0f0ff',
+                  outline: 'none', lineHeight: 1.5,
+                  opacity: isEditing ? 0.4 : 1,
+                  transition: 'border-color 0.15s ease',
+                }}
+                onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
+                onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
+              />
+              <button
+                onClick={() => {
+                  if (isComplete && chatInput.trim() && !isEditing) handleChat(chatInput.trim())
+                  else if (!isComplete && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) }
+                }}
+                disabled={isEditing || (isComplete ? !chatInput.trim() : !editPrompt.trim())}
+                style={{
+                  position: 'absolute', right: 6, bottom: 6, width: 30, height: 30,
+                  borderRadius: 6, border: 'none', cursor: 'pointer',
+                  background: (isComplete ? chatInput.trim() : editPrompt.trim()) ? '#6366f1' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: (isComplete ? chatInput.trim() : editPrompt.trim()) ? '#fff' : '#6b7280',
+                  transition: 'all 0.15s ease',
+                }}>
+                {isEditing
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
+              </button>
+            </div>
+
+            {/* Full rebuild input — only when complete */}
+            {isComplete && task?.project_id && (
+              <div style={{ marginTop: 8, position: 'relative' }}>
                 <input
                   value={updatePrompt}
                   onChange={(e) => setUpdatePrompt(e.target.value)}
@@ -1068,42 +1260,40 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                     background: '#0d0d12', border: '1px solid #1e1e2a',
                     padding: '0 36px 0 12px', fontSize: 13, color: '#f0f0ff',
                     outline: 'none', opacity: updatingJob ? 0.4 : 1,
-                    transition: 'border-color 0.15s ease'
+                    transition: 'border-color 0.15s ease',
                   }}
                   onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
                   onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
                 />
-                <button
-                  onClick={handleUpdate}
-                  disabled={!updatePrompt.trim() || updatingJob}
+                <button onClick={handleUpdate} disabled={!updatePrompt.trim() || updatingJob}
                   style={{
                     position: 'absolute', right: 4, top: 4, width: 30, height: 30,
-                    borderRadius: 6, background: updatePrompt.trim() ? '#6366f1' : 'transparent',
-                    border: 'none', cursor: updatePrompt.trim() ? 'pointer' : 'default',
+                    borderRadius: 6, border: 'none', cursor: updatePrompt.trim() ? 'pointer' : 'default',
+                    background: updatePrompt.trim() ? '#6366f1' : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: updatePrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease'
-                  }}
-                >
+                    color: updatePrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease',
+                  }}>
                   {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2.5 16A10 10 0 0 1 21.5 8M21.5 8A10 10 0 0 1 2.5 16"/></svg>}
                 </button>
               </div>
-            </div>
-          )}
-          {/* Footer links */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, paddingTop: 12, borderTop: '1px solid #1e1e2a' }}>
-            <button onClick={() => setShowLogs(!showLogs)}
-              style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Terminal className="w-3 h-3" /> {showLogs ? 'Hide logs' : 'Logs'}
-            </button>
-            {task?.pull_request_link && (
-              <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <ExternalLink className="w-3 h-3" /> PR
-              </a>
             )}
-            <Link href="/" style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none' }}>
-              Build something new
-            </Link>
+
+            {/* Footer links */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e1e2a' }}>
+              <button onClick={() => setShowLogs(!showLogs)}
+                style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Terminal className="w-3 h-3" /> {showLogs ? 'Hide logs' : 'Logs'}
+              </button>
+              {task?.pull_request_link && (
+                <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <ExternalLink className="w-3 h-3" /> PR
+                </a>
+              )}
+              <Link href="/" style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none' }}>
+                Build something new
+              </Link>
+            </div>
           </div>
         </div>
       </div>
