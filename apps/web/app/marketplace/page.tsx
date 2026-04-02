@@ -23,6 +23,7 @@ const CONNECTORS = [
   { id: "postgres",           name: "PostgreSQL",         emoji: "🐘", category: "Database",   description: "Connect any PostgreSQL database for live queries." },
   { id: "google-bigquery",    name: "Google BigQuery",    emoji: "🔍", category: "Analytics",  description: "Run queries against BigQuery datasets." },
   { id: "aws-s3",             name: "AWS S3",             emoji: "🪣", category: "Storage",    description: "Access files and data stored in S3 buckets." },
+  { id: "decipher",           name: "Decipher (Forsta)",  emoji: "📋", category: "Analytics",  description: "Connect your Decipher survey account to pull response data into VIBE dashboards." },
 ] as const
 
 const CATEGORIES = ["All", "CRM", "Analytics", "Database", "Storage", "Messaging", "DevTools"] as const

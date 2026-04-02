@@ -12,6 +12,7 @@ export enum ConnectorType {
   POSTGRES         = 'postgres',
   BIGQUERY         = 'google-bigquery',
   S3               = 'aws-s3',
+  DECIPHER         = 'decipher',
 }
 
 export interface NangoConnection {
@@ -36,6 +37,19 @@ export interface HubSpotContact {
   email: string;
   company: string | null;
   last_activity: string | null;
+}
+
+export interface DecipherSurvey {
+  path: string;
+  title: string;
+  state: string;
+  created: string | null;
+}
+
+export interface DecipherResponse {
+  respondent_id: string;
+  response_data: Record<string, unknown>;
+  completed_at: string | null;
 }
 
 @Injectable()
@@ -158,6 +172,66 @@ export class NangoService {
       email: c.properties?.email ?? '',
       company: c.properties?.company ?? null,
       last_activity: c.properties?.notes_last_updated ?? null,
+    }));
+  }
+  /* ── Decipher (Forsta) — uses team_integrations, not Nango ── */
+
+  private async getDecipherApiKey(teamId: string): Promise<string> {
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(
+      process.env.SUPABASE_URL ?? '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    );
+    const { data, error } = await sb
+      .from('team_integrations')
+      .select('api_key')
+      .eq('team_id', teamId)
+      .eq('provider', 'decipher')
+      .single();
+    if (error || !data?.api_key) {
+      throw new Error(`No Decipher API key found for team=${teamId}`);
+    }
+    return data.api_key;
+  }
+
+  async fetchDecipherSurveys(teamId: string): Promise<DecipherSurvey[]> {
+    const apiKey = await this.getDecipherApiKey(teamId);
+    this.logger.log(`Fetching Decipher surveys team=${teamId}`);
+    const resp = await fetch('https://v2.decipherinc.com/api/v1/surveys', {
+      headers: { 'x-apikey': apiKey, 'Accept': 'application/json' },
+    });
+    if (!resp.ok) throw new Error(`Decipher API error: ${resp.status} ${resp.statusText}`);
+    const surveys = await resp.json();
+    return (Array.isArray(surveys) ? surveys : []).map((s: any) => ({
+      path: s.path ?? s.survey_path ?? '',
+      title: s.title ?? s.name ?? '',
+      state: s.state ?? 'unknown',
+      created: s.created ?? s.date_created ?? null,
+    }));
+  }
+
+  async fetchDecipherSurveyData(
+    teamId: string,
+    surveyPath: string,
+    params: { start?: string; end?: string; limit?: string },
+  ): Promise<DecipherResponse[]> {
+    const apiKey = await this.getDecipherApiKey(teamId);
+    this.logger.log(`Fetching Decipher survey data team=${teamId} survey=${surveyPath}`);
+    const url = new URL(`https://v2.decipherinc.com/api/v1/surveys/${surveyPath}/data`);
+    url.searchParams.set('format', 'json');
+    if (params.start) url.searchParams.set('start', params.start);
+    if (params.end) url.searchParams.set('end', params.end);
+    if (params.limit) url.searchParams.set('limit', params.limit);
+
+    const resp = await fetch(url.toString(), {
+      headers: { 'x-apikey': apiKey, 'Accept': 'application/json' },
+    });
+    if (!resp.ok) throw new Error(`Decipher API error: ${resp.status} ${resp.statusText}`);
+    const rows = await resp.json();
+    return (Array.isArray(rows) ? rows : []).map((r: any) => ({
+      respondent_id: String(r.uuid ?? r.respondent_id ?? r.id ?? ''),
+      response_data: r,
+      completed_at: r.date ?? r.completed_at ?? null,
     }));
   }
 }
