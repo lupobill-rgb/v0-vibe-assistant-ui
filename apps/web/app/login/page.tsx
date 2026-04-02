@@ -59,7 +59,7 @@ export default function LoginPage() {
     <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <form onSubmit={isSignup ? handleSignup : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '320px' }}>
         <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold' }}>
-          {isSignup ? 'Create your VIBE account' : 'Sign in to VIBE'}
+          {isSignup ? 'Create your VIBE account' : 'Sign in to VIBE Staging'}
         </h1>
         <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)}
           style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: 'white' }} />
