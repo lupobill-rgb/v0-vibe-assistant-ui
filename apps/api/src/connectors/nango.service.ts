@@ -197,7 +197,7 @@ export class NangoService {
   async fetchDecipherSurveys(teamId: string): Promise<DecipherSurvey[]> {
     const apiKey = await this.getDecipherApiKey(teamId);
     this.logger.log(`Fetching Decipher surveys team=${teamId}`);
-    const resp = await fetch('https://v2.decipherinc.com/api/v1/surveys', {
+    const resp = await fetch('https://selfserve.decipherinc.com/api/v1/surveys', {
       headers: { 'x-apikey': apiKey, 'Accept': 'application/json' },
     });
     if (!resp.ok) throw new Error(`Decipher API error: ${resp.status} ${resp.statusText}`);
@@ -217,7 +217,7 @@ export class NangoService {
   ): Promise<DecipherResponse[]> {
     const apiKey = await this.getDecipherApiKey(teamId);
     this.logger.log(`Fetching Decipher survey data team=${teamId} survey=${surveyPath}`);
-    const url = new URL(`https://v2.decipherinc.com/api/v1/surveys/${surveyPath}/data`);
+    const url = new URL(`https://selfserve.decipherinc.com/api/v1/surveys/${surveyPath}/data`);
     url.searchParams.set('format', 'json');
     if (params.start) url.searchParams.set('start', params.start);
     if (params.end) url.searchParams.set('end', params.end);
