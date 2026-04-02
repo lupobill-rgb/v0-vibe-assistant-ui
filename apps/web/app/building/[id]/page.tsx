@@ -803,7 +803,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         ) : null}
       </div>
       <div className="w-full md:w-[560px] flex-shrink-0 flex flex-col order-first md:order-none" style={{ background: '#13131a', fontFamily: 'Inter, sans-serif' }}>
-        {/* ── MOBILE TOGGLE ── */}
+        {/* ── [1] MOBILE TOGGLE ── */}
         <button
           type="button"
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -816,58 +816,81 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           {sidebarOpen ? <ChevronUp className="w-4 h-4" style={{ color: '#6b7280' }} /> : <ChevronDown className="w-4 h-4" style={{ color: '#6b7280' }} />}
         </button>
 
-        {/* ── HEADER: Name + Status + Back ── */}
-        <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '20px 20px 16px', borderBottom: '1px solid #1e1e2a' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Link href="/" style={{ color: '#6b7280', display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            </Link>
-            <h1 style={{ fontSize: 15, fontWeight: 600, color: '#f0f0ff', fontFamily: "'Space Grotesk', sans-serif", lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {projectName || 'Untitled App'}
-            </h1>
-          </div>
-          {task?.execution_state === 'failed' ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 100, padding: '3px 10px' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} /> Failed
-            </span>
-          ) : isComplete ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#10b981', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 100, padding: '3px 10px' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} /> Ready
-            </span>
-          ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 100, padding: '3px 10px' }}>
-              <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#f59e0b' }} /> Building...
-            </span>
-          )}
-        </div>
-
-        {/* ── PROGRESS BAR (while building) ── */}
-        {!isComplete && (
-          <div className={(sidebarOpen ? "flex" : "hidden md:flex")} style={{ padding: '12px 20px', borderBottom: '1px solid #1e1e2a', gap: 0 }}>
-            {/* Left — progress + thought stream */}
-            <div style={{ flex: 1, paddingRight: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: '#f0f0ff', flexShrink: 0 }}>
-                  {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).label}
-                </span>
-                <span style={{ fontSize: 11, color: '#6366f1', marginLeft: 'auto', flexShrink: 0 }}>
-                  {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%
-                </span>
-              </div>
-              <div style={{ height: 3, borderRadius: 2, background: '#1e1e2a', overflow: 'hidden', marginBottom: 14 }}>
+        {/* ── [2] TOPBAR — single row: back, name, progress, status ── */}
+        <div className={(sidebarOpen ? "flex" : "hidden md:flex")}
+          style={{ alignItems: 'center', gap: 10, height: 44, padding: '0 16px', borderBottom: '1px solid #1e1e2a', flexShrink: 0 }}>
+          <Link href="/" style={{ color: '#6b7280', display: 'flex', alignItems: 'center', textDecoration: 'none', flexShrink: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </Link>
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#f0f0ff', fontFamily: "'Space Grotesk', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
+            {projectName || 'Untitled App'}
+          </span>
+          {!isComplete && (
+            <>
+              <div style={{ flex: 1, height: 3, borderRadius: 2, background: '#1e1e2a', overflow: 'hidden', minWidth: 40 }}>
                 <div style={{
                   height: '100%', borderRadius: 2, background: '#6366f1',
                   transition: 'width 0.6s ease',
                   width: `${(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%`
                 }} />
               </div>
-              <div style={{ maxHeight: 140, overflowY: 'auto', paddingRight: 4, scrollbarWidth: 'none' }}>
-                <ThoughtStream executionState={task?.execution_state} />
+              <span style={{ fontSize: 11, color: '#6366f1', flexShrink: 0, fontWeight: 500 }}>
+                {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).pct}%
+              </span>
+            </>
+          )}
+          {task?.execution_state === 'failed' ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 500, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 100, padding: '2px 9px', flexShrink: 0, marginLeft: 'auto' }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} /> Failed
+            </span>
+          ) : isComplete ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 500, color: '#10b981', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 100, padding: '2px 9px', flexShrink: 0, marginLeft: 'auto' }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981' }} /> Ready
+            </span>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 500, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 100, padding: '2px 9px', flexShrink: 0 }}>
+              <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#f59e0b' }} /> Building...
+            </span>
+          )}
+        </div>
+
+        {/* ── [3a] BUILD BODY — two-column: thoughts + tools (while building) ── */}
+        {!isComplete && (
+          <div className={(sidebarOpen ? "flex" : "hidden md:flex")} style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' }}>
+            {/* LEFT COLUMN — avatar bubble + thought stream + typing dots */}
+            <div style={{ flex: 1, padding: '14px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, scrollbarWidth: 'none' }}>
+              {/* V avatar bubble with current stage thought */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 600,
+                  background: 'rgba(99,102,241,0.15)', color: '#6366f1',
+                }}>V</div>
+                <div style={{
+                  padding: '8px 12px', borderRadius: '0 10px 10px 10px',
+                  background: 'rgba(99,102,241,0.15)', border: '1px solid #1e1e2a',
+                  fontSize: 13, lineHeight: 1.55, color: '#a5b4fc',
+                }}>
+                  {(STAGE_TOOLS[task?.execution_state ?? ''] ?? STAGE_TOOLS.default).thought}
+                </div>
+              </div>
+              <ThoughtStream executionState={task?.execution_state} />
+              {/* Typing indicator — 3 animated purple dots */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 36 }}>
+                {[0, 1, 2].map(i => (
+                  <div key={i} style={{
+                    width: 6, height: 6, borderRadius: '50%', background: '#6366f1',
+                    animation: 'pulse 1.4s ease-in-out infinite',
+                    animationDelay: `${i * 0.2}s`, opacity: 0.6,
+                  }} />
+                ))}
+                <style>{`@keyframes pulse { 0%,80%,100% { opacity:0.3; transform:scale(0.8) } 40% { opacity:1; transform:scale(1.1) } }`}</style>
               </div>
             </div>
-            {/* Right — tool panel */}
-            <div style={{ width: 148, flexShrink: 0, borderLeft: '1px solid #1e1e2a', paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6b7280', marginBottom: 2 }}>Tools</span>
+            {/* RIGHT COLUMN — tool panel */}
+            <div style={{ width: 180, flexShrink: 0, borderLeft: '1px solid #1e1e2a', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
+              <span style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6b7280', marginBottom: 2 }}>Tools used</span>
               {TOOL_STEPS.map(step => {
                 const isDone = completedTools.includes(step)
                 const isActive = task?.execution_state === step
@@ -879,12 +902,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                       background: isDone ? 'rgba(16,185,129,0.15)' : isActive ? 'rgba(99,102,241,0.15)' : '#1e1e2a',
                       color: isDone ? '#10b981' : isActive ? '#6366f1' : '#6b7280',
                     }}>
-                      {isDone ? '✓' : isActive ? <Loader2 style={{ width: 9, height: 9 }} className="animate-spin" /> : '—'}
+                      {isDone ? '\u2713' : isActive ? <Loader2 style={{ width: 9, height: 9 }} className="animate-spin" /> : '\u2014'}
                     </div>
-                    <span style={{ fontSize: 11, color: isDone ? '#6b7280' : isActive ? '#a5b4fc' : '#4b5563' }}>
+                    <span style={{ fontSize: 11, color: isDone ? '#6b7280' : isActive ? '#a5b4fc' : '#4b5563', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {TOOL_LABELS[step]}
                     </span>
-                    <span style={{ fontSize: 10, marginLeft: 'auto', color: isDone ? '#10b981' : isActive ? '#6366f1' : '#4b5563' }}>
+                    <span style={{ fontSize: 10, flexShrink: 0, color: isDone ? '#10b981' : isActive ? '#6366f1' : '#4b5563' }}>
                       {isDone ? 'done' : isActive ? 'live' : 'next'}
                     </span>
                   </div>
@@ -894,461 +917,451 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         )}
 
-        {/* ── PRIMARY ACTIONS (when complete) ── */}
+        {/* ── [3b] COMPLETE BODY — actions, pages, chat ── */}
         {isComplete && (
-          <div className={(sidebarOpen ? "block" : "hidden md:block")} style={{ padding: '16px 20px', borderBottom: '1px solid #1e1e2a' }}>
-            {previewUrl && (
-              <a href={previewUrl} target="_blank" rel="noopener noreferrer"
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  width: '100%', height: 44, borderRadius: 8, border: 'none',
-                  background: '#6366f1', color: '#fff', fontSize: 14, fontWeight: 600,
-                  cursor: 'pointer', textDecoration: 'none', marginBottom: 8
-                }}>
-                <ExternalLink className="w-4 h-4" /> Open App
-              </a>
-            )}
-            {publishedUrl ? (() => {
-              const shareUrl = domainVerified && customDomain
-                ? `https://${customDomain}`
-                : typeof window !== 'undefined'
-                  ? `${window.location.origin}/s/${jobId}`
-                  : `/s/${jobId}`
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                    <Check className="w-3.5 h-3.5" style={{ color: '#10b981', flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, color: '#10b981', fontWeight: 500 }}>Live{domainVerified ? ' — Custom Domain' : ''}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <a href={shareUrl} target="_blank" rel="noopener noreferrer"
-                      style={{
-                        flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '0 10px', height: 38, borderRadius: 8,
-                        background: '#0d0d12', border: '1px solid #1e1e2a',
-                        fontSize: 12, color: '#6366f1', textDecoration: 'none', overflow: 'hidden'
-                      }}>
-                      <Globe className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shareUrl.replace(/^https?:\/\//, '')}</span>
-                    </a>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(shareUrl)
-                        setCopied(true)
-                        safeTimeout(() => setCopied(false), 2000)
-                      }}
-                      style={{
-                        flexShrink: 0, height: 38, padding: '0 12px', borderRadius: 8,
-                        background: '#0d0d12', border: '1px solid #1e1e2a',
-                        fontSize: 12, fontWeight: 500, color: '#f0f0ff', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 6
-                      }}>
-                      {copied ? <><Check className="w-3 h-3" style={{ color: '#10b981' }} /> Copied</> : <><ClipboardCopy className="w-3 h-3" /> Copy</>}
-                    </button>
-                  </div>
-                </div>
-              )
-            })() : (
-              <button
-                type="button"
-                onClick={() => setShowDomainModal(true)}
-                disabled={publishing}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  width: '100%', height: 44, borderRadius: 8,
-                  background: 'transparent', border: '1px solid #1e1e2a',
-                  color: '#f0f0ff', fontSize: 13, fontWeight: 500,
-                  cursor: 'pointer', opacity: publishing ? 0.5 : 1
-                }}>
-                {publishing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Publishing...</> : 'Push Live'}
-              </button>
-            )}
-            {publishError && (
-              <p style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{publishError}</p>
-            )}
-
-            {/* ── Push Live modal (portal to body to escape overflow:hidden) ── */}
-            {showDomainModal && createPortal(
-              <div
-                role="dialog"
-                aria-modal="true"
-                style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
-              >
-                <div style={{ width: '100%', maxWidth: 448, borderRadius: 16, background: '#1e293b', border: '1px solid #334155', padding: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 className="text-sm font-semibold text-white">Push Live</h3>
-                    <button type="button" onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}
-                      className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
-                  </div>
-
-                  {!dnsInstructions ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {/* Option 1: VIBE URL */}
-                      <button type="button"
-                        onClick={async () => {
-                          if (!jobId) return
-                          setPublishing(true)
-                          setPublishError(null)
-                          try {
-                            const result = await publishJob(jobId)
-                            if (result.error) { setPublishError(result.error) }
-                            else if (result.published_url) { setPublishedUrl(result.published_url); setShowDomainModal(false) }
-                          } catch (err: any) { setPublishError(err.message || 'Publish failed') }
-                          finally { setPublishing(false) }
-                        }}
-                        disabled={publishing}
+          <div className={(sidebarOpen ? "flex" : "hidden md:flex")} style={{ flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            {/* TOP SECTION — Open App + Push Live + publishError */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #1e1e2a', flexShrink: 0 }}>
+              {previewUrl && (
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%', height: 44, borderRadius: 8, border: 'none',
+                    background: '#6366f1', color: '#fff', fontSize: 14, fontWeight: 600,
+                    cursor: 'pointer', textDecoration: 'none', marginBottom: 8
+                  }}>
+                  <ExternalLink className="w-4 h-4" /> Open App
+                </a>
+              )}
+              {publishedUrl ? (() => {
+                const shareUrl = domainVerified && customDomain
+                  ? `https://${customDomain}`
+                  : typeof window !== 'undefined'
+                    ? `${window.location.origin}/s/${jobId}`
+                    : `/s/${jobId}`
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                      <Check className="w-3.5 h-3.5" style={{ color: '#10b981', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: '#10b981', fontWeight: 500 }}>Live{domainVerified ? ' \u2014 Custom Domain' : ''}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <a href={shareUrl} target="_blank" rel="noopener noreferrer"
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '0 10px', height: 38, borderRadius: 8,
+                          background: '#0d0d12', border: '1px solid #1e1e2a',
+                          fontSize: 12, color: '#6366f1', textDecoration: 'none', overflow: 'hidden'
+                        }}>
+                        <Globe className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shareUrl.replace(/^https?:\/\//, '')}</span>
+                      </a>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(shareUrl)
+                          setCopied(true)
+                          safeTimeout(() => setCopied(false), 2000)
+                        }}
+                        style={{
+                          flexShrink: 0, height: 38, padding: '0 12px', borderRadius: 8,
+                          background: '#0d0d12', border: '1px solid #1e1e2a',
+                          fontSize: 12, fontWeight: 500, color: '#f0f0ff', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 6
+                        }}>
+                        {copied ? <><Check className="w-3 h-3" style={{ color: '#10b981' }} /> Copied</> : <><ClipboardCopy className="w-3 h-3" /> Copy</>}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })() : (
+                <button
+                  type="button"
+                  onClick={() => setShowDomainModal(true)}
+                  disabled={publishing}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%', height: 44, borderRadius: 8,
+                    background: 'transparent', border: '1px solid #1e1e2a',
+                    color: '#f0f0ff', fontSize: 13, fontWeight: 500,
+                    cursor: 'pointer', opacity: publishing ? 0.5 : 1
+                  }}>
+                  {publishing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Publishing...</> : 'Push Live'}
+                </button>
+              )}
+              {publishError && (
+                <p style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{publishError}</p>
+              )}
+
+              {/* ── Push Live modal (portal to body to escape overflow:hidden) ── */}
+              {showDomainModal && createPortal(
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
+                >
+                  <div style={{ width: '100%', maxWidth: 448, borderRadius: 16, background: '#1e293b', border: '1px solid #334155', padding: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <h3 className="text-sm font-semibold text-white">Push Live</h3>
+                      <button type="button" onClick={() => { setShowDomainModal(false); setDnsInstructions(null); setPublishError(null) }}
+                        className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+                    </div>
+
+                    {!dnsInstructions ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <button type="button"
+                          onClick={async () => {
+                            if (!jobId) return
+                            setPublishing(true)
+                            setPublishError(null)
+                            try {
+                              const result = await publishJob(jobId)
+                              if (result.error) { setPublishError(result.error) }
+                              else if (result.published_url) { setPublishedUrl(result.published_url); setShowDomainModal(false) }
+                            } catch (err: any) { setPublishError(err.message || 'Publish failed') }
+                            finally { setPublishing(false) }
+                          }}
+                          disabled={publishing}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                            padding: '12px 16px', borderRadius: 12,
+                            background: '#0d0d12', border: '1px solid #1e1e2a',
+                            color: '#f0f0ff', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            textAlign: 'left', opacity: publishing ? 0.5 : 1
+                          }}>
+                          <Globe className="w-4 h-4" style={{ color: '#6366f1', flexShrink: 0 }} />
+                          <div>
+                            <div style={{ fontWeight: 600 }}>Publish to VIBE URL</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Get a shareable link instantly</div>
+                          </div>
+                          {publishing && <Loader2 className="w-4 h-4 animate-spin" style={{ marginLeft: 'auto' }} />}
+                        </button>
+
+                        <div style={{
+                          display: 'flex', flexDirection: 'column', gap: 10, width: '100%',
                           padding: '12px 16px', borderRadius: 12,
                           background: '#0d0d12', border: '1px solid #1e1e2a',
-                          color: '#f0f0ff', fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                          textAlign: 'left', opacity: publishing ? 0.5 : 1
                         }}>
-                        <Globe className="w-4 h-4" style={{ color: '#6366f1', flexShrink: 0 }} />
-                        <div>
-                          <div style={{ fontWeight: 600 }}>Publish to VIBE URL</div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Get a shareable link instantly</div>
-                        </div>
-                        {publishing && <Loader2 className="w-4 h-4 animate-spin" style={{ marginLeft: 'auto' }} />}
-                      </button>
-
-                      {/* Option 2: Custom domain */}
-                      <div style={{
-                        display: 'flex', flexDirection: 'column', gap: 10, width: '100%',
-                        padding: '12px 16px', borderRadius: 12,
-                        background: '#0d0d12', border: '1px solid #1e1e2a',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <Lock className="w-4 h-4" style={{ color: '#a855f7', flexShrink: 0 }} />
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 13, color: '#f0f0ff' }}>Use my own domain</div>
-                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Point your domain to this app</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <Lock className="w-4 h-4" style={{ color: '#a855f7', flexShrink: 0 }} />
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: '#f0f0ff' }}>Use my own domain</div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Point your domain to this app</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                              value={customDomain}
+                              onChange={(e) => setCustomDomain(e.target.value)}
+                              placeholder="app.yourdomain.com"
+                              onKeyDown={(e) => { if (e.key === 'Enter' && customDomain.trim() && !connectingDomain) handleConnectDomain() }}
+                              className="flex-1 h-9 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleConnectDomain}
+                              disabled={connectingDomain || !customDomain.trim()}
+                              style={{
+                                height: 36, padding: '0 14px', borderRadius: 8,
+                                background: '#a855f7', border: 'none', color: '#fff',
+                                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                opacity: (connectingDomain || !customDomain.trim()) ? 0.5 : 1,
+                                display: 'flex', alignItems: 'center', gap: 6
+                              }}>
+                              {connectingDomain ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Connect'}
+                            </button>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <input
-                            value={customDomain}
-                            onChange={(e) => setCustomDomain(e.target.value)}
-                            placeholder="app.yourdomain.com"
-                            onKeyDown={(e) => { if (e.key === 'Enter' && customDomain.trim() && !connectingDomain) handleConnectDomain() }}
-                            className="flex-1 h-9 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleConnectDomain}
-                            disabled={connectingDomain || !customDomain.trim()}
-                            style={{
-                              height: 36, padding: '0 14px', borderRadius: 8,
-                              background: '#a855f7', border: 'none', color: '#fff',
-                              fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                              opacity: (connectingDomain || !customDomain.trim()) ? 0.5 : 1,
-                              display: 'flex', alignItems: 'center', gap: 6
+
+                        {publishError && (
+                          <p style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{publishError}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <p style={{ fontSize: 12, color: '#94a3b8' }}>
+                          Add these DNS records with your domain provider:
+                        </p>
+                        {[dnsInstructions.cname, dnsInstructions.txt].map((rec) => {
+                          const key = `${rec.type}-${rec.name}`
+                          return (
+                            <div key={key} style={{
+                              position: 'relative', padding: '10px 14px', borderRadius: 8,
+                              background: '#0d0d12', border: '1px solid #1e1e2a', fontFamily: 'monospace', fontSize: 11
                             }}>
-                            {connectingDomain ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Connect'}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`${rec.type}\t${rec.name}\t${rec.value}`)
+                                  setDomainCopied(key)
+                                  safeTimeout(() => setDomainCopied(null), 2000)
+                                }}
+                                style={{
+                                  position: 'absolute', top: 6, right: 6, background: 'none', border: 'none',
+                                  cursor: 'pointer', padding: 2
+                                }}>
+                                {domainCopied === key
+                                  ? <Check className="w-3 h-3" style={{ color: '#10b981' }} />
+                                  : <ClipboardCopy className="w-3 h-3" style={{ color: '#64748b' }} />}
+                              </button>
+                              <div style={{ display: 'flex', gap: 8, color: '#94a3b8' }}>
+                                <span style={{ width: 40 }}>Type</span>
+                                <span style={{ color: '#f0f0ff', fontWeight: 600 }}>{rec.type}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, color: '#94a3b8', marginTop: 4 }}>
+                                <span style={{ width: 40 }}>Name</span>
+                                <span style={{ color: '#f0f0ff', wordBreak: 'break-all' }}>{rec.name}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, color: '#94a3b8', marginTop: 4 }}>
+                                <span style={{ width: 40 }}>Value</span>
+                                <span style={{ color: '#f0f0ff', wordBreak: 'break-all' }}>{rec.value}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={handleVerifyDomain}
+                          disabled={verifying}
+                          style={{
+                            height: 40, borderRadius: 8, border: '1px solid rgba(168,85,247,0.4)',
+                            background: 'rgba(168,85,247,0.1)', color: '#a855f7',
+                            fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                            opacity: verifying ? 0.5 : 1,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                          }}>
+                          {verifying
+                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking DNS...</>
+                            : "I've added these records \u2014 Verify"}
+                        </button>
+                        {publishError && (
+                          <p style={{ fontSize: 12, color: '#ef4444' }}>{publishError}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>,
+                document.body
+              )}
+            </div>
+
+            {/* PAGES SECTION */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', borderBottom: '1px solid #1e1e2a' }}>
+              {successToast && (
+                <div style={{ fontSize: 12, color: '#10b981', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>
+                  {successToast}
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pages</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddPage(true)}
+                  style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6366f1', cursor: 'pointer' }}
+                >
+                  + Add page
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {pages.map((p, i) => (
+                  <div key={p.filename}>
+                    <button
+                      onClick={() => setActiveFile(p.filename)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        width: '100%', padding: '7px 10px', borderRadius: 6,
+                        background: activeFile === p.filename ? 'rgba(99,102,241,0.08)' : 'transparent',
+                        border: 'none', cursor: 'pointer', transition: 'background 0.15s ease'
+                      }}
+                    >
+                      <span style={{
+                        fontSize: 13, fontWeight: activeFile === p.filename ? 500 : 400,
+                        color: activeFile === p.filename ? '#f0f0ff' : '#6b7280',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                      }}>{p.name}</span>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (editingPageIndex === i) { setEditingPageIndex(null) }
+                          else { setEditingPageIndex(i); setEditingHtml(p.html) }
+                        }}
+                        style={{ flexShrink: 0, marginLeft: 8, color: '#6b7280', cursor: 'pointer', opacity: activeFile === p.filename ? 0.7 : 0 }}
+                        title={`Edit ${p.name}`}
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </span>
+                    </button>
+                    {editingPageIndex === i && (
+                      <div style={{ marginTop: 4, borderRadius: 8, border: '1px solid #1e1e2a', overflow: 'hidden' }}>
+                        <textarea
+                          value={editingHtml}
+                          onChange={(e) => setEditingHtml(e.target.value)}
+                          spellCheck={false}
+                          style={{
+                            width: '100%', height: 192, background: '#0d0d12', color: '#c0c0d0',
+                            fontSize: 12, fontFamily: 'monospace', padding: 12, border: 'none',
+                            resize: 'vertical', outline: 'none'
+                          }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '8px 12px', background: '#13131a', borderTop: '1px solid #1e1e2a' }}>
+                          <button
+                            onClick={() => setEditingPageIndex(null)}
+                            style={{ background: 'none', border: 'none', fontSize: 12, color: '#6b7280', cursor: 'pointer' }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              const updated = pages.map((pg, idx) => idx === i ? { ...pg, html: editingHtml } : pg)
+                              setDiff(JSON.stringify(updated))
+                              setEditingPageIndex(null)
+                            }}
+                            style={{
+                              background: '#6366f1', border: 'none', borderRadius: 6,
+                              padding: '4px 12px', fontSize: 12, fontWeight: 500, color: '#fff', cursor: 'pointer'
+                            }}
+                          >
+                            Save
                           </button>
                         </div>
                       </div>
-
-                      {publishError && (
-                        <p style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{publishError}</p>
-                      )}
-                    </div>
-                  ) : (
-                    /* DNS instructions + verify */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <p style={{ fontSize: 12, color: '#94a3b8' }}>
-                        Add these DNS records with your domain provider:
-                      </p>
-                      {[dnsInstructions.cname, dnsInstructions.txt].map((rec) => {
-                        const key = `${rec.type}-${rec.name}`
-                        return (
-                          <div key={key} style={{
-                            position: 'relative', padding: '10px 14px', borderRadius: 8,
-                            background: '#0d0d12', border: '1px solid #1e1e2a', fontFamily: 'monospace', fontSize: 11
-                          }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(`${rec.type}\t${rec.name}\t${rec.value}`)
-                                setDomainCopied(key)
-                                safeTimeout(() => setDomainCopied(null), 2000)
-                              }}
-                              style={{
-                                position: 'absolute', top: 6, right: 6, background: 'none', border: 'none',
-                                cursor: 'pointer', padding: 2
-                              }}>
-                              {domainCopied === key
-                                ? <Check className="w-3 h-3" style={{ color: '#10b981' }} />
-                                : <ClipboardCopy className="w-3 h-3" style={{ color: '#64748b' }} />}
-                            </button>
-                            <div style={{ display: 'flex', gap: 8, color: '#94a3b8' }}>
-                              <span style={{ width: 40 }}>Type</span>
-                              <span style={{ color: '#f0f0ff', fontWeight: 600 }}>{rec.type}</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, color: '#94a3b8', marginTop: 4 }}>
-                              <span style={{ width: 40 }}>Name</span>
-                              <span style={{ color: '#f0f0ff', wordBreak: 'break-all' }}>{rec.name}</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, color: '#94a3b8', marginTop: 4 }}>
-                              <span style={{ width: 40 }}>Value</span>
-                              <span style={{ color: '#f0f0ff', wordBreak: 'break-all' }}>{rec.value}</span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                      <button
-                        type="button"
-                        onClick={handleVerifyDomain}
-                        disabled={verifying}
-                        style={{
-                          height: 40, borderRadius: 8, border: '1px solid rgba(168,85,247,0.4)',
-                          background: 'rgba(168,85,247,0.1)', color: '#a855f7',
-                          fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                          opacity: verifying ? 0.5 : 1,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
-                        }}>
-                        {verifying
-                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking DNS...</>
-                          : "I've added these records — Verify"}
-                      </button>
-                      {publishError && (
-                        <p style={{ fontSize: 12, color: '#ef4444' }}>{publishError}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>,
-              document.body
-            )}
-          </div>
-        )}
-
-        {/* ── PAGES ── */}
-        <div className={"flex-1 overflow-y-auto flex flex-col " + (sidebarOpen ? "" : "hidden md:flex")} style={{ padding: '16px 20px', borderBottom: '1px solid #1e1e2a' }}>
-          {successToast && (
-            <div style={{ fontSize: 12, color: '#10b981', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>
-              {successToast}
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pages</span>
-            {isComplete && (
-              <button
-                type="button"
-                onClick={() => setShowAddPage(true)}
-                style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6366f1', cursor: 'pointer' }}
-              >
-                + Add page
-              </button>
-            )}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {pages.map((p, i) => (
-              <div key={p.filename}>
-                <button
-                  onClick={() => setActiveFile(p.filename)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    width: '100%', padding: '7px 10px', borderRadius: 6,
-                    background: activeFile === p.filename ? 'rgba(99,102,241,0.08)' : 'transparent',
-                    border: 'none', cursor: 'pointer', transition: 'background 0.15s ease'
-                  }}
-                >
-                  <span style={{
-                    fontSize: 13, fontWeight: activeFile === p.filename ? 500 : 400,
-                    color: activeFile === p.filename ? '#f0f0ff' : '#6b7280',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                  }}>{p.name}</span>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (editingPageIndex === i) { setEditingPageIndex(null) }
-                      else { setEditingPageIndex(i); setEditingHtml(p.html) }
-                    }}
-                    style={{ flexShrink: 0, marginLeft: 8, color: '#6b7280', cursor: 'pointer', opacity: activeFile === p.filename ? 0.7 : 0 }}
-                    title={`Edit ${p.name}`}
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </span>
-                </button>
-                {editingPageIndex === i && (
-                  <div style={{ marginTop: 4, borderRadius: 8, border: '1px solid #1e1e2a', overflow: 'hidden' }}>
-                    <textarea
-                      value={editingHtml}
-                      onChange={(e) => setEditingHtml(e.target.value)}
-                      spellCheck={false}
-                      style={{
-                        width: '100%', height: 192, background: '#0d0d12', color: '#c0c0d0',
-                        fontSize: 12, fontFamily: 'monospace', padding: 12, border: 'none',
-                        resize: 'vertical', outline: 'none'
-                      }}
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '8px 12px', background: '#13131a', borderTop: '1px solid #1e1e2a' }}>
-                      <button
-                        onClick={() => setEditingPageIndex(null)}
-                        style={{ background: 'none', border: 'none', fontSize: 12, color: '#6b7280', cursor: 'pointer' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => {
-                          const updated = pages.map((pg, idx) => idx === i ? { ...pg, html: editingHtml } : pg)
-                          setDiff(JSON.stringify(updated))
-                          setEditingPageIndex(null)
-                        }}
-                        style={{
-                          background: '#6366f1', border: 'none', borderRadius: 6,
-                          padding: '4px 12px', fontSize: 12, fontWeight: 500, color: '#fff', cursor: 'pointer'
-                        }}
-                      >
-                        Save
-                      </button>
+
+            {/* CHAT SECTION — fixed height 260px */}
+            <div style={{ display: 'flex', flexDirection: 'column', height: 260, flexShrink: 0 }}>
+              {/* Message history scrollable */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 12, scrollbarWidth: 'none' }}>
+                {chatMessages.map(msg => (
+                  <div key={msg.id} style={{ display: 'flex', gap: 8, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 600,
+                      background: msg.role === 'vibe' ? 'rgba(99,102,241,0.15)' : '#1e1e2a',
+                      color: msg.role === 'vibe' ? '#6366f1' : '#6b7280',
+                    }}>
+                      {msg.role === 'vibe' ? 'V' : 'BL'}
                     </div>
+                    <div style={{
+                      maxWidth: '78%', padding: '8px 12px',
+                      borderRadius: msg.role === 'vibe' ? '0 10px 10px 10px' : '10px 0 10px 10px',
+                      fontSize: 13, lineHeight: 1.55,
+                      background: msg.role === 'vibe' ? '#13131a' : 'rgba(99,102,241,0.1)',
+                      border: '1px solid #1e1e2a',
+                      color: msg.role === 'vibe' ? '#a5b4fc' : '#f0f0ff',
+                    }}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                {/* Active thought line */}
+                {chatThought && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 32 }}>
+                    <Loader2 style={{ width: 11, height: 11, color: '#6366f1', flexShrink: 0 }} className="animate-spin" />
+                    <span style={{ fontSize: 12, color: '#6366f1', fontStyle: 'italic' }}>{chatThought}</span>
                   </div>
                 )}
+                <div ref={chatBottomRef} />
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* ── CHAT INPUT ── */}
-        <div className={(sidebarOpen ? "flex" : "hidden md:flex")}
-          style={{ flexDirection: 'column', flex: isComplete ? 1 : 'none', minHeight: 0, borderTop: '1px solid #1e1e2a' }}>
-
-          {/* Message history — only when complete */}
-          {isComplete && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 12, scrollbarWidth: 'none' }}>
-              {chatMessages.map(msg => (
-                <div key={msg.id} style={{ display: 'flex', gap: 8, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 600,
-                    background: msg.role === 'vibe' ? 'rgba(99,102,241,0.15)' : '#1e1e2a',
-                    color: msg.role === 'vibe' ? '#6366f1' : '#6b7280',
-                  }}>
-                    {msg.role === 'vibe' ? 'V' : 'BL'}
-                  </div>
-                  <div style={{
-                    maxWidth: '78%', padding: '8px 12px',
-                    borderRadius: msg.role === 'vibe' ? '0 10px 10px 10px' : '10px 0 10px 10px',
-                    fontSize: 13, lineHeight: 1.55,
-                    background: msg.role === 'vibe' ? '#13131a' : 'rgba(99,102,241,0.1)',
-                    border: '1px solid #1e1e2a',
-                    color: msg.role === 'vibe' ? '#a5b4fc' : '#f0f0ff',
-                  }}>
-                    {msg.text}
-                  </div>
+              {/* Input row */}
+              <div style={{ padding: '12px 20px', borderTop: '1px solid #1e1e2a', flexShrink: 0 }}>
+                <div style={{ position: 'relative' }}>
+                  <textarea
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        if (chatInput.trim() && !isEditing) handleChat(chatInput.trim())
+                      }
+                    }}
+                    placeholder="Ask VIBE to change anything..."
+                    disabled={isEditing}
+                    rows={2}
+                    style={{
+                      width: '100%', borderRadius: 8, resize: 'none',
+                      background: '#0d0d12', border: '1px solid #1e1e2a',
+                      padding: '10px 40px 10px 12px', fontSize: 13, color: '#f0f0ff',
+                      outline: 'none', lineHeight: 1.5,
+                      opacity: isEditing ? 0.4 : 1,
+                      transition: 'border-color 0.15s ease',
+                    }}
+                    onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
+                    onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
+                  />
+                  <button
+                    onClick={() => { if (chatInput.trim() && !isEditing) handleChat(chatInput.trim()) }}
+                    disabled={isEditing || !chatInput.trim()}
+                    style={{
+                      position: 'absolute', right: 6, bottom: 6, width: 30, height: 30,
+                      borderRadius: 6, border: 'none', cursor: 'pointer',
+                      background: chatInput.trim() ? '#6366f1' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: chatInput.trim() ? '#fff' : '#6b7280',
+                      transition: 'all 0.15s ease',
+                    }}>
+                    {isEditing
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
+                  </button>
                 </div>
-              ))}
-              {/* Active thought line */}
-              {chatThought && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 32 }}>
-                  <Loader2 style={{ width: 11, height: 11, color: '#6366f1', flexShrink: 0 }} className="animate-spin" />
-                  <span style={{ fontSize: 12, color: '#6366f1', fontStyle: 'italic' }}>{chatThought}</span>
+
+                {/* Full rebuild input */}
+                {task?.project_id && (
+                  <div style={{ marginTop: 8, position: 'relative' }}>
+                    <input
+                      value={updatePrompt}
+                      onChange={(e) => setUpdatePrompt(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && updatePrompt.trim() && !updatingJob) handleUpdate() }}
+                      placeholder="Start a full rebuild..."
+                      disabled={updatingJob}
+                      style={{
+                        width: '100%', height: 38, borderRadius: 8,
+                        background: '#0d0d12', border: '1px solid #1e1e2a',
+                        padding: '0 36px 0 12px', fontSize: 13, color: '#f0f0ff',
+                        outline: 'none', opacity: updatingJob ? 0.4 : 1,
+                        transition: 'border-color 0.15s ease',
+                      }}
+                      onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
+                      onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
+                    />
+                    <button onClick={handleUpdate} disabled={!updatePrompt.trim() || updatingJob}
+                      style={{
+                        position: 'absolute', right: 4, top: 4, width: 30, height: 30,
+                        borderRadius: 6, border: 'none', cursor: updatePrompt.trim() ? 'pointer' : 'default',
+                        background: updatePrompt.trim() ? '#6366f1' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: updatePrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease',
+                      }}>
+                      {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2.5 16A10 10 0 0 1 21.5 8M21.5 8A10 10 0 0 1 2.5 16"/></svg>}
+                    </button>
+                  </div>
+                )}
+
+                {/* Footer links */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e1e2a' }}>
+                  <button onClick={() => setShowLogs(!showLogs)}
+                    style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Terminal className="w-3 h-3" /> {showLogs ? 'Hide logs' : 'Logs'}
+                  </button>
+                  {task?.pull_request_link && (
+                    <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ExternalLink className="w-3 h-3" /> PR
+                    </a>
+                  )}
+                  <Link href="/" style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none' }}>
+                    Build something new
+                  </Link>
                 </div>
-              )}
-              <div ref={chatBottomRef} />
-            </div>
-          )}
-
-          {/* Input row */}
-          <div style={{ padding: '12px 20px', borderTop: isComplete ? '1px solid #1e1e2a' : 'none', flexShrink: 0 }}>
-            <div style={{ position: 'relative' }}>
-              <textarea
-                value={isComplete ? chatInput : editPrompt}
-                onChange={(e) => isComplete ? setChatInput(e.target.value) : setEditPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    if (isComplete && chatInput.trim() && !isEditing) handleChat(chatInput.trim())
-                    else if (!isComplete && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) }
-                  }
-                }}
-                placeholder={isComplete ? "Ask VIBE to change anything..." : "Ask VIBE to change something..."}
-                disabled={isEditing}
-                rows={2}
-                style={{
-                  width: '100%', borderRadius: 8, resize: 'none',
-                  background: '#0d0d12', border: '1px solid #1e1e2a',
-                  padding: '10px 40px 10px 12px', fontSize: 13, color: '#f0f0ff',
-                  outline: 'none', lineHeight: 1.5,
-                  opacity: isEditing ? 0.4 : 1,
-                  transition: 'border-color 0.15s ease',
-                }}
-                onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
-                onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
-              />
-              <button
-                onClick={() => {
-                  if (isComplete && chatInput.trim() && !isEditing) handleChat(chatInput.trim())
-                  else if (!isComplete && editPrompt.trim() && !isEditing) { const p = editPrompt.trim(); setEditPrompt(''); handleEdit(p) }
-                }}
-                disabled={isEditing || (isComplete ? !chatInput.trim() : !editPrompt.trim())}
-                style={{
-                  position: 'absolute', right: 6, bottom: 6, width: 30, height: 30,
-                  borderRadius: 6, border: 'none', cursor: 'pointer',
-                  background: (isComplete ? chatInput.trim() : editPrompt.trim()) ? '#6366f1' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: (isComplete ? chatInput.trim() : editPrompt.trim()) ? '#fff' : '#6b7280',
-                  transition: 'all 0.15s ease',
-                }}>
-                {isEditing
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
-              </button>
-            </div>
-
-            {/* Full rebuild input — only when complete */}
-            {isComplete && task?.project_id && (
-              <div style={{ marginTop: 8, position: 'relative' }}>
-                <input
-                  value={updatePrompt}
-                  onChange={(e) => setUpdatePrompt(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && updatePrompt.trim() && !updatingJob) handleUpdate() }}
-                  placeholder="Start a full rebuild..."
-                  disabled={updatingJob}
-                  style={{
-                    width: '100%', height: 38, borderRadius: 8,
-                    background: '#0d0d12', border: '1px solid #1e1e2a',
-                    padding: '0 36px 0 12px', fontSize: 13, color: '#f0f0ff',
-                    outline: 'none', opacity: updatingJob ? 0.4 : 1,
-                    transition: 'border-color 0.15s ease',
-                  }}
-                  onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
-                  onBlur={(e) => { e.target.style.borderColor = '#1e1e2a' }}
-                />
-                <button onClick={handleUpdate} disabled={!updatePrompt.trim() || updatingJob}
-                  style={{
-                    position: 'absolute', right: 4, top: 4, width: 30, height: 30,
-                    borderRadius: 6, border: 'none', cursor: updatePrompt.trim() ? 'pointer' : 'default',
-                    background: updatePrompt.trim() ? '#6366f1' : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: updatePrompt.trim() ? '#fff' : '#6b7280', transition: 'all 0.15s ease',
-                  }}>
-                  {updatingJob ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2.5 16A10 10 0 0 1 21.5 8M21.5 8A10 10 0 0 1 2.5 16"/></svg>}
-                </button>
               </div>
-            )}
-
-            {/* Footer links */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e1e2a' }}>
-              <button onClick={() => setShowLogs(!showLogs)}
-                style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Terminal className="w-3 h-3" /> {showLogs ? 'Hide logs' : 'Logs'}
-              </button>
-              {task?.pull_request_link && (
-                <a href={task.pull_request_link} target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <ExternalLink className="w-3 h-3" /> PR
-                </a>
-              )}
-              <Link href="/" style={{ fontSize: 12, color: '#6b7280', textDecoration: 'none' }}>
-                Build something new
-              </Link>
             </div>
           </div>
-        </div>
+        )}
       </div>
       {showLogs && (
         <div className="absolute inset-0 z-50 flex items-end justify-center pb-6 px-6" style={{ background: 'rgba(0,0,0,0.6)' }}>
