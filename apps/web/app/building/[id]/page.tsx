@@ -469,7 +469,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     setChatMessages([{
       id: Date.now(),
       role: 'vibe',
-      text: `${appName} is ready${truncated ? ` — built from "${truncated}${prompt.split(' ').length > truncated.split(' ').length ? '...' : ''}"` : ''}. Ask me to change anything — layout, data, pages, or logic.`,
+      text: `${appName} is ready${truncated ? ` — built from "${truncated}${prompt.split(' ').length > truncated.split(' ').length ? '...' : ''}"` : ''}. If any charts or sections are missing, just ask me to add them. Ask me to change anything — layout, data, pages, or logic.`,
     }])
   }, [task?.execution_state, task?.user_prompt, projectName])
 
