@@ -298,6 +298,9 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   // 4d. Resolve published assets this team can see (own + visible teams)
   const publishedAssets = resolvedTeamId ? await resolvePublishedAssets(sb, resolvedTeamId) : '';
 
+  // 4d2. Resolve subscribed cross-team feeds
+  const subscribedFeeds = resolvedTeamId ? await resolveSubscribedFeeds(sb, resolvedTeamId) : '';
+
   // 4e. Resolve department skills for this team (skip for dashboard — saves ~20K tokens)
   const isDashboard = mode === 'dashboard';
   const deptSkillsResult = (resolvedTeamId && !isDashboard)
@@ -330,6 +333,7 @@ Brand voice: ${brandVoice}
 Brand color fallback (only use if user prompt specifies no colors): ${primaryColor}
 Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
     + publishedAssets
+    + subscribedFeeds
     + hubSpotData
     + deptSkillsResult.text
     + helperBlock
@@ -488,6 +492,39 @@ async function resolvePublishedAssets(
 ${lines.join('\n')}
 Query via: vibeLoadData('published_assets', {asset_type: '<type>'}) or vibeLoadData('budget_allocations') for budget data.
 --- END PUBLISHED ASSETS ---`;
+}
+
+async function resolveSubscribedFeeds(
+  supabase: ReturnType<typeof getPlatformSupabaseClient>,
+  teamId: string,
+): Promise<string> {
+  const { data: subs, error } = await supabase
+    .from('feed_subscriptions')
+    .select('asset_id, published_assets!inner(asset_type, original_filename, row_count, column_schema, team_id, teams!inner(name))')
+    .eq('subscriber_team_id', teamId)
+    .eq('status', 'active')
+    .limit(10);
+
+  if (error) {
+    console.log(`[KERNEL] resolveSubscribedFeeds error for team=${teamId}: ${error.message}`);
+    return '';
+  }
+  if (!subs || subs.length === 0) return '';
+
+  const lines = subs.map((s: any) => {
+    const a = s.published_assets;
+    const teamName = a?.teams?.name ?? 'unknown';
+    const cols = Array.isArray(a?.column_schema)
+      ? a.column_schema.map((c: any) => c.name).join(', ')
+      : '';
+    return `- ${a?.asset_type} from ${teamName}: ${a?.original_filename ?? 'data feed'}, ${a?.row_count ?? 0} rows${cols ? ` [${cols}]` : ''}`;
+  });
+
+  return `\n--- SUBSCRIBED CROSS-TEAM FEEDS ---
+This team subscribes to these cross-team data feeds:
+${lines.join('\n')}
+Use this data to enrich builds when relevant to the user's request.
+--- END SUBSCRIBED FEEDS ---`;
 }
 
 // --- Department mapping from team name → skill_registry.team_function ---
