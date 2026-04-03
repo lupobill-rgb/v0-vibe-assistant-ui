@@ -214,6 +214,9 @@ async function bootstrap() {
   app.use('/api/feeds', express.json(), feedsRouter);
   app.use('/api/webhooks', express.json(), webhooksRouter);
 
+  // ── Skill trigger management ──
+  { const skillTriggersRouter = (await import('./routes/skill-triggers')).default; app.use('/api/skills', express.json(), skillTriggersRouter); }
+
   // Serve static preview files (require signed preview token)
   app.use('/previews', (req: Request, res: Response, next: NextFunction) => {
     const token = (req.query.token as string | undefined)
