@@ -6,8 +6,6 @@ const router = express.Router();
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 function extractUserId(req: Request): string | null {
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) {
@@ -29,8 +27,6 @@ async function verifyTeamMembership(userId: string, teamId: string): Promise<boo
     .limit(1);
   return (data?.length ?? 0) > 0;
 }
-
-// ── POST /subscribe ──────────────────────────────────────────────────────────
 
 router.post('/subscribe', async (req: Request, res: Response) => {
   try {
@@ -68,9 +64,6 @@ router.post('/subscribe', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// ── POST /unsubscribe ────────────────────────────────────────────────────────
-
 router.post('/unsubscribe', async (req: Request, res: Response) => {
   try {
     const userId = extractUserId(req);
@@ -95,9 +88,6 @@ router.post('/unsubscribe', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// ── GET /recommendations ─────────────────────────────────────────────────────
-
 router.get('/recommendations', async (req: Request, res: Response) => {
   try {
     const userId = extractUserId(req);
@@ -139,12 +129,20 @@ async function getFeedRecommendations(
     .single();
   if (!team?.org_id) return [];
 
-  // Find cross-team feeds not already subscribed
+  // Find other teams in the same org
+  const { data: orgTeams } = await sb
+    .from('teams')
+    .select('id')
+    .eq('org_id', team.org_id)
+    .neq('id', teamId);
+  const otherTeamIds = (orgTeams ?? []).map((t: any) => t.id);
+  if (otherTeamIds.length === 0) return [];
+
+  // Find cross-team feeds
   const { data: feeds } = await sb
     .from('published_assets')
     .select('id, asset_type, original_filename, row_count, team_id, teams!inner(name)')
-    .eq('teams.org_id', team.org_id)
-    .neq('team_id', teamId);
+    .in('team_id', otherTeamIds);
 
   if (!feeds || feeds.length === 0) return [];
 
@@ -176,15 +174,25 @@ async function getFeedRecommendations(
       },
       body: JSON.stringify({ prompt, system, model: 'claude', max_tokens: 512 }),
     });
-    if (!llmRes.ok) return [];
+    if (!llmRes.ok) {
+      console.warn(`[FEEDS] Edge function returned ${llmRes.status}`);
+      return [];
+    }
     const llmData = await llmRes.json();
-    const text = llmData.diff || '';
-    const jsonMatch = text.match(/\{[\s\S]*"recommendations"[\s\S]*\}/);
-    if (!jsonMatch) return [];
-    const parsed = JSON.parse(jsonMatch[0]);
+    const text = (llmData.diff || '').trim();
+    if (!text) return [];
+    // Try direct JSON parse first, then regex extraction
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const jsonMatch = text.match(/\{[\s\S]*"recommendations"[\s\S]*\}/);
+      if (!jsonMatch) return [];
+      parsed = JSON.parse(jsonMatch[0]);
+    }
     return (parsed.recommendations || []).slice(0, 2);
-  } catch (err) {
-    console.error('[FEEDS] LLM recommendation failed (non-blocking):', err);
+  } catch (err: any) {
+    console.error('[FEEDS] LLM recommendation failed (non-blocking):', err.message);
     return [];
   }
 }
