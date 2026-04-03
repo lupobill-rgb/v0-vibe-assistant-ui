@@ -203,6 +203,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   const [projectTeamId, setProjectTeamId] = useState<string | undefined>()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [nudgeDismissed, setNudgeDismissed] = useState(false)
+  const [feedRecs, setFeedRecs] = useState<{ assetId: string; feedName: string; publisherTeam: string; reason: string }[]>([])
+  const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set())
   const router = useRouter()
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
@@ -472,6 +474,55 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       text: `${appName} is ready${truncated ? ` — built from "${truncated}${prompt.split(' ').length > truncated.split(' ').length ? '...' : ''}"` : ''}. If any charts or sections are missing, just ask me to add them. Ask me to change anything — layout, data, pages, or logic.`,
     }])
   }, [task?.execution_state, task?.user_prompt, projectName])
+
+  // Fetch feed recommendations after build completes
+  useEffect(() => {
+    if (task?.execution_state !== 'completed' || !jobId || !projectTeamId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        const res = await fetch(`${API_URL}/api/feeds/recommendations?jobId=${jobId}&teamId=${projectTeamId}`, {
+          headers: {
+            'X-Tenant-Id': TENANT_ID,
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+        })
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        if (!cancelled && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+          setFeedRecs(data.recommendations.slice(0, 2))
+        }
+      } catch { /* non-blocking — empty recs is fine */ }
+    })()
+    return () => { cancelled = true }
+  }, [task?.execution_state, jobId, projectTeamId])
+
+  const handleSubscribeFeed = useCallback(async (assetId: string, feedName: string) => {
+    if (!projectTeamId || subscribedIds.has(assetId)) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch(`${API_URL}/api/feeds/subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Id': TENANT_ID,
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ assetId, teamId: projectTeamId }),
+      })
+      if (!res.ok) return
+      setSubscribedIds(prev => new Set(prev).add(assetId))
+      const projectType = task?.user_prompt?.split(' ').slice(0, 4).join(' ') || 'project'
+      setChatMessages(prev => [...prev, {
+        id: Date.now(),
+        role: 'vibe' as const,
+        text: `Subscribed to ${feedName}. Try: "Rebuild this ${projectType} with ${feedName} data included"`,
+      }])
+    } catch { /* silent — button stays enabled for retry */ }
+  }, [projectTeamId, subscribedIds, task?.user_prompt])
 
   // Auto-scroll chat to bottom on new messages
   useEffect(() => {
@@ -1132,6 +1183,41 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                     </div>
                   </div>
                 ))}
+                {/* Feed recommendations card */}
+                {feedRecs.length > 0 && (
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 10,
+                    background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#a5b4fc', marginBottom: 8 }}>
+                      📡 Teams sharing data you might use:
+                    </div>
+                    {feedRecs.map(rec => (
+                      <div key={rec.assetId} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '6px 0', gap: 8,
+                      }}>
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: '#f0f0ff' }}>{rec.feedName}</span>
+                          <span style={{ fontSize: 12, color: '#6b7280' }}> from {rec.publisherTeam}</span>
+                          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{rec.reason}</div>
+                        </div>
+                        <button
+                          onClick={() => handleSubscribeFeed(rec.assetId, rec.feedName)}
+                          disabled={subscribedIds.has(rec.assetId)}
+                          style={{
+                            flexShrink: 0, padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                            border: 'none', cursor: subscribedIds.has(rec.assetId) ? 'default' : 'pointer',
+                            background: subscribedIds.has(rec.assetId) ? 'rgba(16,185,129,0.1)' : '#6366f1',
+                            color: subscribedIds.has(rec.assetId) ? '#10b981' : '#fff',
+                            transition: 'all 0.15s ease',
+                          }}>
+                          {subscribedIds.has(rec.assetId) ? '✓ Subscribed' : 'Subscribe'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* Active thought line */}
                 {chatThought && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 32 }}>
