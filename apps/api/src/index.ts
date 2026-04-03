@@ -16,6 +16,7 @@ import { isBudgetRelated } from './lib/ingest-budget-csv';
 import { ingestTeamAsset, detectAssetType, hasPublishIntent } from './lib/ingest-team-asset';
 import teamsDomainRouter from './routes/teams-domain.route';
 import { extractTenantFromJwt } from './middleware/tenant';
+import { startExecutionRunner } from './kernel/execution-runner';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -1728,6 +1729,9 @@ Include ALL rows from the original data with their final calculated values. This
   // Start the NestJS server
   await nestApp.listen(PORT);
   console.log(`VIBE API server running on port ${PORT}`);
+
+  // Start the autonomous execution runner (polls for pending executions)
+  startExecutionRunner();
 }
 
 bootstrap().catch((error) => {
