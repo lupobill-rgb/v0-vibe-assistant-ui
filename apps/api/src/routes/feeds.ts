@@ -178,7 +178,7 @@ async function getFeedRecommendations(
       console.warn(`[FEEDS] Edge function returned ${llmRes.status}`);
       return [];
     }
-    const llmData = await llmRes.json();
+    const llmData = (await llmRes.json()) as { diff?: string };
     const text = (llmData.diff || '').trim();
     if (!text) return [];
     // Try direct JSON parse first, then regex extraction
