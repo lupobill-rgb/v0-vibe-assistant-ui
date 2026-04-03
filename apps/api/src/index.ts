@@ -26,6 +26,7 @@ import previewRouter from './routes/preview';
 import billingRouter from './routes/billing';
 import stripeBillingRouter from './billing/billing.controller';
 import financeRouter from './routes/finance';
+import feedsRouter from './routes/feeds';
 import { getPlatformSupabaseClient } from './supabase/client';
 import {
   INITIAL_BUILD_BUDGETS,
@@ -208,6 +209,7 @@ async function bootstrap() {
   app.use('/api/billing', stripeBillingRouter);
   app.use('/api/billing', express.json(), billingRouter);
   app.use('/api/finance', financeRouter);
+  app.use('/api/feeds', express.json(), feedsRouter);
 
   // Serve static preview files (require signed preview token)
   app.use('/previews', (req: Request, res: Response, next: NextFunction) => {
