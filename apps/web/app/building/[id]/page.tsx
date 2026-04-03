@@ -475,9 +475,12 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     }])
   }, [task?.execution_state, task?.user_prompt, projectName])
 
-  // Fetch feed recommendations after build completes
+  // Fetch feed recommendations after build completes (once)
+  const feedRecsFetchedRef = useRef(false)
   useEffect(() => {
     if (task?.execution_state !== 'completed' || !jobId || !projectTeamId) return
+    if (feedRecsFetchedRef.current) return
+    feedRecsFetchedRef.current = true
     let cancelled = false
     ;(async () => {
       try {
