@@ -1,3 +1,4 @@
+import { SupabaseClient } from '@supabase/supabase-js';
 import { getPlatformSupabaseClient } from '../supabase/client';
 
 /**
@@ -12,7 +13,7 @@ import { getPlatformSupabaseClient } from '../supabase/client';
  *  6. Insert a cascade_edge linking source → target execution
  */
 
-interface CascadeResult {
+export interface CascadeResult {
   dispatched: number;
   edges: string[];
   errors: string[];
@@ -20,8 +21,10 @@ interface CascadeResult {
 
 export async function resolveCascade(
   executionId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabaseOverride?: SupabaseClient<any, any, any>,
 ): Promise<CascadeResult> {
-  const supabase = getPlatformSupabaseClient();
+  const supabase = supabaseOverride ?? getPlatformSupabaseClient();
   const result: CascadeResult = { dispatched: 0, edges: [], errors: [] };
 
   // 1. Fetch the completed execution
