@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import { dispatchPendingExecutions } from '../kernel/execution-dispatcher';
 
 const router = express.Router();
 
@@ -98,6 +99,11 @@ router.post('/:provider', async (req: Request, res: Response) => {
       console.error(`[webhook] autonomous_executions insert failed:`, insertError.message);
       return res.status(500).json({ error: 'Failed to create execution records' });
     }
+
+    // Fire dispatcher asynchronously — don't block the webhook response
+    dispatchPendingExecutions().catch((err) => {
+      console.error('[webhook] dispatchPendingExecutions error:', err);
+    });
 
     return res.status(201).json({
       matched: skills.length,
