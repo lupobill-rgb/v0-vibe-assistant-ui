@@ -1,11 +1,38 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
+import { useTeam } from "@/contexts/TeamContext"
+import { supabase } from "@/lib/supabase"
 import { HeroSection } from "@/components/dashboard/hero-section"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { ProjectsGrid } from "@/components/dashboard/projects-grid"
 
 export default function HomePage() {
+  const { currentOrg } = useTeam()
+  const router = useRouter()
+  const [checked, setChecked] = useState(false)
+
+  useEffect(() => {
+    if (!currentOrg?.id) return
+    supabase
+      .from("org_feature_flags")
+      .select("stage")
+      .eq("organization_id", currentOrg.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.stage === "onboarding") {
+          router.replace("/onboarding")
+        } else {
+          setChecked(true)
+        }
+      })
+      .catch(() => setChecked(true))
+  }, [currentOrg?.id, router])
+
+  if (!checked) return <AppShell><div className="min-h-screen" /></AppShell>
+
   return (
     <AppShell>
       <div className="min-h-screen">

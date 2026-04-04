@@ -186,7 +186,7 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
-      return { text: data.text ?? "", ready: data.ready, enrichedPrompt: data.enrichedPrompt, summary: data.summary }
+      return { text: data.text ?? "", ready: data.ready, enrichedPrompt: data.enrichedPrompt, summary: data.summary, redirect: data.redirect }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         throw new Error("AI took too long to respond. Please try again.")
@@ -262,6 +262,11 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
     conversationRef.current = [{ role: "user", content: prompt.trim() + pathNote + fileNote }]
     try {
       const response = await callClaude(conversationRef.current)
+      if (response.redirect) {
+        setMessages([{ role: "assistant", text: response.text || "Redirecting..." }])
+        router.push(response.redirect)
+        return
+      }
       const reply = response.text
       if (response.ready && response.enrichedPrompt) {
         setEnrichedPrompt(response.enrichedPrompt)
