@@ -8,7 +8,22 @@ import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { API_URL } from "@/lib/api"
 
-type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean }
+type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean; trigger_on: string | null }
+
+/* ── Provider display names ── */
+const PROVIDER_NAMES: Record<string, string> = {
+  hubspot: "HubSpot", airtable: "Airtable", salesforce: "Salesforce",
+  ga4: "Google Analytics", "google-analytics-4": "Google Analytics",
+  jira: "Jira", github: "GitHub", quickbooks: "QuickBooks",
+  bamboohr: "BambooHR", docusign: "DocuSign", slack: "Slack",
+  mixpanel: "Mixpanel", "google-sheet": "Google Sheets",
+}
+
+function parseProvider(triggerOn: string | null): string | null {
+  if (!triggerOn) return null
+  const provider = triggerOn.split(":")[0].trim().toLowerCase()
+  return provider || null
+}
 
 /* ── Connector definitions ── */
 const CONNECTORS = [
@@ -42,7 +57,7 @@ export default function MarketplacePage() {
   const [skillSearch, setSkillSearch] = useState("")
 
   useEffect(() => {
-    supabase.from("skill_registry").select("id, team_function, skill_name, description, is_active").order("team_function").order("skill_name")
+    supabase.from("skill_registry").select("id, team_function, skill_name, description, is_active, trigger_on").order("team_function").order("skill_name")
       .then(({ data }) => { if (data) setSkills(data as Skill[]) })
   }, [])
 
@@ -153,7 +168,11 @@ export default function MarketplacePage() {
                 <div key={dept} className="mb-8">
                   <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">{dept}</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {deptSkills.map((s) => (
+                    {deptSkills.map((s) => {
+                      const provider = parseProvider(s.trigger_on)
+                      const displayName = provider ? (PROVIDER_NAMES[provider] ?? provider) : null
+                      const isProviderConnected = provider ? connectedIds.has(provider) : false
+                      return (
                       <div key={s.id} className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30">
                         <div className="absolute top-3 right-3 flex items-end gap-1.5">
                           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{s.team_function}</span>
@@ -167,8 +186,26 @@ export default function MarketplacePage() {
                           <h3 className="font-semibold text-base text-foreground truncate pr-24">{s.skill_name}</h3>
                         </div>
                         <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{s.description ? s.description.slice(0, 120) + (s.description.length > 120 ? "…" : "") : "No description"}</p>
+                        {displayName && (
+                          <div className="mt-3 pt-3 border-t border-border/50">
+                            {isProviderConnected ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-green-500/15 text-green-400 border border-green-500/25">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                                {displayName} Connected
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => { setPreselectedConnector(provider!); setSection("connectors"); setConnectOpen(true) }}
+                                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-[#A855F7]/15 text-[#A855F7] border border-[#A855F7]/25 hover:bg-[#A855F7]/25 transition-colors cursor-pointer"
+                              >
+                                Requires {displayName} → Connect
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))}
