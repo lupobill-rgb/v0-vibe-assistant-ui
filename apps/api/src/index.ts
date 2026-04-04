@@ -1742,12 +1742,4 @@ bootstrap().catch((error) => {
   process.exit(1);
 });
 
-// connector-routes-v1
-
-
-// connector-routes-v1
-
-
-// cache-bust: 2026-03-25
-
-// cache-bust: 20260331115418
+// cache-bust: 20260404
