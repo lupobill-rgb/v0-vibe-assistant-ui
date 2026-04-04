@@ -553,7 +553,7 @@ const DEPARTMENT_MAP: Record<string, string> = {
   general: 'general',
 };
 
-function resolveDepartment(teamName: string): string {
+export function resolveDepartment(teamName: string): string {
   const lower = teamName.toLowerCase().trim();
   return DEPARTMENT_MAP[lower] ?? 'general';
 }
