@@ -109,7 +109,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
       if (!orgId || !teamId) {
         const { data: team } = await sb
           .from('teams')
-          .select('id, organization_id')
+          .select('id, org_id')
           .eq('team_function', skill.team_function)
           .limit(1)
           .single();
@@ -118,7 +118,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
           console.warn(`[webhook] No team found for team_function=${skill.team_function}, skipping skill ${skill.id}`);
           continue;
         }
-        orgId = orgId ?? team.organization_id;
+        orgId = orgId ?? team.org_id;
         teamId = teamId ?? team.id;
       }
 
