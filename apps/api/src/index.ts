@@ -8,7 +8,7 @@ import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { resolveKernelContext } from './kernel/context-injector';
+import { resolveKernelContext, resolveDepartment } from './kernel/context-injector';
 import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
 import { promisify } from 'util';
 import { resolveMode } from './edge-function';
@@ -114,13 +114,27 @@ function verifyPreviewToken(token: string, requestedJobId: string): boolean {
   }
 }
 
-function getGuidedNextSteps(prompt: string): string[] {
+const DEPT_NUDGE_TEXT: Record<string, string> = {
+  sales: 'Connect HubSpot to pull your live deals and contacts',
+  marketing: 'Connect GA4 to show real traffic and conversion data',
+  engineering: 'Connect GitHub to sync your repos and PRs',
+  product: 'Connect Jira to pull your sprints and roadmap',
+  hr: 'Connect BambooHR to sync employee and candidate data',
+  finance: 'Connect QuickBooks to pull transactions and reports',
+  legal: 'Connect DocuSign to track contracts and signatures',
+  operations: 'Connect Airtable to sync your operational data',
+  support: 'Connect HubSpot to pull your support tickets',
+  data: 'Connect Airtable to pull your datasets',
+};
+
+function getGuidedNextSteps(prompt: string, department?: string): string[] {
   const lower = prompt.toLowerCase();
   const dataKeywords = /\b(revenue|pipeline|sales|dashboard|analytics|data|metrics|performance|report|forecast|crm|contacts|deals)\b/;
   const alreadyConnected = /\b(uploaded|csv|connected|hubspot|salesforce|airtable)\b/;
   if (dataKeywords.test(lower) && !alreadyConnected.test(lower)) {
+    const nudge = (department && DEPT_NUDGE_TEXT[department]) ?? 'Connect your CRM (HubSpot or Salesforce) to populate this dashboard with live data';
     return [
-      'Connect your CRM (HubSpot or Salesforce) to populate this dashboard with live data',
+      nudge,
       'Upload a CSV file with your data to see real numbers instead of placeholders',
       'Go to Marketplace → Connectors to set up your data sources',
     ];
@@ -1489,8 +1503,16 @@ Include ALL rows from the original data with their final calculated values. This
           job_timeline = null;
         }
       }
-      const guided_next_steps = getGuidedNextSteps(task.user_prompt ?? '');
-      res.json({ ...task, job_timeline, guided_next_steps });
+      let department: string | undefined;
+      if (task.project_id) {
+        const project = await storage.getProject(task.project_id);
+        if (project) {
+          const team = await storage.getTeam(project.team_id);
+          if (team) department = resolveDepartment(team.name);
+        }
+      }
+      const guided_next_steps = getGuidedNextSteps(task.user_prompt ?? '', department);
+      res.json({ ...task, job_timeline, guided_next_steps, department });
     } catch (error) {
       console.error('Error fetching task:', error);
       res.status(500).json({ error: 'Failed to fetch task' });
