@@ -920,9 +920,15 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
 }}</script>`;
           const injectSupabaseCredentials = (html: string): string => {
             let result = html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey).replace(/__TEAM_ID__/g, project.team_id || '').replace(/\bfade-up\b/g, 'animate-in');
-            // Inject vibeLoadData into <head> so it's defined before any chart scripts execute
+            // Inject vibeLoadData — try <head>, fallback to <html>, fallback to prepend
             if (result.toLowerCase().includes('<head>')) {
               result = result.replace(/(<head[^>]*>)/i, `$1\n${VIBE_LOAD_DATA_SCRIPT}`);
+            } else if (result.toLowerCase().includes('<html>')) {
+              result = result.replace(/(<html[^>]*>)/i, `$1\n<head>${VIBE_LOAD_DATA_SCRIPT}</head>`);
+            } else if (result.toLowerCase().includes('<!doctype')) {
+              result = result.replace(/(<!doctype[^>]*>)/i, `$1\n<head>${VIBE_LOAD_DATA_SCRIPT}</head>`);
+            } else {
+              result = `${VIBE_LOAD_DATA_SCRIPT}\n${result}`;
             }
             return result;
           };
@@ -1278,6 +1284,34 @@ Include ALL rows from the original data with their final calculated values. This
             }
           }
 
+          // ── Golden Template Resolution ──────────────────────────────
+          let goldenTemplateContent: string | null = null;
+          try {
+            const { data: goldenMatches } = await supabase
+              .from('skill_registry')
+              .select('skill_name, content, description')
+              .eq('plugin_name', 'golden-templates')
+              .eq('is_active', true);
+            if (goldenMatches?.length) {
+              const promptLower = prompt.toLowerCase();
+              const match = goldenMatches.find((t: any) =>
+                t.description?.toLowerCase().split(' ').filter((w: string) => w.length > 4)
+                  .some((keyword: string) => promptLower.includes(keyword))
+              );
+              if (match) {
+                goldenTemplateContent = match.content;
+                await storage.logEvent(taskId, `Matched golden template: ${match.skill_name}`, 'info');
+              }
+            }
+          } catch (gtErr: any) {
+            console.warn('[KERNEL] golden template lookup failed:', gtErr.message);
+          }
+
+          if (goldenTemplateContent) {
+            enrichedPrompt += `\n\n--- GOLDEN TEMPLATE (use this as your generation blueprint, do NOT ask clarifying questions) ---\n\n${goldenTemplateContent}`;
+          }
+
+          // ── Planning step ──────────────────────────────────────────
           try {
             plan = await runStep('planning', async () => {
             await storage.logEvent(taskId, 'Generating plan...', 'info');
