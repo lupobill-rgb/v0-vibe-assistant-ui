@@ -66,13 +66,32 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     if (!currentTeam?.id) return
+
+    // Primary: query team_integrations directly (always available)
+    supabase
+      .from("team_integrations")
+      .select("provider")
+      .eq("team_id", currentTeam.id)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setConnectedIds(new Set(data.map((r: { provider: string }) => r.provider)))
+        }
+      })
+
+    // Secondary: also check Nango API and merge results
     supabase.auth.getSession().then(({ data: { session } }) => {
       fetch(`${API_URL}/connectors/${currentTeam.id}`, {
         headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
       })
       .then((r) => r.ok ? r.json() : null)
       .then((data: { connectors: string[] } | null) => {
-        if (data?.connectors) setConnectedIds(new Set(data.connectors))
+        if (data?.connectors?.length) {
+          setConnectedIds((prev) => {
+            const merged = new Set(prev)
+            data.connectors.forEach((c) => merged.add(c))
+            return merged
+          })
+        }
       })
       .catch(() => {})
     })
