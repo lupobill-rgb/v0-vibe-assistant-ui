@@ -66,6 +66,31 @@ router.post('/:provider', async (req: Request, res: Response) => {
     const orgIdHeader = req.headers['x-vibe-org-id'] as string | undefined;
     const teamIdHeader = req.headers['x-vibe-team-id'] as string | undefined;
 
+    // Resolve org/team from Nango connectionId via team_integrations
+    const connectionId: string | undefined =
+      typeof payload.connectionId === 'string' ? payload.connectionId : undefined;
+
+    let resolvedOrgId: string | undefined = orgIdHeader;
+    let resolvedTeamId: string | undefined = teamIdHeader;
+
+    if ((!resolvedOrgId || !resolvedTeamId) && connectionId) {
+      const { data: integration } = await sb
+        .from('team_integrations')
+        .select('team_id, teams!inner(org_id)')
+        .eq('nango_connection_id', connectionId)
+        .limit(1)
+        .single();
+
+      if (integration) {
+        const teamsData = integration.teams as unknown as { org_id: string };
+        resolvedTeamId = resolvedTeamId ?? integration.team_id;
+        resolvedOrgId = resolvedOrgId ?? teamsData.org_id;
+        console.log(`[webhook] Resolved org=${resolvedOrgId} team=${resolvedTeamId} from connectionId=${connectionId}`);
+      } else {
+        console.warn(`[webhook] No team_integrations row for connectionId=${connectionId}`);
+      }
+    }
+
     const executions: Array<{
       organization_id: string;
       team_id: string;
@@ -77,10 +102,10 @@ router.post('/:provider', async (req: Request, res: Response) => {
     }> = [];
 
     for (const skill of skills) {
-      let orgId = orgIdHeader;
-      let teamId = teamIdHeader;
+      let orgId = resolvedOrgId;
+      let teamId = resolvedTeamId;
 
-      // If org/team not provided via headers, attempt to resolve from teams table
+      // Fallback: resolve from teams table by team_function if still missing
       if (!orgId || !teamId) {
         const { data: team } = await sb
           .from('teams')
