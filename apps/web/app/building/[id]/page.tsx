@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useRef, useState, useReducer, useLayoutEffect } from "react"
+import { use, useCallback, useEffect, useMemo, useRef, useState, useReducer } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -715,7 +715,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 <ExternalLink className="w-3 h-3" /> Open
               </a>
             </div>
-            <iframe key={previewUrl} src={previewUrl} sandbox="allow-scripts allow-same-origin"
+            <iframe key={previewUrl} src={previewUrl} sandbox="allow-scripts"
               className="flex-1 w-full border-0 bg-white" title="Generated website preview" />
             {task?.execution_state === 'completed' && guidedNextSteps.length > 0 && !nudgeDismissed && (
               <div style={{
