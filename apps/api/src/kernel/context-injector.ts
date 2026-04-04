@@ -187,7 +187,7 @@ CHART.JS LOADING — CRITICAL:
  * Resolves the kernel context string injected before every job prompt.
  * Queries team membership, data scopes, and brand tokens for the given user+org.
  */
-export async function resolveKernelContext(userId: string, orgId: string, teamId?: string, prompt?: string, mode?: string): Promise<{ context: string; injectSupabaseHelpers: boolean }> {
+export async function resolveKernelContext(userId: string, orgId: string, teamId?: string, prompt?: string, mode?: string): Promise<{ context: string; injectSupabaseHelpers: boolean; connectorNudges: string[] }> {
   const sb = getPlatformSupabaseClient();
   console.log(`[KERNEL] resolveKernelContext called — userId=${userId}, orgId=${orgId}, teamId=${teamId ?? 'auto'}`);
 
@@ -305,7 +305,7 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   const isDashboard = mode === 'dashboard';
   const deptSkillsResult = (resolvedTeamId && !isDashboard)
     ? await resolveDepartmentSkills(sb, resolvedTeamId, teamName, prompt)
-    : { text: '', needsSupabaseHelpers: false };
+    : { text: '', needsSupabaseHelpers: false, connectorNudges: [] as string[] };
 
   // 5. Format and return
   const visibleTeams = resolvedTeamId ? await resolveVisibleTeams(sb, resolvedTeamId) : '';
@@ -344,6 +344,7 @@ Font: ${fontHeading}` + visibleTeams + budgetContext + uploadedData
   return {
     context: contextStr,
     injectSupabaseHelpers: injectHelpers,
+    connectorNudges: deptSkillsResult.connectorNudges,
   };
 }
 
@@ -557,6 +558,38 @@ function resolveDepartment(teamName: string): string {
   return DEPARTMENT_MAP[lower] ?? 'general';
 }
 
+// --- Connector-to-department mapping ---
+const CONNECTOR_DEPT_MAP: Record<string, string[]> = {
+  hubspot: ['sales', 'marketing'],
+  salesforce: ['sales'],
+  airtable: ['operations', 'product', 'engineering'],
+  'google-analytics-4': ['marketing'],
+};
+
+/** All connector types that have department mappings */
+const MAPPED_CONNECTORS = Object.keys(CONNECTOR_DEPT_MAP);
+
+/**
+ * Fetches active Nango connectors for a team via NangoService.
+ * Returns empty array on failure — never blocks skill resolution.
+ */
+async function getTeamConnectors(teamId: string): Promise<string[]> {
+  try {
+    const nango = getNangoService();
+    return await nango.listActiveConnections(teamId);
+  } catch (err) {
+    console.warn('[KERNEL] getTeamConnectors failed (non-blocking):', (err as Error).message);
+    return [];
+  }
+}
+
+/**
+ * Returns connectors relevant to a department (connected or available).
+ */
+function getRelevantConnectors(department: string): string[] {
+  return MAPPED_CONNECTORS.filter(c => CONNECTOR_DEPT_MAP[c]?.includes(department));
+}
+
 const MAX_SKILL_BYTES = 16 * 1024; // 16KB cap on injected skill text
 
 /**
@@ -590,7 +623,7 @@ export async function resolveDepartmentSkills(
   teamId: string,
   teamName: string,
   prompt?: string,
-): Promise<{ text: string; needsSupabaseHelpers: boolean }> {
+): Promise<{ text: string; needsSupabaseHelpers: boolean; connectorNudges: string[] }> {
   const resolvedDept = resolveDepartment(teamName);
 
   // Query skills for the resolved department
@@ -603,7 +636,7 @@ export async function resolveDepartmentSkills(
 
   if (error) {
     console.log(`[KERNEL] resolveDepartmentSkills error for team=${teamId}: ${error.message}`);
-    return { text: '', needsSupabaseHelpers: false };
+    return { text: '', needsSupabaseHelpers: false, connectorNudges: [] };
   }
 
   let finalSkills = skills ?? [];
@@ -619,7 +652,7 @@ export async function resolveDepartmentSkills(
     finalSkills = generalSkills ?? [];
   }
 
-  if (finalSkills.length === 0) return { text: '', needsSupabaseHelpers: false };
+  if (finalSkills.length === 0) return { text: '', needsSupabaseHelpers: false, connectorNudges: [] };
 
   // Score skills against prompt and select top 2-3
   let selected: typeof finalSkills;
@@ -627,10 +660,8 @@ export async function resolveDepartmentSkills(
     const promptTokens = tokenize(prompt);
     const scored = finalSkills.map(s => ({ skill: s, score: scoreSkill(s, promptTokens) }));
     scored.sort((a, b) => b.score - a.score);
-    // Take top 3, but at least 2 if available
     selected = scored.slice(0, 3).map(s => s.skill);
   } else {
-    // No prompt — return up to 3 skills (alphabetical)
     selected = finalSkills.slice(0, 3);
   }
 
@@ -642,12 +673,46 @@ export async function resolveDepartmentSkills(
     skillBlock = skillBlock.slice(0, MAX_SKILL_BYTES);
   }
 
+  // --- Connector awareness: check Nango for active connections ---
+  const relevantConnectors = getRelevantConnectors(resolvedDept);
+  const connectorNudges: string[] = [];
+
+  if (relevantConnectors.length > 0) {
+    const activeConnectors = await getTeamConnectors(teamId);
+    const activeSet = new Set(activeConnectors);
+
+    for (const connector of relevantConnectors) {
+      const label = connector.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      if (activeSet.has(connector)) {
+        // Connected — append data source context to skill block
+        skillBlock += `\n\nCONNECTED DATA SOURCE: ${label} — use vibeLoadData() to pull live ${connectorDataHint(connector)} data`;
+        console.log(`[KERNEL] Connector ${connector} active for team=${teamId}, appending to skills`);
+      } else {
+        // Available but not connected — flag for vibePrompt nudge
+        connectorNudges.push(connector);
+        console.log(`[KERNEL] Connector ${connector} available but not connected for team=${teamId}`);
+      }
+    }
+  }
+
   const needsHelpers = shouldInjectHelpers(skillBlock, prompt ?? '');
-  console.log(`[KERNEL] Injected ${selected.length}/${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}, supabaseHelpers=${needsHelpers}`);
+  console.log(`[KERNEL] Injected ${selected.length}/${finalSkills.length} department skills (${resolvedDept}) for team ${teamId}, supabaseHelpers=${needsHelpers}, nudges=${connectorNudges.length}`);
   return {
     text: `\n--- DEPARTMENT SKILLS (${resolvedDept}) ---\n${skillBlock}\n--- END DEPARTMENT SKILLS ---`,
     needsSupabaseHelpers: needsHelpers,
+    connectorNudges,
   };
+}
+
+/** Returns a human-readable data hint for each connector type */
+function connectorDataHint(connector: string): string {
+  switch (connector) {
+    case 'hubspot': return 'deal/contact';
+    case 'salesforce': return 'opportunity/lead';
+    case 'airtable': return 'base/record';
+    case 'google-analytics-4': return 'traffic/conversion';
+    default: return 'integration';
+  }
 }
 
 async function resolveActiveConnectors(teamId: string): Promise<string[]> {
