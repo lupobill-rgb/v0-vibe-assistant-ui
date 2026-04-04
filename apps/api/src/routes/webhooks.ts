@@ -18,12 +18,14 @@ const router = express.Router();
  */
 router.post('/:provider', async (req: Request, res: Response) => {
   try {
-    const { provider } = req.params;
+    const payload = req.body ?? {};
+    // Prefer providerConfigKey from Nango webhook payload over URL route param
+    const provider: string =
+      (typeof payload.providerConfigKey === 'string' && payload.providerConfigKey) ||
+      req.params.provider;
     if (!provider) {
       return res.status(400).json({ error: 'Missing provider parameter' });
     }
-
-    const payload = req.body ?? {};
     const sb = getPlatformSupabaseClient();
 
     // Extract model from Nango sync webhook payload (e.g. "deals", "contacts")
