@@ -1,8 +1,14 @@
 import express, { Request, Response } from 'express';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { dispatchPendingExecutions } from '../kernel/execution-dispatcher';
+import { ConnectorType } from '../connectors/nango.service';
 
 const router = express.Router();
+
+const WEBHOOK_SECRET = process.env.VIBE_WEBHOOK_SECRET;
+
+/** Whitelist of valid provider slugs to prevent wildcard injection in LIKE queries. */
+const VALID_PROVIDERS = new Set<string>(Object.values(ConnectorType));
 
 /**
  * POST /api/webhooks/:provider
@@ -18,6 +24,14 @@ const router = express.Router();
  */
 router.post('/:provider', async (req: Request, res: Response) => {
   try {
+    // Auth: require shared secret header (if configured)
+    if (WEBHOOK_SECRET) {
+      const provided = req.headers['x-vibe-webhook-secret'] as string | undefined;
+      if (provided !== WEBHOOK_SECRET) {
+        return res.status(401).json({ error: 'Invalid or missing webhook secret' });
+      }
+    }
+
     const payload = req.body ?? {};
     // Prefer providerConfigKey from Nango webhook payload over URL route param
     const provider: string =
@@ -25,6 +39,11 @@ router.post('/:provider', async (req: Request, res: Response) => {
       req.params.provider;
     if (!provider) {
       return res.status(400).json({ error: 'Missing provider parameter' });
+    }
+
+    // Validate provider against known enum to prevent wildcard injection in LIKE queries
+    if (!VALID_PROVIDERS.has(provider.toLowerCase())) {
+      return res.status(400).json({ error: `Unknown provider: ${provider}` });
     }
     const sb = getPlatformSupabaseClient();
 

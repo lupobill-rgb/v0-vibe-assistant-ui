@@ -1,11 +1,31 @@
 import express, { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { ConnectorType } from '../connectors/nango.service';
 
 const router = express.Router();
 
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || '';
+
 /** Known Nango provider values (lowercase) for input validation. */
 const VALID_PROVIDERS = new Set<string>(Object.values(ConnectorType));
+
+/** Extract and verify user from Bearer token. */
+function requireAuth(req: Request): string | null {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) return null;
+  const token = auth.slice(7);
+  if (JWT_SECRET) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as Record<string, unknown>;
+      return (payload.sub as string) ?? null;
+    } catch { /* fall through */ }
+  }
+  try {
+    const payload = jwt.decode(token) as Record<string, unknown> | null;
+    return (payload?.sub as string) ?? null;
+  } catch { return null; }
+}
 
 /**
  * POST /api/skills/:skillId/triggers
@@ -15,6 +35,11 @@ const VALID_PROVIDERS = new Set<string>(Object.values(ConnectorType));
  */
 router.post('/:skillId/triggers', async (req: Request, res: Response) => {
   try {
+    const userId = requireAuth(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { skillId } = req.params;
     const { provider } = req.body ?? {};
 
@@ -76,6 +101,11 @@ router.post('/:skillId/triggers', async (req: Request, res: Response) => {
  */
 router.delete('/:skillId/triggers/:provider', async (req: Request, res: Response) => {
   try {
+    const userId = requireAuth(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { skillId, provider } = req.params;
 
     if (!skillId) {
