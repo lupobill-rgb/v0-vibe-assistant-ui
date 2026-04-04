@@ -80,26 +80,32 @@ export default function MarketplacePage() {
   useEffect(() => {
     if (!currentTeam?.id) return
 
-    // Primary: query team_integrations directly (always available, no Nango dependency)
-    supabase
-      .from("team_integrations")
-      .select("provider")
-      .eq("team_id", currentTeam.id)
-      .then(({ data, error }) => {
-        if (error) console.error("[Marketplace] team_integrations query failed:", error.message, error)
-        if (data && data.length > 0) {
-          const providers = new Set(data.map((r: { provider: string }) => r.provider.toLowerCase()))
-          console.log("[Marketplace] Connected providers from team_integrations:", [...providers])
-          setConnectedIds(providers)
-        } else {
-          console.log("[Marketplace] No connected providers found for team", currentTeam.id)
-        }
-      })
-
-    // Secondary: also check Nango API and merge results (may fail if API unreachable)
+    // Wait for auth session before querying RLS-protected team_integrations
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        console.log("[Marketplace] No auth session — skipping team_integrations query")
+        return
+      }
+
+      // Primary: query team_integrations with auth context for RLS
+      supabase
+        .from("team_integrations")
+        .select("provider")
+        .eq("team_id", currentTeam.id)
+        .then(({ data, error }) => {
+          if (error) console.error("[Marketplace] team_integrations query failed:", error.message, error)
+          if (data && data.length > 0) {
+            const providers = new Set(data.map((r: { provider: string }) => r.provider.toLowerCase()))
+            console.log("[Marketplace] Connected providers from team_integrations:", [...providers])
+            setConnectedIds(providers)
+          } else {
+            console.log("[Marketplace] No connected providers found for team", currentTeam.id)
+          }
+        })
+
+      // Secondary: also check Nango API and merge results
       fetch(`${API_URL}/connectors/${currentTeam.id}`, {
-        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
       })
       .then((r) => r.ok ? r.json() : null)
       .then((data: { connectors: string[] } | null) => {
