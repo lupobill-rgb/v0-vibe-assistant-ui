@@ -40,6 +40,7 @@ interface ConnectDatasourceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onConnected?: (connectorType: string) => void
+  onError?: () => void
   preselectedConnector?: string
 }
 
@@ -47,6 +48,7 @@ export function ConnectDatasourceDialog({
   open,
   onOpenChange,
   onConnected,
+  onError,
   preselectedConnector,
 }: ConnectDatasourceDialogProps) {
   const { currentTeam } = useTeam()
@@ -109,6 +111,7 @@ export function ConnectDatasourceDialog({
       })
     } catch (err) {
       setError((err as Error).message)
+      onError?.()
     } finally {
       setConnecting(false)
     }

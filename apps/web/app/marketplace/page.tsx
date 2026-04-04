@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
 import { Search, Plus, Package, Zap } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { API_URL } from "@/lib/api"
+import { toast } from "sonner"
 
 type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean; trigger_on: string | null }
 
@@ -44,6 +46,7 @@ const CONNECTORS = [
 const CATEGORIES = ["All", "CRM", "Analytics", "Database", "Storage", "Messaging", "DevTools"] as const
 
 export default function MarketplacePage() {
+  const router = useRouter()
   const { currentTeam } = useTeam()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState<string>("All")
@@ -111,8 +114,23 @@ export default function MarketplacePage() {
     return list
   }, [search, category, tab, connectedIds])
 
+  const pendingSkillRef = useRef<{ name: string; provider: string } | null>(null)
+
   const handleConnected = (connectorType: string) => {
     setConnectedIds((prev) => new Set(prev).add(connectorType))
+    const pending = pendingSkillRef.current
+    if (pending && pending.provider === connectorType) {
+      pendingSkillRef.current = null
+      const displayName = PROVIDER_NAMES[pending.provider] ?? pending.provider
+      toast.success(`${displayName} connected! Launching skill...`)
+      const prompt = encodeURIComponent(`Run ${pending.name} with live ${displayName} data`)
+      router.push(`/chat?prompt=${prompt}`)
+    }
+  }
+
+  const handleOAuthError = () => {
+    pendingSkillRef.current = null
+    toast.error("Connection failed. Please try again.")
   }
 
   return (
@@ -195,7 +213,7 @@ export default function MarketplacePage() {
                               </span>
                             ) : (
                               <button
-                                onClick={() => { setPreselectedConnector(provider!); setSection("connectors"); setConnectOpen(true) }}
+                                onClick={() => { pendingSkillRef.current = { name: s.skill_name, provider: provider! }; setPreselectedConnector(provider!); setConnectOpen(true) }}
                                 className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-[#A855F7]/15 text-[#A855F7] border border-[#A855F7]/25 hover:bg-[#A855F7]/25 transition-colors cursor-pointer"
                               >
                                 Requires {displayName} → Connect
@@ -343,8 +361,9 @@ export default function MarketplacePage() {
       {/* Dialog wiring */}
       <ConnectDatasourceDialog
         open={connectOpen}
-        onOpenChange={setConnectOpen}
+        onOpenChange={(open) => { setConnectOpen(open); if (!open) pendingSkillRef.current = null }}
         onConnected={handleConnected}
+        onError={handleOAuthError}
         preselectedConnector={preselectedConnector}
       />
     </AppShell>
