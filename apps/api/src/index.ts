@@ -8,7 +8,7 @@ import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { resolveKernelContext, resolveDepartment } from './kernel/context-injector';
+import { resolveKernelContext, resolveDepartment, resolveGoldenTemplateMatch } from './kernel/context-injector';
 import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
 import { promisify } from 'util';
 import { resolveMode } from './edge-function';
@@ -669,6 +669,9 @@ async function bootstrap() {
         }
       }
 
+      // Golden template matching: if prompt matches a template, inject its content directly
+      const goldenMatch = await resolveGoldenTemplateMatch(prompt);
+
       // Kernel context injection: prepend team/role/brand identity to prompt
       let enrichedPrompt = prompt;
       let injectSupabaseHelpers = false;
@@ -678,6 +681,12 @@ async function bootstrap() {
           enrichedPrompt = `${kernel.context}\n\nUSER REQUEST:\n${prompt}`;
           injectSupabaseHelpers = kernel.injectSupabaseHelpers;
         }
+      }
+
+      // If a golden template matched, inject its full build blueprint into the prompt
+      if (goldenMatch.matched) {
+        enrichedPrompt += `\n\n--- GOLDEN TEMPLATE: ${goldenMatch.skillName} ---\nFollow this template exactly as the primary build blueprint. Do not ask clarifying questions — build directly from these instructions:\n\n${goldenMatch.content}\n--- END GOLDEN TEMPLATE ---`;
+        console.log(`[GOLDEN] Injected template "${goldenMatch.skillName}" — skipping clarifying questions`);
       }
 
       // Conversation context injection: if continuing a conversation, inject prior messages
@@ -1511,8 +1520,10 @@ Include ALL rows from the original data with their final calculated values. This
           if (team) department = resolveDepartment(team.name);
         }
       }
-      const guided_next_steps = getGuidedNextSteps(task.user_prompt ?? '', department);
-      res.json({ ...task, job_timeline, guided_next_steps, department });
+      // Skip guided_next_steps if the prompt matched a golden template
+      const templateMatch = await resolveGoldenTemplateMatch(task.user_prompt ?? '');
+      const guided_next_steps = templateMatch.matched ? [] : getGuidedNextSteps(task.user_prompt ?? '', department);
+      res.json({ ...task, job_timeline, guided_next_steps, department, golden_template: templateMatch.matched ? templateMatch.skillName : undefined });
     } catch (error) {
       console.error('Error fetching task:', error);
       res.status(500).json({ error: 'Failed to fetch task' });

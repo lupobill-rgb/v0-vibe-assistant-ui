@@ -614,6 +614,70 @@ function scoreSkill(skill: { skill_name: string; description: string | null }, p
 }
 
 /**
+ * Checks whether the user prompt closely matches a golden template in skill_registry.
+ * Searches ALL active skills (cross-department). If the best match exceeds a
+ * confidence threshold (≥40% of description tokens overlap with prompt tokens),
+ * returns the matched template content for direct injection into the LLM context.
+ * This bypasses clarifying questions and gives the LLM a precise build blueprint.
+ */
+export async function resolveGoldenTemplateMatch(
+  prompt: string,
+): Promise<{ matched: boolean; skillName: string; content: string }> {
+  const NO_MATCH = { matched: false, skillName: '', content: '' };
+  if (!prompt || prompt.trim().length < 5) return NO_MATCH;
+
+  const sb = getPlatformSupabaseClient();
+  const { data: skills, error } = await sb
+    .from('skill_registry')
+    .select('skill_name, description, content')
+    .eq('is_active', true);
+
+  if (error || !skills || skills.length === 0) {
+    if (error) console.warn(`[KERNEL] resolveGoldenTemplateMatch error: ${error.message}`);
+    return NO_MATCH;
+  }
+
+  const promptTokens = tokenize(prompt);
+  if (promptTokens.size < 2) return NO_MATCH;
+
+  let bestScore = 0;
+  let bestRatio = 0;
+  let bestSkill: typeof skills[0] | null = null;
+
+  for (const skill of skills) {
+    const descTokens = tokenize(skill.description ?? '');
+    if (descTokens.size === 0) continue;
+
+    // Count how many description tokens appear in the prompt
+    let overlap = 0;
+    for (const token of descTokens) {
+      if (promptTokens.has(token)) overlap++;
+    }
+    const ratio = overlap / descTokens.size;
+
+    if (ratio > bestRatio || (ratio === bestRatio && overlap > bestScore)) {
+      bestRatio = ratio;
+      bestScore = overlap;
+      bestSkill = skill;
+    }
+  }
+
+  // Threshold: at least 40% of the template description tokens must appear in the prompt
+  const MATCH_THRESHOLD = 0.4;
+  if (bestRatio >= MATCH_THRESHOLD && bestSkill) {
+    console.log(`[KERNEL] Golden template match: "${bestSkill.skill_name}" (ratio=${bestRatio.toFixed(2)}, overlap=${bestScore})`);
+    return {
+      matched: true,
+      skillName: bestSkill.skill_name,
+      content: bestSkill.content ?? '',
+    };
+  }
+
+  console.log(`[KERNEL] No golden template match (best ratio=${bestRatio.toFixed(2)}, needed >=${MATCH_THRESHOLD})`);
+  return NO_MATCH;
+}
+
+/**
  * Resolves department-specific skills from skill_registry for a given team.
  * Maps team name → department, fetches active skills, scores against prompt,
  * returns top 2–3 skills capped at 16KB. Falls back to 'general' department.
