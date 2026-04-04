@@ -219,6 +219,7 @@ function ChatContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialProjectId = searchParams.get("project") ?? undefined
+  const initialPrompt = searchParams.get("prompt") ?? undefined
 
   const [jobs, setJobs] = useState<Task[]>([])
   const [allJobs, setAllJobs] = useState<Task[]>([])
@@ -364,7 +365,7 @@ function ChatContent() {
         </div>
 
         {/* Prompt Card */}
-        <PromptCard selectedProjectId={selectedProjectId} />
+        <PromptCard selectedProjectId={selectedProjectId} initialPrompt={initialPrompt} />
 
       {/* Recent Jobs */}
       <div className="px-4 sm:px-6 py-6 sm:py-8">

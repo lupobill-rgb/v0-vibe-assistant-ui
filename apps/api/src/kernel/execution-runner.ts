@@ -4,7 +4,8 @@ import { generateDiff } from '../edge-function';
 
 const POLL_INTERVAL_MS = 5_000;
 const CLAIM_BATCH_SIZE = 1;
-const EXECUTE_TIMEOUT_MS = 20_000;
+const EXECUTE_TIMEOUT_MS = 180_000; // 3 min — must exceed Edge Function wall time
+const MAX_DRAIN_ITERATIONS = 5; // prevent unbounded while-loop from starving event loop
 
 interface AutonomousExecution {
   id: string;
@@ -251,9 +252,10 @@ export function startExecutionRunner(intervalMs: number = POLL_INTERVAL_MS): voi
   _intervalHandle = setInterval(async () => {
     const didWork = await pollOnce();
     if (didWork) {
-      // If we found work, immediately check for more (drain the queue)
+      // If we found work, check for more but cap iterations to avoid blocking event loop
+      let remaining = MAX_DRAIN_ITERATIONS;
       let more = true;
-      while (more) {
+      while (more && remaining-- > 0) {
         more = await pollOnce();
       }
     }

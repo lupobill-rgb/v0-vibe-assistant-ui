@@ -1,5 +1,5 @@
 "use client"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUp, Paperclip, Loader2, CheckCircle2, X, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -11,7 +11,7 @@ type Message = { role: "assistant" | "user"; text: string }
 type Stage = "idle" | "intake" | "building"
 type DataPath = "connected" | "upload" | "manual" | "sample" | null
 // INTAKE_SYSTEM prompt lives server-side only: /api/intake/route.ts
-export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }) {
+export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProjectId?: string; initialPrompt?: string }) {
   const router = useRouter()
   const { currentTeam, currentOrg, loading: teamLoading } = useTeam()
   const [prompt, setPrompt] = useState("")
@@ -44,6 +44,10 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     const saved = sessionStorage.getItem("vibe_upload_id")
     if (saved) uploadIdRef.current = saved
   }
+  useEffect(() => {
+    if (initialPrompt && !prompt) setPrompt(initialPrompt)
+  }, [initialPrompt])
+
   const handleLimitError = (err: unknown): boolean => {
     const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : ''
     const obj = err as Record<string, unknown> | undefined
@@ -182,7 +186,7 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
-      return { text: data.text ?? "", ready: data.ready, enrichedPrompt: data.enrichedPrompt, summary: data.summary }
+      return { text: data.text ?? "", ready: data.ready, enrichedPrompt: data.enrichedPrompt, summary: data.summary, redirect: data.redirect }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         throw new Error("AI took too long to respond. Please try again.")
@@ -258,6 +262,11 @@ export function PromptCard({ selectedProjectId }: { selectedProjectId?: string }
     conversationRef.current = [{ role: "user", content: prompt.trim() + pathNote + fileNote }]
     try {
       const response = await callClaude(conversationRef.current)
+      if (response.redirect) {
+        setMessages([{ role: "assistant", text: response.text || "Redirecting..." }])
+        router.push(response.redirect)
+        return
+      }
       const reply = response.text
       if (response.ready && response.enrichedPrompt) {
         setEnrichedPrompt(response.enrichedPrompt)

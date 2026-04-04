@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useRef, useState, useReducer, useLayoutEffect } from "react"
+import { use, useCallback, useEffect, useMemo, useRef, useState, useReducer } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -424,7 +424,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     return () => { if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current) }
   }, [])
 
-  const guidedNextSteps = useMemo(() => getGuidedNextSteps(task?.user_prompt ?? ''), [task?.user_prompt])
+  const guidedNextSteps = useMemo(() => task?.guided_next_steps ?? getGuidedNextSteps(task?.user_prompt ?? ''), [task?.guided_next_steps, task?.user_prompt])
   const isComplete = task?.execution_state === "completed" || task?.execution_state === "failed"
   const isMultiPage = pages.length > 1
 
@@ -715,7 +715,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 <ExternalLink className="w-3 h-3" /> Open
               </a>
             </div>
-            <iframe key={previewUrl} src={previewUrl} sandbox="allow-scripts allow-same-origin"
+            <iframe key={previewUrl} src={previewUrl} sandbox="allow-scripts"
               className="flex-1 w-full border-0 bg-white" title="Generated website preview" />
             {task?.execution_state === 'completed' && guidedNextSteps.length > 0 && !nudgeDismissed && (
               <div style={{
@@ -739,6 +739,11 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                     </li>
                   ))}
                 </ul>
+                <Link href="/marketplace" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10,
+                  fontSize: 12, fontWeight: 600, color: '#fff', background: '#6366f1',
+                  borderRadius: 6, padding: '6px 14px', textDecoration: 'none',
+                }}>Connect Now</Link>
               </div>
             )}
           </div>

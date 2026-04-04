@@ -29,8 +29,6 @@ function loadEnv() {
     // Main repo root (worktrees share the same parent)
     resolve(process.cwd(), '.env'),
     resolve(process.cwd(), '..', '..', '.env'),
-    'C:/Users/bill/VIBE/.env',
-    'C:/Users/bill/VIBE/apps/api/.env',
   ];
   for (const p of candidates) {
     try {

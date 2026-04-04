@@ -262,6 +262,25 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Onboarding Intent Detection ──────────────────────────────
+    // If user prompt signals onboarding intent, redirect to /onboarding
+    const onboardingPhrases = [
+      'onboard', 'set us up', 'set me up', 'get us started', 'get me started',
+      'we\'re new', 'first time', 'just signed up', 'getting started',
+      'activate', 'set up our account', 'configure our', 'initialize',
+      'help us get started', 'walk me through setup', 'new customer',
+      'new enterprise', 'enterprise setup', 'company setup',
+    ]
+    const promptLower = (body.messages?.[0]?.content || '').toLowerCase()
+    const isOnboardingIntent = onboardingPhrases.some(p => promptLower.includes(p))
+    if (isOnboardingIntent) {
+      return NextResponse.json({
+        reply: 'Let\'s get you set up! Redirecting to your onboarding wizard...',
+        redirect: '/onboarding',
+        ready: true,
+      })
+    }
+
     if (resolvedUploadId) {
       const fileSummary = await fetchUploadSummary(resolvedUploadId, userJwt)
       if (fileSummary) {

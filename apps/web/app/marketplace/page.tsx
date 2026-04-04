@@ -1,14 +1,31 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
 import { Search, Plus, Package, Zap } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { API_URL } from "@/lib/api"
+import { toast } from "sonner"
 
-type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean }
+type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean; trigger_on: string | null }
+
+/* ── Provider display names ── */
+const PROVIDER_NAMES: Record<string, string> = {
+  hubspot: "HubSpot", airtable: "Airtable", salesforce: "Salesforce",
+  ga4: "Google Analytics", "google-analytics-4": "Google Analytics",
+  jira: "Jira", github: "GitHub", quickbooks: "QuickBooks",
+  bamboohr: "BambooHR", docusign: "DocuSign", slack: "Slack",
+  mixpanel: "Mixpanel", "google-sheet": "Google Sheets",
+}
+
+function parseProvider(triggerOn: string | null): string | null {
+  if (!triggerOn) return null
+  const provider = triggerOn.split(":")[0].trim().toLowerCase()
+  return provider || null
+}
 
 /* ── Connector definitions ── */
 const CONNECTORS = [
@@ -29,6 +46,7 @@ const CONNECTORS = [
 const CATEGORIES = ["All", "CRM", "Analytics", "Database", "Storage", "Messaging", "DevTools"] as const
 
 export default function MarketplacePage() {
+  const router = useRouter()
   const { currentTeam } = useTeam()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState<string>("All")
@@ -42,21 +60,64 @@ export default function MarketplacePage() {
   const [skillSearch, setSkillSearch] = useState("")
 
   useEffect(() => {
-    supabase.from("skill_registry").select("id, team_function, skill_name, description, is_active").order("team_function").order("skill_name")
-      .then(({ data }) => { if (data) setSkills(data as Skill[]) })
+    // Use select("*") to avoid PostgREST 400 if trigger_on column not in schema cache yet
+    supabase.from("skill_registry").select("*").order("team_function").order("skill_name")
+      .then(({ data, error }) => {
+        if (error) console.error("[Marketplace] skill_registry query failed:", error.message)
+        if (data) {
+          setSkills(data.map((s: any) => ({
+            id: s.id,
+            team_function: s.team_function ?? "",
+            skill_name: s.skill_name ?? "",
+            description: s.description ?? "",
+            is_active: s.is_active ?? false,
+            trigger_on: s.trigger_on ?? null,
+          })))
+        }
+      })
   }, [])
 
   useEffect(() => {
     if (!currentTeam?.id) return
+
+    // Wait for auth session before querying RLS-protected team_integrations
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        console.log("[Marketplace] No auth session — skipping team_integrations query")
+        return
+      }
+
+      // Primary: query team_integrations with auth context for RLS
+      supabase
+        .from("team_integrations")
+        .select("provider")
+        .eq("team_id", currentTeam.id)
+        .then(({ data, error }) => {
+          if (error) console.error("[Marketplace] team_integrations query failed:", error.message, error)
+          if (data && data.length > 0) {
+            const providers = new Set(data.map((r: { provider: string }) => r.provider.toLowerCase()))
+            console.log("[Marketplace] Connected providers from team_integrations:", [...providers])
+            setConnectedIds(providers)
+          } else {
+            console.log("[Marketplace] No connected providers found for team", currentTeam.id)
+          }
+        })
+
+      // Secondary: also check Nango API and merge results
       fetch(`${API_URL}/connectors/${currentTeam.id}`, {
-        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
       })
       .then((r) => r.ok ? r.json() : null)
       .then((data: { connectors: string[] } | null) => {
-        if (data?.connectors) setConnectedIds(new Set(data.connectors))
+        if (data?.connectors?.length) {
+          setConnectedIds((prev) => {
+            const merged = new Set(prev)
+            data.connectors.forEach((c) => merged.add(c.toLowerCase()))
+            return merged
+          })
+        }
       })
-      .catch(() => {})
+      .catch((err) => { console.warn("[Marketplace] Nango API check failed (non-blocking):", err.message) })
     })
   }, [currentTeam?.id])
 
@@ -96,8 +157,23 @@ export default function MarketplacePage() {
     return list
   }, [search, category, tab, connectedIds])
 
+  const pendingSkillRef = useRef<{ name: string; provider: string } | null>(null)
+
   const handleConnected = (connectorType: string) => {
-    setConnectedIds((prev) => new Set(prev).add(connectorType))
+    setConnectedIds((prev) => new Set(prev).add(connectorType.toLowerCase()))
+    const pending = pendingSkillRef.current
+    if (pending && pending.provider === connectorType) {
+      pendingSkillRef.current = null
+      const displayName = PROVIDER_NAMES[pending.provider] ?? pending.provider
+      toast.success(`${displayName} connected! Launching skill...`)
+      const prompt = encodeURIComponent(`Run ${pending.name} with live ${displayName} data`)
+      router.push(`/chat?prompt=${prompt}`)
+    }
+  }
+
+  const handleOAuthError = () => {
+    pendingSkillRef.current = null
+    toast.error("Connection failed. Please try again.")
   }
 
   return (
@@ -153,7 +229,11 @@ export default function MarketplacePage() {
                 <div key={dept} className="mb-8">
                   <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">{dept}</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {deptSkills.map((s) => (
+                    {deptSkills.map((s) => {
+                      const provider = parseProvider(s.trigger_on)
+                      const displayName = provider ? (PROVIDER_NAMES[provider] ?? provider) : null
+                      const isProviderConnected = provider ? connectedIds.has(provider) : false
+                      return (
                       <div key={s.id} className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30">
                         <div className="absolute top-3 right-3 flex items-end gap-1.5">
                           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{s.team_function}</span>
@@ -167,8 +247,26 @@ export default function MarketplacePage() {
                           <h3 className="font-semibold text-base text-foreground truncate pr-24">{s.skill_name}</h3>
                         </div>
                         <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{s.description ? s.description.slice(0, 120) + (s.description.length > 120 ? "…" : "") : "No description"}</p>
+                        {displayName && (
+                          <div className="mt-3 pt-3 border-t border-border/50">
+                            {isProviderConnected ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-green-500/15 text-green-400 border border-green-500/25">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                                {displayName} Connected
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => { pendingSkillRef.current = { name: s.skill_name, provider: provider! }; setPreselectedConnector(provider!); setConnectOpen(true) }}
+                                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-[#A855F7]/15 text-[#A855F7] border border-[#A855F7]/25 hover:bg-[#A855F7]/25 transition-colors cursor-pointer"
+                              >
+                                Requires {displayName} → Connect
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -306,8 +404,9 @@ export default function MarketplacePage() {
       {/* Dialog wiring */}
       <ConnectDatasourceDialog
         open={connectOpen}
-        onOpenChange={setConnectOpen}
+        onOpenChange={(open) => { setConnectOpen(open); if (!open) pendingSkillRef.current = null }}
         onConnected={handleConnected}
+        onError={handleOAuthError}
         preselectedConnector={preselectedConnector}
       />
     </AppShell>

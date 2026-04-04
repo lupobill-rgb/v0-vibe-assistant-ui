@@ -13,3 +13,14 @@ CREATE INDEX IF NOT EXISTS idx_skill_triggers_skill_id ON skill_triggers(skill_i
 CREATE INDEX IF NOT EXISTS idx_skill_triggers_provider ON skill_triggers(provider);
 
 ALTER TABLE skill_triggers ENABLE ROW LEVEL SECURITY;
+
+-- Allow authenticated users to read skill triggers (skills are org-visible)
+CREATE POLICY skill_triggers_select ON skill_triggers
+  FOR SELECT TO authenticated
+  USING (true);
+
+-- Only service role can insert/update/delete (managed by API)
+CREATE POLICY skill_triggers_service_all ON skill_triggers
+  FOR ALL TO service_role
+  USING (true)
+  WITH CHECK (true);

@@ -19,6 +19,9 @@ export interface CascadeResult {
   errors: string[];
 }
 
+/** Maximum cascade depth to prevent infinite loops between cross-subscribed teams. */
+const MAX_CASCADE_DEPTH = 5;
+
 export async function resolveCascade(
   executionId: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,6 +29,17 @@ export async function resolveCascade(
 ): Promise<CascadeResult> {
   const supabase = supabaseOverride ?? getPlatformSupabaseClient();
   const result: CascadeResult = { dispatched: 0, edges: [], errors: [] };
+
+  // Guard against infinite cascade loops by counting ancestor depth via cascade_edges
+  const { count: depth } = await supabase
+    .from('cascade_edges')
+    .select('id', { count: 'exact', head: true })
+    .eq('target_execution_id', executionId);
+
+  if ((depth ?? 0) >= MAX_CASCADE_DEPTH) {
+    result.errors.push(`Cascade depth limit (${MAX_CASCADE_DEPTH}) reached for execution ${executionId}`);
+    return result;
+  }
 
   // 1. Fetch the completed execution
   const { data: execution, error: execErr } = await supabase

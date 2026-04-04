@@ -8,7 +8,7 @@ import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { resolveKernelContext } from './kernel/context-injector';
+import { resolveKernelContext, resolveDepartment, resolveGoldenTemplateMatch } from './kernel/context-injector';
 import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
 import { promisify } from 'util';
 import { resolveMode } from './edge-function';
@@ -114,13 +114,27 @@ function verifyPreviewToken(token: string, requestedJobId: string): boolean {
   }
 }
 
-function getGuidedNextSteps(prompt: string): string[] {
+const DEPT_NUDGE_TEXT: Record<string, string> = {
+  sales: 'Connect HubSpot to pull your live deals and contacts',
+  marketing: 'Connect GA4 to show real traffic and conversion data',
+  engineering: 'Connect GitHub to sync your repos and PRs',
+  product: 'Connect Jira to pull your sprints and roadmap',
+  hr: 'Connect BambooHR to sync employee and candidate data',
+  finance: 'Connect QuickBooks to pull transactions and reports',
+  legal: 'Connect DocuSign to track contracts and signatures',
+  operations: 'Connect Airtable to sync your operational data',
+  support: 'Connect HubSpot to pull your support tickets',
+  data: 'Connect Airtable to pull your datasets',
+};
+
+function getGuidedNextSteps(prompt: string, department?: string): string[] {
   const lower = prompt.toLowerCase();
   const dataKeywords = /\b(revenue|pipeline|sales|dashboard|analytics|data|metrics|performance|report|forecast|crm|contacts|deals)\b/;
   const alreadyConnected = /\b(uploaded|csv|connected|hubspot|salesforce|airtable)\b/;
   if (dataKeywords.test(lower) && !alreadyConnected.test(lower)) {
+    const nudge = (department && DEPT_NUDGE_TEXT[department]) ?? 'Connect your CRM (HubSpot or Salesforce) to populate this dashboard with live data';
     return [
-      'Connect your CRM (HubSpot or Salesforce) to populate this dashboard with live data',
+      nudge,
       'Upload a CSV file with your data to see real numbers instead of placeholders',
       'Go to Marketplace → Connectors to set up your data sources',
     ];
@@ -213,6 +227,7 @@ async function bootstrap() {
   app.use('/api/finance', financeRouter);
   app.use('/api/feeds', express.json(), feedsRouter);
   app.use('/api/webhooks', express.json(), webhooksRouter);
+  app.use('/api/connectors/webhook', express.json(), webhooksRouter);
 
   // ── Skill trigger management ──
   { const skillTriggersRouter = (await import('./routes/skill-triggers')).default; app.use('/api/skills', express.json(), skillTriggersRouter); }
@@ -654,6 +669,9 @@ async function bootstrap() {
         }
       }
 
+      // Golden template matching: if prompt matches a template, inject its content directly
+      const goldenMatch = await resolveGoldenTemplateMatch(prompt);
+
       // Kernel context injection: prepend team/role/brand identity to prompt
       let enrichedPrompt = prompt;
       let injectSupabaseHelpers = false;
@@ -663,6 +681,12 @@ async function bootstrap() {
           enrichedPrompt = `${kernel.context}\n\nUSER REQUEST:\n${prompt}`;
           injectSupabaseHelpers = kernel.injectSupabaseHelpers;
         }
+      }
+
+      // If a golden template matched, inject its full build blueprint into the prompt
+      if (goldenMatch.matched) {
+        enrichedPrompt += `\n\n--- GOLDEN TEMPLATE: ${goldenMatch.skillName} ---\nFollow this template exactly as the primary build blueprint. Do not ask clarifying questions — build directly from these instructions:\n\n${goldenMatch.content}\n--- END GOLDEN TEMPLATE ---`;
+        console.log(`[GOLDEN] Injected template "${goldenMatch.skillName}" — skipping clarifying questions`);
       }
 
       // Conversation context injection: if continuing a conversation, inject prior messages
@@ -896,9 +920,15 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
 }}</script>`;
           const injectSupabaseCredentials = (html: string): string => {
             let result = html.replace(/__SUPABASE_URL__/g, supabaseUrl).replace(/__SUPABASE_ANON_KEY__/g, supabaseKey).replace(/__TEAM_ID__/g, project.team_id || '').replace(/\bfade-up\b/g, 'animate-in');
-            // Inject vibeLoadData into <head> so it's defined before any chart scripts execute
+            // Inject vibeLoadData — try <head>, fallback to <html>, fallback to prepend
             if (result.toLowerCase().includes('<head>')) {
               result = result.replace(/(<head[^>]*>)/i, `$1\n${VIBE_LOAD_DATA_SCRIPT}`);
+            } else if (result.toLowerCase().includes('<html>')) {
+              result = result.replace(/(<html[^>]*>)/i, `$1\n<head>${VIBE_LOAD_DATA_SCRIPT}</head>`);
+            } else if (result.toLowerCase().includes('<!doctype')) {
+              result = result.replace(/(<!doctype[^>]*>)/i, `$1\n<head>${VIBE_LOAD_DATA_SCRIPT}</head>`);
+            } else {
+              result = `${VIBE_LOAD_DATA_SCRIPT}\n${result}`;
             }
             return result;
           };
@@ -1254,6 +1284,34 @@ Include ALL rows from the original data with their final calculated values. This
             }
           }
 
+          // ── Golden Template Resolution ──────────────────────────────
+          let goldenTemplateContent: string | null = null;
+          try {
+            const { data: goldenMatches } = await supabase
+              .from('skill_registry')
+              .select('skill_name, content, description')
+              .eq('plugin_name', 'golden-templates')
+              .eq('is_active', true);
+            if (goldenMatches?.length) {
+              const promptLower = prompt.toLowerCase();
+              const match = goldenMatches.find((t: any) =>
+                t.description?.toLowerCase().split(' ').filter((w: string) => w.length > 4)
+                  .some((keyword: string) => promptLower.includes(keyword))
+              );
+              if (match) {
+                goldenTemplateContent = match.content;
+                await storage.logEvent(taskId, `Matched golden template: ${match.skill_name}`, 'info');
+              }
+            }
+          } catch (gtErr: any) {
+            console.warn('[KERNEL] golden template lookup failed:', gtErr.message);
+          }
+
+          if (goldenTemplateContent) {
+            enrichedPrompt += `\n\n--- GOLDEN TEMPLATE (use this as your generation blueprint, do NOT ask clarifying questions) ---\n\n${goldenTemplateContent}`;
+          }
+
+          // ── Planning step ──────────────────────────────────────────
           try {
             plan = await runStep('planning', async () => {
             await storage.logEvent(taskId, 'Generating plan...', 'info');
@@ -1488,8 +1546,18 @@ Include ALL rows from the original data with their final calculated values. This
           job_timeline = null;
         }
       }
-      const guided_next_steps = getGuidedNextSteps(task.user_prompt ?? '');
-      res.json({ ...task, job_timeline, guided_next_steps });
+      let department: string | undefined;
+      if (task.project_id) {
+        const project = await storage.getProject(task.project_id);
+        if (project) {
+          const team = await storage.getTeam(project.team_id);
+          if (team) department = resolveDepartment(team.name);
+        }
+      }
+      // Skip guided_next_steps if the prompt matched a golden template
+      const templateMatch = await resolveGoldenTemplateMatch(task.user_prompt ?? '');
+      const guided_next_steps = templateMatch.matched ? [] : getGuidedNextSteps(task.user_prompt ?? '', department);
+      res.json({ ...task, job_timeline, guided_next_steps, department, golden_template: templateMatch.matched ? templateMatch.skillName : undefined });
     } catch (error) {
       console.error('Error fetching task:', error);
       res.status(500).json({ error: 'Failed to fetch task' });
@@ -1742,12 +1810,4 @@ bootstrap().catch((error) => {
   process.exit(1);
 });
 
-// connector-routes-v1
-
-
-// connector-routes-v1
-
-
-// cache-bust: 2026-03-25
-
-// cache-bust: 20260331115418
+// cache-bust: 20260404
