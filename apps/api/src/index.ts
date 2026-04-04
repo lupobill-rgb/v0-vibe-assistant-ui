@@ -213,6 +213,7 @@ async function bootstrap() {
   app.use('/api/finance', financeRouter);
   app.use('/api/feeds', express.json(), feedsRouter);
   app.use('/api/webhooks', express.json(), webhooksRouter);
+  app.use('/api/connectors/webhook', express.json(), webhooksRouter);
 
   // ── Skill trigger management ──
   { const skillTriggersRouter = (await import('./routes/skill-triggers')).default; app.use('/api/skills', express.json(), skillTriggersRouter); }
