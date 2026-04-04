@@ -10,6 +10,11 @@ const router = express.Router();
  * Receives an incoming webhook from an external provider (e.g. hubspot, stripe, slack).
  * Looks up skills in skill_registry whose trigger_on matches the provider,
  * then inserts a pending autonomous_execution for each matched skill.
+ *
+ * trigger_on values use the format "provider:model" (e.g. "hubspot:deals").
+ * The model is extracted from the webhook payload body.model field (Nango sync events).
+ * If a model is present, we match "provider:model" exactly; otherwise we match
+ * any trigger_on starting with "provider:".
  */
 router.post('/:provider', async (req: Request, res: Response) => {
   try {
@@ -21,12 +26,28 @@ router.post('/:provider', async (req: Request, res: Response) => {
     const payload = req.body ?? {};
     const sb = getPlatformSupabaseClient();
 
-    // 1. Find skills triggered by this provider
-    const { data: skills, error: skillError } = await sb
+    // Extract model from Nango sync webhook payload (e.g. "deals", "contacts")
+    const model: string | undefined =
+      typeof payload.model === 'string' ? payload.model.toLowerCase() :
+      typeof payload.syncType === 'string' ? payload.syncType.toLowerCase() :
+      undefined;
+
+    // 1. Find skills triggered by this provider.
+    //    trigger_on stores "provider:model" (e.g. "hubspot:deals").
+    //    If a model is present in the payload, match exactly; otherwise match all
+    //    skills for the provider using a prefix filter.
+    let skillQuery = sb
       .from('skill_registry')
       .select('id, plugin_name, skill_name, team_function')
-      .eq('trigger_on', provider)
       .eq('is_active', true);
+
+    if (model) {
+      skillQuery = skillQuery.eq('trigger_on', `${provider}:${model}`);
+    } else {
+      skillQuery = skillQuery.like('trigger_on', `${provider}:%`);
+    }
+
+    const { data: skills, error: skillError } = await skillQuery;
 
     if (skillError) {
       console.error(`[webhook] skill_registry lookup failed for provider=${provider}:`, skillError.message);
@@ -78,8 +99,8 @@ router.post('/:provider', async (req: Request, res: Response) => {
         organization_id: orgId!,
         team_id: teamId!,
         skill_id: skill.id,
-        trigger_source: provider,
-        trigger_event: typeof payload.event === 'string' ? payload.event : provider,
+        trigger_source: model ? `${provider}:${model}` : provider,
+        trigger_event: typeof payload.event === 'string' ? payload.event : (model ? `${provider}:${model}` : provider),
         trigger_payload: payload,
         status: 'pending',
       });
