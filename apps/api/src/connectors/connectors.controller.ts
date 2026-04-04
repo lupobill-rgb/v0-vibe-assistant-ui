@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { NangoService, ConnectorType } from './nango.service';
+import { getPlatformSupabaseClient } from '../supabase/client';
 
 interface ConnectDto {
   teamId: string;
@@ -30,6 +31,24 @@ export class ConnectorsController {
       body.connectorType,
       body.redirectUri,
     );
+
+    // Upsert team_integrations so webhook handler can resolve org/team from connectionId
+    try {
+      const sb = getPlatformSupabaseClient();
+      await sb
+        .from('team_integrations')
+        .upsert(
+          {
+            team_id: body.teamId,
+            provider: body.connectorType,
+            nango_connection_id: connectionId,
+          },
+          { onConflict: 'team_id,provider' },
+        );
+    } catch (err) {
+      this.logger.warn(`Failed to upsert team_integrations: ${(err as Error).message}`);
+    }
+
     return { sessionToken, connectionId };
   }
 
@@ -159,6 +178,19 @@ export class ConnectorsController {
       `Delete connection — team=${teamId} connector=${connectorType}`,
     );
     await this.nangoService.deleteConnection(teamId, connectorType);
+
+    // Remove team_integrations row so stale connectionIds don't resolve
+    try {
+      const sb = getPlatformSupabaseClient();
+      await sb
+        .from('team_integrations')
+        .delete()
+        .eq('team_id', teamId)
+        .eq('provider', connectorType);
+    } catch (err) {
+      this.logger.warn(`Failed to delete team_integrations row: ${(err as Error).message}`);
+    }
+
     return { deleted: true };
   }
 
