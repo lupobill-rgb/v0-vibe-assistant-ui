@@ -60,25 +60,43 @@ export default function MarketplacePage() {
   const [skillSearch, setSkillSearch] = useState("")
 
   useEffect(() => {
-    supabase.from("skill_registry").select("id, team_function, skill_name, description, is_active, trigger_on").order("team_function").order("skill_name")
-      .then(({ data }) => { if (data) setSkills(data as Skill[]) })
+    // Use select("*") to avoid PostgREST 400 if trigger_on column not in schema cache yet
+    supabase.from("skill_registry").select("*").order("team_function").order("skill_name")
+      .then(({ data, error }) => {
+        if (error) console.error("[Marketplace] skill_registry query failed:", error.message)
+        if (data) {
+          setSkills(data.map((s: any) => ({
+            id: s.id,
+            team_function: s.team_function ?? "",
+            skill_name: s.skill_name ?? "",
+            description: s.description ?? "",
+            is_active: s.is_active ?? false,
+            trigger_on: s.trigger_on ?? null,
+          })))
+        }
+      })
   }, [])
 
   useEffect(() => {
     if (!currentTeam?.id) return
 
-    // Primary: query team_integrations directly (always available)
+    // Primary: query team_integrations directly (always available, no Nango dependency)
     supabase
       .from("team_integrations")
       .select("provider")
       .eq("team_id", currentTeam.id)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) console.error("[Marketplace] team_integrations query failed:", error.message, error)
         if (data && data.length > 0) {
-          setConnectedIds(new Set(data.map((r: { provider: string }) => r.provider)))
+          const providers = new Set(data.map((r: { provider: string }) => r.provider.toLowerCase()))
+          console.log("[Marketplace] Connected providers from team_integrations:", [...providers])
+          setConnectedIds(providers)
+        } else {
+          console.log("[Marketplace] No connected providers found for team", currentTeam.id)
         }
       })
 
-    // Secondary: also check Nango API and merge results
+    // Secondary: also check Nango API and merge results (may fail if API unreachable)
     supabase.auth.getSession().then(({ data: { session } }) => {
       fetch(`${API_URL}/connectors/${currentTeam.id}`, {
         headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
@@ -88,12 +106,12 @@ export default function MarketplacePage() {
         if (data?.connectors?.length) {
           setConnectedIds((prev) => {
             const merged = new Set(prev)
-            data.connectors.forEach((c) => merged.add(c))
+            data.connectors.forEach((c) => merged.add(c.toLowerCase()))
             return merged
           })
         }
       })
-      .catch(() => {})
+      .catch((err) => { console.warn("[Marketplace] Nango API check failed (non-blocking):", err.message) })
     })
   }, [currentTeam?.id])
 
@@ -136,7 +154,7 @@ export default function MarketplacePage() {
   const pendingSkillRef = useRef<{ name: string; provider: string } | null>(null)
 
   const handleConnected = (connectorType: string) => {
-    setConnectedIds((prev) => new Set(prev).add(connectorType))
+    setConnectedIds((prev) => new Set(prev).add(connectorType.toLowerCase()))
     const pending = pendingSkillRef.current
     if (pending && pending.provider === connectorType) {
       pendingSkillRef.current = null
