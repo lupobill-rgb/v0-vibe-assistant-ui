@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createClient } from '@supabase/supabase-js';
+import { getPlatformSupabaseClient } from '../supabase/client';
 
 const COOLDOWN_MINUTES = 15;
 const MAX_CASCADE_DEPTH = 5;
@@ -7,10 +7,9 @@ const MAX_CASCADE_DEPTH = 5;
 @Injectable()
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
-  private readonly sb = createClient(
-    process.env.SUPABASE_URL ?? '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  );
+  private get sb() {
+    return getPlatformSupabaseClient();
+  }
 
   async handleNangoEvent(payload: {
     connectionId: string;
