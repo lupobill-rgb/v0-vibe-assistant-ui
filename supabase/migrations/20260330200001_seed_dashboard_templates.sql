@@ -20,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_published_assets_org
 DO $$
 DECLARE
   v_org_id uuid := '3de82e57-4813-4ad6-83bd-2adb461604f0';
+  v_team_id uuid := '2a68d841-a6f0-4abd-8cfa-947767378684'; -- Marketing team
 BEGIN
 
   -- Row 1: Phase 0 GTM Scorecard
@@ -28,9 +29,10 @@ BEGIN
     WHERE name = 'Phase 0 GTM Scorecard' AND organization_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
+      v_team_id,
       v_org_id,
       'Phase 0 GTM Scorecard',
       'dashboard_template',
@@ -48,9 +50,10 @@ BEGIN
     WHERE name = 'Prospect Pipeline Tracker' AND organization_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
+      v_team_id,
       v_org_id,
       'Prospect Pipeline Tracker',
       'dashboard_template',
@@ -68,9 +71,10 @@ BEGIN
     WHERE name = 'Competitive Positioning Radar' AND organization_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
+      v_team_id,
       v_org_id,
       'Competitive Positioning Radar',
       'dashboard_template',
@@ -88,9 +92,10 @@ BEGIN
     WHERE name = 'Platform Health Monitor' AND organization_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
+      v_team_id,
       v_org_id,
       'Platform Health Monitor',
       'dashboard_template',
