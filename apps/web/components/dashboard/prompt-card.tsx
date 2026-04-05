@@ -172,7 +172,7 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
     const t = text.trimStart().toLowerCase()
     return t.startsWith('<!doctype') || t.startsWith('<html')
   }
-  const callClaude = async (messages: { role: string; content: string }[]): Promise<{ text: string; ready?: boolean; enrichedPrompt?: string; summary?: string }> => {
+  const callClaude = async (messages: { role: string; content: string }[]): Promise<{ text: string; ready?: boolean; enrichedPrompt?: string; summary?: string; redirect?: string }> => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {

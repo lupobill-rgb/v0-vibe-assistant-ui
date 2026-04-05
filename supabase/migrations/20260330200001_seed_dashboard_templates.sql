@@ -14,6 +14,13 @@ CREATE INDEX IF NOT EXISTS idx_published_assets_org
   ON published_assets(organization_id) WHERE organization_id IS NOT NULL;
 
 -- ============================================================================
+-- Drop overly-restrictive unique constraint (1 asset per team+type) to allow
+-- multiple dashboard_template rows per team
+-- ============================================================================
+ALTER TABLE published_assets
+  DROP CONSTRAINT IF EXISTS uq_published_asset_team_type;
+
+-- ============================================================================
 -- Seed 4 dashboard templates
 -- ============================================================================
 
