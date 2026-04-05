@@ -10,60 +10,114 @@ export class OnboardingService {
   );
 
   /**
+   * Initialize an onboarding session for an organization.
+   * Calls the initialize_onboarding RPC which is idempotent — returns
+   * the existing session ID if one already exists.
+   */
+  async initSession(organizationId: string): Promise<{ sessionId: string | null }> {
+    const { data, error } = await this.sb.rpc('initialize_onboarding', {
+      p_org_id: organizationId,
+    });
+
+    if (error) {
+      this.logger.error(`Failed to init onboarding for org ${organizationId}: ${error.message}`);
+      return { sessionId: null };
+    }
+
+    this.logger.log(`Onboarding session initialized for org ${organizationId}: ${data}`);
+    return { sessionId: data };
+  }
+
+  /**
    * Resolve (or create) the default project for an organization.
-   * Looks up the first team, then the first project under it.
-   * Creates both if they don't exist yet.
+   * Uses upsert semantics to handle concurrent calls and retries safely.
    */
   private async resolveProjectId(organizationId: string): Promise<string | null> {
-    // Find or create the default team
-    let { data: team } = await this.sb
+    // Find existing team first
+    const { data: teams } = await this.sb
       .from('teams')
       .select('id')
       .eq('org_id', organizationId)
-      .limit(1)
-      .single();
+      .limit(1);
 
-    if (!team) {
+    let teamId: string;
+
+    if (teams && teams.length > 0) {
+      teamId = teams[0].id;
+    } else {
+      // Create default team — use ON CONFLICT via upsert
       const { data: newTeam, error: teamErr } = await this.sb
         .from('teams')
-        .insert({ org_id: organizationId, name: 'Default', slug: 'default' })
+        .upsert(
+          { org_id: organizationId, name: 'Default', slug: 'default' },
+          { onConflict: 'org_id,slug' },
+        )
         .select('id')
         .single();
-      if (teamErr) {
-        this.logger.error(`Failed to create default team for org ${organizationId}: ${teamErr.message}`);
+      if (teamErr || !newTeam) {
+        this.logger.error(`Failed to resolve team for org ${organizationId}: ${teamErr?.message}`);
         return null;
       }
-      team = newTeam;
+      teamId = newTeam.id;
     }
 
-    // Find or create the default project
-    let { data: project } = await this.sb
+    // Find existing project
+    const { data: projects } = await this.sb
       .from('projects')
       .select('id')
-      .eq('team_id', team!.id)
-      .limit(1)
-      .single();
+      .eq('team_id', teamId)
+      .limit(1);
 
-    if (!project) {
-      const { data: newProject, error: projErr } = await this.sb
-        .from('projects')
-        .insert({ team_id: team!.id, name: 'Onboarding', local_path: '/tmp/onboarding' })
-        .select('id')
-        .single();
-      if (projErr) {
-        this.logger.error(`Failed to create default project for team ${team!.id}: ${projErr.message}`);
-        return null;
-      }
-      project = newProject;
+    if (projects && projects.length > 0) {
+      return projects[0].id;
     }
 
-    return project!.id;
+    // Create default project
+    const { data: newProject, error: projErr } = await this.sb
+      .from('projects')
+      .insert({ team_id: teamId, name: 'Onboarding', local_path: '/tmp/onboarding' })
+      .select('id')
+      .single();
+
+    if (projErr || !newProject) {
+      this.logger.error(`Failed to create project for team ${teamId}: ${projErr?.message}`);
+      return null;
+    }
+
+    return newProject.id;
+  }
+
+  /**
+   * Generic step advancement. Validates step, calls the RPC, and returns the result.
+   */
+  async advanceStep(
+    sessionId: string,
+    fromStep: number,
+    verdict = 'good',
+    verdictMessage?: string,
+    recommendation?: string,
+  ): Promise<{ advanced: boolean }> {
+    const { data, error } = await this.sb.rpc<boolean>('advance_onboarding_step', {
+      p_session_id: sessionId,
+      p_from_step: fromStep,
+      p_verdict: verdict,
+      p_verdict_message: verdictMessage ?? null,
+      p_recommendation: recommendation ?? null,
+    });
+
+    if (error) {
+      this.logger.error(`Failed to advance session ${sessionId} from step ${fromStep}: ${error.message}`);
+      return { advanced: false };
+    }
+
+    this.logger.log(`Session ${sessionId} advanced from step ${fromStep}: ${data}`);
+    return { advanced: data ?? false };
   }
 
   /**
    * Advance onboarding from step 3 (Data Analysis) to step 4 (Dashboard Build).
    * Auto-resolves the project from the session's organization.
-   * Queues two dashboard-build jobs and calls the advance_onboarding_step RPC.
+   * Queues two dashboard-build jobs and calls advance_onboarding_step RPC.
    */
   async advanceToStep4(sessionId: string): Promise<{ jobIds: string[]; advanced: boolean }> {
     const { data: session, error: sessionErr } = await this.sb
@@ -113,20 +167,15 @@ export class OnboardingService {
       }
     }
 
-    const { data: advanced, error: rpcErr } = await this.sb.rpc<boolean>('advance_onboarding_step', {
-      p_session_id: sessionId,
-      p_from_step: 3,
-      p_verdict: 'good',
-      p_verdict_message: 'Data profiling complete. Building dashboards.',
-      p_recommendation: 'Executive and Operations dashboards generating now.',
-    });
-
-    if (rpcErr) {
-      this.logger.error(`Failed to advance session ${sessionId} to step 4: ${rpcErr.message}`);
-      return { jobIds, advanced: false };
-    }
+    const { advanced } = await this.advanceStep(
+      sessionId,
+      3,
+      'good',
+      'Data profiling complete. Building dashboards.',
+      'Executive and Operations dashboards generating now.',
+    );
 
     this.logger.log(`Session ${sessionId} advanced to step 4. Jobs: ${jobIds.join(', ')}`);
-    return { jobIds, advanced: advanced ?? false };
+    return { jobIds, advanced };
   }
 }
