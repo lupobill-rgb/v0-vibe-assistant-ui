@@ -96,7 +96,7 @@ export class OnboardingService {
     verdictMessage?: string,
     recommendation?: string,
   ): Promise<{ advanced: boolean }> {
-    const { data, error } = await this.sb.rpc<boolean>('advance_onboarding_step', {
+    const { data, error } = await this.sb.rpc('advance_onboarding_step', {
       p_session_id: sessionId,
       p_from_step: fromStep,
       p_verdict: verdict,
