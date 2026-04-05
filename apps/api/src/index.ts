@@ -1287,7 +1287,7 @@ Include ALL rows from the original data with their final calculated values. This
           // ── Golden Template Resolution ──────────────────────────────
           let goldenTemplateContent: string | null = null;
           try {
-            const { data: goldenMatches } = await supabase
+            const { data: goldenMatches } = await getPlatformSupabaseClient()
               .from('skill_registry')
               .select('skill_name, content, description')
               .eq('plugin_name', 'golden-templates')

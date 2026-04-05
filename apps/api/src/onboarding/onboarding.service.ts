@@ -40,7 +40,7 @@ export class OnboardingService {
       .eq('org_id', organizationId)
       .limit(1);
 
-    let teamId: string;
+    let teamId: string | undefined;
 
     if (teams && teams.length > 0) {
       teamId = teams[0].id;
