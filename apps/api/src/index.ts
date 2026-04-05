@@ -319,7 +319,7 @@ async function bootstrap() {
         try {
           execSync('git init', { cwd: repoDir });
           execSync('git config user.name "VIBE Bot"', { cwd: repoDir });
-          execSync('git config user.email "vibe@example.com"', { cwd: repoDir });
+          execSync('git config user.email "bot@vibe.ubigrowth.ai"', { cwd: repoDir });
           execSync('git config commit.gpgsign false', { cwd: repoDir });
 
           // Create initial README for template

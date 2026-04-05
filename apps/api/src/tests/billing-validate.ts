@@ -16,6 +16,8 @@ export {}
 const DRY_RUN = process.argv.includes('--dry-run');
 const API_URL = process.env.API_URL || 'https://vibeapi-production-fdd1.up.railway.app';
 const TEST_ORG_ID = process.env.TEST_ORG_ID || 'test-billing-validation';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'test@vibe.ubigrowth.ai';
+const CHECKOUT_DOMAIN = process.env.CHECKOUT_DOMAIN || 'checkout.stripe.com';
 
 interface TestCase {
   id: string;
@@ -101,11 +103,11 @@ const tests: TestCase[] = [
         ? mock('POST:/api/billing/checkout:pro')
         : await apiPost('/api/billing/checkout', {
             orgId: TEST_ORG_ID, tierSlug: 'pro',
-            email: 'test@ubigrowth.com', orgName: 'Test Org',
+            email: TEST_EMAIL, orgName: 'Test Org',
           });
       if (r.status !== 200) return { pass: false, detail: `HTTP ${r.status}: ${JSON.stringify(r.body)}` };
       const url = r.body?.checkoutUrl || '';
-      const valid = url.startsWith('https://checkout.stripe.com') || url.startsWith('https://pay.ubigrowth.ai');
+      const valid = url.startsWith(`https://${CHECKOUT_DOMAIN}`);
       return { pass: valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
     },
   },
@@ -117,11 +119,11 @@ const tests: TestCase[] = [
         ? mock('POST:/api/billing/checkout:growth')
         : await apiPost('/api/billing/checkout', {
             orgId: TEST_ORG_ID, tierSlug: 'growth',
-            email: 'test@ubigrowth.com', orgName: 'Test Org',
+            email: TEST_EMAIL, orgName: 'Test Org',
           });
       if (r.status !== 200) return { pass: false, detail: `HTTP ${r.status}: ${JSON.stringify(r.body)}` };
       const url = r.body?.checkoutUrl || '';
-      const valid = url.startsWith('https://checkout.stripe.com') || url.startsWith('https://pay.ubigrowth.ai');
+      const valid = url.startsWith(`https://${CHECKOUT_DOMAIN}`);
       return { pass: valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
     },
   },
@@ -133,11 +135,11 @@ const tests: TestCase[] = [
         ? mock('POST:/api/billing/checkout:team')
         : await apiPost('/api/billing/checkout', {
             orgId: TEST_ORG_ID, tierSlug: 'team',
-            email: 'test@ubigrowth.com', orgName: 'Test Org',
+            email: TEST_EMAIL, orgName: 'Test Org',
           });
       if (r.status !== 200) return { pass: false, detail: `HTTP ${r.status}: ${JSON.stringify(r.body)}` };
       const url = r.body?.checkoutUrl || '';
-      const valid = url.startsWith('https://checkout.stripe.com') || url.startsWith('https://pay.ubigrowth.ai');
+      const valid = url.startsWith(`https://${CHECKOUT_DOMAIN}`);
       return { pass: valid, detail: valid ? 'checkout URL returned' : `unexpected: ${JSON.stringify(r.body)}` };
     },
   },
@@ -149,7 +151,7 @@ const tests: TestCase[] = [
         ? mock('POST:/api/billing/checkout:starter')
         : await apiPost('/api/billing/checkout', {
             orgId: TEST_ORG_ID, tierSlug: 'starter',
-            email: 'test@ubigrowth.com', orgName: 'Test Org',
+            email: TEST_EMAIL, orgName: 'Test Org',
           });
       const rejected = r.status === 400 && r.body?.error?.includes('must be one of');
       return { pass: rejected, detail: rejected ? 'correctly rejected' : `unexpected ${r.status}: ${JSON.stringify(r.body)}` };
