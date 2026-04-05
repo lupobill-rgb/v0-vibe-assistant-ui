@@ -1,6 +1,4 @@
-[project]
-id = "ptaqytvztkhjpuawdxng"
-name = "VIBE"
+project_id = "ptaqytvztkhjpuawdxng"
 
 [api]
 enabled = true
