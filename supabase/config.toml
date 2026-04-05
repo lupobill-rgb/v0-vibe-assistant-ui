@@ -23,3 +23,6 @@ site_url = "http://localhost:3000"
 [storage]
 enabled = true
 file_size_limit = "50MiB"
+
+[functions.generate-diff]
+verify_jwt = false
