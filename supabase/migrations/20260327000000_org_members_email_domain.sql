@@ -90,19 +90,18 @@ WHERE id = '3de82e57-4813-4ad6-83bd-2adb461604f0';
 
 -- ============================================================================
 -- 5. Seed org_members: Suzi as member, Bill as owner of UbiGrowth
+--    Guarded: only insert when the user exists (skipped on preview branches)
 -- ============================================================================
 INSERT INTO org_members (user_id, org_id, role)
-VALUES (
-  '2f75dd58-d634-4ae7-aa84-58423570e18b',
-  '3de82e57-4813-4ad6-83bd-2adb461604f0',
-  'member'
-)
+SELECT '2f75dd58-d634-4ae7-aa84-58423570e18b',
+       '3de82e57-4813-4ad6-83bd-2adb461604f0',
+       'member'
+WHERE EXISTS (SELECT 1 FROM auth.users WHERE id = '2f75dd58-d634-4ae7-aa84-58423570e18b')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO org_members (user_id, org_id, role)
-VALUES (
-  'e167c9d1-0680-4cbb-80a0-5c75453584b9',
-  '3de82e57-4813-4ad6-83bd-2adb461604f0',
-  'owner'
-)
+SELECT 'e167c9d1-0680-4cbb-80a0-5c75453584b9',
+       '3de82e57-4813-4ad6-83bd-2adb461604f0',
+       'owner'
+WHERE EXISTS (SELECT 1 FROM auth.users WHERE id = 'e167c9d1-0680-4cbb-80a0-5c75453584b9')
 ON CONFLICT DO NOTHING;

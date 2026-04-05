@@ -1,6 +1,7 @@
-import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException, InternalServerErrorException, HttpCode } from '@nestjs/common';
 import { NangoService, ConnectorType } from './nango.service';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import { WebhookService } from './webhook.service';
 
 interface ConnectDto {
   teamId: string;
@@ -12,7 +13,26 @@ interface ConnectDto {
 export class ConnectorsController {
   private readonly logger = new Logger(ConnectorsController.name);
 
-  constructor(private readonly nangoService: NangoService) {}
+  constructor(
+    private readonly nangoService: NangoService,
+    private readonly webhookService: WebhookService,
+  ) {}
+
+  /**
+   * POST /connectors/webhook/nango
+   * Receives Nango sync events and queues autonomous skill executions.
+   * No auth — Nango calls this directly. Validate via trigger_on matching.
+   */
+  @Post('webhook/nango')
+  @HttpCode(200)
+  async nangoWebhook(@Body() body: any): Promise<{ queued: number }> {
+    if (!body?.connectionId || !body?.providerConfigKey || !body?.model) {
+      // Return 200 always — Nango retries on non-2xx
+      this.logger.warn('Nango webhook missing required fields', body);
+      return { queued: 0 };
+    }
+    return this.webhookService.handleNangoEvent(body);
+  }
 
   /**
    * POST /connectors/connect
