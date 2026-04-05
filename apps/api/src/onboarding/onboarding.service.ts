@@ -1,13 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createClient } from '@supabase/supabase-js';
+import { getPlatformSupabaseClient } from '../supabase/client';
 
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
-  private readonly sb = createClient(
-    process.env.SUPABASE_URL ?? '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  );
+  private get sb() {
+    return getPlatformSupabaseClient();
+  }
 
   /**
    * Initialize an onboarding session for an organization.
