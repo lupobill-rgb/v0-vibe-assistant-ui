@@ -55,13 +55,18 @@ export class OnboardingService {
       }
     }
 
-    const { data: advanced } = await this.sb.rpc('advance_onboarding_step', {
+    const { data: advanced, error: rpcErr } = await this.sb.rpc<boolean>('advance_onboarding_step', {
       p_session_id: sessionId,
       p_from_step: 3,
       p_verdict: 'good',
       p_verdict_message: 'Data profiling complete. Building dashboards.',
       p_recommendation: 'Executive and Operations dashboards generating now.',
     });
+
+    if (rpcErr) {
+      this.logger.error(`Failed to advance session ${sessionId} to step 4: ${rpcErr.message}`);
+      return { jobIds, advanced: false };
+    }
 
     this.logger.log(`Session ${sessionId} advanced to step 4. Jobs: ${jobIds.join(', ')}`);
     return { jobIds, advanced: advanced ?? false };

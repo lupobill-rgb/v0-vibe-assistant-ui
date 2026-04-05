@@ -271,7 +271,7 @@ export async function POST(request: Request) {
       'help us get started', 'walk me through setup', 'new customer',
       'new enterprise', 'enterprise setup', 'company setup',
     ]
-    const promptLower = (body.messages?.[0]?.content || '').toLowerCase()
+    const promptLower = (messages?.[0]?.content || '').toLowerCase()
     const isOnboardingIntent = onboardingPhrases.some(p => promptLower.includes(p))
     if (isOnboardingIntent) {
       return NextResponse.json({
