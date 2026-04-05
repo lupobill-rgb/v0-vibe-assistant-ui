@@ -16,19 +16,23 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!currentOrg?.id) return
-    supabase
-      .from("org_feature_flags")
-      .select("stage")
-      .eq("organization_id", currentOrg.id)
-      .single()
-      .then(({ data }) => {
+    const check = async () => {
+      try {
+        const { data } = await supabase
+          .from("org_feature_flags")
+          .select("stage")
+          .eq("organization_id", currentOrg.id)
+          .single()
         if (data?.stage === "onboarding") {
           router.replace("/onboarding")
         } else {
           setChecked(true)
         }
-      })
-      .catch(() => setChecked(true))
+      } catch {
+        setChecked(true)
+      }
+    }
+    check()
   }, [currentOrg?.id, router])
 
   if (!checked) return <AppShell><div className="min-h-screen" /></AppShell>

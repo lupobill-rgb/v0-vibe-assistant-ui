@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from 'next/server'
 
-export const maxDuration = 180
+export const maxDuration = 60
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
@@ -271,7 +271,7 @@ export async function POST(request: Request) {
       'help us get started', 'walk me through setup', 'new customer',
       'new enterprise', 'enterprise setup', 'company setup',
     ]
-    const promptLower = (body.messages?.[0]?.content || '').toLowerCase()
+    const promptLower = (messages?.[0]?.content || '').toLowerCase()
     const isOnboardingIntent = onboardingPhrases.some(p => promptLower.includes(p))
     if (isOnboardingIntent) {
       return NextResponse.json({
