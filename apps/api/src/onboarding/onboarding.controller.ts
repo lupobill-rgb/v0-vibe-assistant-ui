@@ -7,9 +7,8 @@ export class OnboardingController {
   constructor(private readonly onboardingService: OnboardingService) {}
 
   @Post('advance-step4')
-  async advanceStep4(@Body() body: { sessionId: string; projectId: string }) {
+  async advanceStep4(@Body() body: { sessionId: string }) {
     if (!body?.sessionId) throw new BadRequestException('Missing sessionId');
-    if (!body?.projectId) throw new BadRequestException('Missing projectId');
-    return this.onboardingService.advanceToStep4(body.sessionId, body.projectId);
+    return this.onboardingService.advanceToStep4(body.sessionId);
   }
 }

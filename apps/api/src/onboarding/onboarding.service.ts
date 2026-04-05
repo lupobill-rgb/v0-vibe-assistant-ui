@@ -10,10 +10,62 @@ export class OnboardingService {
   );
 
   /**
+   * Resolve (or create) the default project for an organization.
+   * Looks up the first team, then the first project under it.
+   * Creates both if they don't exist yet.
+   */
+  private async resolveProjectId(organizationId: string): Promise<string | null> {
+    // Find or create the default team
+    let { data: team } = await this.sb
+      .from('teams')
+      .select('id')
+      .eq('org_id', organizationId)
+      .limit(1)
+      .single();
+
+    if (!team) {
+      const { data: newTeam, error: teamErr } = await this.sb
+        .from('teams')
+        .insert({ org_id: organizationId, name: 'Default', slug: 'default' })
+        .select('id')
+        .single();
+      if (teamErr) {
+        this.logger.error(`Failed to create default team for org ${organizationId}: ${teamErr.message}`);
+        return null;
+      }
+      team = newTeam;
+    }
+
+    // Find or create the default project
+    let { data: project } = await this.sb
+      .from('projects')
+      .select('id')
+      .eq('team_id', team!.id)
+      .limit(1)
+      .single();
+
+    if (!project) {
+      const { data: newProject, error: projErr } = await this.sb
+        .from('projects')
+        .insert({ team_id: team!.id, name: 'Onboarding', local_path: '/tmp/onboarding' })
+        .select('id')
+        .single();
+      if (projErr) {
+        this.logger.error(`Failed to create default project for team ${team!.id}: ${projErr.message}`);
+        return null;
+      }
+      project = newProject;
+    }
+
+    return project!.id;
+  }
+
+  /**
    * Advance onboarding from step 3 (Data Analysis) to step 4 (Dashboard Build).
+   * Auto-resolves the project from the session's organization.
    * Queues two dashboard-build jobs and calls the advance_onboarding_step RPC.
    */
-  async advanceToStep4(sessionId: string, projectId: string): Promise<{ jobIds: string[]; advanced: boolean }> {
+  async advanceToStep4(sessionId: string): Promise<{ jobIds: string[]; advanced: boolean }> {
     const { data: session, error: sessionErr } = await this.sb
       .from('onboarding_sessions')
       .select('id, organization_id, current_step')
@@ -27,6 +79,12 @@ export class OnboardingService {
 
     if (session.current_step !== 3) {
       this.logger.warn(`Session ${sessionId} is on step ${session.current_step}, not 3 — skipping`);
+      return { jobIds: [], advanced: false };
+    }
+
+    const projectId = await this.resolveProjectId(session.organization_id);
+    if (!projectId) {
+      this.logger.error(`Could not resolve project for org ${session.organization_id}`);
       return { jobIds: [], advanced: false };
     }
 
