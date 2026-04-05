@@ -179,7 +179,7 @@ export function PricingPage() {
                   </button>
                 ) : isEnterprise ? (
                   <a
-                    href={`mailto:${process.env.NEXT_PUBLIC_SALES_EMAIL || 'sales@ubigrowth.com'}`}
+                    href={`mailto:${process.env.NEXT_PUBLIC_SALES_EMAIL || 'sales@vibe.ubigrowth.ai'}`}
                     className="flex items-center justify-center w-full px-4 py-2.5 rounded-xl text-sm font-medium border border-border text-foreground hover:bg-secondary transition-colors"
                   >
                     Contact Us
