@@ -122,7 +122,7 @@ class VibeExecutor {
             fs.mkdirSync(repoDir, { recursive: true });
             await simpleGit(repoDir).init();
             await simpleGit(repoDir).addConfig('user.name', process.env.GIT_AUTHOR_NAME || 'VIBE Bot');
-            await simpleGit(repoDir).addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'vibe@example.com');
+            await simpleGit(repoDir).addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'bot@vibe.ubigrowth.ai');
             await simpleGit(repoDir).commit('Initial empty commit', { '--allow-empty': null });
           } else {
             await storage.logEvent(task.task_id, `Project cache not initialized. Cloning ${repoUrl}...`, 'info');
@@ -216,7 +216,7 @@ class VibeExecutor {
       // ── Git setup ────────────────────────────────────────────────────────
       mainGit = simpleGit(repoDir);
       await mainGit.addConfig('user.name', process.env.GIT_AUTHOR_NAME || 'VIBE Bot');
-      await mainGit.addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'vibe@example.com');
+      await mainGit.addConfig('user.email', process.env.GIT_AUTHOR_EMAIL || 'bot@vibe.ubigrowth.ai');
 
       await mainGit.checkout(task.source_branch);
       await storage.logEvent(task.task_id, `Checked out base branch: ${task.source_branch}`, 'info');

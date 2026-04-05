@@ -16,7 +16,7 @@ export {}
 const DRY_RUN = process.argv.includes('--dry-run');
 const API_URL = process.env.API_URL || 'https://vibeapi-production-fdd1.up.railway.app';
 const TEST_ORG_ID = process.env.TEST_ORG_ID || 'test-billing-validation';
-const TEST_EMAIL = process.env.TEST_EMAIL || 'test@example.com';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'test@vibe.ubigrowth.ai';
 const CHECKOUT_DOMAIN = process.env.CHECKOUT_DOMAIN || 'checkout.stripe.com';
 
 interface TestCase {
