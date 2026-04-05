@@ -7,7 +7,6 @@ import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource
 import { Search, Plus, Package, Zap } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
-import { API_URL } from "@/lib/api"
 import { toast } from "sonner"
 
 type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean; trigger_on: string | null }
@@ -79,46 +78,16 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     if (!currentTeam?.id) return
-
-    // Wait for auth session before querying RLS-protected team_integrations
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        console.log("[Marketplace] No auth session — skipping team_integrations query")
-        return
-      }
-
-      // Primary: query team_integrations with auth context for RLS
-      supabase
-        .from("team_integrations")
-        .select("provider")
-        .eq("team_id", currentTeam.id)
-        .then(({ data, error }) => {
-          if (error) console.error("[Marketplace] team_integrations query failed:", error.message, error)
-          if (data && data.length > 0) {
-            const providers = new Set(data.map((r: { provider: string }) => r.provider.toLowerCase()))
-            console.log("[Marketplace] Connected providers from team_integrations:", [...providers])
-            setConnectedIds(providers)
-          } else {
-            console.log("[Marketplace] No connected providers found for team", currentTeam.id)
-          }
-        })
-
-      // Secondary: also check Nango API and merge results
-      fetch(`${API_URL}/connectors/${currentTeam.id}`, {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
-      })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data: { connectors: string[] } | null) => {
-        if (data?.connectors?.length) {
-          setConnectedIds((prev) => {
-            const merged = new Set(prev)
-            data.connectors.forEach((c) => merged.add(c.toLowerCase()))
-            return merged
-          })
+    supabase
+      .from("team_integrations")
+      .select("provider")
+      .eq("team_id", currentTeam.id)
+      .then(({ data, error }) => {
+        if (error) console.error("[Marketplace] team_integrations query failed:", error.message)
+        if (data?.length) {
+          setConnectedIds(new Set(data.map((r: { provider: string }) => r.provider.toLowerCase())))
         }
       })
-      .catch((err) => { console.warn("[Marketplace] Nango API check failed (non-blocking):", err.message) })
-    })
   }, [currentTeam?.id])
 
   const departments = useMemo(() => {
