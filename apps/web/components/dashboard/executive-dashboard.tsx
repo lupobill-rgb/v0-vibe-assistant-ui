@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
+import { API_URL } from "@/lib/api"
 
 interface SectionProps { title: string; children: React.ReactNode }
 function Section({ title, children }: SectionProps) {
@@ -41,6 +42,25 @@ export function ExecutiveDashboard() {
   const [perf, setPerf] = useState<TeamPerf[] | null>(null)
   const [insights, setInsights] = useState<{ pacing: string; opportunities: string[]; risks: string[]; consolidations: string[] } | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
+  const [approvedTitles, setApprovedTitles] = useState<Set<string>>(new Set())
+
+  const approveByTitle = async (title: string) => {
+    const { data: recs } = await supabase
+      .from("skill_recommendations")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("title", title.slice(0, 100))
+      .eq("status", "pending")
+      .limit(1)
+    if (!recs?.[0]) return
+    const { data: sess } = await supabase.auth.getSession()
+    await fetch(`${API_URL}/api/approvals/recommendations/${recs[0].id}/decide`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sess.session?.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: "approved" }),
+    })
+    setApprovedTitles((prev) => new Set(prev).add(title))
+  }
 
   useEffect(() => {
     if (!orgId) return
@@ -280,14 +300,22 @@ export function ExecutiveDashboard() {
           {!insights ? <Empty /> : (
             <ul className="space-y-1">
               {insights.opportunities.map((o, i) => (
-                <li key={i} className="text-sm text-foreground flex gap-2"><span className="text-green-400">↑</span>{o}</li>))}
+                <li key={i} className="text-sm text-foreground flex items-center gap-2">
+                  <span className="text-green-400">↑</span><span className="flex-1">{o}</span>
+                  {approvedTitles.has(o) ? <span className="text-[10px] text-green-400">Queued</span>
+                    : <button onClick={() => approveByTitle(o)} className="shrink-0 px-2 py-0.5 rounded text-[10px] font-medium bg-purple-600 hover:bg-purple-500 text-white transition-colors">Run this</button>}
+                </li>))}
             </ul>)}
         </Section>
         <Section title="Risks">
           {!insights ? <Empty /> : (
             <ul className="space-y-1">
               {insights.risks.map((r, i) => (
-                <li key={i} className="text-sm text-foreground flex gap-2"><span className="text-red-400">⚠</span>{r}</li>))}
+                <li key={i} className="text-sm text-foreground flex items-center gap-2">
+                  <span className="text-red-400">⚠</span><span className="flex-1">{r}</span>
+                  {approvedTitles.has(r) ? <span className="text-[10px] text-green-400">Queued</span>
+                    : <button onClick={() => approveByTitle(r)} className="shrink-0 px-2 py-0.5 rounded text-[10px] font-medium bg-purple-600 hover:bg-purple-500 text-white transition-colors">Run this</button>}
+                </li>))}
             </ul>)}
         </Section>
         <Section title="Consolidations">

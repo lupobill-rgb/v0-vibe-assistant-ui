@@ -6,11 +6,12 @@ import { AppShell } from "@/components/app-shell"
 import { useTeam } from "@/contexts/TeamContext"
 import { supabase } from "@/lib/supabase"
 import { HeroSection } from "@/components/dashboard/hero-section"
+import { RecommendationBanner } from "@/components/dashboard/recommendation-banner"
 import { PromptCard } from "@/components/dashboard/prompt-card"
 import { ProjectsGrid } from "@/components/dashboard/projects-grid"
 
 export default function HomePage() {
-  const { currentOrg } = useTeam()
+  const { currentOrg, currentTeam } = useTeam()
   const router = useRouter()
   const [checked, setChecked] = useState(false)
 
@@ -41,6 +42,9 @@ export default function HomePage() {
     <AppShell>
       <div className="min-h-screen">
         <HeroSection />
+        {currentTeam?.id && currentOrg?.id && (
+          <div className="px-6"><RecommendationBanner teamId={currentTeam.id} orgId={currentOrg.id} context="home" /></div>
+        )}
         <PromptCard />
         <ProjectsGrid />
       </div>

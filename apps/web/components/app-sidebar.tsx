@@ -24,7 +24,6 @@ import {
   ShieldCheck,
   BarChart3,
   Crown,
-  Bell,
 } from "lucide-react"
 import type { Team, Org } from "@/contexts/TeamContext"
 import { cn } from "@/lib/utils"
@@ -47,7 +46,6 @@ function getNavItems(teamName?: string) {
     { icon: MessageSquare, label: "Chat", href: "/chat" },
     { icon: Store, label: "Marketplace", href: "/marketplace" },
     { icon: Share2, label: "Feed", href: "/feed" },
-    { icon: Bell, label: "Approvals", href: "/approvals" },
     ...(teamName === "Operations" ? [{ icon: BarChart3, label: "Operations", href: "/operations" }] : []),
     ...(teamName === "Executive" ? [{ icon: Crown, label: "Executive", href: "/executive" }] : []),
     { icon: Settings, label: "Settings", href: "/settings" },
@@ -96,22 +94,11 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [connectDatasourceOpen, setConnectDatasourceOpen] = useState(false)
   const [billing, setBilling] = useState<BillingStatus | null>(null)
-  const [approvalCount, setApprovalCount] = useState(0)
 
   useEffect(() => {
     if (!currentOrg?.id) return
     fetchBillingStatus(currentOrg.id).then((data) => setBilling(data))
   }, [currentOrg?.id])
-
-  useEffect(() => {
-    if (!currentTeam?.id) return
-    supabase
-      .from("skill_recommendations")
-      .select("id", { count: "exact", head: true })
-      .eq("team_id", currentTeam.id)
-      .eq("status", "pending")
-      .then(({ count }) => setApprovalCount(count ?? 0))
-  }, [currentTeam?.id])
 
   // Close switcher on outside click
   useEffect(() => {
@@ -316,11 +303,6 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
               >
                 <item.icon className="w-4 h-4 flex-shrink-0" />
                 {!collapsed && <span>{item.label}</span>}
-                {!collapsed && item.label === "Approvals" && approvalCount > 0 && (
-                  <span className="ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-500 text-white">
-                    {approvalCount}
-                  </span>
-                )}
               </Link>
             )
 

@@ -2,12 +2,18 @@
 
 import { AppShell } from "@/components/app-shell"
 import { BillingDashboard } from "@/components/billing/billing-dashboard"
+import { RecommendationBanner } from "@/components/dashboard/recommendation-banner"
+import { useTeam } from "@/contexts/TeamContext"
 import { CreditCard } from "lucide-react"
 
 export default function BillingPage() {
+  const { currentTeam, currentOrg } = useTeam()
   return (
     <AppShell>
       <div className="min-h-screen">
+        {currentTeam?.id && currentOrg?.id && (
+          <div className="px-6 pt-6"><RecommendationBanner teamId={currentTeam.id} orgId={currentOrg.id} context="billing" /></div>
+        )}
         {/* Page Header */}
         <div className="px-6 pt-8 pb-6 border-b border-border/50">
           <div className="flex items-center gap-3">
