@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
+import { RecommendationBanner } from "@/components/dashboard/recommendation-banner"
 
 interface SectionProps {
   title: string
@@ -39,7 +40,7 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 export function OperationsDashboard() {
-  const { currentTeam } = useTeam()
+  const { currentTeam, currentOrg } = useTeam()
   const teamId = currentTeam?.id
 
   const [connectors, setConnectors] = useState<any[] | null>(null)
@@ -126,6 +127,10 @@ export function OperationsDashboard() {
   }, [teamId])
 
   return (
+    <div className="space-y-6">
+      {currentOrg?.id && teamId && (
+        <RecommendationBanner teamId={teamId} orgId={currentOrg.id} context="operations" />
+      )}
     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       {/* Connectors */}
       <Section title="Active Connectors">
@@ -194,6 +199,7 @@ export function OperationsDashboard() {
           </>
         )}
       </Section>
+    </div>
     </div>
   )
 }

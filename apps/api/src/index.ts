@@ -29,6 +29,7 @@ import stripeBillingRouter from './billing/billing.controller';
 import financeRouter from './routes/finance';
 import feedsRouter from './routes/feeds';
 import webhooksRouter from './routes/webhooks';
+import approvalsRouter from './routes/approvals';
 import { getPlatformSupabaseClient } from './supabase/client';
 import {
   INITIAL_BUILD_BUDGETS,
@@ -266,6 +267,7 @@ async function bootstrap() {
   app.use('/api/billing', express.json(), billingRouter);
   app.use('/api/finance', financeRouter);
   app.use('/api/feeds', express.json(), feedsRouter);
+  app.use('/api/approvals', express.json(), approvalsRouter);
   app.use('/api/webhooks', express.json(), webhooksRouter);
   app.use('/api/connectors/webhook', express.json(), webhooksRouter);
 
