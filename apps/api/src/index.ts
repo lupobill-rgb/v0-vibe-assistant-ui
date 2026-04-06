@@ -114,6 +114,46 @@ function verifyPreviewToken(token: string, requestedJobId: string): boolean {
   }
 }
 
+/**
+ * Post-generation audit hook — writes one row to compliance_audit_log.
+ * Non-blocking, fire-and-forget. A failed write never breaks the build.
+ */
+function writeAuditLog(params: {
+  org_id: string;
+  user_id: string;
+  team_id: string | null;
+  job_id: string;
+  artifact_type: string;
+  generated_output: string;
+  skill_ids?: string[];
+  skill_versions?: number[];
+  department?: string;
+  governance_version_id?: string;
+}): void {
+  // Fire-and-forget — runs async, never awaited
+  (async () => {
+    try {
+      const artifact_hash = crypto.createHash('sha256').update(params.generated_output).digest('hex');
+      await getPlatformSupabaseClient()
+        .from('compliance_audit_log')
+        .insert({
+          org_id: params.org_id,
+          user_id: params.user_id,
+          team_id: params.team_id ?? null,
+          job_id: params.job_id,
+          artifact_type: params.artifact_type,
+          artifact_hash,
+          skill_ids: params.skill_ids ?? [],
+          skill_versions: params.skill_versions ?? [],
+          department: params.department ?? null,
+          governance_version_id: params.governance_version_id ?? null,
+        });
+    } catch (err: any) {
+      console.warn(`[AUDIT] Failed to write audit log for job ${params.job_id}: ${err.message}`);
+    }
+  })();
+}
+
 const DEPT_NUDGE_TEXT: Record<string, string> = {
   sales: 'Connect HubSpot to pull your live deals and contacts',
   marketing: 'Connect GA4 to show real traffic and conversion data',
@@ -636,6 +676,7 @@ async function bootstrap() {
       const team = await storage.getTeam(project.team_id);
       const teamName = team?.name ?? '';
       const resolvedMode = resolveMode(prompt, teamName);
+      const auditDepartment = resolveDepartment(teamName);
 
       // Budget enforcement via org
       const org = await storage.getOrgForProject(project_id);
@@ -901,6 +942,7 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
               await storage.logEvent(taskId, `[DEBUG] Fix applied after ${debugResult.iterations} iteration(s). ${debugResult.healedIssues ?? 0} component issue(s) healed.`, 'success');
               await storage.updateTaskState(taskId, 'completed');
               if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
+              if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'debug_fix', generated_output: html, department: auditDepartment });
             } else {
               await storage.logEvent(taskId, `[DEBUG] Agent failed: ${debugResult.summary}`, 'error');
               await storage.updateTaskState(taskId, 'failed');
@@ -1113,6 +1155,7 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
               });
               await storage.updateTaskState(taskId, 'completed');
               if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
+              if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'app', generated_output: appData.diff, department: auditDepartment });
               await storage.logEvent(taskId, 'App job completed successfully (fast path)', 'info');
               return;
             } catch (appErr: any) {
@@ -1276,6 +1319,7 @@ Include ALL rows from the original data with their final calculated values. This
               });
               await storage.updateTaskState(taskId, 'completed');
               if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
+              if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: dashData.diff, department: auditDepartment });
               await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
               return;
             } catch (dashErr: any) {
@@ -1489,6 +1533,10 @@ Include ALL rows from the original data with their final calculated values. This
           });
           await storage.updateTaskState(taskId, 'completed');
           if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
+          if (org) {
+            const outputForAudit = pageNames.map((p: string) => { try { return fs.readFileSync(path.join(previewDir, `${p}.html`), 'utf-8'); } catch { return ''; } }).join('\n');
+            writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: resolvedMode || 'site', generated_output: outputForAudit, department: auditDepartment });
+          }
           await storage.logEvent(taskId, 'Job completed successfully', 'info');
           // Store assistant response in conversation after successful build (best-effort)
           if (resolvedConversationId) {
