@@ -22,6 +22,7 @@ import {
   Building2,
   LogOut,
   ShieldCheck,
+  BarChart3,
 } from "lucide-react"
 import type { Team, Org } from "@/contexts/TeamContext"
 import { cn } from "@/lib/utils"
@@ -37,15 +38,19 @@ import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource
 import { supabase } from "@/lib/supabase"
 import { fetchBillingStatus, type BillingStatus } from "@/lib/api"
 
-const navItems = [
-  { icon: Home, label: "Home", href: "/" },
-  { icon: FolderKanban, label: "Projects", href: "/projects" },
-  { icon: MessageSquare, label: "Chat", href: "/chat" },
-  { icon: Store, label: "Marketplace", href: "/marketplace" },
-  { icon: Share2, label: "Feed", href: "/feed" },
-  { icon: Settings, label: "Settings", href: "/settings" },
-  { icon: ShieldCheck, label: "Compliance", href: "/compliance" },
-]
+function getNavItems(teamName?: string) {
+  const items = [
+    { icon: Home, label: "Home", href: "/" },
+    { icon: FolderKanban, label: "Projects", href: "/projects" },
+    { icon: MessageSquare, label: "Chat", href: "/chat" },
+    { icon: Store, label: "Marketplace", href: "/marketplace" },
+    { icon: Share2, label: "Feed", href: "/feed" },
+    ...(teamName === "Operations" ? [{ icon: BarChart3, label: "Operations", href: "/operations" }] : []),
+    { icon: Settings, label: "Settings", href: "/settings" },
+    { icon: ShieldCheck, label: "Compliance", href: "/compliance" },
+  ]
+  return items
+}
 
 const bottomItems = [
   { icon: HelpCircle, label: "Help & Support", href: "/help" },
@@ -280,7 +285,7 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
           )}>
             Navigation
           </span>
-          {navItems.map((item) => {
+          {getNavItems(currentTeam?.name).map((item) => {
             const isActive = pathname === item.href ||
               (item.href === "/projects" && !!activeProjectId)
             const linkContent = (
