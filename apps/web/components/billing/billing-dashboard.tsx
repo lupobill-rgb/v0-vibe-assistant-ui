@@ -146,8 +146,10 @@ export function BillingDashboard() {
   const fmtTokens = (n: number) =>
     n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
 
-  const fmtSeconds = (n: number) =>
-    n >= 60 ? `${Math.floor(n / 60)}m ${n % 60}s` : `${n}s`
+  const fmtSeconds = (n: number) => {
+    const r = Math.round(n * 10) / 10
+    return r >= 60 ? `${Math.floor(r / 60)}m ${Math.round(r % 60)}s` : `${r}s`
+  }
 
   return (
     <div className="flex flex-col gap-8">

@@ -328,7 +328,7 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
                   {billing.tier_slug === "starter" ? "Free" : billing.tier_slug}
                 </span>
                 <span className="text-muted-foreground">
-                  {" · "}{billing.credits_used} / {billing.credits_limit} credits
+                  {" · "}{billing.credits_used} / {billing.credits_limit === -1 ? "Unlimited" : billing.credits_limit} credits
                 </span>
               </div>
               {billing.tier_slug === "starter" && (
