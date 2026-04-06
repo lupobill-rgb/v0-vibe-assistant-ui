@@ -25,5 +25,8 @@ Read `/apps/executor/src/templates/design-phases.ts` in full. This defines how V
 ## UI DRIFT IS A FAILURE
 If your output does not match FRONTEND_SKILL.md exactly, it is wrong. Fix it before submitting. Dark navy background. Violet primary. Cyan accent. Space Grotesk headings. Inter body. Gradients on heroes and primary buttons. Glassmorphism navbar. This is not a suggestion.
 
+## DEPLOYMENT FREEZE — PRODUCTION
+**⛔ DO NOT deploy to vibe-web (production Vercel) until explicitly instructed. All work deploys to vibe_staging only. Do not push to or create PRs targeting the production Vercel project. Do not modify any Vercel production project settings.**
+
 ## THE MISSION
 A user types natural language. VIBE produces a deployed, production-grade full-stack product. Beautiful. Governed. Reliable. That is the only job.
