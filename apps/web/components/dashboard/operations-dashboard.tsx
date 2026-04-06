@@ -54,8 +54,8 @@ export function OperationsDashboard() {
 
     // 1. Connectors
     supabase
-      .from("nango_connections")
-      .select("connector_type, status, created_at")
+      .from("team_integrations")
+      .select("provider, created_at")
       .eq("team_id", teamId)
       .then(({ data }) => setConnectors(data ?? []))
 
@@ -135,10 +135,8 @@ export function OperationsDashboard() {
             <ul className="mt-3 space-y-1">
               {connectors.map((c, i) => (
                 <li key={i} className="flex items-center justify-between text-sm">
-                  <span className="text-foreground">{c.connector_type}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[c.status] ?? "bg-white/10 text-gray-400"}`}>
-                    {c.status}
-                  </span>
+                  <span className="text-foreground">{c.provider}</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">active</span>
                 </li>
               ))}
             </ul>
