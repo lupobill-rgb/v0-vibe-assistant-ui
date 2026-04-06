@@ -553,7 +553,16 @@ export async function fetchBillingStatus(orgId: string): Promise<BillingStatus |
       headers: await authGetHeaders(),
     })
     if (!res.ok) return null
-    return res.json()
+    const data = await res.json()
+    return {
+      tier_slug: data.tierSlug ?? data.tier_slug ?? 'starter',
+      credits_used: data.creditsUsed ?? data.credits_used ?? 0,
+      credits_limit: data.creditsLimit ?? data.credits_limit ?? 50,
+      projects_used: data.projectsUsed ?? data.projects_used ?? 0,
+      projects_limit: data.projectsLimit ?? data.projects_limit ?? 3,
+      workspaces_limit: data.workspacesLimit ?? data.workspaces_limit ?? 1,
+      builders_limit: data.buildersLimit ?? data.builders_limit ?? 1,
+    }
   } catch {
     return null
   }
