@@ -55,6 +55,8 @@ Prompt → deployed product. Org-aware. Governed. Beautiful.
 3. Railway redeploys `apps/api` automatically on main push
 4. Vercel redeploys `apps/web` automatically on main push
 
+**⛔ DO NOT deploy to vibe-web (production Vercel) until explicitly instructed. All work deploys to vibe_staging only. Do not create PRs targeting the production Vercel project or modify any Vercel production project settings.**
+
 ## Stable: Dashboard Fast Path (v0.1-dashboard-stable) — DO NOT MODIFY
 
 The dashboard generation pipeline is **working and demo-ready** (Advanced Decisions demo).
