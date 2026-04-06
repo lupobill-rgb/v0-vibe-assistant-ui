@@ -16,12 +16,33 @@ export function AuthGuard({ children }: { children: ReactNode }) {
       return
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
         router.replace("/login")
-      } else {
-        setReady(true)
+        return
       }
+
+      // Auto-redirect Operations team members to /operations from root
+      if (pathname === "/") {
+        try {
+          const teamId = localStorage.getItem("vibe_active_team")
+          if (teamId) {
+            const { data } = await supabase
+              .from("teams")
+              .select("name")
+              .eq("id", teamId)
+              .single()
+            if (data?.name === "Operations") {
+              router.replace("/operations")
+              return
+            }
+          }
+        } catch {
+          // Ignore — fall through to normal load
+        }
+      }
+
+      setReady(true)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(

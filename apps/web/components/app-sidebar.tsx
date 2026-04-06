@@ -282,7 +282,7 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
           )}>
             Navigation
           </span>
-          {navItems.map((item) => {
+          {getNavItems(currentTeam?.name).map((item) => {
             const isActive = pathname === item.href ||
               (item.href === "/projects" && !!activeProjectId)
             const linkContent = (
