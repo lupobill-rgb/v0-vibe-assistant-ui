@@ -76,18 +76,14 @@ export function BillingDashboard() {
       const teamIds = (teams ?? []).map((t: { id: string }) => t.id)
 
       // Step B — project IDs for those teams
-      const { data: projects } = await supabase
-        .from("projects")
-        .select("id")
-        .in("team_id", teamIds)
-      const projectIds = (projects ?? []).map((p: { id: string }) => p.id)
+      const projectIds = teamIds.length
+        ? ((await supabase.from("projects").select("id").in("team_id", teamIds)).data ?? []).map((p: { id: string }) => p.id)
+        : []
 
       // Step C — jobs for those projects
-      const { data: jobs } = await supabase
-        .from("jobs")
-        .select("llm_total_tokens, files_changed_count, total_job_seconds, execution_state")
-        .in("project_id", projectIds)
-      const jd = jobs ?? []
+      const jd = projectIds.length
+        ? (await supabase.from("jobs").select("llm_total_tokens, files_changed_count, total_job_seconds, execution_state").in("project_id", projectIds)).data ?? []
+        : []
 
       // Step D — compute usage
       const jobs_total = jd.length
@@ -295,8 +291,8 @@ export function BillingDashboard() {
         </div>
       )}
 
-      {/* Pricing Tiers */}
-      <PricingPage />
+      {/* Pricing Tiers — hidden for enterprise */}
+      {currentTier !== "enterprise" && <PricingPage />}
     </div>
   )
 }
