@@ -22,8 +22,8 @@ export function AuthGuard({ children }: { children: ReactNode }) {
         return
       }
 
-      // Auto-redirect Operations team members to /operations from root
-      if (pathname === "/") {
+      // Auto-redirect team members on first login only (not manual Home clicks)
+      if (pathname === "/" && sessionStorage.getItem("vibe_initial_redirect_done") !== "true") {
         try {
           const teamId = localStorage.getItem("vibe_active_team")
           if (teamId) {
@@ -32,14 +32,21 @@ export function AuthGuard({ children }: { children: ReactNode }) {
               .select("name")
               .eq("id", teamId)
               .single()
-            if (data?.name === "Operations") {
-              router.replace("/operations")
+            const teamRedirects: Record<string, string> = {
+              Operations: "/operations",
+              Finance: "/billing",
+            }
+            const redirect = teamRedirects[data?.name ?? ""]
+            if (redirect) {
+              sessionStorage.setItem("vibe_initial_redirect_done", "true")
+              router.replace(redirect)
               return
             }
           }
         } catch {
           // Ignore — fall through to normal load
         }
+        sessionStorage.setItem("vibe_initial_redirect_done", "true")
       }
 
       setReady(true)
