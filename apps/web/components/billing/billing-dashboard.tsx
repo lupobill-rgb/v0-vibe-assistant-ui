@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { fetchBillingInfo, fetchBillingStatus, createCheckoutSession, type BillingInfo, type BillingStatus } from "@/lib/api"
 import { useTeam } from "@/contexts/TeamContext"
+import { supabase } from "@/lib/supabase"
 import {
   CheckCircle2,
   XCircle,
@@ -12,6 +13,8 @@ import {
   CreditCard,
   Loader2,
   BarChart3,
+  Users,
+  Shield,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PricingPage } from "./PricingPage"
@@ -46,11 +49,12 @@ function StatCard({
 }
 
 export function BillingDashboard() {
-  const { currentOrg } = useTeam()
+  const { currentOrg, currentTeam } = useTeam()
   const [billing, setBilling] = useState<BillingInfo | null>(null)
   const [status, setStatus] = useState<BillingStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [upgrading, setUpgrading] = useState(false)
+  const [accountType, setAccountType] = useState<string>("individual")
 
   useEffect(() => {
     const load = async () => {
@@ -60,6 +64,14 @@ export function BillingDashboard() {
       ])
       setBilling(info)
       setStatus(bs)
+      if (currentOrg?.id) {
+        const { data } = await supabase
+          .from("organizations")
+          .select("account_type")
+          .eq("id", currentOrg.id)
+          .single()
+        if (data?.account_type) setAccountType(data.account_type)
+      }
       setLoading(false)
     }
     load().catch(() => setLoading(false))
@@ -125,6 +137,36 @@ export function BillingDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Account Type Banner */}
+      {accountType === "individual" && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+          <Users className="w-5 h-5 text-[#4F8EFF] flex-shrink-0" />
+          <p className="text-sm text-muted-foreground flex-1">
+            Invite teammates to unlock Team features.
+          </p>
+          <a
+            href="/settings"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#4F8EFF]/10 text-[#4F8EFF] hover:bg-[#4F8EFF]/20 transition-colors"
+          >
+            Invite
+          </a>
+        </div>
+      )}
+      {accountType === "team" && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+          <Users className="w-5 h-5 text-[#A855F7] flex-shrink-0" />
+          <p className="text-sm text-muted-foreground">
+            You have a growing team. At 5 members you'll be automatically upgraded to Enterprise.
+          </p>
+        </div>
+      )}
+      {accountType === "enterprise" && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+          <Shield className="w-4 h-4 text-emerald-400" />
+          <span className="text-sm font-medium text-emerald-400">Enterprise Account</span>
+        </div>
+      )}
 
       {/* Usage Stats */}
       <div>
@@ -200,6 +242,40 @@ export function BillingDashboard() {
           </div>
         </div>
       )}
+
+      {/* Org-Wide Usage (Enterprise + Ops/Finance viewers) */}
+      {accountType === "enterprise" &&
+        (currentTeam?.name === "Operations" || currentTeam?.name === "Finance") &&
+        billing && (
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-sm font-semibold text-foreground mb-4">
+              Org-Wide Usage
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+              <StatCard
+                label="Total AI Cost"
+                value={`$${((billing.tokens_used * 0.00003) * 2.0).toFixed(2)}`}
+                sub="incl. 2x markup"
+                icon={CreditCard}
+                color="bg-gradient-to-br from-[#A855F7] to-[#A855F7]/70"
+              />
+              <StatCard
+                label="Total Jobs"
+                value={billing.jobs_total}
+                sub="org-wide"
+                icon={BarChart3}
+                color="bg-gradient-to-br from-[#4F8EFF] to-[#4F8EFF]/70"
+              />
+              <StatCard
+                label="Total Executions"
+                value={billing.jobs_completed + billing.jobs_failed}
+                sub="completed + failed"
+                icon={Zap}
+                color="bg-gradient-to-br from-emerald-500 to-emerald-500/70"
+              />
+            </div>
+          </div>
+        )}
 
       {/* Pricing Tiers */}
       <PricingPage />
