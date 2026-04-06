@@ -142,6 +142,64 @@ export function ExecutiveDashboard() {
       .finally(() => setInsightsLoading(false))
   }, [pipeline, usage, perf, insightsLoading, insights])
 
+  // Write AI insights as skill_recommendations (deduped by title + org)
+  useEffect(() => {
+    if (!insights || !orgId || !currentOrg) return
+
+    async function writeRecs() {
+      // Get all teams for this org to assign recommendations
+      const { data: teams } = await supabase
+        .from("teams")
+        .select("id, name")
+        .eq("org_id", orgId)
+      if (!teams || teams.length === 0) return
+
+      const defaultTeam = teams[0]
+      const recs: Array<{
+        org_id: string; team_id: string; title: string; rationale: string;
+        proposed_action: string; estimated_impact: string; priority: string
+      }> = []
+
+      insights!.opportunities.forEach((o) => {
+        recs.push({
+          org_id: orgId!,
+          team_id: defaultTeam.id,
+          title: o.slice(0, 100),
+          rationale: o,
+          proposed_action: "Investigate and act on opportunity",
+          estimated_impact: "Revenue growth",
+          priority: "medium",
+        })
+      })
+      insights!.risks.forEach((r) => {
+        recs.push({
+          org_id: orgId!,
+          team_id: defaultTeam.id,
+          title: r.slice(0, 100),
+          rationale: r,
+          proposed_action: "Mitigate identified risk",
+          estimated_impact: "Risk reduction",
+          priority: "high",
+        })
+      })
+
+      // Dedupe: skip if pending rec with same title + org already exists
+      for (const rec of recs) {
+        const { data: existing } = await supabase
+          .from("skill_recommendations")
+          .select("id")
+          .eq("org_id", rec.org_id)
+          .eq("title", rec.title)
+          .eq("status", "pending")
+          .limit(1)
+        if (existing && existing.length > 0) continue
+        await supabase.from("skill_recommendations").insert(rec)
+      }
+    }
+
+    writeRecs()
+  }, [insights, orgId, currentOrg])
+
   return (
     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       <Section title="Pipeline Overview">
