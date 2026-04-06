@@ -38,19 +38,16 @@ import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource
 import { supabase } from "@/lib/supabase"
 import { fetchBillingStatus, type BillingStatus } from "@/lib/api"
 
-function getNavItems(teamName?: string) {
-  const items = [
-    { icon: Home, label: "Home", href: "/" },
-    { icon: FolderKanban, label: "Projects", href: "/projects" },
-    { icon: MessageSquare, label: "Chat", href: "/chat" },
-    { icon: Store, label: "Marketplace", href: "/marketplace" },
-    { icon: Share2, label: "Feed", href: "/feed" },
-    ...(teamName === "Operations" ? [{ icon: BarChart3, label: "Operations", href: "/operations" }] : []),
-    { icon: Settings, label: "Settings", href: "/settings" },
-    { icon: ShieldCheck, label: "Compliance", href: "/compliance" },
-  ]
-  return items
-}
+const navItems = [
+  { icon: Home, label: "Home", href: "/" },
+  { icon: FolderKanban, label: "Projects", href: "/projects" },
+  { icon: MessageSquare, label: "Chat", href: "/chat" },
+  { icon: Store, label: "Marketplace", href: "/marketplace" },
+  { icon: Share2, label: "Feed", href: "/feed" },
+  { icon: BarChart3, label: "Operations", href: "/operations" },
+  { icon: Settings, label: "Settings", href: "/settings" },
+  { icon: ShieldCheck, label: "Compliance", href: "/compliance" },
+]
 
 const bottomItems = [
   { icon: HelpCircle, label: "Help & Support", href: "/help" },

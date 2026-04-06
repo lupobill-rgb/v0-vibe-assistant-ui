@@ -2,196 +2,200 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { useTeam } from "@/contexts/TeamContext"
 
-interface Recommendation {
+interface SectionProps {
   title: string
-  insight: string
-  action: string
-  estimated_impact: string
+  children: React.ReactNode
 }
 
-interface SectionData {
-  connectors: { name: string; status: string }[]
-  aiUsage: { calls: number; tokens: number; cost: number }
-  jobs: { total: number; completed: number; failed: number }
-  autonomous: { total: number; successful: number; avgDuration: number }
-  teamSpend: { category: string; amount: number }[]
-}
-
-function Skeleton() {
-  return <div className="h-24 rounded-xl bg-white/5 animate-pulse" />
-}
-
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: SectionProps) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-      <h3 className="text-sm font-semibold text-gray-300 mb-3">{title}</h3>
+    <div className="bg-card border border-border rounded-xl p-6">
+      <h2 className="text-lg font-semibold text-foreground mb-4">{title}</h2>
       {children}
     </div>
   )
 }
 
-function StatRow({ label, value }: { label: string; value: string | number }) {
+function Kpi({ value: v, label }: { value: string | number; label: string }) {
   return (
-    <div className="flex justify-between py-1 text-sm">
-      <span className="text-gray-400">{label}</span>
-      <span className="text-white font-medium">{value}</span>
+    <div>
+      <p className="text-2xl font-bold text-foreground">{v}</p>
+      <p className="text-xs text-muted-foreground mt-1">{label}</p>
     </div>
   )
 }
 
+function Empty() {
+  return <p className="text-sm text-muted-foreground">No data yet</p>
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  active: "bg-green-500/20 text-green-400",
+  connected: "bg-green-500/20 text-green-400",
+  error: "bg-red-500/20 text-red-400",
+  inactive: "bg-yellow-500/20 text-yellow-400",
+}
+
 export function OperationsDashboard() {
-  const [data, setData] = useState<SectionData | null>(null)
-  const [recs, setRecs] = useState<Recommendation[] | null>(null)
-  const [recsLoading, setRecsLoading] = useState(false)
-  const [recsError, setRecsError] = useState(false)
+  const { currentTeam } = useTeam()
+  const teamId = currentTeam?.id
+
+  const [connectors, setConnectors] = useState<any[] | null>(null)
+  const [aiUsage, setAiUsage] = useState<{ calls: number; tokens: number; cost: number } | null>(null)
+  const [jobs, setJobs] = useState<{ total: number; completed: number; failed: number; avgDuration: number } | null>(null)
+  const [execs, setExecs] = useState<{ total: number; completed: number; failed: number } | null>(null)
+  const [spend, setSpend] = useState<{ total: number; byCategory: Record<string, number> } | null>(null)
 
   useEffect(() => {
-    async function load() {
-      const [connRes, jobsRes, autoRes] = await Promise.all([
-        supabase.from("connectors").select("name, status"),
-        supabase.from("jobs").select("id, execution_state"),
-        supabase.from("autonomous_executions").select("id, status, duration_ms"),
-      ])
+    if (!teamId) return
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString()
 
-      const connectors = (connRes.data ?? []).map((c: any) => ({ name: c.name, status: c.status }))
-      const jobs = jobsRes.data ?? []
-      const autoExecs = autoRes.data ?? []
+    // 1. Connectors
+    supabase
+      .from("nango_connections")
+      .select("connector_type, status, created_at")
+      .eq("team_id", teamId)
+      .then(({ data }) => setConnectors(data ?? []))
 
-      const section: SectionData = {
-        connectors,
-        aiUsage: { calls: jobs.length, tokens: jobs.length * 2800, cost: +(jobs.length * 0.012).toFixed(2) },
-        jobs: {
-          total: jobs.length,
-          completed: jobs.filter((j: any) => j.execution_state === "completed" || j.execution_state === "complete").length,
-          failed: jobs.filter((j: any) => j.execution_state === "failed").length,
-        },
-        autonomous: {
-          total: autoExecs.length,
-          successful: autoExecs.filter((a: any) => a.status === "success").length,
-          avgDuration: autoExecs.length
-            ? Math.round(autoExecs.reduce((s: number, a: any) => s + (a.duration_ms || 0), 0) / autoExecs.length)
-            : 0,
-        },
-        teamSpend: [
-          { category: "LLM Calls", amount: +(jobs.length * 0.012).toFixed(2) },
-          { category: "Edge Functions", amount: +(jobs.length * 0.003).toFixed(2) },
-          { category: "Storage", amount: 4.5 },
-        ],
-      }
-
-      setData(section)
-    }
-    load()
-  }, [])
-
-  useEffect(() => {
-    if (!data) return
-    setRecsLoading(true)
-    setRecsError(false)
-
-    const context = JSON.stringify({
-      connectors: data.connectors,
-      aiUsage: data.aiUsage,
-      jobs: data.jobs,
-      autonomous: data.autonomous,
-      teamSpend: data.teamSpend,
-    })
-
-    fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: "You are an operations analyst. Based on the platform usage data provided, identify 2-3 specific opportunities for cost reduction, consolidation, or efficiency improvement. Be specific and quantitative where possible. Return a JSON array of objects: [{title, insight, action, estimated_impact}]",
-        messages: [{ role: "user", content: context }],
-      }),
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        const text = res?.content?.[0]?.text ?? "[]"
-        const match = text.match(/\[[\s\S]*\]/)
-        setRecs(match ? JSON.parse(match[0]) : [])
+    // 2. AI Usage
+    supabase
+      .from("metering_calls")
+      .select("model, provider, input_tokens, output_tokens, cost_estimate, timestamp")
+      .eq("team_id", teamId)
+      .gte("timestamp", thirtyDaysAgo)
+      .then(({ data }) => {
+        if (!data || data.length === 0) { setAiUsage({ calls: 0, tokens: 0, cost: 0 }); return }
+        const calls = data.length
+        const tokens = data.reduce((s, r) => s + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0)
+        const cost = data.reduce((s, r) => s + (r.cost_estimate ?? 0), 0)
+        setAiUsage({ calls, tokens, cost })
       })
-      .catch(() => setRecsError(true))
-      .finally(() => setRecsLoading(false))
-  }, [data])
 
-  if (!data) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-6">
-        {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} />)}
-      </div>
-    )
-  }
+    // 3. Jobs (via projects)
+    supabase
+      .from("projects")
+      .select("id")
+      .eq("team_id", teamId)
+      .then(({ data: projects }) => {
+        if (!projects || projects.length === 0) { setJobs({ total: 0, completed: 0, failed: 0, avgDuration: 0 }); return }
+        const pids = projects.map((p) => p.id)
+        supabase
+          .from("jobs")
+          .select("execution_state, initiated_at, total_job_seconds")
+          .in("project_id", pids)
+          .gte("initiated_at", thirtyDaysAgo)
+          .then(({ data: jd }) => {
+            if (!jd) { setJobs({ total: 0, completed: 0, failed: 0, avgDuration: 0 }); return }
+            const completed = jd.filter((j) => j.execution_state === "completed" || j.execution_state === "complete").length
+            const failed = jd.filter((j) => j.execution_state === "failed").length
+            const durations = jd.filter((j) => j.total_job_seconds).map((j) => j.total_job_seconds)
+            const avg = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0
+            setJobs({ total: jd.length, completed, failed, avgDuration: avg })
+          })
+      })
+
+    // 4. Autonomous Executions
+    supabase
+      .from("autonomous_executions")
+      .select("status, trigger_source, created_at")
+      .eq("team_id", teamId)
+      .gte("created_at", thirtyDaysAgo)
+      .then(({ data }) => {
+        if (!data) { setExecs({ total: 0, completed: 0, failed: 0 }); return }
+        setExecs({
+          total: data.length,
+          completed: data.filter((e) => e.status === "completed").length,
+          failed: data.filter((e) => e.status === "failed").length,
+        })
+      })
+
+    // 5. Team Spend
+    supabase
+      .from("team_spend")
+      .select("category, amount, vendor, spend_date")
+      .eq("team_id", teamId)
+      .then(({ data }) => {
+        if (!data || data.length === 0) { setSpend({ total: 0, byCategory: {} }); return }
+        const total = data.reduce((s, r) => s + (r.amount ?? 0), 0)
+        const byCategory: Record<string, number> = {}
+        data.forEach((r) => { byCategory[r.category ?? "Other"] = (byCategory[r.category ?? "Other"] ?? 0) + (r.amount ?? 0) })
+        setSpend({ total, byCategory })
+      })
+  }, [teamId])
 
   return (
-    <div className="p-6 space-y-6">
-      <h2 className="text-xl font-semibold text-white font-[family-name:var(--font-space-grotesk)]">
-        Operations Dashboard
-      </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {/* 1. Connected Connectors */}
-        <SectionCard title="Connected Connectors">
-          {data.connectors.length === 0 && <p className="text-sm text-gray-500">No connectors</p>}
-          {data.connectors.map((c) => (
-            <div key={c.name} className="flex justify-between py-1 text-sm">
-              <span className="text-gray-300">{c.name}</span>
-              <span className={c.status === "active" ? "text-emerald-400" : "text-yellow-400"}>{c.status}</span>
-            </div>
-          ))}
-        </SectionCard>
+    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      {/* Connectors */}
+      <Section title="Active Connectors">
+        {connectors === null ? <Empty /> : connectors.length === 0 ? <Empty /> : (
+          <>
+            <Kpi value={connectors.length} label="Connected" />
+            <ul className="mt-3 space-y-1">
+              {connectors.map((c, i) => (
+                <li key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-foreground">{c.connector_type}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[c.status] ?? "bg-white/10 text-gray-400"}`}>
+                    {c.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Section>
 
-        {/* 2. AI Usage */}
-        <SectionCard title="AI Usage">
-          <StatRow label="Total Calls" value={data.aiUsage.calls} />
-          <StatRow label="Tokens Used" value={data.aiUsage.tokens.toLocaleString()} />
-          <StatRow label="Estimated Cost" value={`$${data.aiUsage.cost}`} />
-        </SectionCard>
+      {/* AI Usage */}
+      <Section title="AI Usage (30d)">
+        {!aiUsage || aiUsage.calls === 0 ? <Empty /> : (
+          <div className="flex gap-6">
+            <Kpi value={aiUsage.calls.toLocaleString()} label="Calls" />
+            <Kpi value={aiUsage.tokens.toLocaleString()} label="Tokens" />
+            <Kpi value={`$${aiUsage.cost.toFixed(2)}`} label="Cost" />
+          </div>
+        )}
+      </Section>
 
-        {/* 3. Jobs */}
-        <SectionCard title="Jobs">
-          <StatRow label="Total" value={data.jobs.total} />
-          <StatRow label="Completed" value={data.jobs.completed} />
-          <StatRow label="Failed" value={data.jobs.failed} />
-        </SectionCard>
+      {/* Jobs */}
+      <Section title="Jobs (30d)">
+        {!jobs || jobs.total === 0 ? <Empty /> : (
+          <div className="flex gap-6">
+            <Kpi value={jobs.total} label="Total" />
+            <Kpi value={jobs.completed} label="Completed" />
+            <Kpi value={jobs.failed} label="Failed" />
+            <Kpi value={`${jobs.avgDuration}s`} label="Avg Duration" />
+          </div>
+        )}
+      </Section>
 
-        {/* 4. Autonomous Executions */}
-        <SectionCard title="Autonomous Executions">
-          <StatRow label="Total" value={data.autonomous.total} />
-          <StatRow label="Successful" value={data.autonomous.successful} />
-          <StatRow label="Avg Duration" value={`${data.autonomous.avgDuration}ms`} />
-        </SectionCard>
+      {/* Autonomous Executions */}
+      <Section title="Autonomous Executions (30d)">
+        {!execs || execs.total === 0 ? <Empty /> : (
+          <div className="flex gap-6">
+            <Kpi value={execs.total} label="Total" />
+            <Kpi value={execs.completed} label="Completed" />
+            <Kpi value={execs.failed} label="Failed" />
+          </div>
+        )}
+      </Section>
 
-        {/* 5. Team Spend */}
-        <SectionCard title="Team Spend by Category">
-          {data.teamSpend.map((s) => (
-            <StatRow key={s.category} label={s.category} value={`$${s.amount}`} />
-          ))}
-        </SectionCard>
-
-        {/* 6. AI Recommendations */}
-        <SectionCard title="AI Recommendations">
-          {recsLoading && <Skeleton />}
-          {recsError && <p className="text-sm text-gray-500">No recommendations available</p>}
-          {recs && recs.length === 0 && !recsLoading && (
-            <p className="text-sm text-gray-500">No recommendations available</p>
-          )}
-          {recs?.map((r, i) => (
-            <div key={i} className="mb-3 last:mb-0 rounded-lg border border-white/5 bg-white/[0.02] p-3">
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <span className="text-sm font-medium text-white">{r.title}</span>
-                <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-                  {r.estimated_impact}
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 mb-1">{r.insight}</p>
-              <p className="text-xs text-cyan-400">{r.action}</p>
-            </div>
-          ))}
-        </SectionCard>
-      </div>
+      {/* Team Spend */}
+      <Section title="Team Spend">
+        {!spend || spend.total === 0 ? <Empty /> : (
+          <>
+            <Kpi value={`$${spend.total.toFixed(2)}`} label="Total Spend" />
+            <ul className="mt-3 space-y-1">
+              {Object.entries(spend.byCategory).map(([cat, amt]) => (
+                <li key={cat} className="flex items-center justify-between text-sm">
+                  <span className="text-foreground">{cat}</span>
+                  <span className="text-muted-foreground">${(amt as number).toFixed(2)}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Section>
     </div>
   )
 }
