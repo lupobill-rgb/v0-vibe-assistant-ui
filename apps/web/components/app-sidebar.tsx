@@ -22,6 +22,7 @@ import {
   Building2,
   LogOut,
   ShieldCheck,
+  BarChart3,
 } from "lucide-react"
 import type { Team, Org } from "@/contexts/TeamContext"
 import { cn } from "@/lib/utils"
@@ -43,6 +44,7 @@ const navItems = [
   { icon: MessageSquare, label: "Chat", href: "/chat" },
   { icon: Store, label: "Marketplace", href: "/marketplace" },
   { icon: Share2, label: "Feed", href: "/feed" },
+  { icon: BarChart3, label: "Operations", href: "/operations" },
   { icon: Settings, label: "Settings", href: "/settings" },
   { icon: ShieldCheck, label: "Compliance", href: "/compliance" },
 ]
