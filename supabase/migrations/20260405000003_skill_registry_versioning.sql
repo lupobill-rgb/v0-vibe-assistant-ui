@@ -16,6 +16,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_skill_version ON skill_registry;
 CREATE TRIGGER trg_skill_version
   BEFORE UPDATE ON skill_registry
   FOR EACH ROW
