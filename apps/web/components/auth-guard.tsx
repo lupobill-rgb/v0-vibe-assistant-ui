@@ -35,6 +35,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
             const teamRedirects: Record<string, string> = {
               Operations: "/operations",
               Finance: "/billing",
+              Executive: "/executive",
             }
             const redirect = teamRedirects[data?.name ?? ""]
             if (redirect) {
