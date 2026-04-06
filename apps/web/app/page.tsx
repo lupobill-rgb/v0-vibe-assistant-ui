@@ -43,7 +43,7 @@ export default function HomePage() {
       <div className="min-h-screen">
         <HeroSection />
         {currentTeam?.id && currentOrg?.id && (
-          <div className="px-6 pt-4"><RecommendationBanner teamId={currentTeam.id} orgId={currentOrg.id} context="home" /></div>
+          <div className="px-6 pt-4 mb-10"><RecommendationBanner teamId={currentTeam.id} orgId={currentOrg.id} context="home" /></div>
         )}
         <PromptCard />
         <ProjectsGrid />
