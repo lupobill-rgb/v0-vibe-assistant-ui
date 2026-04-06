@@ -23,6 +23,7 @@ import {
   LogOut,
   ShieldCheck,
   BarChart3,
+  Crown,
 } from "lucide-react"
 import type { Team, Org } from "@/contexts/TeamContext"
 import { cn } from "@/lib/utils"
@@ -46,6 +47,7 @@ function getNavItems(teamName?: string) {
     { icon: Store, label: "Marketplace", href: "/marketplace" },
     { icon: Share2, label: "Feed", href: "/feed" },
     ...(teamName === "Operations" ? [{ icon: BarChart3, label: "Operations", href: "/operations" }] : []),
+    ...(teamName === "Executive" ? [{ icon: Crown, label: "Executive", href: "/executive" }] : []),
     { icon: Settings, label: "Settings", href: "/settings" },
     { icon: ShieldCheck, label: "Compliance", href: "/compliance" },
   ]
