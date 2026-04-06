@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { fetchBillingInfo, fetchBillingStatus, createCheckoutSession, type BillingInfo, type BillingStatus } from "@/lib/api"
+import { fetchBillingStatus, createCheckoutSession, type BillingStatus } from "@/lib/api"
 import { useTeam } from "@/contexts/TeamContext"
 import { supabase } from "@/lib/supabase"
 import {
@@ -48,21 +48,82 @@ function StatCard({
   )
 }
 
+interface UsageData {
+  jobs_total: number
+  jobs_completed: number
+  jobs_failed: number
+  jobs_active: number
+  tokens_used: number
+  compute_seconds: number
+  files_changed: number
+  ai_cost: number
+  executions_count: number
+}
+
 export function BillingDashboard() {
-  const { currentOrg, currentTeam } = useTeam()
-  const [billing, setBilling] = useState<BillingInfo | null>(null)
+  const { currentOrg } = useTeam()
+  const [usage, setUsage] = useState<UsageData | null>(null)
   const [status, setStatus] = useState<BillingStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [upgrading, setUpgrading] = useState(false)
   const [accountType, setAccountType] = useState<string>("individual")
 
   useEffect(() => {
+    if (!currentOrg?.id) return
     const load = async () => {
-      const [info, bs] = await Promise.all([
-        fetchBillingInfo(),
-        currentOrg?.id ? fetchBillingStatus(currentOrg.id) : null,
-      ])
-      setBilling(info)
+      // Step A — team IDs for this org
+      const { data: teams } = await supabase
+        .from("teams")
+        .select("id")
+        .eq("org_id", currentOrg.id)
+      const teamIds = (teams ?? []).map((t: { id: string }) => t.id)
+
+      // Step B — project IDs for those teams
+      const { data: projects } = await supabase
+        .from("projects")
+        .select("id")
+        .in("team_id", teamIds)
+      const projectIds = (projects ?? []).map((p: { id: string }) => p.id)
+
+      // Step C — jobs for those projects
+      const { data: jobs } = await supabase
+        .from("jobs")
+        .select("llm_total_tokens, files_changed_count, total_job_seconds, execution_state")
+        .in("project_id", projectIds)
+      const jd = jobs ?? []
+
+      // Step D — compute usage
+      const jobs_total = jd.length
+      const jobs_completed = jd.filter((j: { execution_state: string }) =>
+        ["completed", "complete"].includes(j.execution_state)
+      ).length
+      const jobs_failed = jd.filter((j: { execution_state: string }) => j.execution_state === "failed").length
+      const jobs_active = jobs_total - jobs_completed - jobs_failed
+      const tokens_used = jd.reduce((s: number, j: { llm_total_tokens: number | null }) => s + (j.llm_total_tokens ?? 0), 0)
+      const files_changed = jd.reduce((s: number, j: { files_changed_count: number | null }) => s + (j.files_changed_count ?? 0), 0)
+      const compute_seconds = jd.reduce((s: number, j: { total_job_seconds: number | null }) => s + (j.total_job_seconds ?? 0), 0)
+
+      // Org-Wide AI Cost from metering_calls
+      const { data: meter } = await supabase
+        .from("metering_calls")
+        .select("cost_estimate")
+        .in("team_id", teamIds)
+      const rawCost = (meter ?? []).reduce((s: number, m: { cost_estimate: number | null }) => s + (m.cost_estimate ?? 0), 0)
+      const ai_cost = rawCost * 2.0
+
+      // Org-Wide Executions
+      const { count: execCount } = await supabase
+        .from("autonomous_executions")
+        .select("id", { count: "exact", head: true })
+        .in("team_id", teamIds)
+
+      setUsage({
+        jobs_total, jobs_completed, jobs_failed, jobs_active,
+        tokens_used, compute_seconds, files_changed,
+        ai_cost, executions_count: execCount ?? 0,
+      })
+
+      const bs = await fetchBillingStatus(currentOrg.id)
       setStatus(bs)
       if (currentOrg?.id) {
         const { data } = await supabase
@@ -121,7 +182,7 @@ export function BillingDashboard() {
                 </span>
               </div>
               <p className="text-sm text-muted-foreground">
-                {creditsUsed}/{creditsLimit} credits used this period
+                {creditsUsed} credits used · {creditsLimit === -1 ? "Unlimited" : `${creditsLimit} limit`}
               </p>
             </div>
             {currentTier !== "enterprise" && currentTier !== "team" && (
@@ -176,55 +237,85 @@ export function BillingDashboard() {
             <Loader2 className="w-4 h-4 animate-spin" />
             Loading usage data...
           </div>
-        ) : billing ? (
+        ) : usage ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               label="Total Jobs"
-              value={billing.jobs_total}
-              sub={`${billing.jobs_completed} completed`}
+              value={usage.jobs_total}
+              sub={`${usage.jobs_completed} completed`}
               icon={BarChart3}
               color="bg-gradient-to-br from-[#4F8EFF] to-[#4F8EFF]/70"
             />
             <StatCard
               label="Tokens Used"
-              value={fmtTokens(billing.tokens_used)}
-              sub="across all jobs"
+              value={fmtTokens(usage.tokens_used)}
+              sub="org-wide"
               icon={Zap}
               color="bg-gradient-to-br from-[#A855F7] to-[#A855F7]/70"
             />
             <StatCard
               label="Files Changed"
-              value={billing.files_changed}
-              sub="total file edits"
+              value={usage.files_changed}
+              sub="org-wide"
               icon={TrendingUp}
               color="bg-gradient-to-br from-[#EC4899] to-[#EC4899]/70"
             />
             <StatCard
               label="Compute Time"
-              value={fmtSeconds(billing.compute_seconds)}
-              sub="total preflight time"
+              value={fmtSeconds(usage.compute_seconds)}
+              sub="org-wide"
               icon={Clock}
               color="bg-gradient-to-br from-emerald-500 to-emerald-500/70"
             />
           </div>
         ) : (
           <p className="text-sm text-muted-foreground py-4">
-            Failed to load usage data. Is the API running?
+            Failed to load usage data.
           </p>
         )}
       </div>
 
+      {/* Org-Wide Stats */}
+      {usage && (
+        <div>
+          <h2 className="text-sm font-semibold text-foreground mb-4">Org-Wide Metrics</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <StatCard
+              label="Org-Wide Total AI Cost"
+              value={`$${usage.ai_cost.toFixed(2)}`}
+              sub="org-wide"
+              icon={CreditCard}
+              color="bg-gradient-to-br from-amber-500 to-amber-500/70"
+            />
+            <StatCard
+              label="Org-Wide Total Jobs"
+              value={usage.jobs_total}
+              sub="org-wide"
+              icon={BarChart3}
+              color="bg-gradient-to-br from-[#4F8EFF] to-[#4F8EFF]/70"
+            />
+            <StatCard
+              label="Org-Wide Executions"
+              value={usage.executions_count}
+              sub="org-wide"
+              icon={Zap}
+              color="bg-gradient-to-br from-[#A855F7] to-[#A855F7]/70"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Job Breakdown */}
-      {billing && billing.jobs_total > 0 && (
+      {usage && usage.jobs_total > 0 && (
         <div className="bg-card rounded-xl border border-border p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">Job Breakdown</h3>
           <div className="flex flex-col gap-3">
             {[
-              { label: "Completed", count: billing.jobs_completed, total: billing.jobs_total, icon: CheckCircle2, color: "text-emerald-400", bar: "bg-emerald-500" },
-              { label: "Failed", count: billing.jobs_failed, total: billing.jobs_total, icon: XCircle, color: "text-red-400", bar: "bg-red-500" },
-              { label: "Active / Queued", count: billing.jobs_active, total: billing.jobs_total, icon: Loader2, color: "text-[#4F8EFF]", bar: "bg-[#4F8EFF]" },
+              { label: "Completed", count: usage.jobs_completed, total: usage.jobs_total, icon: CheckCircle2, color: "text-emerald-400", bar: "bg-emerald-500" },
+              { label: "Failed", count: usage.jobs_failed, total: usage.jobs_total, icon: XCircle, color: "text-red-400", bar: "bg-red-500" },
+              { label: "Active / Queued", count: usage.jobs_active, total: usage.jobs_total, icon: Loader2, color: "text-[#4F8EFF]", bar: "bg-[#4F8EFF]" },
             ].map((row) => {
-              const pct = billing.jobs_total > 0 ? Math.round((row.count / billing.jobs_total) * 100) : 0
+              const pct = usage.jobs_total > 0 ? Math.round((row.count / usage.jobs_total) * 100) : 0
               return (
                 <div key={row.label} className="flex items-center gap-3">
                   <row.icon className={cn("w-4 h-4 flex-shrink-0", row.color)} />
@@ -242,40 +333,6 @@ export function BillingDashboard() {
           </div>
         </div>
       )}
-
-      {/* Org-Wide Usage (Enterprise + Ops/Finance viewers) */}
-      {accountType === "enterprise" &&
-        (currentTeam?.name === "Operations" || currentTeam?.name === "Finance") &&
-        billing && (
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-4">
-              Org-Wide Usage
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
-              <StatCard
-                label="Total AI Cost"
-                value={`$${((billing.tokens_used * 0.00003) * 2.0).toFixed(2)}`}
-                sub="incl. 2x markup"
-                icon={CreditCard}
-                color="bg-gradient-to-br from-[#A855F7] to-[#A855F7]/70"
-              />
-              <StatCard
-                label="Total Jobs"
-                value={billing.jobs_total}
-                sub="org-wide"
-                icon={BarChart3}
-                color="bg-gradient-to-br from-[#4F8EFF] to-[#4F8EFF]/70"
-              />
-              <StatCard
-                label="Total Executions"
-                value={billing.jobs_completed + billing.jobs_failed}
-                sub="completed + failed"
-                icon={Zap}
-                color="bg-gradient-to-br from-emerald-500 to-emerald-500/70"
-              />
-            </div>
-          </div>
-        )}
 
       {/* Pricing Tiers */}
       <PricingPage />
