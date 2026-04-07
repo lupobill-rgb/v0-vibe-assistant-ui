@@ -8,6 +8,7 @@ import { Search, Plus, Package, Zap } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { toast } from "sonner"
+import { API_URL } from "@/lib/api"
 
 type Skill = { id: string; team_function: string; skill_name: string; description: string; is_active: boolean; trigger_on: string | null }
 
@@ -29,6 +30,7 @@ interface NangoConnector {
   name: string
   category: string
   description: string
+  logo: string
   oauth: boolean
 }
 
@@ -41,41 +43,41 @@ function parseProvider(triggerOn: string | null): string | null {
 const CATEGORIES = ["All", "CRM", "Analytics", "Database", "Storage", "Messaging", "DevTools", "Finance", "HR & Ops"] as const
 
 const FALLBACK_CONNECTORS: NangoConnector[] = [
-  { id: "hubspot",            name: "HubSpot",            category: "CRM",       description: "Sync contacts, deals, and pipeline data from HubSpot.",                   oauth: true  },
-  { id: "salesforce",         name: "Salesforce",         category: "CRM",       description: "Connect your Salesforce CRM for live account and opportunity data.",      oauth: true  },
-  { id: "pipedrive",          name: "Pipedrive",          category: "CRM",       description: "Pull deals, contacts, and pipeline stages from Pipedrive.",               oauth: false },
-  { id: "zoho-crm",           name: "Zoho CRM",           category: "CRM",       description: "Connect Zoho CRM for leads, contacts, and deal tracking.",               oauth: false },
-  { id: "monday",             name: "Monday.com",         category: "CRM",       description: "Sync boards, items, and workflows from Monday.com.",                      oauth: false },
-  { id: "google-analytics-4", name: "Google Analytics 4", category: "Analytics", description: "Import web analytics, traffic, and conversion metrics.",                  oauth: true  },
-  { id: "mixpanel",           name: "Mixpanel",           category: "Analytics", description: "Bring in product analytics events and user funnels.",                     oauth: true  },
-  { id: "amplitude",          name: "Amplitude",          category: "Analytics", description: "Connect Amplitude for behavioral analytics and user journey data.",       oauth: false },
-  { id: "segment",            name: "Segment",            category: "Analytics", description: "Unify customer data streams from Segment into your dashboards.",          oauth: false },
-  { id: "tableau",            name: "Tableau",            category: "Analytics", description: "Connect Tableau workbooks and data extracts.",                           oauth: false },
-  { id: "power-bi",           name: "Power BI",           category: "Analytics", description: "Pull Microsoft Power BI reports and datasets.",                          oauth: false },
-  { id: "airtable",           name: "Airtable",           category: "Database",  description: "Connect Airtable bases as structured data sources.",                     oauth: true  },
-  { id: "google-sheet",       name: "Google Sheets",      category: "Database",  description: "Pull structured data directly from Google Sheets.",                      oauth: false },
-  { id: "supabase",           name: "Supabase",           category: "Database",  description: "Connect your Supabase project for real-time database access.",           oauth: false },
-  { id: "snowflake",          name: "Snowflake",          category: "Database",  description: "Query your Snowflake data warehouse directly.",                          oauth: false },
-  { id: "notion",             name: "Notion",             category: "Database",  description: "Sync Notion databases, pages, and workspaces.",                         oauth: false },
-  { id: "aws-s3",             name: "AWS S3",             category: "Storage",   description: "Access files and data stored in S3 buckets.",                           oauth: false },
-  { id: "google-drive",       name: "Google Drive",       category: "Storage",   description: "Connect Google Drive for document and file access.",                    oauth: false },
-  { id: "dropbox",            name: "Dropbox",            category: "Storage",   description: "Access files and folders stored in Dropbox.",                           oauth: false },
-  { id: "sharepoint",         name: "SharePoint",         category: "Storage",   description: "Pull documents and lists from Microsoft SharePoint.",                   oauth: false },
-  { id: "slack",              name: "Slack",              category: "Messaging", description: "Connect Slack for team messaging and workflow automation.",              oauth: true  },
-  { id: "microsoft-teams",    name: "Microsoft Teams",    category: "Messaging", description: "Integrate Microsoft Teams for enterprise communication workflows.",      oauth: false },
-  { id: "intercom",           name: "Intercom",           category: "Messaging", description: "Pull customer conversations and support tickets from Intercom.",        oauth: false },
-  { id: "zendesk",            name: "Zendesk",            category: "Messaging", description: "Connect Zendesk for support ticket and customer data.",                 oauth: false },
-  { id: "github",             name: "GitHub",             category: "DevTools",  description: "Connect GitHub repos, issues, and pull requests.",                      oauth: false },
-  { id: "jira",               name: "Jira",               category: "DevTools",  description: "Sync Jira projects, sprints, and issue tracking data.",                oauth: false },
-  { id: "linear",             name: "Linear",             category: "DevTools",  description: "Pull Linear issues, cycles, and project data.",                         oauth: false },
-  { id: "asana",              name: "Asana",              category: "DevTools",  description: "Connect Asana projects and tasks for operational dashboards.",          oauth: false },
-  { id: "stripe",             name: "Stripe",             category: "Finance",   description: "Pull revenue, subscriptions, and payment data from Stripe.",            oauth: false },
-  { id: "quickbooks",         name: "QuickBooks",         category: "Finance",   description: "Connect QuickBooks for accounting and financial reporting.",            oauth: false },
-  { id: "xero",               name: "Xero",               category: "Finance",   description: "Sync Xero accounting data for financial dashboards.",                   oauth: false },
-  { id: "netsuite",           name: "NetSuite",           category: "Finance",   description: "Connect NetSuite ERP for enterprise financial operations.",             oauth: false },
-  { id: "bamboohr",           name: "BambooHR",           category: "HR & Ops",  description: "Pull employee records and HR data from BambooHR.",                      oauth: false },
-  { id: "workday",            name: "Workday",            category: "HR & Ops",  description: "Connect Workday for workforce and financial management data.",          oauth: false },
-  { id: "linkedin",           name: "LinkedIn",           category: "HR & Ops",  description: "Connect LinkedIn for sales intelligence and professional network data.", oauth: false },
+  { id: "hubspot",            name: "HubSpot",            category: "CRM",       description: "Sync contacts, deals, and pipeline data from HubSpot.",                   logo: "https://raw.githubusercontent.com/NangoHQ/nango/master/packages/webapp/public/images/template-logos/hubspot.svg", oauth: true  },
+  { id: "salesforce",         name: "Salesforce",         category: "CRM",       description: "Connect your Salesforce CRM for live account and opportunity data.",      logo: "https://raw.githubusercontent.com/NangoHQ/nango/master/packages/webapp/public/images/template-logos/salesforce.svg", oauth: true  },
+  { id: "pipedrive",          name: "Pipedrive",          category: "CRM",       description: "Pull deals, contacts, and pipeline stages from Pipedrive.",               logo: "", oauth: false },
+  { id: "zoho-crm",           name: "Zoho CRM",           category: "CRM",       description: "Connect Zoho CRM for leads, contacts, and deal tracking.",               logo: "", oauth: false },
+  { id: "monday",             name: "Monday.com",         category: "CRM",       description: "Sync boards, items, and workflows from Monday.com.",                      logo: "", oauth: false },
+  { id: "google-analytics-4", name: "Google Analytics 4", category: "Analytics", description: "Import web analytics, traffic, and conversion metrics.",                  logo: "https://raw.githubusercontent.com/NangoHQ/nango/master/packages/webapp/public/images/template-logos/google-analytics.svg", oauth: true  },
+  { id: "mixpanel",           name: "Mixpanel",           category: "Analytics", description: "Bring in product analytics events and user funnels.",                     logo: "https://raw.githubusercontent.com/NangoHQ/nango/master/packages/webapp/public/images/template-logos/mixpanel.svg", oauth: true  },
+  { id: "amplitude",          name: "Amplitude",          category: "Analytics", description: "Connect Amplitude for behavioral analytics and user journey data.",       logo: "", oauth: false },
+  { id: "segment",            name: "Segment",            category: "Analytics", description: "Unify customer data streams from Segment into your dashboards.",          logo: "", oauth: false },
+  { id: "tableau",            name: "Tableau",            category: "Analytics", description: "Connect Tableau workbooks and data extracts.",                           logo: "", oauth: false },
+  { id: "power-bi",           name: "Power BI",           category: "Analytics", description: "Pull Microsoft Power BI reports and datasets.",                          logo: "", oauth: false },
+  { id: "airtable",           name: "Airtable",           category: "Database",  description: "Connect Airtable bases as structured data sources.",                     logo: "https://raw.githubusercontent.com/NangoHQ/nango/master/packages/webapp/public/images/template-logos/airtable.svg", oauth: true  },
+  { id: "google-sheet",       name: "Google Sheets",      category: "Database",  description: "Pull structured data directly from Google Sheets.",                      logo: "", oauth: false },
+  { id: "supabase",           name: "Supabase",           category: "Database",  description: "Connect your Supabase project for real-time database access.",           logo: "", oauth: false },
+  { id: "snowflake",          name: "Snowflake",          category: "Database",  description: "Query your Snowflake data warehouse directly.",                          logo: "", oauth: false },
+  { id: "notion",             name: "Notion",             category: "Database",  description: "Sync Notion databases, pages, and workspaces.",                         logo: "", oauth: false },
+  { id: "aws-s3",             name: "AWS S3",             category: "Storage",   description: "Access files and data stored in S3 buckets.",                           logo: "", oauth: false },
+  { id: "google-drive",       name: "Google Drive",       category: "Storage",   description: "Connect Google Drive for document and file access.",                    logo: "", oauth: false },
+  { id: "dropbox",            name: "Dropbox",            category: "Storage",   description: "Access files and folders stored in Dropbox.",                           logo: "", oauth: false },
+  { id: "sharepoint",         name: "SharePoint",         category: "Storage",   description: "Pull documents and lists from Microsoft SharePoint.",                   logo: "", oauth: false },
+  { id: "slack",              name: "Slack",              category: "Messaging", description: "Connect Slack for team messaging and workflow automation.",              logo: "https://raw.githubusercontent.com/NangoHQ/nango/master/packages/webapp/public/images/template-logos/slack.svg", oauth: true  },
+  { id: "microsoft-teams",    name: "Microsoft Teams",    category: "Messaging", description: "Integrate Microsoft Teams for enterprise communication workflows.",      logo: "", oauth: false },
+  { id: "intercom",           name: "Intercom",           category: "Messaging", description: "Pull customer conversations and support tickets from Intercom.",        logo: "", oauth: false },
+  { id: "zendesk",            name: "Zendesk",            category: "Messaging", description: "Connect Zendesk for support ticket and customer data.",                 logo: "", oauth: false },
+  { id: "github",             name: "GitHub",             category: "DevTools",  description: "Connect GitHub repos, issues, and pull requests.",                      logo: "", oauth: false },
+  { id: "jira",               name: "Jira",               category: "DevTools",  description: "Sync Jira projects, sprints, and issue tracking data.",                logo: "", oauth: false },
+  { id: "linear",             name: "Linear",             category: "DevTools",  description: "Pull Linear issues, cycles, and project data.",                         logo: "", oauth: false },
+  { id: "asana",              name: "Asana",              category: "DevTools",  description: "Connect Asana projects and tasks for operational dashboards.",          logo: "", oauth: false },
+  { id: "stripe",             name: "Stripe",             category: "Finance",   description: "Pull revenue, subscriptions, and payment data from Stripe.",            logo: "", oauth: false },
+  { id: "quickbooks",         name: "QuickBooks",         category: "Finance",   description: "Connect QuickBooks for accounting and financial reporting.",            logo: "", oauth: false },
+  { id: "xero",               name: "Xero",               category: "Finance",   description: "Sync Xero accounting data for financial dashboards.",                   logo: "", oauth: false },
+  { id: "netsuite",           name: "NetSuite",           category: "Finance",   description: "Connect NetSuite ERP for enterprise financial operations.",             logo: "", oauth: false },
+  { id: "bamboohr",           name: "BambooHR",           category: "HR & Ops",  description: "Pull employee records and HR data from BambooHR.",                      logo: "", oauth: false },
+  { id: "workday",            name: "Workday",            category: "HR & Ops",  description: "Connect Workday for workforce and financial management data.",          logo: "", oauth: false },
+  { id: "linkedin",           name: "LinkedIn",           category: "HR & Ops",  description: "Connect LinkedIn for sales intelligence and professional network data.", logo: "", oauth: false },
 ]
 
 export default function MarketplacePage() {
@@ -113,37 +115,33 @@ export default function MarketplacePage() {
   }, [])
 
   useEffect(() => {
-    fetch("https://api.nango.dev/integrations")
+    fetch(`${API_URL}/connectors/catalog`)
       .then((res) => res.json())
       .then((data) => {
-        const items = data?.integrations ?? data?.data ?? []
-        const mapped: NangoConnector[] = items.map((item: any) => {
-          const id = item.unique_key ?? item.id ?? ""
-          const rawCategory = (item.categories?.[0] ?? item.category ?? "Other")
-          const categoryMap: Record<string, string> = {
-            "crm": "CRM",
-            "analytics": "Analytics",
-            "database": "Database",
-            "storage": "Storage",
-            "messaging": "Messaging",
-            "communication": "Messaging",
-            "devtools": "DevTools",
-            "developer-tools": "DevTools",
-            "finance": "Finance",
-            "accounting": "Finance",
-            "hr": "HR & Ops",
-            "hr-payroll": "HR & Ops",
-            "productivity": "DevTools",
-          }
-          const category = categoryMap[rawCategory.toLowerCase()] ?? "DevTools"
-          return {
-            id,
-            name: item.display_name ?? item.name ?? id,
-            category,
-            description: item.description ?? `Connect ${item.display_name ?? id} to VIBE.`,
-            oauth: OAUTH_WHITELIST.has(id),
-          }
-        })
+        const items = data?.integrations ?? []
+        const categoryMap: Record<string, string> = {
+          "crm": "CRM",
+          "analytics": "Analytics",
+          "database": "Database",
+          "storage": "Storage",
+          "messaging": "Messaging",
+          "communication": "Messaging",
+          "devtools": "DevTools",
+          "developer-tools": "DevTools",
+          "finance": "Finance",
+          "accounting": "Finance",
+          "hr": "HR & Ops",
+          "hr-payroll": "HR & Ops",
+          "productivity": "DevTools",
+        }
+        const mapped: NangoConnector[] = items.map((item: any) => ({
+          id: item.id ?? "",
+          name: item.name ?? item.id ?? "",
+          category: categoryMap[(item.category ?? "other").toLowerCase()] ?? "DevTools",
+          description: item.description ?? `Connect ${item.name ?? item.id} to VIBE.`,
+          logo: item.logo ?? "",
+          oauth: OAUTH_WHITELIST.has(item.id ?? ""),
+        }))
         setConnectors(mapped.length > 0 ? mapped : FALLBACK_CONNECTORS)
       })
       .catch(() => setConnectors(FALLBACK_CONNECTORS))
@@ -414,8 +412,12 @@ export default function MarketplacePage() {
                       )}
                     </div>
                     <div className="flex items-start gap-3 mb-2">
-                      <div className="w-9 h-9 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
-                        <span className="text-sm font-bold text-muted-foreground">{c.name.slice(0, 2).toUpperCase()}</span>
+                      <div className="w-9 h-9 rounded-lg bg-muted/50 flex items-center justify-center shrink-0 overflow-hidden">
+                        {c.logo ? (
+                          <img src={c.logo} alt={c.name} className="w-6 h-6 object-contain" />
+                        ) : (
+                          <span className="text-sm font-bold text-muted-foreground">{c.name.slice(0, 2).toUpperCase()}</span>
+                        )}
                       </div>
                       <div className="min-w-0">
                         <h3 className="font-semibold text-base text-foreground truncate">{c.name}</h3>
