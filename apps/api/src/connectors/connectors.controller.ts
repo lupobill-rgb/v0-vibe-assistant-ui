@@ -31,7 +31,8 @@ export class ConnectorsController {
       return { integrations: [] };
     }
     try {
-      const res = await fetch('https://api.nango.dev/integrations', {
+      // /providers returns the full catalog (700+), /integrations only returns configured ones
+      const res = await fetch('https://api.nango.dev/providers', {
         headers: {
           'Authorization': `Bearer ${secretKey}`,
         },
@@ -41,14 +42,14 @@ export class ConnectorsController {
         return { integrations: [] };
       }
       const data: any = await res.json();
-      const items = data?.integrations ?? data?.data ?? [];
+      const items = data?.data ?? data?.providers ?? data?.integrations ?? [];
       return {
         integrations: items.map((item: any) => ({
-          id: item.unique_key ?? item.id ?? '',
+          id: item.name ?? item.unique_key ?? item.id ?? '',
           name: item.display_name ?? item.name ?? '',
           category: item.categories?.[0] ?? item.category ?? 'other',
-          description: item.description ?? '',
-          logo: item.logo ?? item.logo_url ?? '',
+          description: item.description ?? `Connect ${item.display_name ?? item.name} to VIBE.`,
+          logo: item.logo_url ?? item.logo ?? '',
         })),
       };
     } catch (err) {
