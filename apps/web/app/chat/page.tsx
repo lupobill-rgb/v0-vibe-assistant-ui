@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
@@ -220,6 +220,7 @@ function ChatContent() {
   const searchParams = useSearchParams()
   const initialProjectId = searchParams.get("project") ?? undefined
   const initialPrompt = searchParams.get("prompt") ?? undefined
+  const promptCardRef = useRef<HTMLDivElement>(null)
 
   const [jobs, setJobs] = useState<Task[]>([])
   const [allJobs, setAllJobs] = useState<Task[]>([])
@@ -230,6 +231,14 @@ function ChatContent() {
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+
+  useEffect(() => {
+    if (initialPrompt && promptCardRef.current) {
+      setTimeout(() => {
+        promptCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+      }, 100)
+    }
+  }, [initialPrompt])
 
   const refreshProjects = (selectId?: string) => {
     fetchProjects().then((data) => {
@@ -365,7 +374,9 @@ function ChatContent() {
         </div>
 
         {/* Prompt Card */}
-        <PromptCard selectedProjectId={selectedProjectId} initialPrompt={initialPrompt} />
+        <div ref={promptCardRef}>
+          <PromptCard selectedProjectId={selectedProjectId} initialPrompt={initialPrompt} />
+        </div>
 
       {/* Recent Jobs */}
       <div className="px-4 sm:px-6 py-6 sm:py-8">
