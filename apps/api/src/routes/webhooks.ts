@@ -33,6 +33,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
     }
 
     const payload = req.body ?? {};
+    console.log(`[webhook] raw payload keys: ${JSON.stringify(Object.keys(payload))} | connectionId field: ${JSON.stringify(payload.connectionId)}`);
     // Prefer providerConfigKey from Nango webhook payload over URL route param
     const provider: string =
       (typeof payload.providerConfigKey === 'string' && payload.providerConfigKey) ||
