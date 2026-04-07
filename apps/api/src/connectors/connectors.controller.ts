@@ -34,6 +34,34 @@ export class ConnectorsController {
     return this.webhookService.handleNangoEvent(body);
   }
 
+  @Post('store-connection')
+  async storeConnection(
+    @Body() body: { teamId: string; connectorType: string; connectionId: string },
+  ): Promise<{ ok: boolean }> {
+    if (!body?.teamId || !body?.connectorType || !body?.connectionId) {
+      throw new BadRequestException('Missing required fields: teamId, connectorType, connectionId');
+    }
+    this.logger.log(
+      `Store connection — team=${body.teamId} connector=${body.connectorType} connectionId=${body.connectionId}`,
+    );
+    try {
+      const sb = getPlatformSupabaseClient();
+      await sb
+        .from('team_integrations')
+        .upsert(
+          {
+            team_id: body.teamId,
+            provider: body.connectorType,
+            connection_id: body.connectionId,
+          },
+          { onConflict: 'team_id,provider' },
+        );
+    } catch (err) {
+      this.logger.warn(`Failed to store connection_id: ${(err as Error).message}`);
+    }
+    return { ok: true };
+  }
+
   /**
    * POST /connectors/connect
    * Initiates OAuth flow — returns a connect URL the frontend opens.
@@ -70,34 +98,6 @@ export class ConnectorsController {
     }
 
     return { sessionToken, connectionId };
-  }
-
-  @Post('store-connection')
-  async storeConnection(
-    @Body() body: { teamId: string; connectorType: string; connectionId: string },
-  ): Promise<{ ok: boolean }> {
-    if (!body?.teamId || !body?.connectorType || !body?.connectionId) {
-      throw new BadRequestException('Missing required fields: teamId, connectorType, connectionId');
-    }
-    this.logger.log(
-      `Store connection — team=${body.teamId} connector=${body.connectorType} connectionId=${body.connectionId}`,
-    );
-    try {
-      const sb = getPlatformSupabaseClient();
-      await sb
-        .from('team_integrations')
-        .upsert(
-          {
-            team_id: body.teamId,
-            provider: body.connectorType,
-            connection_id: body.connectionId,
-          },
-          { onConflict: 'team_id,provider' },
-        );
-    } catch (err) {
-      this.logger.warn(`Failed to store connection_id: ${(err as Error).message}`);
-    }
-    return { ok: true };
   }
 
   /**
