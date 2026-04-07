@@ -102,8 +102,28 @@ export function ConnectDatasourceDialog({
       const nango = new Nango()
       await nango.openConnectUI({
         sessionToken,
-        onEvent: (event) => {
+        onEvent: async (event) => {
           if (event.type === "connect") {
+            const realConnectionId = event.payload?.connectionId
+            if (realConnectionId && currentTeam) {
+              try {
+                const { data: { session } } = await supabase.auth.getSession()
+                await fetch(`${API_URL}/connectors/store-connection`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}),
+                  },
+                  body: JSON.stringify({
+                    teamId: currentTeam.id,
+                    connectorType,
+                    connectionId: realConnectionId,
+                  }),
+                })
+              } catch (e) {
+                console.error("Failed to store connection_id", e)
+              }
+            }
             onConnected?.(connectorType)
             handleOpenChange(false)
           }
