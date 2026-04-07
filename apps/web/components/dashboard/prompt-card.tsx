@@ -58,7 +58,9 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
       currentTeam
     ) {
       autoSubmittedRef.current = true
-      startIntake()
+      // Skip the data-path greeting — go straight to building
+      setDataPath("connected")
+      setTimeout(() => startIntakeWithPath("connected"), 0)
     }
   }, [prompt, initialPrompt, teamLoading, currentTeam])
 
