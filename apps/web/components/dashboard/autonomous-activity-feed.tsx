@@ -39,7 +39,7 @@ export function AutonomousActivityFeed() {
     const supabase = getSupabase()
 
     async function fetch() {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       const { data } = await supabase
         .from("autonomous_executions")
         .select("id, skill_id, trigger_source, trigger_event, status, created_at, skill_registry(name)")
