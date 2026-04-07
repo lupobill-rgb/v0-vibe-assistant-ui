@@ -19,6 +19,45 @@ export class ConnectorsController {
   ) {}
 
   /**
+   * GET /connectors/catalog
+   * Proxies Nango's integration catalog server-side to avoid CORS/auth issues.
+   * Must be defined before parameterized routes (:teamId) to avoid shadowing.
+   */
+  @Get('catalog')
+  async getCatalog(): Promise<{ integrations: any[] }> {
+    const secretKey = process.env.NANGO_SECRET_KEY;
+    if (!secretKey) {
+      this.logger.warn('NANGO_SECRET_KEY not set — returning empty catalog');
+      return { integrations: [] };
+    }
+    try {
+      const res = await fetch('https://api.nango.dev/integrations', {
+        headers: {
+          'Authorization': `Bearer ${secretKey}`,
+        },
+      });
+      if (!res.ok) {
+        this.logger.warn(`Nango catalog fetch failed: ${res.status}`);
+        return { integrations: [] };
+      }
+      const data = await res.json();
+      const items = data?.integrations ?? data?.data ?? [];
+      return {
+        integrations: items.map((item: any) => ({
+          id: item.unique_key ?? item.id ?? '',
+          name: item.display_name ?? item.name ?? '',
+          category: item.categories?.[0] ?? item.category ?? 'other',
+          description: item.description ?? '',
+          logo: item.logo ?? item.logo_url ?? '',
+        })),
+      };
+    } catch (err) {
+      this.logger.error(`Nango catalog error: ${(err as Error).message}`);
+      return { integrations: [] };
+    }
+  }
+
+  /**
    * POST /connectors/webhook/nango
    * Receives Nango sync events and queues autonomous skill executions.
    * No auth — Nango calls this directly. Validate via trigger_on matching.
@@ -194,44 +233,6 @@ export class ConnectorsController {
       const stack = (err as Error).stack ?? '';
       this.logger.error(`Decipher survey data failed: ${msg}\n${stack}`);
       throw new InternalServerErrorException(`Decipher survey data failed: ${msg}`);
-    }
-  }
-
-  /**
-   * GET /connectors/catalog
-   * Proxies Nango's integration catalog server-side to avoid CORS/auth issues.
-   */
-  @Get('catalog')
-  async getCatalog(): Promise<{ integrations: any[] }> {
-    const secretKey = process.env.NANGO_SECRET_KEY;
-    if (!secretKey) {
-      this.logger.warn('NANGO_SECRET_KEY not set — returning empty catalog');
-      return { integrations: [] };
-    }
-    try {
-      const res = await fetch('https://api.nango.dev/integrations', {
-        headers: {
-          'Authorization': `Bearer ${secretKey}`,
-        },
-      });
-      if (!res.ok) {
-        this.logger.warn(`Nango catalog fetch failed: ${res.status}`);
-        return { integrations: [] };
-      }
-      const data = await res.json();
-      const items = data?.integrations ?? data?.data ?? [];
-      return {
-        integrations: items.map((item: any) => ({
-          id: item.unique_key ?? item.id ?? '',
-          name: item.display_name ?? item.name ?? '',
-          category: item.categories?.[0] ?? item.category ?? 'other',
-          description: item.description ?? '',
-          logo: item.logo ?? item.logo_url ?? '',
-        })),
-      };
-    } catch (err) {
-      this.logger.error(`Nango catalog error: ${(err as Error).message}`);
-      return { integrations: [] };
     }
   }
 
