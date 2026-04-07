@@ -48,7 +48,7 @@ export class WebhookService {
         trigger_source: triggerSource, trigger_event: payload.syncName,
         trigger_payload: { connectionId: payload.connectionId, model: payload.model,
           responseResults: payload.responseResults, modifiedAfter: payload.modifiedAfter },
-        status: 'queued', cascade_depth: 0,
+        status: 'pending', cascade_depth: 0,
       });
       if (insertErr) this.logger.error(`Failed to queue ${skill.skill_name}: ${insertErr.message}`);
       else { this.logger.log(`Queued: skill=${skill.skill_name} org=${team.org_id}`); queued++; }
