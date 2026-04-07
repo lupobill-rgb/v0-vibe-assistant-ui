@@ -29,9 +29,11 @@ export class WebhookService {
     const teamsData = integration.teams as unknown as { id: string; org_id: string };
     const team = { id: teamsData.id, org_id: teamsData.org_id };
 
+    const provider = payload.providerConfigKey.toLowerCase();
     const { data: skills } = await this.sb.from('skill_registry')
-      .select('id, skill_name').eq('is_active', true)
-      .filter('trigger_on', 'ilike', `%${payload.providerConfigKey.toLowerCase()}:%`);
+      .select('id, skill_name')
+      .eq('is_active', true)
+      .filter('trigger_on::text', 'ilike', `%${provider}:%`);
     if (!skills?.length) { this.logger.log(`No skills matched: ${triggerSource}`); return { queued: 0 }; }
 
     let queued = 0;
