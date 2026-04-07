@@ -59,7 +59,7 @@ export class WebhookService {
     const url = `https://api.nango.dev/sync/records?model=${payload.model}&connection_id=${payload.connectionId}&provider_config_key=${payload.providerConfigKey}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${process.env.NANGO_SECRET_KEY}` } }).catch(() => null);
     if (!res?.ok) { this.logger.warn(`Nango fetch failed: ${payload.model} ${res?.status ?? 'network'}`); return; }
-    const { records } = await res.json();
+    const { records } = await res.json() as any;
     if (!records?.length) return;
 
     const isDeal = ['deals', 'opportunities'].includes(payload.model);
@@ -113,7 +113,7 @@ export class WebhookService {
     if (!res.ok) { this.logger.warn(`Anthropic API error: ${res.status}`); return; }
 
     let recs: any[];
-    try { recs = JSON.parse((await res.json()).content[0].text); } catch { this.logger.warn('Bad recommendations JSON'); return; }
+    try { recs = JSON.parse(((await res.json()) as any).content[0].text); } catch { this.logger.warn('Bad recommendations JSON'); return; }
     if (!Array.isArray(recs)) return;
 
     let count = 0;

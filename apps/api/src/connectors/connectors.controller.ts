@@ -40,7 +40,7 @@ export class ConnectorsController {
         this.logger.warn(`Nango catalog fetch failed: ${res.status}`);
         return { integrations: [] };
       }
-      const data = await res.json();
+      const data: any = await res.json();
       const items = data?.integrations ?? data?.data ?? [];
       return {
         integrations: items.map((item: any) => ({
