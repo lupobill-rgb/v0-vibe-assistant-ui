@@ -2,14 +2,11 @@
 
 import { Suspense, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { PromptCard } from "@/components/dashboard/prompt-card"
-import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
-import { ImportGithubDialog } from "@/components/dialogs/import-github-dialog"
-import { fetchProjectJobs, fetchProjects, type Task, type Project } from "@/lib/api"
-import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink, Plus, Github, Lock, Unlock } from "lucide-react"
-import { supabase } from "@/lib/supabase"
+import { fetchProjectJobs, type Task } from "@/lib/api"
+import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
@@ -77,160 +74,15 @@ function JobRow({ task }: { task: Task }) {
   )
 }
 
-function ProjectCard({
-  project,
-  selected,
-  lastJob,
-  onTogglePrivate,
-}: {
-  project: Project
-  selected: boolean
-  lastJob?: Task
-  onTogglePrivate: (projectId: string, currentValue: boolean) => void
-}) {
-  const router = useRouter()
-  const initial = project.name.charAt(0).toUpperCase()
-  const date = new Date(project.created_at).toLocaleDateString()
-  const lastState = lastJob ? (STATE_CONFIG[lastJob.execution_state] ?? STATE_CONFIG["queued"]) : null
-  const isPrivate = project.is_private ?? false
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
-
-  // Fetch latest completed job's HTML preview
-  useEffect(() => {
-    let cancelled = false
-    async function fetchPreview() {
-      // Wait for auth session with retry (RLS requires it)
-      const waitForSession = async (retries = 5): Promise<boolean> => {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) return true
-        if (retries <= 0) return false
-        await new Promise(r => setTimeout(r, 500))
-        return waitForSession(retries - 1)
-      }
-      const hasSession = await waitForSession()
-      if (!hasSession || cancelled) return
-
-      const { data, error } = await supabase
-        .from("jobs")
-        .select("last_diff")
-        .eq("project_id", project.id)
-        .eq("execution_state", "completed")
-        .order("initiated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (error || cancelled || !data?.last_diff) return
-      // last_diff is either JSON array [{ html }] or raw HTML string
-      let html: string | null = null
-      try {
-        const parsed = JSON.parse(data.last_diff)
-        if (Array.isArray(parsed) && parsed[0]?.html) html = parsed[0].html
-      } catch {
-        // Not JSON — treat as raw HTML if it looks like markup
-        const raw = data.last_diff.trim()
-        if (raw.startsWith("<!") || raw.startsWith("<html")) html = raw
-      }
-      if (html && !cancelled) setPreviewHtml(html)
-    }
-    fetchPreview()
-    return () => { cancelled = true }
-  }, [project.id])
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => router.push(`/projects/${project.id}`)}
-      onKeyDown={(e) => { if (e.key === "Enter") router.push(`/projects/${project.id}`) }}
-      className={cn(
-        "flex flex-col rounded-xl border bg-card p-4 text-left transition-all duration-200 hover:bg-card/80 cursor-pointer",
-        selected
-          ? "border-[#7B61FF] ring-1 ring-[#7B61FF]/30"
-          : "border-border hover:border-primary/30"
-      )}
-    >
-      {/* Thumbnail — iframe preview or initial letter */}
-      <div className="w-full aspect-[16/10] rounded-lg bg-secondary/60 mb-3 overflow-hidden relative">
-        {previewHtml ? (
-          <iframe
-            srcDoc={previewHtml}
-            sandbox="allow-scripts"
-            title={`${project.name} preview`}
-            className="absolute inset-0 border-none pointer-events-none"
-            style={{
-              width: "400%",
-              height: "400%",
-              transform: "scale(0.25)",
-              transformOrigin: "top left",
-            }}
-          />
-        ) : (
-          <span className="text-2xl font-bold text-muted-foreground/40 select-none">{initial}</span>
-        )}
-        {/* Lock toggle — top-right of thumbnail */}
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={(e) => {
-            e.stopPropagation()
-            onTogglePrivate(project.id, isPrivate)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.stopPropagation()
-              onTogglePrivate(project.id, isPrivate)
-            }
-          }}
-          className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/40 backdrop-blur-sm text-white/70 hover:text-white hover:bg-black/60 transition-colors cursor-pointer"
-          title={isPrivate ? "Private — click to make public" : "Public — click to make private"}
-        >
-          {isPrivate ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-        </span>
-      </div>
-      {/* Name + date + private badge */}
-      <div className="flex items-center gap-2">
-        <p className="text-sm font-medium text-foreground truncate flex-1">{project.name}</p>
-        {isPrivate && (
-          <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 flex-shrink-0">
-            Private
-          </span>
-        )}
-      </div>
-      <p className="text-[11px] text-muted-foreground mt-0.5">{date}</p>
-      {/* Last job badge */}
-      {lastState && lastJob && (
-        <span
-          className={cn(
-            "mt-2 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md w-fit",
-            lastJob.execution_state === "completed" && "bg-emerald-500/10 text-emerald-400",
-            lastJob.execution_state === "failed" && "bg-red-500/10 text-red-400",
-            lastJob.execution_state === "queued" && "bg-amber-500/10 text-amber-400",
-            !["completed", "failed", "queued"].includes(lastJob.execution_state) && "bg-[#00E5A0]/10 text-[#00E5A0]",
-          )}
-        >
-          {lastState.label}
-        </span>
-      )}
-    </div>
-  )
-}
-
 function ChatContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
-  const initialProjectId = searchParams.get("project") ?? undefined
+  const selectedProjectId = searchParams.get("project") ?? ""
   const initialPrompt = searchParams.get("prompt") ?? undefined
   const promptCardRef = useRef<HTMLDivElement>(null)
 
   const [jobs, setJobs] = useState<Task[]>([])
-  const [allJobs, setAllJobs] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId ?? "")
-
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
   useEffect(() => {
     if (initialPrompt && promptCardRef.current) {
@@ -239,30 +91,6 @@ function ChatContent() {
       }, 100)
     }
   }, [initialPrompt])
-
-  const refreshProjects = (selectId?: string) => {
-    fetchProjects().then((data) => {
-      setProjects(data)
-      if (selectId) {
-        setSelectedProjectId(selectId)
-        router.push(`/chat?project=${selectId}`)
-      } else if (data.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(data[0].id)
-      }
-    })
-  }
-
-  // Load projects on mount
-  useEffect(() => {
-    fetchProjects().then((data) => {
-      setProjects(data)
-      if (initialProjectId && data.some((p) => p.id === initialProjectId)) {
-        setSelectedProjectId(initialProjectId)
-      } else if (data.length > 0 && !initialProjectId) {
-        setSelectedProjectId(data[0].id)
-      }
-    })
-  }, [])
 
   // Load jobs for selected project
   useEffect(() => {
@@ -276,11 +104,6 @@ function ChatContent() {
     fetchProjectJobs(selectedProjectId)
       .then((data) => {
         setJobs(data.slice(0, 20))
-        setAllJobs((prev) => {
-          const map = new Map(prev.map((j) => [j.task_id, j]))
-          data.forEach((j) => map.set(j.task_id, j))
-          return Array.from(map.values())
-        })
         setLoading(false)
       })
       .catch(() => {
@@ -288,29 +111,6 @@ function ChatContent() {
         setLoading(false)
       })
   }, [selectedProjectId])
-
-  // Helper: get latest job for a project from cached allJobs
-  const latestJobFor = (projectId: string) =>
-    allJobs
-      .filter((j) => j.project_id === projectId)
-      .sort((a, b) => b.initiated_at - a.initiated_at)[0]
-
-  // Toggle is_private in Supabase (owner-only via RLS)
-  const togglePrivate = async (projectId: string, currentValue: boolean) => {
-    const { error: updateError } = await supabase
-      .from("projects")
-      .update({ is_private: !currentValue })
-      .eq("id", projectId)
-
-    if (updateError) {
-      console.error("Failed to toggle privacy:", updateError.message)
-      return
-    }
-    // Optimistically update local state
-    setProjects((prev) =>
-      prev.map((p) => (p.id === projectId ? { ...p, is_private: !currentValue } : p))
-    )
-  }
 
   return (
     <AppShell>
@@ -329,49 +129,6 @@ function ChatContent() {
           </div>
         </div>
       </div>
-
-        {/* Project Gallery */}
-        <div className="px-4 sm:px-6 pb-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-foreground">Projects</h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCreateDialogOpen(true)}
-                className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
-                title="New Project"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                New
-              </button>
-              <button
-                onClick={() => setImportDialogOpen(true)}
-                className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/50 hover:border-border transition-all duration-200"
-                title="Import from GitHub"
-              >
-                <Github className="w-3.5 h-3.5" />
-                Import
-              </button>
-            </div>
-          </div>
-
-          {projects.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {projects.map((p) => (
-                <ProjectCard
-                  key={p.id}
-                  project={p}
-                  selected={p.id === selectedProjectId}
-                  lastJob={latestJobFor(p.id)}
-                  onTogglePrivate={togglePrivate}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground italic py-4">
-              No projects yet. Create one or import from GitHub.
-            </div>
-          )}
-        </div>
 
         {/* Prompt Card */}
         <div ref={promptCardRef}>
@@ -412,16 +169,6 @@ function ChatContent() {
         )}
       </div>
 
-      <CreateProjectDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        onCreated={(id) => refreshProjects(id)}
-      />
-      <ImportGithubDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        onImported={(id) => refreshProjects(id)}
-      />
     </div>
     </AppShell>
   )
