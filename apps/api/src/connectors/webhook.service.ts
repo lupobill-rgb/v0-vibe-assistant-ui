@@ -13,7 +13,7 @@ export class WebhookService {
     model: string; responseResults: { added: number; updated: number; deleted: number };
     syncType: string; modifiedAfter?: string;
   }): Promise<{ queued: number }> {
-    const triggerSource = `${payload.providerConfigKey}:${payload.model.toLowerCase()}`;
+    const triggerSource = `${payload.providerConfigKey}:${payload.model}`;
     this.logger.log(`Nango event received: ${triggerSource} (conn: ${payload.connectionId})`);
 
     const { data: integration, error: intErr } = await this.sb
@@ -29,11 +29,9 @@ export class WebhookService {
     const teamsData = integration.teams as unknown as { id: string; org_id: string };
     const team = { id: teamsData.id, org_id: teamsData.org_id };
 
-    // Nango model names are singular (e.g. "Contact"), trigger_on stores plural lowercase
-    // (e.g. "hubspot:contacts"). Match with ilike + trailing wildcard to handle both.
     const { data: skills } = await this.sb.from('skill_registry')
       .select('id, skill_name').eq('is_active', true)
-      .ilike('trigger_on', triggerSource + '%');
+      .filter('trigger_on', 'ilike', `%${payload.providerConfigKey.toLowerCase()}:%`);
     if (!skills?.length) { this.logger.log(`No skills matched: ${triggerSource}`); return { queued: 0 }; }
 
     let queued = 0;
