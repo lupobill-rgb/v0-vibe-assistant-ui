@@ -95,6 +95,7 @@ export default function MarketplacePage() {
   const [connectorsLoading, setConnectorsLoading] = useState(true)
   const [skillDept, setSkillDept] = useState<string>("All")
   const [skillSearch, setSkillSearch] = useState("")
+  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
 
   useEffect(() => {
     // Use select("*") to avoid PostgREST 400 if trigger_on column not in schema cache yet
@@ -275,7 +276,7 @@ export default function MarketplacePage() {
                       const displayName = provider ? (PROVIDER_NAMES[provider] ?? provider) : null
                       const isProviderConnected = provider ? connectedIds.has(provider) : false
                       return (
-                      <div key={s.id} className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30">
+                      <div key={s.id} onClick={() => setSelectedSkill(s)} className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30 cursor-pointer">
                         <div className="absolute top-3 right-3 flex items-end gap-1.5">
                           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{s.team_function}</span>
                           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${s.is_active ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"}`}>
@@ -466,6 +467,135 @@ export default function MarketplacePage() {
         onError={handleOAuthError}
         preselectedConnector={preselectedConnector}
       />
+      {/* Skill Detail Drawer */}
+      {selectedSkill && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setSelectedSkill(null)}
+          />
+          {/* Drawer panel */}
+          <div className="relative w-full max-w-lg bg-background border-l border-border flex flex-col h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="flex items-start justify-between p-6 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00E5A0] to-[#7B61FF] flex items-center justify-center shrink-0">
+                  <span className="text-white text-lg">⚡</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">{selectedSkill.skill_name.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</h2>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs font-medium text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{selectedSkill.team_function}</span>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${selectedSkill.is_active ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${selectedSkill.is_active ? "bg-green-400" : "bg-zinc-400"}`} />
+                      {selectedSkill.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedSkill(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 p-6 space-y-6">
+              {/* Description */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">What it does</h3>
+                <p className="text-sm text-foreground leading-relaxed">
+                  {selectedSkill.description || "This skill automates a key workflow for your team using AI — no manual input required."}
+                </p>
+              </div>
+
+              {/* How it works */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">How it works</h3>
+                <div className="space-y-3">
+                  {[
+                    { step: "1", label: "Input", desc: "You provide context or connect a live data source" },
+                    { step: "2", label: "AI Processing", desc: "VIBE analyzes your data and applies the skill logic" },
+                    { step: "3", label: "Output", desc: "Receive a ready-to-use asset, report, or action plan" },
+                  ].map((item) => (
+                    <div key={item.step} className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-[#7B61FF]/20 text-[#7B61FF] flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                        {item.step}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{item.label}</p>
+                        <p className="text-xs text-muted-foreground">{item.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Example prompt */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Example prompt</h3>
+                <div className="rounded-lg bg-muted/30 border border-border p-3">
+                  <p className="text-sm text-foreground font-mono">
+                    "{selectedSkill.skill_name.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} — {selectedSkill.description?.split('.')[0] ?? 'run this skill now'}"
+                  </p>
+                </div>
+              </div>
+
+              {/* Data requirements */}
+              {parseProvider(selectedSkill.trigger_on) && (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Data requirements</h3>
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const provider = parseProvider(selectedSkill.trigger_on)
+                      const displayName = provider ? (PROVIDER_NAMES[provider] ?? provider) : null
+                      const isConnected = provider ? connectedIds.has(provider) : false
+                      return isConnected ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium bg-green-500/15 text-green-400 border border-green-500/25">
+                          <span className="w-2 h-2 rounded-full bg-green-400" />
+                          {displayName} Connected
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const p = parseProvider(selectedSkill.trigger_on)
+                            if (p) {
+                              pendingSkillRef.current = { name: selectedSkill.skill_name, provider: p }
+                              setPreselectedConnector(p)
+                              setConnectOpen(true)
+                              setSelectedSkill(null)
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium bg-[#7B61FF]/15 text-[#7B61FF] border border-[#7B61FF]/25 hover:bg-[#7B61FF]/25 transition-colors"
+                        >
+                          Requires {displayName} → Connect Now
+                        </button>
+                      )
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer with Launch button */}
+            <div className="p-6 border-t border-border">
+              <button
+                onClick={() => {
+                  const prompt = encodeURIComponent(`Run ${selectedSkill.skill_name}`)
+                  setSelectedSkill(null)
+                  router.push(`/chat?prompt=${prompt}`)
+                }}
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white font-semibold text-sm hover:opacity-90 transition-opacity"
+              >
+                Launch Skill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }
