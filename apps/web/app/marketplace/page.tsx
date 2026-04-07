@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
@@ -20,29 +20,63 @@ const PROVIDER_NAMES: Record<string, string> = {
   mixpanel: "Mixpanel", "google-sheet": "Google Sheets",
 }
 
+const OAUTH_WHITELIST = new Set([
+  "hubspot", "airtable", "slack", "google-analytics-4", "mixpanel", "salesforce"
+])
+
+interface NangoConnector {
+  id: string
+  name: string
+  category: string
+  description: string
+  oauth: boolean
+}
+
 function parseProvider(triggerOn: string | null): string | null {
   if (!triggerOn) return null
   const provider = triggerOn.split(":")[0].trim().toLowerCase()
   return provider || null
 }
 
-/* ── Connector definitions ── */
-const CONNECTORS = [
-  { id: "hubspot",            name: "HubSpot",           emoji: "🟠", category: "CRM",       description: "Sync contacts, deals, and pipeline data from HubSpot." },
-  { id: "salesforce",         name: "Salesforce",         emoji: "☁️", category: "CRM",       description: "Connect your Salesforce CRM for live account and opportunity data." },
-  { id: "revos-crm",          name: "REV OS CRM",          emoji: "🤖", category: "CRM",       description: "Connect your UbiGrowth REV OS AI Revenue OS for voice agent and pipeline data." },
-  { id: "google-sheet",       name: "Google Sheets",      emoji: "📊", category: "Database",   description: "Pull structured data directly from Google Sheets." },
-  { id: "google-analytics-4", name: "Google Analytics 4", emoji: "📈", category: "Analytics",  description: "Import web analytics, traffic, and conversion metrics." },
-  { id: "mixpanel",           name: "Mixpanel",           emoji: "🔬", category: "Analytics",  description: "Bring in product analytics events and user funnels." },
-  { id: "airtable",           name: "Airtable",           emoji: "🗂️", category: "Database",   description: "Connect Airtable bases as structured data sources." },
-  { id: "snowflake",          name: "Snowflake",          emoji: "❄️", category: "Database",   description: "Query your Snowflake data warehouse directly." },
-  { id: "postgres",           name: "PostgreSQL",         emoji: "🐘", category: "Database",   description: "Connect any PostgreSQL database for live queries." },
-  { id: "google-bigquery",    name: "Google BigQuery",    emoji: "🔍", category: "Analytics",  description: "Run queries against BigQuery datasets." },
-  { id: "aws-s3",             name: "AWS S3",             emoji: "🪣", category: "Storage",    description: "Access files and data stored in S3 buckets." },
-  { id: "decipher",           name: "Decipher (Forsta)",  emoji: "📋", category: "Analytics",  description: "Connect your Decipher survey account to pull response data into UbiVibe dashboards." },
-] as const
+const CATEGORIES = ["All", "CRM", "Analytics", "Database", "Storage", "Messaging", "DevTools", "Finance", "HR & Ops"] as const
 
-const CATEGORIES = ["All", "CRM", "Analytics", "Database", "Storage", "Messaging", "DevTools"] as const
+const FALLBACK_CONNECTORS: NangoConnector[] = [
+  { id: "hubspot",            name: "HubSpot",            category: "CRM",       description: "Sync contacts, deals, and pipeline data from HubSpot.",                   oauth: true  },
+  { id: "salesforce",         name: "Salesforce",         category: "CRM",       description: "Connect your Salesforce CRM for live account and opportunity data.",      oauth: true  },
+  { id: "pipedrive",          name: "Pipedrive",          category: "CRM",       description: "Pull deals, contacts, and pipeline stages from Pipedrive.",               oauth: false },
+  { id: "zoho-crm",           name: "Zoho CRM",           category: "CRM",       description: "Connect Zoho CRM for leads, contacts, and deal tracking.",               oauth: false },
+  { id: "monday",             name: "Monday.com",         category: "CRM",       description: "Sync boards, items, and workflows from Monday.com.",                      oauth: false },
+  { id: "google-analytics-4", name: "Google Analytics 4", category: "Analytics", description: "Import web analytics, traffic, and conversion metrics.",                  oauth: true  },
+  { id: "mixpanel",           name: "Mixpanel",           category: "Analytics", description: "Bring in product analytics events and user funnels.",                     oauth: true  },
+  { id: "amplitude",          name: "Amplitude",          category: "Analytics", description: "Connect Amplitude for behavioral analytics and user journey data.",       oauth: false },
+  { id: "segment",            name: "Segment",            category: "Analytics", description: "Unify customer data streams from Segment into your dashboards.",          oauth: false },
+  { id: "tableau",            name: "Tableau",            category: "Analytics", description: "Connect Tableau workbooks and data extracts.",                           oauth: false },
+  { id: "power-bi",           name: "Power BI",           category: "Analytics", description: "Pull Microsoft Power BI reports and datasets.",                          oauth: false },
+  { id: "airtable",           name: "Airtable",           category: "Database",  description: "Connect Airtable bases as structured data sources.",                     oauth: true  },
+  { id: "google-sheet",       name: "Google Sheets",      category: "Database",  description: "Pull structured data directly from Google Sheets.",                      oauth: false },
+  { id: "supabase",           name: "Supabase",           category: "Database",  description: "Connect your Supabase project for real-time database access.",           oauth: false },
+  { id: "snowflake",          name: "Snowflake",          category: "Database",  description: "Query your Snowflake data warehouse directly.",                          oauth: false },
+  { id: "notion",             name: "Notion",             category: "Database",  description: "Sync Notion databases, pages, and workspaces.",                         oauth: false },
+  { id: "aws-s3",             name: "AWS S3",             category: "Storage",   description: "Access files and data stored in S3 buckets.",                           oauth: false },
+  { id: "google-drive",       name: "Google Drive",       category: "Storage",   description: "Connect Google Drive for document and file access.",                    oauth: false },
+  { id: "dropbox",            name: "Dropbox",            category: "Storage",   description: "Access files and folders stored in Dropbox.",                           oauth: false },
+  { id: "sharepoint",         name: "SharePoint",         category: "Storage",   description: "Pull documents and lists from Microsoft SharePoint.",                   oauth: false },
+  { id: "slack",              name: "Slack",              category: "Messaging", description: "Connect Slack for team messaging and workflow automation.",              oauth: true  },
+  { id: "microsoft-teams",    name: "Microsoft Teams",    category: "Messaging", description: "Integrate Microsoft Teams for enterprise communication workflows.",      oauth: false },
+  { id: "intercom",           name: "Intercom",           category: "Messaging", description: "Pull customer conversations and support tickets from Intercom.",        oauth: false },
+  { id: "zendesk",            name: "Zendesk",            category: "Messaging", description: "Connect Zendesk for support ticket and customer data.",                 oauth: false },
+  { id: "github",             name: "GitHub",             category: "DevTools",  description: "Connect GitHub repos, issues, and pull requests.",                      oauth: false },
+  { id: "jira",               name: "Jira",               category: "DevTools",  description: "Sync Jira projects, sprints, and issue tracking data.",                oauth: false },
+  { id: "linear",             name: "Linear",             category: "DevTools",  description: "Pull Linear issues, cycles, and project data.",                         oauth: false },
+  { id: "asana",              name: "Asana",              category: "DevTools",  description: "Connect Asana projects and tasks for operational dashboards.",          oauth: false },
+  { id: "stripe",             name: "Stripe",             category: "Finance",   description: "Pull revenue, subscriptions, and payment data from Stripe.",            oauth: false },
+  { id: "quickbooks",         name: "QuickBooks",         category: "Finance",   description: "Connect QuickBooks for accounting and financial reporting.",            oauth: false },
+  { id: "xero",               name: "Xero",               category: "Finance",   description: "Sync Xero accounting data for financial dashboards.",                   oauth: false },
+  { id: "netsuite",           name: "NetSuite",           category: "Finance",   description: "Connect NetSuite ERP for enterprise financial operations.",             oauth: false },
+  { id: "bamboohr",           name: "BambooHR",           category: "HR & Ops",  description: "Pull employee records and HR data from BambooHR.",                      oauth: false },
+  { id: "workday",            name: "Workday",            category: "HR & Ops",  description: "Connect Workday for workforce and financial management data.",          oauth: false },
+  { id: "linkedin",           name: "LinkedIn",           category: "HR & Ops",  description: "Connect LinkedIn for sales intelligence and professional network data.", oauth: false },
+]
 
 export default function MarketplacePage() {
   const router = useRouter()
@@ -55,6 +89,8 @@ export default function MarketplacePage() {
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set())
   const [section, setSection] = useState<"connectors" | "skills">("connectors")
   const [skills, setSkills] = useState<Skill[]>([])
+  const [connectors, setConnectors] = useState<NangoConnector[]>([])
+  const [connectorsLoading, setConnectorsLoading] = useState(true)
   const [skillDept, setSkillDept] = useState<string>("All")
   const [skillSearch, setSkillSearch] = useState("")
 
@@ -74,6 +110,44 @@ export default function MarketplacePage() {
           })))
         }
       })
+  }, [])
+
+  useEffect(() => {
+    fetch("https://api.nango.dev/integrations")
+      .then((res) => res.json())
+      .then((data) => {
+        const items = data?.integrations ?? data?.data ?? []
+        const mapped: NangoConnector[] = items.map((item: any) => {
+          const id = item.unique_key ?? item.id ?? ""
+          const rawCategory = (item.categories?.[0] ?? item.category ?? "Other")
+          const categoryMap: Record<string, string> = {
+            "crm": "CRM",
+            "analytics": "Analytics",
+            "database": "Database",
+            "storage": "Storage",
+            "messaging": "Messaging",
+            "communication": "Messaging",
+            "devtools": "DevTools",
+            "developer-tools": "DevTools",
+            "finance": "Finance",
+            "accounting": "Finance",
+            "hr": "HR & Ops",
+            "hr-payroll": "HR & Ops",
+            "productivity": "DevTools",
+          }
+          const category = categoryMap[rawCategory.toLowerCase()] ?? "DevTools"
+          return {
+            id,
+            name: item.display_name ?? item.name ?? id,
+            category,
+            description: item.description ?? `Connect ${item.display_name ?? id} to VIBE.`,
+            oauth: OAUTH_WHITELIST.has(id),
+          }
+        })
+        setConnectors(mapped.length > 0 ? mapped : FALLBACK_CONNECTORS)
+      })
+      .catch(() => setConnectors(FALLBACK_CONNECTORS))
+      .finally(() => setConnectorsLoading(false))
   }, [])
 
   useEffect(() => {
@@ -116,7 +190,7 @@ export default function MarketplacePage() {
   }, [filteredSkills])
 
   const filtered = useMemo(() => {
-    let list = [...CONNECTORS]
+    let list = [...connectors]
     if (tab === "installed") list = list.filter((c) => connectedIds.has(c.id))
     if (category !== "All") list = list.filter((c) => c.category === category)
     if (search.trim()) {
@@ -124,7 +198,7 @@ export default function MarketplacePage() {
       list = list.filter((c) => c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q) || c.category.toLowerCase().includes(q))
     }
     return list
-  }, [search, category, tab, connectedIds])
+  }, [connectors, search, category, tab, connectedIds])
 
   const pendingSkillRef = useRef<{ name: string; provider: string } | null>(null)
 
@@ -314,15 +388,20 @@ export default function MarketplacePage() {
             )}
 
             {/* Connector grid */}
+            {connectorsLoading && (
+              <div className="col-span-3 text-center py-16 text-muted-foreground">
+                <Package className="w-10 h-10 mx-auto mb-3 opacity-40 animate-pulse" />
+                <p className="text-sm">Loading integrations...</p>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered.map((c) => {
+              {!connectorsLoading && filtered.map((c) => {
                 const isConnected = connectedIds.has(c.id)
                 return (
                   <div
                     key={c.id}
                     className="group relative flex flex-col rounded-xl bg-card border border-border p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-purple-500/10 hover:border-purple-500/30"
                   >
-                    {/* Top-right badges */}
                     <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
                       <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">
                         {c.category}
@@ -334,22 +413,29 @@ export default function MarketplacePage() {
                         </span>
                       )}
                     </div>
-                    {/* Icon + name */}
                     <div className="flex items-start gap-3 mb-2">
-                      <span className="text-3xl leading-none">{c.emoji}</span>
+                      <div className="w-9 h-9 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-bold text-muted-foreground">{c.name.slice(0, 2).toUpperCase()}</span>
+                      </div>
                       <div className="min-w-0">
                         <h3 className="font-semibold text-base text-foreground truncate">{c.name}</h3>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground mb-4 line-clamp-2 flex-1">{c.description}</p>
-                    {/* Action */}
                     {!isConnected && (
-                      <button
-                        onClick={() => { setPreselectedConnector(c.id); setConnectOpen(true) }}
-                        className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#7B61FF] hover:text-[#7B61FF] transition-colors"
-                      >
-                        Connect
-                      </button>
+                      c.oauth ? (
+                        <button
+                          onClick={() => { setPreselectedConnector(c.id); setConnectOpen(true) }}
+                          className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#7B61FF] hover:text-[#7B61FF] transition-colors"
+                        >
+                          Connect
+                        </button>
+                      ) : (
+                        <div className="w-full h-9 rounded-lg border border-border/50 text-sm font-medium text-muted-foreground bg-muted/20 flex items-center justify-center gap-2 cursor-default">
+                          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
+                          Coming Soon
+                        </div>
+                      )
                     )}
                   </div>
                 )
