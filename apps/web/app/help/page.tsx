@@ -7,14 +7,14 @@ const LINKS = [
   {
     icon: Book,
     title: "Documentation",
-    description: "Learn how VIBE works, how to configure it, and how to use the API.",
+    description: "Learn how UbiVibe works, how to configure it, and how to use the API.",
     href: "https://github.com/UbiGrowth/VIBE#readme",
     label: "Read the docs",
   },
   {
     icon: Github,
     title: "GitHub Issues",
-    description: "Report bugs or request features on the VIBE GitHub repository.",
+    description: "Report bugs or request features on the UbiVibe GitHub repository.",
     href: "https://github.com/UbiGrowth/VIBE/issues",
     label: "Open an issue",
   },

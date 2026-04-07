@@ -57,7 +57,7 @@ export function RecommendationBanner({ teamId }: Props) {
     )
     if (res.ok) {
       if (decision === "approved") {
-        setToast("Skill queued \u2014 VIBE is on it")
+        setToast("Skill queued \u2014 UbiVibe is on it")
         setTimeout(() => setToast(null), 3000)
       }
       setRec(null)

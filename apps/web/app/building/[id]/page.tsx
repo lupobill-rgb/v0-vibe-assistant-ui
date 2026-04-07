@@ -433,7 +433,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     if (task?.execution_state === 'completed' && projectName) {
       document.title = projectName
     }
-    return () => { document.title = 'VIBE - AI Coding Assistant' }
+    return () => { document.title = 'UbiVibe - AI Coding Assistant' }
   }, [task?.execution_state, projectName])
 
   const [editError, setEditError] = useState<string | null>(null)
@@ -1050,7 +1050,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                           }}>
                           <Globe className="w-4 h-4" style={{ color: '#6366f1', flexShrink: 0 }} />
                           <div>
-                            <div style={{ fontWeight: 600 }}>Publish to VIBE URL</div>
+                            <div style={{ fontWeight: 600 }}>Publish to UbiVibe URL</div>
                             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Get a shareable link instantly</div>
                           </div>
                           {publishing && <Loader2 className="w-4 h-4 animate-spin" style={{ marginLeft: 'auto' }} />}

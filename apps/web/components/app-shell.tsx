@@ -22,7 +22,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (searchParams.get("checkout") === "success") {
       const tier = searchParams.get("tier") ?? ""
       const tierName = TIER_NAMES[tier] || tier || "your new plan"
-      toast.success(`Welcome to VIBE ${tierName}! Your limits have been upgraded.`)
+      toast.success(`Welcome to UbiVibe ${tierName}! Your limits have been upgraded.`)
       // Clean up the URL
       const url = new URL(window.location.href)
       url.searchParams.delete("checkout")
