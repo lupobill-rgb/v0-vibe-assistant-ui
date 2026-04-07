@@ -8,6 +8,7 @@ import { PromptCard } from "@/components/dashboard/prompt-card"
 import { fetchProjectJobs, type Task } from "@/lib/api"
 import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { CascadeViewer } from "@/components/dashboard/cascade-viewer"
 
 const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
   completed: { label: "Completed", icon: CheckCircle2, color: "text-emerald-400" },
@@ -134,6 +135,8 @@ function ChatContent() {
         <div ref={promptCardRef}>
           <PromptCard selectedProjectId={selectedProjectId} initialPrompt={initialPrompt} />
         </div>
+
+      <CascadeViewer />
 
       {/* Recent Jobs */}
       <div className="px-4 sm:px-6 py-6 sm:py-8">
