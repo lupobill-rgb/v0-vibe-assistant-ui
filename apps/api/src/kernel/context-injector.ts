@@ -3,16 +3,18 @@ import { getNangoService, ConnectorType } from '../connectors/nango.service';
 
 // --- Design system rules injected AFTER department skills, BEFORE user prompt ---
 const DESIGN_SYSTEM_RULES = `
-DESIGN SYSTEM — non-negotiable:
+DESIGN SYSTEM — non-negotiable (UbiVibe brand):
 
 COLORS:
 - ALL colors via CSS variables: var(--bg), var(--text), var(--primary), var(--surface), var(--border).
-- Never hardcode hex values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
-- Gradients: hero sections and primary CTAs use linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 70%, #06b6d4)).
-- Accent color: #06b6d4 (cyan) for secondary highlights, links, active states.
+- Never hardcode hex values outside the UbiVibe palette. Never use bg-slate-900, bg-slate-950, or any Tailwind color class.
+- UbiVibe palette: Vibe Core #00E5A0, Signal #00B4D8, Autonomy #7B61FF, Deep #0A0E17, Surface #0F1420, Light #E8ECF4.
+- Gradients: hero sections and primary CTAs use linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%).
+- Signal color: #00B4D8 for secondary highlights, links, active states.
+- Autonomy color: #7B61FF for violet accents, secondary actions.
 
 TYPOGRAPHY:
-- Headings: font-family 'Space Grotesk', sans-serif; font-weight 700+.
+- Headings: font-family 'Syne', sans-serif; font-weight 700-800.
 - Body: font-family 'Inter', sans-serif; font-weight 400.
 - Scale: text-xs(0.75rem) text-sm(0.875rem) text-base(1rem) text-lg(1.125rem) text-xl(1.25rem) text-2xl(1.5rem) text-3xl(1.875rem) text-4xl(2.25rem).
 - Line height: headings 1.2, body 1.6.

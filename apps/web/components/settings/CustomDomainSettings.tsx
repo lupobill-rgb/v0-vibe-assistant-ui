@@ -126,7 +126,7 @@ export function CustomDomainSettings({ teamId }: { teamId: string }) {
                 Connect your domain
               </p>
               <p className="text-xs text-muted-foreground mb-3">
-                Point your domain to VIBE to serve published sites on a custom URL.
+                Point your domain to UbiVibe to serve published sites on a custom URL.
               </p>
               <div className="flex gap-2">
                 <input

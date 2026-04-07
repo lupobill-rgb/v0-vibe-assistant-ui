@@ -1,4 +1,4 @@
-# VIBE Frontend Design System
+# UbiVibe Frontend Design System
 
 Every generated output MUST follow these tokens exactly. No improvisation.
 
@@ -6,26 +6,27 @@ Every generated output MUST follow these tokens exactly. No improvisation.
 
 | Token | CSS Variable | Light Mode | Dark Mode |
 |-------|-------------|------------|-----------|
-| Background | `var(--bg)` | `#ffffff` | `#0f172a` |
-| Text | `var(--text)` | `#111827` | `#f8fafc` |
-| Primary | `var(--primary)` | `#7c3aed` | `#7c3aed` |
-| Surface | `var(--surface)` | `#f8fafc` | `#1e293b` |
-| Border | `var(--border)` | `#e2e8f0` | `#334155` |
-| Accent | `#06b6d4` | cyan highlights, active states |
+| Background (Deep) | `var(--bg)` | `#ffffff` | `#0A0E17` |
+| Text (Light) | `var(--text)` | `#111827` | `#E8ECF4` |
+| Primary (Vibe Core) | `var(--primary)` | `#00E5A0` | `#00E5A0` |
+| Surface | `var(--surface)` | `#f8fafc` | `#0F1420` |
+| Border | `var(--border)` | `#e2e8f0` | `#1a2030` |
+| Signal | `#00B4D8` | cyan highlights, active states |
+| Autonomy | `#7B61FF` | violet accents, secondary actions |
 
-- Default mode: **light** unless user says "dark"
+- Default mode: **dark** unless user says "light"
 - Brand color from TEAM CONTEXT overrides `--primary` only, never `--bg`
-- Gradients on hero sections and primary CTAs: `linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 70%, #06b6d4))`
+- Gradients on hero sections and primary CTAs: `linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%)`
 
 ## Banned Classes
 
-Never use: `bg-slate-900`, `bg-slate-950`, `bg-gray-900`, `bg-zinc-900`, `bg-zinc-950`, `text-white`, `bg-purple-600`, `bg-violet-600`, or any raw hex color in HTML attributes.
+Never use: `bg-slate-900`, `bg-slate-950`, `bg-gray-900`, `bg-zinc-900`, `bg-zinc-950`, `bg-purple-600`, `bg-violet-600`, or any raw hex color in HTML attributes outside the UbiVibe palette.
 
 ## Typography
 
 | Role | Font | Weight | Usage |
 |------|------|--------|-------|
-| Headings | Space Grotesk | 700+ | H1-H6, stat numbers, nav brand |
+| Headings | Syne | 700–800 | H1-H6, stat numbers, nav brand |
 | Body | Inter | 400 | Paragraphs, labels, inputs |
 | Mono | System mono | 400 | Code blocks only |
 
@@ -45,8 +46,8 @@ text-4xl:  2.25rem / 2.5rem
 ### Font Loading (required in `<head>`)
 
 ```html
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Syne','system-ui']}}}}</script>
 ```
 
 ## Spacing

@@ -27,15 +27,15 @@ ENGINEERING RULES:
 - Never break existing exports, interfaces, or function signatures unless explicitly required.
 - If ambiguous, implement the most conservative interpretation that satisfies the requirement.
 
-UI RULES — MANDATORY FOR EVERY FILE THAT TOUCHES THE FRONTEND:
-- Background: #020617 base, #0f172a for surfaces. Never white. Never light grey. Never browser default.
-- Primary: violet #7c3aed. Accent: cyan #06b6d4. These are the only brand colors.
-- Headings: Space Grotesk always. Body: Inter always. Load both via Google Fonts on every page.
-- Heroes: gradient background always — from-slate-950 via-violet-950/30 to-slate-950. Never flat.
-- Primary buttons: gradient from-violet-600 to-purple-600, hover lifts with violet shadow. Never flat.
-- Cards: bg-slate-900 border border-slate-800 hover:border-violet-500/50 rounded-2xl.
-- Navbar: sticky top-0 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/50.
-- Inputs: bg-slate-900 border-slate-700 focus:border-violet-500 focus:ring-violet-500/20 rounded-xl.
+UI RULES — MANDATORY FOR EVERY FILE THAT TOUCHES THE FRONTEND (UbiVibe brand):
+- Background: #0A0E17 (Deep) base, #0F1420 (Surface) for cards/panels. Never white. Never light grey. Never browser default.
+- Vibe Core: #00E5A0 (green primary). Signal: #00B4D8 (cyan highlights). Autonomy: #7B61FF (violet accents). Text: #E8ECF4 (Light).
+- Headings: Syne always (700-800). Body: Inter always. Load both via Google Fonts on every page.
+- Heroes: gradient background always — linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%). Never flat.
+- Primary buttons: gradient from #00E5A0 to #7B61FF, hover lifts with glow shadow. Never flat.
+- Cards: bg-[#0F1420] border border-[#1a2030] hover:border-[#00E5A0]/50 rounded-2xl.
+- Navbar: sticky top-0 bg-[#0A0E17]/80 backdrop-blur-md border-b border-[#1a2030].
+- Inputs: bg-[#0F1420] border-[#1a2030] focus:border-[#00E5A0] focus:ring-[#00E5A0]/20 rounded-xl.
 - Layout: max-w-7xl mx-auto always. Section padding py-24 minimum.
 - Responsive: every component mobile-first with sm: md: lg: prefixes throughout.
 - Landing pages must include: navbar, hero, trust bar, features, social proof, stats, CTA, footer.
