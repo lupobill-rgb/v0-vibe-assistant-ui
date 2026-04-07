@@ -33,6 +33,7 @@ function relativeTime(iso: string): string {
 
 export function AutonomousActivityFeed() {
   const [executions, setExecutions] = useState<Execution[]>([])
+  const [skillNames, setSkillNames] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const supabase = getSupabase()
@@ -45,7 +46,22 @@ export function AutonomousActivityFeed() {
         .gt("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(10)
-      if (data) setExecutions(data as Execution[])
+      if (!data) return
+      setExecutions(data as Execution[])
+
+      // Resolve skill names in a separate query
+      const ids = [...new Set(data.map((d: Execution) => d.skill_id))]
+      if (ids.length > 0) {
+        const { data: skills } = await supabase
+          .from("skill_registry")
+          .select("id, name")
+          .in("id", ids)
+        if (skills) {
+          const map: Record<string, string> = {}
+          for (const s of skills) map[s.id] = s.name
+          setSkillNames(map)
+        }
+      }
     }
 
     fetch()
@@ -76,7 +92,7 @@ export function AutonomousActivityFeed() {
               <Icon className={cn("w-4 h-4 flex-shrink-0", cfg.color, isRunning && "animate-spin")} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-foreground truncate">
-                  {ex.skill_id}
+                  {skillNames[ex.skill_id] ?? ex.skill_id}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {ex.trigger_source} &middot; {ex.trigger_event}
