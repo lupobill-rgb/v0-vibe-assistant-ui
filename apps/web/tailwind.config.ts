@@ -1,5 +1,5 @@
 /**
- * VIBE Tailwind Configuration
+ * UbiVibe Tailwind Configuration
  *
  * STATUS: STAGED — not yet active.
  * Current stack uses CSS Modules (App.css / index.css).
@@ -25,12 +25,12 @@ const config: Config = {
         brand: {
           primary:   '#00E5A0',
           secondary: '#7B61FF',
-          accent:    '#f5576c',
+          accent:    '#00B4D8',
         },
         surface: {
           base:     '#0A0E17',
           elevated: '#0F1420',
-          border:   '#333333',
+          border:   '#1a2030',
           muted:    '#888888',
         },
         text: {

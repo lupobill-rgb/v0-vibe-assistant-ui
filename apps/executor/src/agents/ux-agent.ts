@@ -23,11 +23,15 @@ export interface UxAgentResult {
 
 const BRAND_TOKENS = `
 BRAND TOKENS (enforce these — do not invent alternatives):
-- Primary: #7c3aed (violet)
-- Accent: #06b6d4 (cyan)
-- Background: #020617 / #0f172a (dark)
-- Font display: Space Grotesk (headings)
-- Font body: Inter (body text)
+- Vibe Core: #00E5A0 (green, primary)
+- Signal: #00B4D8 (cyan, highlights/active)
+- Autonomy: #7B61FF (violet, accents/secondary)
+- Deep: #0A0E17 (page background)
+- Surface: #0F1420 (cards, panels)
+- Light: #E8ECF4 (text)
+- Gradient: linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%)
+- Font display: Syne (headings, 700-800)
+- Font body: Inter (body text, 400)
 - Spacing grid: 8px base unit
 - Border radius: 0.5rem default
 - Breakpoints: mobile <768px, tablet 768–1024px, desktop >1024px

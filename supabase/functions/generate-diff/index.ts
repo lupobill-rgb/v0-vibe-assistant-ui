@@ -139,7 +139,7 @@ function needsSupabaseHelpers(prompt: string): boolean {
 const DESIGN_SYSTEM_CORE = `DESIGN SYSTEM — non-negotiable:
 - Colors come from the PRE-BUILT COLOR BLOCK (CSS variables). Use var(--bg), var(--text), var(--primary), var(--surface), var(--border) for ALL colors.
 - Never hardcode hex color values. Never use bg-slate-900, bg-slate-950, text-white, or any Tailwind color class.
-- All headings: Space Grotesk font-weight 700+. All body: Inter.`;
+- All headings: Syne font-weight 700-800. All body: Inter.`;
 
 const SCROLL_ANIMATIONS = `SCROLL ANIMATIONS — required:
 Add this script before </body>:
@@ -175,12 +175,12 @@ const PLAN_SYSTEM =
   "8. Users can add more pages later — focus on the core pages that deliver the most value. " +
   "COLOR_SCHEME EXTRACTION RULES (mandatory): " +
   "- User says 'white', 'clean', 'minimal', or 'light' → bg: '#ffffff', text: '#111827', surface: '#f8fafc', border: '#e2e8f0', mode: 'light'. " +
-  "- User says 'dark' or 'dark mode' → bg: '#0f172a', text: '#f8fafc', surface: '#1e293b', border: '#334155', mode: 'dark'. " +
+  "- User says 'dark' or 'dark mode' → bg: '#0A0E17', text: '#E8ECF4', surface: '#0F1420', border: '#1a2030', mode: 'dark'. " +
   "- User mentions a specific color → use it as primary, keep other defaults for that mode. " +
-  "- No color instruction at all → bg: '#ffffff', text: '#111827', primary: '#7c3aed', surface: '#f8fafc', border: '#e2e8f0', mode: 'light'. DEFAULT IS LIGHT. " +
+  "- No color instruction at all → bg: '#0A0E17', text: '#E8ECF4', primary: '#00E5A0', surface: '#0F1420', border: '#1a2030', mode: 'dark'. DEFAULT IS DARK. " +
   "- Brand color from TEAM CONTEXT → use as primary only, never as bg. " +
   "Example output: " +
-  '{"pages":[{"name":"index","title":"Acme","description":"Landing page"}],"color_scheme":{"bg":"#ffffff","text":"#111827","primary":"#7c3aed","surface":"#f8fafc","border":"#e2e8f0","mode":"light"}}';
+  '{"pages":[{"name":"index","title":"Acme","description":"Landing page"}],"color_scheme":{"bg":"#0A0E17","text":"#E8ECF4","primary":"#00E5A0","surface":"#0F1420","border":"#1a2030","mode":"dark"}}';
 
 const MULTI_PAGE_SYSTEM = `You are VIBE, an AI website builder generating one page of a multi-page website.
 Start <style> with the :root block from the PRE-BUILT COLOR BLOCK injected below. Use var(--bg), var(--primary), var(--surface) throughout. Zero hardcoded color values.
@@ -189,8 +189,8 @@ Return a complete, self-contained HTML page. Output starts with <!DOCTYPE html> 
 ALWAYS inject in <head>:
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Syne','system-ui']}}}}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <meta property="og:title" content="PAGE_TITLE">
 <meta property="og:description" content="PAGE_DESCRIPTION">
@@ -242,8 +242,8 @@ Return a complete, self-contained HTML site. Output starts with <!DOCTYPE html> 
 
 ALWAYS inject in <head>:
 <script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Syne','system-ui']}}}}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <meta property="og:title" content="SITE_TITLE">
 <meta property="og:description" content="SITE_DESCRIPTION">
@@ -265,11 +265,11 @@ ${FORM_RULES}
 
 STRUCTURE — include all sections in order:
 1. Sticky glassmorphism navbar: logo left, anchor links center, CTA right.
-2. Hero: full viewport, gradient bg, Space Grotesk h1 clamp(3rem,6vw,5rem), subheading, 2 CTA buttons.
+2. Hero: full viewport, gradient bg, Syne h1 clamp(3rem,6vw,5rem), subheading, 2 CTA buttons.
 3. Trust bar: "Trusted by teams at..." 4-5 company names in muted text.
 4. Features: 3-column grid of fade-up cards, emoji/icon, bold title, description.
 5. Social proof: 3 testimonial cards with name, role, company, star rating ★★★★★.
-6. Stats: 3-4 large violet numbers with cyan accents, muted labels.
+6. Stats: 3-4 large numbers with UbiVibe gradient accents, muted labels.
 7. Working form section: contact or signup form via Supabase (see SUPABASE FORM INTEGRATION).
 8. Pricing: 3-tier pricing cards if relevant to prompt, with toggle monthly/annual.
 9. Final CTA: gradient strip, bold headline, single primary button.
@@ -342,8 +342,8 @@ ALWAYS inject these in <head>:
 <script>window.__VIBE_TEAM_ID__="__TEAM_ID__";</script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Syne','system-ui']}}}}</script>
 ${DESIGN_SYSTEM_CORE}
 - Sidebar: bg-[var(--surface)] border-r border-[var(--border)]
 - Cards: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--primary)] transition-all
@@ -361,7 +361,7 @@ SIDEBAR:
 - User avatar + name + role pinned to bottom
 TOPBAR — inline styles only, no Tailwind on nav:
 <nav style="position:sticky;top:0;z-index:50;background:var(--surface);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px;font-family:'Inter',sans-serif;">
-  <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.1rem;color:var(--primary);">[BRAND]</span>
+  <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:1.1rem;color:var(--primary);">[BRAND]</span>
   <div style="display:flex;gap:28px;">
     [LINKS: <a href="#" data-section="view-[name]" onclick="switchView(event,'view-[name]')" style="color:var(--text);opacity:0.7;text-decoration:none;font-size:0.95rem;font-weight:500;">Label</a>]
   </div>
@@ -371,7 +371,7 @@ This is the COMPLETE nav. No other nav markup anywhere in the file.
 No Tailwind classes on any nav element. No ul/li. No hidden divs. No responsive variants.
 KPI STAT CARDS — 4 cards in grid-cols-4 gap-6 (grid-cols-2 on mobile):
 - Card: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 relative overflow-hidden
-- Large metric number: Space Grotesk text-3xl font-bold text-[var(--text)] truncate
+- Large metric number: Syne text-3xl font-bold text-[var(--text)] truncate
 - Label: text-[var(--text)] opacity-60 text-sm mt-1 truncate
 - Trend: absolute top-4 right-4, ▲ text-emerald-400 or ▼ text-red-400 text-sm
 - CRITICAL: Use relative+absolute positioning so trend badge never overlaps metric text. Add min-h-[120px] to each card.
@@ -385,7 +385,7 @@ CHARTS — minimum 2 using Chart.js v3+ (CDN loads v4):
 - Overview section: Chart 1: Line or Bar for primary time-series (12 months of data). Chart 2: Doughnut or Bar for breakdown/distribution.
 - Every additional nav section that displays data MUST also have at least one Chart.js chart with full initialization code.
 - Domain detection: sales→revenue+pipeline; finance→cashflow+allocation; analytics→traffic+conversion; marketing→campaigns+CAC; HR→headcount+performance
-- Colors: primary var(--primary), accent #06b6d4, success #10b981, warning #f59e0b
+- Colors: primary var(--primary), accent #00B4D8, success #10b981, warning #f59e0b
 - Chart container: bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6
 - Grid lines: rgba(148,163,184,0.1). Chart background: transparent.
 - Zero lorem ipsum. Zero hardcoded data arrays.
@@ -394,7 +394,7 @@ CHART CODE MANDATE — non-negotiable:
   1. A <canvas> element with a unique id
   2. A complete Chart.js new Chart() call
   3. Data loaded via vibeLoadData() — if empty, show an empty state message inside the chart container
-  4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #06b6d4
+  4. Charts must read primary color from getComputedStyle(document.documentElement).getPropertyValue('--primary') at runtime. Secondary: #00B4D8
 - CANVAS HEIGHT RULE: Every <canvas> MUST have explicit height via BOTH the HTML attribute AND inline CSS. Charts must never expand beyond their container.
   Required format: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
   A <canvas> without both height="200" and style="height:200px !important; max-height:200px;" fails the quality gate.
@@ -508,7 +508,7 @@ For dynamically created elements use event delegation: attach one listener on a 
 
 HEAD must include:
 <script src="https://cdn.tailwindcss.com"><\/script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";<\/script>
 Placeholders are replaced at deploy time. In all other JS, use window.__VIBE_SUPABASE_URL__ and window.__VIBE_SUPABASE_ANON_KEY__ (see Rule 15).
 
@@ -518,7 +518,7 @@ REQUIRED LAYOUT:
 <body>
 <div style="display:flex;height:100vh;overflow:hidden;">
   <aside id="sidebar" style="width:240px;min-width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;">
-    <div style="padding:1.5rem 1rem;border-bottom:1px solid var(--border);"><h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.1rem;font-weight:700;color:var(--primary);">APP NAME</h1></div>
+    <div style="padding:1.5rem 1rem;border-bottom:1px solid var(--border);"><h1 style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;color:var(--primary);">APP NAME</h1></div>
     <nav id="sidebar-nav" style="padding:1rem 0.5rem;display:flex;flex-direction:column;gap:0.25rem;"></nav>
   </aside>
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
