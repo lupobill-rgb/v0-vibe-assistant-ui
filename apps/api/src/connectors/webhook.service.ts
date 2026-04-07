@@ -31,7 +31,7 @@ export class WebhookService {
 
     const { data: skills } = await this.sb.from('skill_registry')
       .select('id, skill_name').eq('is_active', true)
-      .contains('trigger_on', JSON.stringify([triggerSource]));
+      .filter('trigger_on', 'ilike', `%${payload.providerConfigKey.toLowerCase()}:%`);
     if (!skills?.length) { this.logger.log(`No skills matched: ${triggerSource}`); return { queued: 0 }; }
 
     let queued = 0;
