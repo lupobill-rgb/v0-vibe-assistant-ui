@@ -12,7 +12,6 @@ type Execution = {
   trigger_event: string
   status: string
   created_at: string
-  skill_registry: { name: string }[] | null
 }
 
 const STATUS_CFG: Record<string, { icon: typeof Loader2; color: string }> = {
@@ -42,11 +41,11 @@ export function AutonomousActivityFeed() {
       const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       const { data } = await supabase
         .from("autonomous_executions")
-        .select("id, skill_id, trigger_source, trigger_event, status, created_at, skill_registry(name)")
+        .select("id, skill_id, trigger_source, trigger_event, status, created_at")
         .gt("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(10)
-      if (data) setExecutions(data as unknown as Execution[])
+      if (data) setExecutions(data as Execution[])
     }
 
     fetch()
@@ -77,7 +76,7 @@ export function AutonomousActivityFeed() {
               <Icon className={cn("w-4 h-4 flex-shrink-0", cfg.color, isRunning && "animate-spin")} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-foreground truncate">
-                  {ex.skill_registry?.[0]?.name ?? ex.skill_id}
+                  {ex.skill_id}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {ex.trigger_source} &middot; {ex.trigger_event}
