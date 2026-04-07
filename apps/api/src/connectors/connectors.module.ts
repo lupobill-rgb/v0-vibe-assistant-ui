@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ConnectorsController } from './connectors.controller';
+import { ConnectorsController, ConnectorsTeamController } from './connectors.controller';
 import { NangoService } from './nango.service';
 import { WebhookService } from './webhook.service';
 
 @Module({
-  controllers: [ConnectorsController],
+  controllers: [ConnectorsController, ConnectorsTeamController],
   providers: [NangoService, WebhookService],
   exports: [NangoService, WebhookService],
 })

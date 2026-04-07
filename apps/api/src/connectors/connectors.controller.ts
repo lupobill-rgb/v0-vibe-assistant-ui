@@ -236,6 +236,21 @@ export class ConnectorsController {
     }
   }
 
+}
+
+/**
+ * Separate controller for parameterized /connectors/:teamId routes.
+ * Must be registered AFTER ConnectorsController in the module so that
+ * static routes (catalog, hubspot/*, decipher/*) take priority.
+ * This avoids esbuild/tsx stripping decorator metadata and making
+ * route registration order unpredictable within a single controller.
+ */
+@Controller('connectors')
+export class ConnectorsTeamController {
+  private readonly logger = new Logger(ConnectorsTeamController.name);
+
+  constructor(private readonly nangoService: NangoService) {}
+
   /**
    * GET /connectors/:teamId/:connectorType
    * Returns the active connection or 404-style null.
