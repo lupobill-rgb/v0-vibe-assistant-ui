@@ -33,7 +33,7 @@ export default function ProjectsPage() {
         <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-4 sm:pb-6 border-b border-border/50">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center flex-shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00E5A0] to-[#7B61FF] flex items-center justify-center flex-shrink-0">
                 <FolderKanban className="w-5 h-5 text-white" />
               </div>
               <div className="min-w-0">
@@ -59,7 +59,7 @@ export default function ProjectsPage() {
               <Button
                 size="sm"
                 onClick={() => setCreateDialogOpen(true)}
-                className="gap-2 min-h-[44px] bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white border-0 hover:opacity-90"
+                className="gap-2 min-h-[44px] bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white border-0 hover:opacity-90"
               >
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">New Project</span>

@@ -86,7 +86,7 @@ function StatusIcon({ status }: { status: StepStatus }) {
     case "done":
       return <CheckCircle2 className="w-5 h-5 text-emerald-400" />
     case "active":
-      return <Loader2 className="w-5 h-5 text-[#4F8EFF] animate-spin" />
+      return <Loader2 className="w-5 h-5 text-[#00E5A0] animate-spin" />
     case "error":
       return <AlertCircle className="w-5 h-5 text-red-400" />
     default:
@@ -249,7 +249,7 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
               "h-full rounded-full transition-all duration-700 ease-out",
               task?.execution_state === "failed"
                 ? "bg-red-500"
-                : "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7]"
+                : "bg-gradient-to-r from-[#00E5A0] to-[#7B61FF]"
             )}
             style={{ width: `${progress}%` }}
           />
@@ -279,7 +279,7 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
                     className={cn(
                       "text-sm font-medium",
                       step.status === "done"   ? "text-foreground" :
-                      step.status === "active" ? "text-[#4F8EFF]" :
+                      step.status === "active" ? "text-[#00E5A0]" :
                       step.status === "error"  ? "text-red-400" :
                                                  "text-muted-foreground"
                     )}
@@ -311,7 +311,7 @@ export function PipelineTracker({ taskId, task: taskProp }: PipelineTrackerProps
             href={task.pull_request_link}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-2 h-9 rounded-lg bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+            className="flex-1 flex items-center justify-center gap-2 h-9 rounded-lg bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
           >
             <ExternalLink className="w-3.5 h-3.5" />
             View Pull Request

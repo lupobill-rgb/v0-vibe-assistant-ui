@@ -151,7 +151,7 @@ export default function MarketplacePage() {
         {/* ── Hero Banner ── */}
         <div className="w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-border/50">
           <div className="px-6 py-10 md:py-12 max-w-6xl mx-auto flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center shrink-0">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#00E5A0] to-[#7B61FF] flex items-center justify-center shrink-0">
               <Package className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -160,10 +160,10 @@ export default function MarketplacePage() {
             </div>
           </div>
           <div className="max-w-6xl mx-auto px-6 pb-4 flex gap-2">
-            <button onClick={() => setSection("connectors")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "connectors" ? "bg-[#A855F7] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
+            <button onClick={() => setSection("connectors")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "connectors" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
               <Package className="w-4 h-4" /> Connectors
             </button>
-            <button onClick={() => setSection("skills")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "skills" ? "bg-[#A855F7] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
+            <button onClick={() => setSection("skills")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "skills" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
               <Zap className="w-4 h-4" /> Skills <span className="text-xs opacity-75">({skills.length})</span>
             </button>
           </div>
@@ -176,7 +176,7 @@ export default function MarketplacePage() {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hidden md:block">Departments</p>
               <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-visible">
                 {departments.map((d) => (
-                  <button key={d} onClick={() => setSkillDept(d)} className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${skillDept === d ? "bg-[#A855F7] text-white border-[#A855F7]" : "bg-card text-muted-foreground border-border hover:border-[#A855F7]/50 hover:text-foreground"}`}>
+                  <button key={d} onClick={() => setSkillDept(d)} className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${skillDept === d ? "bg-[#7B61FF] text-white border-[#7B61FF]" : "bg-card text-muted-foreground border-border hover:border-[#7B61FF]/50 hover:text-foreground"}`}>
                     {d}
                   </button>
                 ))}
@@ -185,7 +185,7 @@ export default function MarketplacePage() {
             <div className="flex-1 px-4 md:px-6 py-4 md:py-6">
               <div className="relative mb-6">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                <input type="text" placeholder="Search skills..." value={skillSearch} onChange={(e) => setSkillSearch(e.target.value)} className="w-full h-10 pl-9 pr-3 rounded-lg bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#A855F7]/50 focus:border-[#A855F7] transition-colors" />
+                <input type="text" placeholder="Search skills..." value={skillSearch} onChange={(e) => setSkillSearch(e.target.value)} className="w-full h-10 pl-9 pr-3 rounded-lg bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#7B61FF]/50 focus:border-[#7B61FF] transition-colors" />
               </div>
               {filteredSkills.length === 0 && (
                 <div className="text-center py-16 text-muted-foreground">
@@ -226,7 +226,7 @@ export default function MarketplacePage() {
                             ) : (
                               <button
                                 onClick={() => { pendingSkillRef.current = { name: s.skill_name, provider: provider! }; setPreselectedConnector(provider!); setConnectOpen(true) }}
-                                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-[#A855F7]/15 text-[#A855F7] border border-[#A855F7]/25 hover:bg-[#A855F7]/25 transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-[#7B61FF]/15 text-[#7B61FF] border border-[#7B61FF]/25 hover:bg-[#7B61FF]/25 transition-colors cursor-pointer"
                               >
                                 Requires {displayName} → Connect
                               </button>
@@ -253,8 +253,8 @@ export default function MarketplacePage() {
                   onClick={() => setCategory(cat)}
                   className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                     category === cat
-                      ? "bg-[#A855F7] text-white border-[#A855F7]"
-                      : "bg-card text-muted-foreground border-border hover:border-[#A855F7]/50 hover:text-foreground"
+                      ? "bg-[#7B61FF] text-white border-[#7B61FF]"
+                      : "bg-card text-muted-foreground border-border hover:border-[#7B61FF]/50 hover:text-foreground"
                   }`}
                 >
                   {cat}
@@ -274,14 +274,14 @@ export default function MarketplacePage() {
                   placeholder="Search integrations..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full h-10 pl-9 pr-3 rounded-lg bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#A855F7]/50 focus:border-[#A855F7] transition-colors"
+                  className="w-full h-10 pl-9 pr-3 rounded-lg bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#7B61FF]/50 focus:border-[#7B61FF] transition-colors"
                 />
               </div>
               <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
                 <button
                   onClick={() => setTab("browse")}
                   className={`px-4 h-10 text-sm font-medium transition-colors ${
-                    tab === "browse" ? "bg-[#A855F7] text-white" : "bg-card text-muted-foreground hover:text-foreground"
+                    tab === "browse" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Browse
@@ -289,7 +289,7 @@ export default function MarketplacePage() {
                 <button
                   onClick={() => setTab("installed")}
                   className={`px-4 h-10 text-sm font-medium transition-colors ${
-                    tab === "installed" ? "bg-[#A855F7] text-white" : "bg-card text-muted-foreground hover:text-foreground"
+                    tab === "installed" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Installed
@@ -346,7 +346,7 @@ export default function MarketplacePage() {
                     {!isConnected && (
                       <button
                         onClick={() => { setPreselectedConnector(c.id); setConnectOpen(true) }}
-                        className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#A855F7] hover:text-[#A855F7] transition-colors"
+                        className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#7B61FF] hover:text-[#7B61FF] transition-colors"
                       >
                         Connect
                       </button>
@@ -359,7 +359,7 @@ export default function MarketplacePage() {
               {tab === "browse" && (
                 <button
                   onClick={() => { setPreselectedConnector(""); setConnectOpen(true) }}
-                  className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-4 text-muted-foreground hover:border-[#A855F7]/50 hover:text-foreground transition-colors min-h-[180px]"
+                  className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-4 text-muted-foreground hover:border-[#7B61FF]/50 hover:text-foreground transition-colors min-h-[180px]"
                 >
                   <Plus className="w-8 h-8 mb-2 opacity-60" />
                   <span className="text-sm font-medium">Add Custom Connector</span>

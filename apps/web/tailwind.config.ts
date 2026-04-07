@@ -23,18 +23,18 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          primary:   '#667eea',
-          secondary: '#764ba2',
+          primary:   '#00E5A0',
+          secondary: '#7B61FF',
           accent:    '#f5576c',
         },
         surface: {
-          base:     '#0a0a0a',
-          elevated: '#1a1a1a',
+          base:     '#0A0E17',
+          elevated: '#0F1420',
           border:   '#333333',
           muted:    '#888888',
         },
         text: {
-          primary:   '#e0e0e0',
+          primary:   '#E8ECF4',
           secondary: '#b0b0b0',
           muted:     '#666666',
         },

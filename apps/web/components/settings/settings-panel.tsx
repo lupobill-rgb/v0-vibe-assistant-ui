@@ -17,8 +17,8 @@ function Section({ title, icon: Icon, children }: SettingsSection) {
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#4F8EFF]/20 to-[#A855F7]/20 flex items-center justify-center">
-          <Icon className="w-4 h-4 text-[#4F8EFF]" />
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00E5A0]/20 to-[#7B61FF]/20 flex items-center justify-center">
+          <Icon className="w-4 h-4 text-[#00E5A0]" />
         </div>
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
       </div>
@@ -180,7 +180,7 @@ export function SettingsPanel() {
                 className={cn(
                   "flex-1 flex flex-col items-start px-4 py-3 rounded-xl border text-left transition-all duration-200",
                   llmProvider === opt.value
-                    ? "border-[#4F8EFF]/60 bg-[#4F8EFF]/10 text-foreground"
+                    ? "border-[#00E5A0]/60 bg-[#00E5A0]/10 text-foreground"
                     : "border-border bg-secondary/40 text-muted-foreground hover:border-border hover:bg-secondary"
                 )}
               >

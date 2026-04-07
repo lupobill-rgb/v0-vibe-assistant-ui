@@ -150,7 +150,7 @@ export function ConnectDatasourceDialog({
           <Button
             onClick={handleConnect}
             disabled={!connectorType || connecting}
-            className="bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white"
+            className="bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white"
           >
             {connecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Connect

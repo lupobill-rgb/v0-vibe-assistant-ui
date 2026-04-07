@@ -120,13 +120,13 @@ export function PricingPage() {
               className={cn(
                 "relative rounded-xl border p-5 flex flex-col gap-4",
                 tier.recommended
-                  ? "border-[#A855F7]/50 bg-[#A855F7]/5"
+                  ? "border-[#7B61FF]/50 bg-[#7B61FF]/5"
                   : "border-border bg-card",
               )}
             >
               {tier.recommended && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] px-3 py-0.5 text-xs font-medium text-white">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] px-3 py-0.5 text-xs font-medium text-white">
                     <Sparkles className="w-3 h-3" /> Most Popular
                   </span>
                 </div>
@@ -191,8 +191,8 @@ export function PricingPage() {
                     className={cn(
                       "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-opacity disabled:opacity-60",
                       tier.recommended
-                        ? "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90"
-                        : "bg-gradient-to-r from-[#4F8EFF]/80 to-[#A855F7]/80 hover:opacity-90",
+                        ? "bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] hover:opacity-90"
+                        : "bg-gradient-to-r from-[#00E5A0]/80 to-[#7B61FF]/80 hover:opacity-90",
                     )}
                   >
                     {checkoutSlug === tier.slug && <Loader2 className="w-4 h-4 animate-spin" />}

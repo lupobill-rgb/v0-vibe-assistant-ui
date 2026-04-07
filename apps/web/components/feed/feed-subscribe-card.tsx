@@ -131,7 +131,7 @@ export function FeedSubscribeCard() {
             <button
               onClick={() => handleSubscribe(asset.id)}
               disabled={subscribing[asset.id]}
-              className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#A855F7] hover:text-[#A855F7] transition-colors disabled:opacity-50"
+              className="w-full h-9 rounded-lg border border-border text-sm font-medium text-foreground hover:border-[#7B61FF] hover:text-[#7B61FF] transition-colors disabled:opacity-50"
             >
               {subscribing[asset.id] ? "Subscribing…" : "Subscribe"}
             </button>

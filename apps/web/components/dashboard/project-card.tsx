@@ -54,7 +54,7 @@ export function ProjectCard({ project, lastDiff }: { project: Project; lastDiff?
   }, [lastDiff])
 
   const statusColors = {
-    active: "bg-[#4F8EFF]/20 text-[#4F8EFF]",
+    active: "bg-[#00E5A0]/20 text-[#00E5A0]",
     deployed: "bg-emerald-500/20 text-emerald-400",
     draft: "bg-muted text-muted-foreground",
   }
@@ -95,7 +95,7 @@ export function ProjectCard({ project, lastDiff }: { project: Project; lastDiff?
                 }}
               />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#4F8EFF]/20 via-[#A855F7]/20 to-[#EC4899]/20" />
+            <div className="absolute inset-0 bg-gradient-to-br from-[#00E5A0]/20 via-[#7B61FF]/20 to-[#00B4D8]/20" />
           )}
 
         {/* Hover overlay */}

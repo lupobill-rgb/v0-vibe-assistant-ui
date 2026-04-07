@@ -175,7 +175,7 @@ export function CustomConnectorDialog({
           <Button
             onClick={handleCreate}
             disabled={!isValid || creating}
-            className="bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white border-0"
+            className="bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white border-0"
           >
             {creating && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
             Create Connector

@@ -15,18 +15,18 @@ import { cn } from "@/lib/utils"
 const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
   completed: { label: "Completed", icon: CheckCircle2, color: "text-emerald-400" },
   failed: { label: "Failed", icon: XCircle, color: "text-red-400" },
-  running: { label: "Running", icon: Loader2, color: "text-[#4F8EFF]" },
+  running: { label: "Running", icon: Loader2, color: "text-[#00E5A0]" },
   queued: { label: "Queued", icon: Clock, color: "text-amber-400" },
-  planning: { label: "Planning", icon: Loader2, color: "text-[#4F8EFF]" },
-  building: { label: "Building", icon: Loader2, color: "text-[#4F8EFF]" },
-  validating: { label: "Validating", icon: Loader2, color: "text-[#4F8EFF]" },
-  testing: { label: "Testing", icon: Loader2, color: "text-[#4F8EFF]" },
-  cloning: { label: "Cloning", icon: Loader2, color: "text-[#4F8EFF]" },
-  building_context: { label: "Building Context", icon: Loader2, color: "text-[#4F8EFF]" },
-  calling_llm: { label: "Calling LLM", icon: Loader2, color: "text-[#4F8EFF]" },
-  applying_diff: { label: "Applying Diff", icon: Loader2, color: "text-[#4F8EFF]" },
-  running_preflight: { label: "Preflight", icon: Loader2, color: "text-[#4F8EFF]" },
-  creating_pr: { label: "Creating PR", icon: Loader2, color: "text-[#4F8EFF]" },
+  planning: { label: "Planning", icon: Loader2, color: "text-[#00E5A0]" },
+  building: { label: "Building", icon: Loader2, color: "text-[#00E5A0]" },
+  validating: { label: "Validating", icon: Loader2, color: "text-[#00E5A0]" },
+  testing: { label: "Testing", icon: Loader2, color: "text-[#00E5A0]" },
+  cloning: { label: "Cloning", icon: Loader2, color: "text-[#00E5A0]" },
+  building_context: { label: "Building Context", icon: Loader2, color: "text-[#00E5A0]" },
+  calling_llm: { label: "Calling LLM", icon: Loader2, color: "text-[#00E5A0]" },
+  applying_diff: { label: "Applying Diff", icon: Loader2, color: "text-[#00E5A0]" },
+  running_preflight: { label: "Preflight", icon: Loader2, color: "text-[#00E5A0]" },
+  creating_pr: { label: "Creating PR", icon: Loader2, color: "text-[#00E5A0]" },
 }
 
 function JobRow({ task }: { task: Task }) {
@@ -54,7 +54,7 @@ function JobRow({ task }: { task: Task }) {
             task.execution_state === "completed" && "bg-emerald-500/10 text-emerald-400",
             task.execution_state === "failed" && "bg-red-500/10 text-red-400",
             task.execution_state === "queued" && "bg-amber-500/10 text-amber-400",
-            !["completed", "failed", "queued"].includes(task.execution_state) && "bg-[#4F8EFF]/10 text-[#4F8EFF]",
+            !["completed", "failed", "queued"].includes(task.execution_state) && "bg-[#00E5A0]/10 text-[#00E5A0]",
           )}
         >
           {cfg.label}
@@ -145,7 +145,7 @@ function ProjectCard({
       className={cn(
         "flex flex-col rounded-xl border bg-card p-4 text-left transition-all duration-200 hover:bg-card/80 cursor-pointer",
         selected
-          ? "border-[#A855F7] ring-1 ring-[#A855F7]/30"
+          ? "border-[#7B61FF] ring-1 ring-[#7B61FF]/30"
           : "border-border hover:border-primary/30"
       )}
     >
@@ -205,7 +205,7 @@ function ProjectCard({
             lastJob.execution_state === "completed" && "bg-emerald-500/10 text-emerald-400",
             lastJob.execution_state === "failed" && "bg-red-500/10 text-red-400",
             lastJob.execution_state === "queued" && "bg-amber-500/10 text-amber-400",
-            !["completed", "failed", "queued"].includes(lastJob.execution_state) && "bg-[#4F8EFF]/10 text-[#4F8EFF]",
+            !["completed", "failed", "queued"].includes(lastJob.execution_state) && "bg-[#00E5A0]/10 text-[#00E5A0]",
           )}
         >
           {lastState.label}
@@ -309,7 +309,7 @@ function ChatContent() {
       {/* Page Header */}
       <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-2">
         <div className="flex items-center gap-3 mb-4 sm:mb-6">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00E5A0] to-[#7B61FF] flex items-center justify-center flex-shrink-0">
             <MessageSquare className="w-5 h-5 text-white" />
           </div>
           <div className="min-w-0">

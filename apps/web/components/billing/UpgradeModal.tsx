@@ -72,8 +72,8 @@ export function UpgradeModal({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <div className="mx-auto mb-2 w-10 h-10 rounded-xl bg-gradient-to-br from-[#4F8EFF]/20 to-[#A855F7]/20 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-[#A855F7]" />
+          <div className="mx-auto mb-2 w-10 h-10 rounded-xl bg-gradient-to-br from-[#00E5A0]/20 to-[#7B61FF]/20 flex items-center justify-center">
+            <Zap className="w-5 h-5 text-[#7B61FF]" />
           </div>
           <DialogTitle className="text-center">
             {LIMIT_HEADINGS[limitType]}
@@ -89,7 +89,7 @@ export function UpgradeModal({
         {tier && (
           <div className="rounded-lg border border-border bg-card p-4 text-center">
             <p className="text-lg font-semibold text-foreground">{tier.name}</p>
-            <p className="text-2xl font-bold bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] bg-clip-text text-transparent">
+            <p className="text-2xl font-bold bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] bg-clip-text text-transparent">
               {tier.price}
             </p>
             <p className="text-xs text-muted-foreground mt-1">{tier.highlight}</p>
@@ -104,7 +104,7 @@ export function UpgradeModal({
           <button
             onClick={handleUpgrade}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white hover:opacity-90 transition-opacity disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white hover:opacity-90 transition-opacity disabled:opacity-60"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             Upgrade to {tier?.name ?? nextTier}

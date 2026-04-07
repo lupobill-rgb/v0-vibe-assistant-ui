@@ -1062,7 +1062,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                           background: '#0d0d12', border: '1px solid #1e1e2a',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <Lock className="w-4 h-4" style={{ color: '#a855f7', flexShrink: 0 }} />
+                            <Lock className="w-4 h-4" style={{ color: '#7B61FF', flexShrink: 0 }} />
                             <div>
                               <div style={{ fontWeight: 600, fontSize: 13, color: '#f0f0ff' }}>Use my own domain</div>
                               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Point your domain to this app</div>
@@ -1082,7 +1082,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                               disabled={connectingDomain || !customDomain.trim()}
                               style={{
                                 height: 36, padding: '0 14px', borderRadius: 8,
-                                background: '#a855f7', border: 'none', color: '#fff',
+                                background: '#7B61FF', border: 'none', color: '#fff',
                                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
                                 opacity: (connectingDomain || !customDomain.trim()) ? 0.5 : 1,
                                 display: 'flex', alignItems: 'center', gap: 6
@@ -1143,8 +1143,8 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                           onClick={handleVerifyDomain}
                           disabled={verifying}
                           style={{
-                            height: 40, borderRadius: 8, border: '1px solid rgba(168,85,247,0.4)',
-                            background: 'rgba(168,85,247,0.1)', color: '#a855f7',
+                            height: 40, borderRadius: 8, border: '1px solid rgba(123,97,255,0.4)',
+                            background: 'rgba(123,97,255,0.1)', color: '#7B61FF',
                             fontSize: 13, fontWeight: 600, cursor: 'pointer',
                             opacity: verifying ? 0.5 : 1,
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8

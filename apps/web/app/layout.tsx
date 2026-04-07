@@ -7,7 +7,7 @@ import { TeamProvider } from '@/contexts/TeamContext'
 import { Toaster } from '@/components/ui/sonner'
 
 export const metadata: Metadata = {
-  title: 'VIBE - AI Coding Assistant',
+  title: 'UbiVibe - AI Coding Assistant',
   description: 'Build software faster with your AI coding assistant',
 }
 

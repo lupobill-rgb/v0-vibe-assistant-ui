@@ -55,7 +55,7 @@ export function UpgradeModal({ open, onOpenChange, limitInfo }: UpgradeModalProp
               <span className="text-sm font-semibold text-foreground">
                 Upgrade to {next.label}
               </span>
-              <span className="text-sm font-bold bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] bg-clip-text text-transparent">
+              <span className="text-sm font-bold bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] bg-clip-text text-transparent">
                 {next.price}
               </span>
             </div>
@@ -71,7 +71,7 @@ export function UpgradeModal({ open, onOpenChange, limitInfo }: UpgradeModalProp
             Maybe later
           </Button>
           <Button
-            className="bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white hover:opacity-90"
+            className="bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white hover:opacity-90"
             onClick={() => {
               // Navigate to billing/upgrade page
               window.location.href = "/settings/billing"
