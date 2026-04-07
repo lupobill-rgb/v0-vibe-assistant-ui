@@ -96,7 +96,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
       const { data: integration } = await sb
         .from('team_integrations')
         .select('team_id, teams!inner(org_id)')
-        .eq('nango_connection_id', connectionId)
+        .eq('connection_id', connectionId)
         .limit(1)
         .single();
 
