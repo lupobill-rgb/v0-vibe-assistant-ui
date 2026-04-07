@@ -44,25 +44,9 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
     const saved = sessionStorage.getItem("vibe_upload_id")
     if (saved) uploadIdRef.current = saved
   }
-  const autoSubmittedRef = useRef(false)
   useEffect(() => {
     if (initialPrompt && !prompt) setPrompt(initialPrompt)
   }, [initialPrompt])
-
-  useEffect(() => {
-    if (
-      initialPrompt &&
-      prompt === initialPrompt &&
-      !autoSubmittedRef.current &&
-      !teamLoading &&
-      currentTeam
-    ) {
-      autoSubmittedRef.current = true
-      // Skip the data-path greeting — go straight to building
-      setDataPath("connected")
-      setTimeout(() => startIntakeWithPath("connected"), 0)
-    }
-  }, [prompt, initialPrompt, teamLoading, currentTeam])
 
   const handleLimitError = (err: unknown): boolean => {
     const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : ''

@@ -559,7 +559,17 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           messages: [{ role: 'user', content: input }],
         }),
       })
-      const json = await res.json()
+      let json: any = {}
+      const rawText = await res.text()
+      try {
+        json = JSON.parse(rawText)
+      } catch {
+        setChatThought(null)
+        const errMsg = `I ran into an issue processing that request. Try rephrasing or simplify the request.`
+        setEditError(errMsg)
+        setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: errMsg }])
+        return
+      }
       setChatThought(null)
       if (!res.ok) {
         const errMsg = json.error || `Request failed (${res.status})`
@@ -619,7 +629,14 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           messages: [{ role: 'user', content: prompt }],
         }),
       })
-      const json = await res.json()
+      let json: any = {}
+      const rawText2 = await res.text()
+      try {
+        json = JSON.parse(rawText2)
+      } catch {
+        setEditError('I ran into an issue processing that request. Try rephrasing or simplify the request.')
+        return
+      }
       if (!res.ok) {
         setEditError(json.error || 'Request failed (' + res.status + ')')
         return
