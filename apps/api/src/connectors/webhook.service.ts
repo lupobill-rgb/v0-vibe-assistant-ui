@@ -16,12 +16,18 @@ export class WebhookService {
     const triggerSource = `${payload.providerConfigKey}:${payload.model}`;
     this.logger.log(`Nango event received: ${triggerSource} (conn: ${payload.connectionId})`);
 
-    const [teamId] = payload.connectionId.split('__');
-    if (!teamId) { this.logger.warn(`Bad connectionId: ${payload.connectionId}`); return { queued: 0 }; }
-
-    const { data: team, error: teamErr } = await this.sb
-      .from('teams').select('id, org_id').eq('id', teamId).single();
-    if (teamErr || !team) { this.logger.warn(`Team not found: ${teamId}`); return { queued: 0 }; }
+    const { data: integration, error: intErr } = await this.sb
+      .from('team_integrations')
+      .select('team_id, teams!inner(id, org_id)')
+      .eq('connection_id', payload.connectionId)
+      .limit(1)
+      .single();
+    if (intErr || !integration) {
+      this.logger.warn(`Team not found: ${payload.connectionId}`);
+      return { queued: 0 };
+    }
+    const teamsData = integration.teams as unknown as { id: string; org_id: string };
+    const team = { id: teamsData.id, org_id: teamsData.org_id };
 
     const { data: skills } = await this.sb.from('skill_registry')
       .select('id, skill_name').eq('is_active', true)
