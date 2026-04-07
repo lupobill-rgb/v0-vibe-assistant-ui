@@ -163,8 +163,8 @@ export function BillingDashboard() {
       {/* Current Plan */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#4F8EFF]/20 to-[#A855F7]/20 flex items-center justify-center">
-            <CreditCard className="w-4 h-4 text-[#4F8EFF]" />
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00E5A0]/20 to-[#7B61FF]/20 flex items-center justify-center">
+            <CreditCard className="w-4 h-4 text-[#00E5A0]" />
           </div>
           <h2 className="text-sm font-semibold text-foreground">Current Plan</h2>
         </div>
@@ -187,7 +187,7 @@ export function BillingDashboard() {
               <button
                 onClick={handleUpgrade}
                 disabled={upgrading}
-                className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2"
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2"
               >
                 {upgrading && <Loader2 className="w-4 h-4 animate-spin" />}
                 Upgrade
@@ -200,13 +200,13 @@ export function BillingDashboard() {
       {/* Account Type Banner */}
       {accountType === "individual" && (
         <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <Users className="w-5 h-5 text-[#4F8EFF] flex-shrink-0" />
+          <Users className="w-5 h-5 text-[#00E5A0] flex-shrink-0" />
           <p className="text-sm text-muted-foreground flex-1">
             Invite teammates to unlock Team features.
           </p>
           <a
             href="/settings"
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#4F8EFF]/10 text-[#4F8EFF] hover:bg-[#4F8EFF]/20 transition-colors"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#00E5A0]/10 text-[#00E5A0] hover:bg-[#00E5A0]/20 transition-colors"
           >
             Invite
           </a>
@@ -214,7 +214,7 @@ export function BillingDashboard() {
       )}
       {accountType === "team" && (
         <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <Users className="w-5 h-5 text-[#A855F7] flex-shrink-0" />
+          <Users className="w-5 h-5 text-[#7B61FF] flex-shrink-0" />
           <p className="text-sm text-muted-foreground">
             You have a growing team. At 5 members you'll be automatically upgraded to Enterprise.
           </p>
@@ -242,21 +242,21 @@ export function BillingDashboard() {
               value={usage.jobs_total}
               sub={`${usage.jobs_completed} completed`}
               icon={BarChart3}
-              color="bg-gradient-to-br from-[#4F8EFF] to-[#4F8EFF]/70"
+              color="bg-gradient-to-br from-[#00E5A0] to-[#00E5A0]/70"
             />
             <StatCard
               label="Tokens Used"
               value={fmtTokens(usage.tokens_used)}
               sub="org-wide"
               icon={Zap}
-              color="bg-gradient-to-br from-[#A855F7] to-[#A855F7]/70"
+              color="bg-gradient-to-br from-[#7B61FF] to-[#7B61FF]/70"
             />
             <StatCard
               label="Files Changed"
               value={usage.files_changed}
               sub="org-wide"
               icon={TrendingUp}
-              color="bg-gradient-to-br from-[#EC4899] to-[#EC4899]/70"
+              color="bg-gradient-to-br from-[#00B4D8] to-[#00B4D8]/70"
             />
             <StatCard
               label="Compute Time"
@@ -290,14 +290,14 @@ export function BillingDashboard() {
               value={usage.jobs_total}
               sub="org-wide"
               icon={BarChart3}
-              color="bg-gradient-to-br from-[#4F8EFF] to-[#4F8EFF]/70"
+              color="bg-gradient-to-br from-[#00E5A0] to-[#00E5A0]/70"
             />
             <StatCard
               label="Org-Wide Executions"
               value={usage.executions_count}
               sub="org-wide"
               icon={Zap}
-              color="bg-gradient-to-br from-[#A855F7] to-[#A855F7]/70"
+              color="bg-gradient-to-br from-[#7B61FF] to-[#7B61FF]/70"
             />
           </div>
         </div>
@@ -311,7 +311,7 @@ export function BillingDashboard() {
             {[
               { label: "Completed", count: usage.jobs_completed, total: usage.jobs_total, icon: CheckCircle2, color: "text-emerald-400", bar: "bg-emerald-500" },
               { label: "Failed", count: usage.jobs_failed, total: usage.jobs_total, icon: XCircle, color: "text-red-400", bar: "bg-red-500" },
-              { label: "Active / Queued", count: usage.jobs_active, total: usage.jobs_total, icon: Loader2, color: "text-[#4F8EFF]", bar: "bg-[#4F8EFF]" },
+              { label: "Active / Queued", count: usage.jobs_active, total: usage.jobs_total, icon: Loader2, color: "text-[#00E5A0]", bar: "bg-[#00E5A0]" },
             ].map((row) => {
               const pct = usage.jobs_total > 0 ? Math.round((row.count / usage.jobs_total) * 100) : 0
               return (

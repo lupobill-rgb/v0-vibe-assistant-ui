@@ -6,7 +6,7 @@ export function HeroSection() {
   return (
     <div className="relative overflow-hidden rounded-2xl mx-6 mt-6">
       {/* Gradient Background */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[#4F8EFF] via-[#A855F7] to-[#EC4899] opacity-90" />
+      <div className="absolute inset-0 bg-gradient-to-r from-[#00E5A0] via-[#7B61FF] to-[#00B4D8] opacity-90" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_60%)]" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(0,0,0,0.2),transparent_60%)]" />
 
@@ -28,7 +28,7 @@ export function HeroSection() {
           What do you want to build?
         </h1>
         <p className="text-white/70 text-base md:text-lg max-w-lg mx-auto leading-relaxed">
-          Describe your idea and let VIBE turn it into a working application in minutes.
+          Describe your idea and let UbiVibe turn it into a working application in minutes.
         </p>
       </div>
     </div>

@@ -711,7 +711,7 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
               className={cn(
                 "flex items-center justify-center gap-2 px-4 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-200",
                 prompt.trim() && !submitting
-                  ? "bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shadow-lg shadow-[#A855F7]/20 hover:opacity-90"
+                  ? "bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white shadow-lg shadow-[#7B61FF]/20 hover:opacity-90"
                   : "bg-secondary text-muted-foreground"
               )}
             >

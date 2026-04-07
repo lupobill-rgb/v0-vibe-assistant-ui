@@ -100,8 +100,8 @@ export function CustomDomainSettings({ teamId }: { teamId: string }) {
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#4F8EFF]/20 to-[#A855F7]/20 flex items-center justify-center">
-          <Globe className="w-4 h-4 text-[#4F8EFF]" />
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00E5A0]/20 to-[#7B61FF]/20 flex items-center justify-center">
+          <Globe className="w-4 h-4 text-[#00E5A0]" />
         </div>
         <h2 className="text-sm font-semibold text-foreground">Custom Domain</h2>
       </div>
@@ -144,7 +144,7 @@ export function CustomDomainSettings({ teamId }: { teamId: string }) {
                   disabled={saving || !domainInput.trim()}
                   className={cn(
                     "h-9 px-4 rounded-lg text-sm font-medium transition-all duration-200",
-                    "bg-[#4F8EFF] text-white hover:bg-[#4F8EFF]/90",
+                    "bg-[#00E5A0] text-white hover:bg-[#00E5A0]/90",
                     "disabled:opacity-50 disabled:cursor-not-allowed"
                   )}
                 >
@@ -180,7 +180,7 @@ export function CustomDomainSettings({ teamId }: { teamId: string }) {
                   disabled={verifying}
                   className={cn(
                     "h-9 px-4 rounded-lg text-sm font-medium transition-all duration-200 self-start",
-                    "border border-[#4F8EFF]/60 bg-[#4F8EFF]/10 text-[#4F8EFF] hover:bg-[#4F8EFF]/20",
+                    "border border-[#00E5A0]/60 bg-[#00E5A0]/10 text-[#00E5A0] hover:bg-[#00E5A0]/20",
                     "disabled:opacity-50 disabled:cursor-not-allowed"
                   )}
                 >

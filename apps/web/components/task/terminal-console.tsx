@@ -21,7 +21,7 @@ const severityLabel: Record<LogEvent["severity"], string> = {
 }
 
 const severityColor: Record<LogEvent["severity"], string> = {
-  info:    "text-[#4F8EFF]",
+  info:    "text-[#00E5A0]",
   success: "text-emerald-400",
   warning: "text-amber-400",
   error:   "text-red-400",
@@ -60,7 +60,7 @@ export function TerminalConsole({ taskId }: TerminalConsoleProps) {
     ? taskStatus === "completed"
       ? { color: "bg-emerald-400", label: "DONE", textColor: "text-emerald-400" }
       : { color: "bg-red-400", label: "FAIL", textColor: "text-red-400" }
-    : { color: "bg-[#4F8EFF] animate-pulse", label: "LIVE", textColor: "text-[#4F8EFF]" }
+    : { color: "bg-[#00E5A0] animate-pulse", label: "LIVE", textColor: "text-[#00E5A0]" }
 
   return (
     <div className="flex flex-col h-full bg-[oklch(0.12_0.005_285)]">
@@ -120,7 +120,7 @@ export function TerminalConsole({ taskId }: TerminalConsoleProps) {
         {logs.length === 0 && !error && (
           <div className="flex gap-3 text-muted-foreground/60">
             <span className="text-muted-foreground/40 select-none flex-shrink-0 w-16 text-right">--:--:--</span>
-            <span className="font-bold flex-shrink-0 w-10 text-[#4F8EFF]">INFO</span>
+            <span className="font-bold flex-shrink-0 w-10 text-[#00E5A0]">INFO</span>
             <span>Connecting to log stream…</span>
           </div>
         )}
@@ -163,7 +163,7 @@ export function TerminalConsole({ taskId }: TerminalConsoleProps) {
         ) : (
           <div className="flex gap-3 mt-1">
             <span className="text-muted-foreground/40 select-none flex-shrink-0 w-16 text-right" />
-            <span className="font-bold flex-shrink-0 w-10 text-[#A855F7]">RUN </span>
+            <span className="font-bold flex-shrink-0 w-10 text-[#7B61FF]">RUN </span>
             <span className="text-foreground">
               $ <span className="animate-pulse">|</span>
             </span>
@@ -182,7 +182,7 @@ export function TerminalConsole({ taskId }: TerminalConsoleProps) {
           onClick={() => setAutoScroll(!autoScroll)}
           className={cn(
             "flex items-center gap-1 hover:text-foreground transition-colors",
-            autoScroll && "text-[#4F8EFF]"
+            autoScroll && "text-[#00E5A0]"
           )}
         >
           <ChevronDown className="w-3 h-3" />

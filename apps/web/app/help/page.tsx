@@ -34,7 +34,7 @@ export default function HelpPage() {
         {/* Page Header */}
         <div className="px-6 pt-8 pb-6 border-b border-border/50">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F8EFF] to-[#A855F7] flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00E5A0] to-[#7B61FF] flex items-center justify-center">
               <HelpCircle className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -57,14 +57,14 @@ export default function HelpPage() {
                 rel="noopener noreferrer"
                 className="group bg-card rounded-xl border border-border p-5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200"
               >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#4F8EFF]/20 to-[#A855F7]/20 flex items-center justify-center mb-3">
-                  <link.icon className="w-4 h-4 text-[#4F8EFF]" />
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00E5A0]/20 to-[#7B61FF]/20 flex items-center justify-center mb-3">
+                  <link.icon className="w-4 h-4 text-[#00E5A0]" />
                 </div>
                 <h3 className="text-sm font-semibold text-foreground mb-1">{link.title}</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed mb-3">
                   {link.description}
                 </p>
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-[#4F8EFF] group-hover:underline">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-[#00E5A0] group-hover:underline">
                   {link.label}
                   <ExternalLink className="w-3 h-3" />
                 </span>

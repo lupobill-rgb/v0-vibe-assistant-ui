@@ -135,12 +135,13 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
       >
         {/* Logo / Brand */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border flex-shrink-0">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-[#4F8EFF] via-[#A855F7] to-[#EC4899]">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-[#00E5A0] via-[#00B4D8] to-[#7B61FF]">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
           </div>
           {!collapsed && (
-            <span className="text-lg font-semibold text-sidebar-foreground tracking-tight">
-              VIBE
+            <span className="text-lg font-extrabold tracking-[-1px]" style={{ fontFamily: "'Syne', sans-serif" }}>
+              <span className="text-[#E8ECF4]">UBI</span>
+              <span style={{ background: 'linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Vibe</span>
             </span>
           )}
         </div>
@@ -223,7 +224,7 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
                 <Button
                   size="icon"
                   onClick={() => setDialogOpen(true)}
-                  className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0"
+                  className="w-full h-9 bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] hover:opacity-90 text-primary-foreground border-0"
                 >
                   <Plus className="w-4 h-4" />
                 </Button>
@@ -233,7 +234,7 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
           ) : (
             <Button
               onClick={() => setDialogOpen(true)}
-              className="w-full h-9 bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] hover:opacity-90 text-primary-foreground border-0 justify-start gap-2"
+              className="w-full h-9 bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] hover:opacity-90 text-primary-foreground border-0 justify-start gap-2"
             >
               <Plus className="w-4 h-4" />
               New Project
@@ -334,7 +335,7 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
                 </span>
               </div>
               {billing.tier_slug === "starter" && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white shrink-0">
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white shrink-0">
                   Upgrade
                 </span>
               )}

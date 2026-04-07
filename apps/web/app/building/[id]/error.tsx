@@ -34,7 +34,7 @@ export default function BuildingError({
             Try Again
           </button>
           <Link href="/"
-            className="h-9 px-4 rounded-lg bg-gradient-to-r from-[#4F8EFF] to-[#A855F7] text-white text-sm font-medium flex items-center gap-2 transition-opacity hover:opacity-90">
+            className="h-9 px-4 rounded-lg bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white text-sm font-medium flex items-center gap-2 transition-opacity hover:opacity-90">
             <Home className="w-4 h-4" />
             Go Home
           </Link>

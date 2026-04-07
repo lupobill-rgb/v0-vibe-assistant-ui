@@ -8,16 +8,16 @@ export default {
     extend: {
       colors: {
         vibe: {
-          blue: '#4F8EFF',
-          purple: '#A855F7',
-          pink: '#EC4899',
-          dark: '#0f0f23',
+          blue: '#00E5A0',
+          purple: '#7B61FF',
+          pink: '#00B4D8',
+          dark: '#0A0E17',
           card: 'rgba(255, 255, 255, 0.08)',
         }
       },
       backgroundImage: {
-        'vibe-gradient': 'linear-gradient(180deg, #4F8EFF 0%, #A855F7 50%, #EC4899 100%)',
-        'vibe-gradient-r': 'linear-gradient(135deg, #4F8EFF 0%, #A855F7 50%, #EC4899 100%)',
+        'vibe-gradient': 'linear-gradient(180deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%)',
+        'vibe-gradient-r': 'linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%)',
       },
       borderRadius: {
         'xl': '12px',
@@ -25,8 +25,8 @@ export default {
         '3xl': '24px',
       },
       boxShadow: {
-        'glow': '0 0 20px rgba(79, 142, 255, 0.15)',
-        'glow-lg': '0 0 40px rgba(168, 85, 247, 0.2)',
+        'glow': '0 0 20px rgba(0, 229, 160, 0.15)',
+        'glow-lg': '0 0 40px rgba(123, 97, 255, 0.2)',
         'card': '0 4px 24px rgba(0, 0, 0, 0.12)',
         'card-hover': '0 8px 32px rgba(0, 0, 0, 0.18)',
       },

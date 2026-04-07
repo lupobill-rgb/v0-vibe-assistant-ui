@@ -37,9 +37,9 @@
   --sidebar-accent-foreground: oklch(0.95 0 0);
   --sidebar-border: oklch(0.25 0.005 285);
   --sidebar-ring: oklch(0.65 0.2 260);
-  --gradient-blue: #4F8EFF;
-  --gradient-purple: #A855F7;
-  --gradient-pink: #EC4899;
+  --gradient-blue: #00E5A0;
+  --gradient-purple: #7B61FF;
+  --gradient-pink: #00B4D8;
 }
 
 .dark {
