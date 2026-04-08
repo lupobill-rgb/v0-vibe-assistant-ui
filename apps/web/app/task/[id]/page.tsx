@@ -86,7 +86,7 @@ export default function TaskPage({ params }: TaskPageProps) {
                 </a>
               </div>
               <iframe
-                srcdoc={previewHtml ?? ''}
+                srcDoc={previewHtml ?? ''}
                 sandbox="allow-scripts allow-same-origin"
                 className="flex-1 w-full border-0"
                 title="Generated website preview"
