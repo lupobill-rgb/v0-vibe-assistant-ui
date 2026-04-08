@@ -18,6 +18,16 @@ interface TaskPageProps {
 export default function TaskPage({ params }: TaskPageProps) {
   const { id } = use(params)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+
+  // Fetch HTML client-side and inject as srcdoc to bypass CSP / Content-Type issues
+  useEffect(() => {
+    if (!previewUrl) return
+    fetch(previewUrl)
+      .then(r => r.text())
+      .then(html => setPreviewHtml(html))
+      .catch(() => setPreviewHtml(null))
+  }, [previewUrl])
 
   // Poll for preview_url until the job completes or preview becomes available
   useEffect(() => {
@@ -61,7 +71,7 @@ export default function TaskPage({ params }: TaskPageProps) {
 
         {/* Right Panel: Preview iframe (once ready) or Terminal Console */}
         <div className="flex-1 min-w-0 flex flex-col">
-          {previewUrl ? (
+          {previewHtml ? (
             <div className="flex flex-col h-full">
               <div className="flex items-center gap-2 px-4 h-11 border-b border-border flex-shrink-0 bg-background">
                 <span className="text-xs font-medium text-muted-foreground">Preview</span>
@@ -76,7 +86,7 @@ export default function TaskPage({ params }: TaskPageProps) {
                 </a>
               </div>
               <iframe
-                src={previewUrl}
+                srcdoc={previewHtml ?? ''}
                 sandbox="allow-scripts allow-same-origin"
                 className="flex-1 w-full border-0"
                 title="Generated website preview"
