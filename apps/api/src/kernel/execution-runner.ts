@@ -172,8 +172,6 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
     const { data: jobRow, error: insertJobErr } = await sbJob
       .from('jobs')
       .insert({
-        org_id: exec.organization_id,
-        team_id: exec.team_id,
         user_prompt: `[Auto] ${skill.skill_name} triggered by ${exec.trigger_source}`,
         execution_state: 'building',
         initiated_at: new Date().toISOString(),
