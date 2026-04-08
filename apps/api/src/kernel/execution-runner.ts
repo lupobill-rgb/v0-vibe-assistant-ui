@@ -283,6 +283,7 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
         const htmlContent = result.diff
           .replaceAll('__SUPABASE_URL__', process.env.SUPABASE_URL ?? '')
           .replaceAll('__SUPABASE_ANON_KEY__', process.env.SUPABASE_ANON_KEY ?? '')
+          .replaceAll('__VIBE_TEAM_ID__', exec.team_id ?? '')
           .replaceAll('__TEAM_ID__', exec.team_id ?? '');
 
         const storagePath = `auto/${exec.id}/preview.html`;
