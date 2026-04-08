@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { resolveKernelContext } from './context-injector';
 import { generateDiff } from '../edge-function';
@@ -249,6 +250,56 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
       `${logPrefix} Complete — tokens=${result.usage?.total_tokens ?? 'unknown'} mode=${result.mode ?? 'unknown'}`,
     );
 
+    // 5. Upload preview HTML to Supabase storage
+    let previewUrl: string | null = null;
+    if (result.diff) {
+      try {
+        const storagePath = `auto/${exec.id}/preview.html`;
+        const { error: uploadErr } = await sbJob.storage
+          .from('previews')
+          .upload(storagePath, result.diff, { contentType: 'text/html', upsert: true });
+
+        if (uploadErr) {
+          console.error(`${logPrefix} Preview upload failed: ${uploadErr.message}`);
+        } else {
+          const { data: urlData } = sbJob.storage
+            .from('previews')
+            .getPublicUrl(storagePath);
+          previewUrl = urlData?.publicUrl ?? null;
+          console.log(`${logPrefix} Preview uploaded: ${previewUrl}`);
+        }
+      } catch (uploadCatchErr: unknown) {
+        const msg = uploadCatchErr instanceof Error ? uploadCatchErr.message : String(uploadCatchErr);
+        console.error(`${logPrefix} Preview upload error: ${msg}`);
+      }
+    }
+
+    // 6. Create conversation record for chat stream
+    let conversationId: string | null = null;
+    if (job) {
+      try {
+        const convId = uuidv4();
+        const { error: convErr } = await sbJob
+          .from('conversations')
+          .insert({
+            id: convId,
+            job_id: job.id,
+            team_id: exec.team_id,
+            created_at: new Date().toISOString(),
+          });
+
+        if (convErr) {
+          console.error(`${logPrefix} Conversation insert failed: ${convErr.message}`);
+        } else {
+          conversationId = convId;
+          console.log(`${logPrefix} Conversation created: ${conversationId}`);
+        }
+      } catch (convCatchErr: unknown) {
+        const msg = convCatchErr instanceof Error ? convCatchErr.message : String(convCatchErr);
+        console.error(`${logPrefix} Conversation insert error: ${msg}`);
+      }
+    }
+
     await markComplete(exec.id, {
       diff: result.diff,
       mode: result.mode,
@@ -257,7 +308,11 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
 
     if (job) {
       await sbJob.from('jobs')
-        .update({ execution_state: 'completed' })
+        .update({
+          execution_state: 'completed',
+          ...(previewUrl ? { preview_url: previewUrl } : {}),
+          ...(conversationId ? { conversation_id: conversationId } : {}),
+        })
         .eq('id', job.id);
     }
   } catch (err: unknown) {

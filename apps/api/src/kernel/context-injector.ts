@@ -1,5 +1,5 @@
 import { getPlatformSupabaseClient } from '../supabase/client';
-import { getNangoService, ConnectorType } from '../connectors/nango.service';
+import { getNangoService, ConnectorType, type HubSpotDeal } from '../connectors/nango.service';
 
 // --- Design system rules injected AFTER department skills, BEFORE user prompt ---
 const DESIGN_SYSTEM_RULES = `
@@ -609,7 +609,7 @@ function scoreSkill(skill: { skill_name: string; description: string | null }, p
   const skillText = `${skill.skill_name} ${skill.description ?? ''}`;
   const skillTokens = tokenize(skillText);
   let score = 0;
-  for (const token of skillTokens) {
+  for (const token of Array.from(skillTokens)) {
     if (promptTokens.has(token)) score++;
   }
   return score;
@@ -652,7 +652,7 @@ export async function resolveGoldenTemplateMatch(
 
     // Count how many description tokens appear in the prompt
     let overlap = 0;
-    for (const token of descTokens) {
+    for (const token of Array.from(descTokens)) {
       if (promptTokens.has(token)) overlap++;
     }
     const ratio = overlap / descTokens.size;
@@ -803,8 +803,8 @@ async function resolveHubSpotData(teamId: string): Promise<string> {
     if (!connection) return '';
 
     const [deals, contacts] = await Promise.all([
-      nango.fetchHubSpotDeals(teamId).catch(() => []),
-      nango.fetchHubSpotContacts(teamId).catch(() => []),
+      nango.fetchHubSpotDeals(teamId).catch((): HubSpotDeal[] => []),
+      nango.fetchHubSpotContacts(teamId).catch(() => [] as { id: string; name: string; email: string; company: string | null }[]),
     ]);
 
     if (deals.length === 0 && contacts.length === 0) return '';
@@ -813,13 +813,13 @@ async function resolveHubSpotData(teamId: string): Promise<string> {
     lines.push('\n--- HUBSPOT LIVE DATA ---');
 
     if (deals.length > 0) {
-      const totalValue = deals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+      const totalValue = deals.reduce((sum: number, d) => sum + (d.amount ?? 0), 0);
       const stages = new Map<string, number>();
       for (const d of deals) {
         stages.set(d.stage, (stages.get(d.stage) ?? 0) + 1);
       }
       lines.push(`Deals: ${deals.length} total, pipeline value $${totalValue.toLocaleString()}`);
-      lines.push(`Stages: ${[...stages.entries()].map(([s, n]) => `${s}(${n})`).join(', ')}`);
+      lines.push(`Stages: ${Array.from(stages.entries()).map(([s, n]) => `${s}(${n})`).join(', ')}`);
       // Include top 10 deals for the LLM to reference
       lines.push('Recent deals:');
       for (const d of deals.slice(0, 10)) {
