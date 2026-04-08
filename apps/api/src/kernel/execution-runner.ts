@@ -153,6 +153,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  */
 async function executeOne(exec: AutonomousExecution): Promise<void> {
   const logPrefix = `[execution-runner][${exec.id}]`;
+  const sbJob = getPlatformSupabaseClient();
+  let job: { id: string } | null = null;
 
   try {
     console.log(`${logPrefix} Starting — skill=${exec.skill_id} trigger=${exec.trigger_source}/${exec.trigger_event}`);
@@ -165,6 +167,26 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
     }
 
     console.log(`${logPrefix} Resolved skill: ${skill.plugin_name}/${skill.skill_name}`);
+
+    // 1b. Create a job record for this autonomous execution
+    const { data: jobRow } = await sbJob
+      .from('jobs')
+      .insert({
+        org_id: exec.organization_id,
+        team_id: exec.team_id,
+        user_prompt: `[Auto] ${skill.skill_name} triggered by ${exec.trigger_source}`,
+        execution_state: 'building',
+        initiated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    job = jobRow;
+
+    if (job) {
+      await sbJob.from('autonomous_executions')
+        .update({ job_id: job.id })
+        .eq('id', exec.id);
+    }
 
     // 2. Build kernel context via context-injector
     const systemUserId = '00000000-0000-0000-0000-000000000000';
@@ -208,10 +230,22 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
       mode: result.mode,
       usage: result.usage,
     });
+
+    if (job) {
+      await sbJob.from('jobs')
+        .update({ execution_state: 'completed' })
+        .eq('id', job.id);
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`${logPrefix} Failed:`, message);
     await markFailed(exec.id, message);
+
+    if (job) {
+      await sbJob.from('jobs')
+        .update({ execution_state: 'failed' })
+        .eq('id', job.id);
+    }
   }
 }
 
