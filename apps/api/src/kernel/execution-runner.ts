@@ -275,14 +275,19 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
       `${logPrefix} Complete — tokens=${result.usage?.total_tokens ?? 'unknown'} mode=${result.mode ?? 'unknown'}`,
     );
 
-    // 5. Upload preview HTML to Supabase storage
+    // 5. Upload preview HTML to Supabase storage (with token substitution)
     let previewUrl: string | null = null;
     if (result.diff) {
       try {
+        // Substitute placeholder tokens so live data loads in preview
+        const htmlContent = result.diff
+          .replaceAll('__SUPABASE_URL__', process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
+          .replaceAll('__SUPABASE_ANON_KEY__', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '');
+
         const storagePath = `auto/${exec.id}/preview.html`;
         const { error: uploadErr } = await sbJob.storage
           .from('previews')
-          .upload(storagePath, result.diff, { contentType: 'text/html', upsert: true });
+          .upload(storagePath, htmlContent, { contentType: 'text/html', upsert: true });
 
         if (uploadErr) {
           console.error(`${logPrefix} Preview upload failed: ${uploadErr.message}`);
@@ -291,7 +296,7 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
             .from('previews')
             .getPublicUrl(storagePath);
           previewUrl = urlData?.publicUrl ?? null;
-          console.log(`${logPrefix} Preview uploaded: ${previewUrl}`);
+          console.log(`${logPrefix} preview_url=${previewUrl}`);
         }
       } catch (uploadCatchErr: unknown) {
         const msg = uploadCatchErr instanceof Error ? uploadCatchErr.message : String(uploadCatchErr);
