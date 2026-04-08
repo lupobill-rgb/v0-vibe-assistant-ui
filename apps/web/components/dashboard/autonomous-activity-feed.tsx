@@ -205,17 +205,47 @@ export function AutonomousActivityFeed() {
     )
   }
 
+  // Deduplicate skills for the summary line
+  const uniqueSkills = [...new Set(executions.map((e) => e.skill_id))]
+  const totalRuns = executions.length
+  const hasLaunched = launched.length > 0
+
   return (
     <div className="px-4 sm:px-6 pt-4">
-      {/* Header */}
+      {/* Header — adapts to whether anything launched */}
       <div className="flex items-center gap-2 mb-4">
         <div className="relative">
-          <Sparkles className="w-4 h-4 text-[#00E5A0]" />
-          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-[#00E5A0] rounded-full animate-ping" />
+          <Sparkles className="w-4 h-4 text-[#7B61FF]" />
+          {(hasLaunched || inProgress.length > 0) && (
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-[#00E5A0] rounded-full animate-ping" />
+          )}
         </div>
         <h2 className="text-sm font-semibold text-foreground">
-          While you were away, VIBE autonomously ran{" "}
-          <span className="text-[#00E5A0]">{launched.length} skills</span>
+          {hasLaunched ? (
+            <>
+              While you were away, VIBE launched{" "}
+              <span className="text-[#00E5A0]">
+                {launched.length} {launched.length === 1 ? "skill" : "skills"}
+              </span>
+            </>
+          ) : inProgress.length > 0 ? (
+            <>
+              VIBE is running{" "}
+              <span className="text-amber-400">
+                {inProgress.length} {inProgress.length === 1 ? "skill" : "skills"}
+              </span>{" "}
+              right now
+            </>
+          ) : (
+            <>
+              VIBE monitored{" "}
+              <span className="text-[#7B61FF]">
+                {uniqueSkills.length} {uniqueSkills.length === 1 ? "skill" : "skills"}
+              </span>
+              {" "}&middot;{" "}
+              <span className="text-muted-foreground font-normal">{totalRuns} events processed</span>
+            </>
+          )}
         </h2>
       </div>
 
@@ -236,19 +266,53 @@ export function AutonomousActivityFeed() {
         </div>
       )}
 
-      {/* Failed — collapsed by default */}
+      {/* Failed — show inline when nothing else to show, collapsed otherwise */}
       {failed.length > 0 && (
         <div>
-          <button
-            onClick={() => setShowFailed(!showFailed)}
-            className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors px-1 py-1 cursor-pointer"
-          >
-            {showFailed ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            {failed.length} failed &middot; click to review
-          </button>
-          {showFailed && (
-            <div className="flex flex-col gap-1 mt-1 animate-in fade-in slide-in-from-top-1 duration-150">
-              {failed.map((ex) => renderRow(ex, "failed"))}
+          {hasLaunched || inProgress.length > 0 ? (
+            /* Collapse when there's launched/in-progress content above */
+            <>
+              <button
+                onClick={() => setShowFailed(!showFailed)}
+                className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors px-1 py-1 cursor-pointer"
+              >
+                {showFailed ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                {failed.length} attempted &middot; click to review
+              </button>
+              {showFailed && (
+                <div className="flex flex-col gap-1 mt-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                  {failed.slice(0, 10).map((ex) => renderRow(ex, "failed"))}
+                  {failed.length > 10 && (
+                    <p className="text-[11px] text-muted-foreground/50 px-3 py-1">
+                      +{failed.length - 10} more
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            /* Show failed inline (dimmed) when nothing else to display */
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground/50 font-medium px-1 mb-0.5">
+                Recent activity
+              </p>
+              {failed.slice(0, 5).map((ex) => renderRow(ex, "failed"))}
+              {failed.length > 5 && (
+                <>
+                  <button
+                    onClick={() => setShowFailed(!showFailed)}
+                    className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors px-1 py-1 cursor-pointer"
+                  >
+                    {showFailed ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    +{failed.length - 5} more
+                  </button>
+                  {showFailed && (
+                    <div className="flex flex-col gap-1 mt-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                      {failed.slice(5).map((ex) => renderRow(ex, "failed"))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
