@@ -210,6 +210,31 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
         .eq('id', exec.id);
     }
 
+    // 1d. Create a conversation record and link it to the job
+    if (project?.id) {
+      const { data: conv, error: convErr } = await sbJob
+        .from('conversations')
+        .insert({
+          project_id: project.id,
+          title: `[Auto] ${skill.skill_name}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+
+      if (convErr) {
+        console.error(`${logPrefix} Conversation insert failed: ${convErr.message}`);
+      } else if (conv && job) {
+        await sbJob.from('jobs')
+          .update({ conversation_id: conv.id })
+          .eq('id', job.id);
+        console.log(`${logPrefix} Linked conversation ${conv.id} to job ${job.id}`);
+      }
+    } else {
+      console.log(`${logPrefix} Skipping conversation insert — no project_id`);
+    }
+
     // 2. Build kernel context via context-injector
     const systemUserId = '00000000-0000-0000-0000-000000000000';
     const teamName = await resolveTeamName(exec.team_id);
