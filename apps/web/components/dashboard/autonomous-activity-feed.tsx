@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Zap, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react"
+import { Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getSupabase } from "@/lib/supabase"
 
@@ -14,11 +14,11 @@ type Execution = {
   created_at: string
 }
 
-const STATUS_CFG: Record<string, { icon: typeof Loader2; color: string }> = {
-  complete:  { icon: CheckCircle2, color: "text-emerald-400" },
-  failed:    { icon: XCircle,      color: "text-red-400" },
-  pending:   { icon: Clock,        color: "text-amber-400" },
-  running:   { icon: Loader2,      color: "text-[#00E5A0]" },
+const STATUS_CFG: Record<string, { dot: string; label: string }> = {
+  complete:  { dot: "bg-emerald-400", label: "Launched" },
+  failed:    { dot: "bg-red-400",     label: "Failed to launch" },
+  pending:   { dot: "bg-amber-400",   label: "In process" },
+  running:   { dot: "bg-amber-400",   label: "In process" },
 }
 
 function formatSkillName(raw: string): string {
@@ -89,20 +89,18 @@ export function AutonomousActivityFeed() {
       <div className="flex flex-col gap-2">
         {executions.map((ex) => {
           const cfg = STATUS_CFG[ex.status] ?? STATUS_CFG.pending
-          const Icon = cfg.icon
-          const isRunning = ex.status === "running"
           return (
             <div
               key={ex.id}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border bg-card"
             >
-              <Icon className={cn("w-4 h-4 flex-shrink-0", cfg.color, isRunning && "animate-spin")} />
+              <span className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", cfg.dot)} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-foreground truncate">
                   {formatSkillName(skillNames[ex.skill_id] ?? ex.skill_id)}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {ex.trigger_source} &middot; {ex.trigger_event}
+                  {cfg.label} &middot; {ex.trigger_source} &middot; {ex.trigger_event}
                 </p>
               </div>
               <span className="text-[11px] text-muted-foreground flex-shrink-0">
