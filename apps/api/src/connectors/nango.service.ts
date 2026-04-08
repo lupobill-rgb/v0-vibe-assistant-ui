@@ -56,6 +56,8 @@ export interface DecipherResponse {
 export class NangoService {
   private readonly logger = new Logger(NangoService.name);
   private readonly nango: any;
+  private connectionCache = new Map<string, { result: NangoConnection | null; timestamp: number }>();
+  private static readonly CACHE_TTL_MS = 300_000; // 5 minutes
 
   constructor() {
     const secretKey = process.env.NANGO_SECRET_KEY;
@@ -90,16 +92,25 @@ export class NangoService {
 
   async getConnection(teamId: string, connectorType: ConnectorType): Promise<NangoConnection | null> {
     this.ensureConfigured();
+    const cacheKey = `${teamId}:${connectorType}`;
+    const cached = this.connectionCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < NangoService.CACHE_TTL_MS) {
+      return cached.result;
+    }
+
     const connectionId = `${teamId}__${connectorType}`;
     try {
       const connection = await this.nango.getConnection(connectorType, connectionId);
-      return {
+      const result: NangoConnection = {
         connectionId,
         providerConfigKey: connectorType,
         credentials: connection.credentials as Record<string, unknown>,
       };
+      this.connectionCache.set(cacheKey, { result, timestamp: Date.now() });
+      return result;
     } catch (err) {
       this.logger.warn(`No active connection team=${teamId} connector=${connectorType}: ${(err as Error).message}`);
+      this.connectionCache.set(cacheKey, { result: null, timestamp: Date.now() });
       return null;
     }
   }
@@ -108,6 +119,7 @@ export class NangoService {
     this.ensureConfigured();
     const connectionId = `${teamId}__${connectorType}`;
     await this.nango.deleteConnection(connectorType, connectionId);
+    this.connectionCache.delete(`${teamId}:${connectorType}`);
     this.logger.log(`Connection deleted team=${teamId} connector=${connectorType}`);
   }
 
