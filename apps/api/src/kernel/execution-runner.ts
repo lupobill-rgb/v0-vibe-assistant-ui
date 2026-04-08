@@ -190,8 +190,12 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
       .insert({
         project_id: project?.id ?? null,
         user_prompt: `[Auto] ${skill.skill_name} triggered by ${exec.trigger_source}`,
+        source_branch: 'main',
+        destination_branch: `auto/${exec.id.substring(0, 8)}`,
         execution_state: 'building',
+        iteration_count: 0,
         initiated_at: new Date().toISOString(),
+        last_modified: new Date().toISOString(),
       })
       .select('id')
       .single();
