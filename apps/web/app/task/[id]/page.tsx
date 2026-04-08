@@ -28,11 +28,18 @@ export default function TaskPage({ params }: TaskPageProps) {
         const task = await fetchJob(id)
         if (!task) break
         if (task.preview_url) {
-          setPreviewUrl(
-            task.preview_url.startsWith('http')
-              ? task.preview_url
-              : `${API_URL}${task.preview_url}`
-          )
+          const rawUrl = task.preview_url.startsWith('http')
+            ? task.preview_url
+            : `${API_URL}${task.preview_url}`
+
+          // For [Auto] jobs stored in Supabase storage, route through
+          // the API proxy which serves with correct Content-Type headers
+          const autoMatch = rawUrl.match(/\/previews\/auto\/([^/]+)\/preview\.html/)
+          const resolvedUrl = autoMatch
+            ? `${API_URL}/api/preview/auto/${autoMatch[1]}`
+            : rawUrl
+
+          setPreviewUrl(resolvedUrl)
           break
         }
         if (task.execution_state === "failed") break
