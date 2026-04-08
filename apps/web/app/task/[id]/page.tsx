@@ -56,24 +56,48 @@ export default function TaskPage({ params }: TaskPageProps) {
 
   return (
     <AppShell>
-      <div className="flex-1 flex overflow-hidden h-full">
+      <div className="flex-1 flex overflow-hidden h-full" style={{ background: '#0A0E17' }}>
         {/* Left Panel: Pipeline Tracker */}
-        <div className="w-[340px] flex-shrink-0">
+        <div
+          className="w-[300px] flex-shrink-0"
+          style={{ background: '#0F1420', borderRight: '1px solid #1a2030' }}
+        >
           <PipelineTracker taskId={id} />
         </div>
 
-        {/* Right Panel: Preview iframe (once ready) or Terminal Console */}
+        {/* Right Panel: Preview iframe or Terminal Console */}
         <div className="flex-1 min-w-0 flex flex-col">
           {previewHtml ? (
             <div className="flex flex-col h-full">
-              <div className="flex items-center gap-2 px-4 h-11 border-b border-border flex-shrink-0 bg-background">
-                <span className="text-xs font-medium text-muted-foreground">Preview</span>
-                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+              {/* Preview bar */}
+              <div
+                className="flex items-center gap-3 px-4 h-11 flex-shrink-0"
+                style={{ background: '#0F1420', borderBottom: '1px solid #1a2030' }}
+              >
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-widest"
+                  style={{ color: '#475569', fontFamily: 'Syne, system-ui' }}
+                >
+                  Preview
+                </span>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                </span>
+                {previewUrl && (
+                  <span
+                    className="text-xs font-mono px-2.5 py-0.5 rounded-full truncate max-w-[260px]"
+                    style={{ background: '#1a2030', color: '#94a3b8' }}
+                  >
+                    {previewUrl.replace(/^https?:\/\//, '').slice(0, 40)}
+                  </span>
+                )}
                 <a
                   href={previewUrl ?? undefined}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="ml-auto text-xs font-medium px-3 py-1 rounded-md transition-opacity hover:opacity-80"
+                  style={{ color: '#00B4D8', border: '1px solid rgba(0,180,216,0.2)' }}
                 >
                   Open ↗
                 </a>
@@ -82,6 +106,7 @@ export default function TaskPage({ params }: TaskPageProps) {
                 srcDoc={previewHtml ?? ''}
                 sandbox="allow-scripts allow-same-origin"
                 className="flex-1 w-full border-0"
+                style={{ background: '#0A0E17' }}
                 title="Generated website preview"
               />
             </div>
