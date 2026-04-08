@@ -168,10 +168,27 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
 
     console.log(`${logPrefix} Resolved skill: ${skill.plugin_name}/${skill.skill_name}`);
 
-    // 1b. Create a job record for this autonomous execution
+    // 1b. Create a project for this autonomous execution
+    const { data: project, error: projectErr } = await sbJob
+      .from('projects')
+      .insert({
+        team_id: exec.team_id,
+        name: `[Auto] ${skill.skill_name}`,
+        local_path: `/auto/${exec.id}`,
+        created_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (projectErr || !project) {
+      console.error(`${logPrefix} Project insert failed: ${projectErr?.message}`);
+    }
+
+    // 1c. Create a job record for this autonomous execution
     const { data: jobRow, error: insertJobErr } = await sbJob
       .from('jobs')
       .insert({
+        project_id: project?.id ?? null,
         user_prompt: `[Auto] ${skill.skill_name} triggered by ${exec.trigger_source}`,
         execution_state: 'building',
         initiated_at: new Date().toISOString(),
