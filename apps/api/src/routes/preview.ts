@@ -10,8 +10,10 @@ const router = Router();
 const SUPABASE_STORAGE_BASE =
   'https://ptaqytvztkhjpuawdxng.supabase.co/storage/v1/object/public/previews';
 
-// ── GET /api/preview/auto/:executionId — public proxy for [Auto] previews ───
-router.get('/auto/:executionId', async (req: Request, res: Response) => {
+// ── Public router (mounted WITHOUT auth middleware) ─────────────────────────
+const publicRouter = Router();
+
+publicRouter.get('/auto/:executionId', async (req: Request, res: Response) => {
   const { executionId } = req.params;
   try {
     const upstream = await fetch(
@@ -189,5 +191,5 @@ router.delete('/:projectId', async (req: Request, res: Response) => {
   res.json({ projectId, message: 'Preview stopped' });
 });
 
-export { killPreview };
+export { killPreview, publicRouter as previewPublicRouter };
 export default router;

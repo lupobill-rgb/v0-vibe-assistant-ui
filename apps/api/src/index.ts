@@ -23,7 +23,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import 'reflect-metadata';
 import supabaseRouter from './routes/supabase';
-import previewRouter from './routes/preview';
+import previewRouter, { previewPublicRouter } from './routes/preview';
 import billingRouter from './routes/billing';
 import stripeBillingRouter from './billing/billing.controller';
 import financeRouter from './routes/finance';
@@ -260,6 +260,7 @@ async function bootstrap() {
 
   // Body parser for custom Express routes (NestJS handles its own controllers)
   app.use('/api/supabase', express.json(), supabaseRouter);
+  app.use('/api/preview', previewPublicRouter);
   app.use('/api/preview', express.json(), previewRouter);
   // Stripe billing controller (handles its own body parsing per-route;
   // must be mounted BEFORE the legacy billingRouter so /webhook gets raw body)
