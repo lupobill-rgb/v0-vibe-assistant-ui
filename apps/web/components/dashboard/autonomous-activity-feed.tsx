@@ -90,12 +90,12 @@ function DetailPanel({
         )}
         <div>
           <span className="text-muted-foreground">Triggered</span>
-          <p className="text-foreground mt-0.5">{new Date(ex.created_at).toLocaleString()}</p>
+          <p className="text-foreground mt-0.5" suppressHydrationWarning>{new Date(ex.created_at).toLocaleString()}</p>
         </div>
         {ex.completed_at && (
           <div>
             <span className="text-muted-foreground">Completed</span>
-            <p className="text-foreground mt-0.5">{new Date(ex.completed_at).toLocaleString()}</p>
+            <p className="text-foreground mt-0.5" suppressHydrationWarning>{new Date(ex.completed_at).toLocaleString()}</p>
           </div>
         )}
         {ex.error_message && (
@@ -189,7 +189,7 @@ export function AutonomousActivityFeed() {
               {ex.trigger_source} &middot; {ex.trigger_event}
             </p>
           </div>
-          <span className="text-[11px] text-muted-foreground flex-shrink-0 mr-1">
+          <span className="text-[11px] text-muted-foreground flex-shrink-0 mr-1" suppressHydrationWarning>
             {relativeTime(ex.created_at)}
           </span>
           {isExpanded ? (
@@ -211,7 +211,7 @@ export function AutonomousActivityFeed() {
   const hasLaunched = launched.length > 0
 
   return (
-    <div className="px-4 sm:px-6 pt-4">
+    <div className="px-4 sm:px-6 pt-4" suppressHydrationWarning>
       {/* Header — adapts to whether anything launched */}
       <div className="flex items-center gap-2 mb-4">
         <div className="relative">
