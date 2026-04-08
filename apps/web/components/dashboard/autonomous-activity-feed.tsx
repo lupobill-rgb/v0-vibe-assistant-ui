@@ -21,6 +21,13 @@ const STATUS_CFG: Record<string, { icon: typeof Loader2; color: string }> = {
   running:   { icon: Loader2,      color: "text-[#00E5A0]" },
 }
 
+function formatSkillName(raw: string): string {
+  // Turn slugs like "campaign-plan" into "Campaign Plan"
+  return raw
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
@@ -54,11 +61,11 @@ export function AutonomousActivityFeed() {
       if (ids.length > 0) {
         const { data: skills } = await supabase
           .from("skill_registry")
-          .select("id, name")
+          .select("id, skill_name")
           .in("id", ids)
         if (skills) {
           const map: Record<string, string> = {}
-          for (const s of skills) map[s.id] = s.name
+          for (const s of skills) map[s.id] = s.skill_name
           setSkillNames(map)
         }
       }
@@ -92,7 +99,7 @@ export function AutonomousActivityFeed() {
               <Icon className={cn("w-4 h-4 flex-shrink-0", cfg.color, isRunning && "animate-spin")} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-foreground truncate">
-                  {skillNames[ex.skill_id] ?? ex.skill_id}
+                  {formatSkillName(skillNames[ex.skill_id] ?? ex.skill_id)}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {ex.trigger_source} &middot; {ex.trigger_event}
