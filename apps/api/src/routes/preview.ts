@@ -7,7 +7,33 @@ import { extractTenantFromJwt } from '../middleware/tenant';
 
 const router = Router();
 
-// All preview routes require authenticated tenant context
+const SUPABASE_STORAGE_BASE =
+  'https://ptaqytvztkhjpuawdxng.supabase.co/storage/v1/object/public/previews';
+
+// ── GET /api/preview/auto/:executionId — public proxy for [Auto] previews ───
+router.get('/auto/:executionId', async (req: Request, res: Response) => {
+  const { executionId } = req.params;
+  try {
+    const upstream = await fetch(
+      `${SUPABASE_STORAGE_BASE}/auto/${executionId}/preview.html`,
+    );
+    if (!upstream.ok) {
+      return res.status(404).json({ error: 'Preview not found' });
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+    res.removeHeader('Content-Security-Policy');
+    res.setHeader('Cache-Control', 'no-cache');
+
+    // Stream the body to the client
+    const body = upstream.body as unknown as NodeJS.ReadableStream;
+    body.pipe(res);
+  } catch {
+    return res.status(404).json({ error: 'Preview not found' });
+  }
+});
+
+// All preview routes below require authenticated tenant context
 router.use(extractTenantFromJwt());
 
 const PREVIEWS_BASE_DIR = process.env.PREVIEWS_DIR || '/tmp/previews';
