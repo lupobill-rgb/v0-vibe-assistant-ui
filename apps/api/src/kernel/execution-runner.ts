@@ -105,6 +105,8 @@ async function markComplete(executionId: string, _result: Record<string, unknown
 
   if (error) {
     console.error(`[execution-runner] Failed to mark ${executionId} complete:`, error.message);
+  } else {
+    console.log(`[execution-runner][${executionId}] Status updated to complete`);
   }
 }
 
