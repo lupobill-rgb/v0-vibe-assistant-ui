@@ -77,7 +77,7 @@ export default function TaskPage({ params }: TaskPageProps) {
                 <span className="text-xs font-medium text-muted-foreground">Preview</span>
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
                 <a
-                  href={previewUrl}
+                  href={previewUrl ?? undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
