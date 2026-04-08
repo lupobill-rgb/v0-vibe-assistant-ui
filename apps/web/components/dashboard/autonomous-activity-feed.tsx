@@ -161,15 +161,17 @@ export function AutonomousActivityFeed() {
 
     const dotClass =
       variant === "launched"
-        ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+        ? "bg-[#00E5A0] shadow-[0_0_8px_rgba(0,229,160,0.6)]"
         : variant === "progress"
-          ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.4)] animate-pulse"
-          : "bg-white/20"
+          ? "bg-[#00B4D8] shadow-[0_0_8px_rgba(0,180,216,0.5)] animate-pulse"
+          : "bg-white/15"
 
     const rowClass =
-      variant === "failed"
-        ? "opacity-50 hover:opacity-75"
-        : "hover:border-[#7B61FF]/30 hover:bg-[#7B61FF]/5"
+      variant === "launched"
+        ? "border-[#00E5A0]/15 hover:border-[#00E5A0]/30 hover:bg-[#00E5A0]/5"
+        : variant === "progress"
+          ? "border-[#00B4D8]/15 hover:border-[#00B4D8]/30 hover:bg-[#00B4D8]/5"
+          : "opacity-40 hover:opacity-60 border-transparent"
 
     return (
       <div key={ex.id} className="group">
@@ -211,42 +213,57 @@ export function AutonomousActivityFeed() {
   const hasLaunched = launched.length > 0
 
   return (
-    <div className="px-4 sm:px-6 pt-4" suppressHydrationWarning>
-      {/* Header — adapts to whether anything launched */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative">
-          <Sparkles className="w-4 h-4 text-[#7B61FF]" />
-          {(hasLaunched || inProgress.length > 0) && (
-            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-[#00E5A0] rounded-full animate-ping" />
-          )}
+    <div className="px-4 sm:px-6 pt-4">
+      {/* Hero banner */}
+      <div className="relative rounded-2xl border border-[#7B61FF]/20 bg-gradient-to-r from-[#7B61FF]/10 via-[#00B4D8]/5 to-[#00E5A0]/10 p-4 mb-4 overflow-hidden">
+        {/* Subtle background glow */}
+        <div className="absolute -top-8 -right-8 w-24 h-24 bg-[#7B61FF]/10 rounded-full blur-2xl" />
+        <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-[#00E5A0]/10 rounded-full blur-2xl" />
+
+        <div className="relative flex items-center gap-3">
+          <div className="relative flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#7B61FF] to-[#00B4D8] flex items-center justify-center">
+              <Sparkles className="w-4.5 h-4.5 text-white" />
+            </div>
+            {(hasLaunched || inProgress.length > 0) && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#00E5A0] rounded-full animate-ping" />
+            )}
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              {hasLaunched ? (
+                <>
+                  While you were away, VIBE launched{" "}
+                  <span className="text-[#00E5A0]">
+                    {launched.length} {launched.length === 1 ? "skill" : "skills"}
+                  </span>
+                </>
+              ) : inProgress.length > 0 ? (
+                <>
+                  VIBE is running{" "}
+                  <span className="text-amber-400">
+                    {inProgress.length} {inProgress.length === 1 ? "skill" : "skills"}
+                  </span>{" "}
+                  right now
+                </>
+              ) : (
+                <>
+                  VIBE monitored{" "}
+                  <span className="bg-gradient-to-r from-[#7B61FF] to-[#00B4D8] bg-clip-text text-transparent">
+                    {uniqueSkills.length} {uniqueSkills.length === 1 ? "skill" : "skills"}
+                  </span>
+                  {" "}across{" "}
+                  <span className="text-[#00E5A0]">{totalRuns} events</span>
+                </>
+              )}
+            </h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {hasLaunched
+                ? "Your AI workforce executed autonomously"
+                : "Your AI workforce is actively listening for triggers"}
+            </p>
+          </div>
         </div>
-        <h2 className="text-sm font-semibold text-foreground">
-          {hasLaunched ? (
-            <>
-              While you were away, VIBE launched{" "}
-              <span className="text-[#00E5A0]">
-                {launched.length} {launched.length === 1 ? "skill" : "skills"}
-              </span>
-            </>
-          ) : inProgress.length > 0 ? (
-            <>
-              VIBE is running{" "}
-              <span className="text-amber-400">
-                {inProgress.length} {inProgress.length === 1 ? "skill" : "skills"}
-              </span>{" "}
-              right now
-            </>
-          ) : (
-            <>
-              VIBE monitored{" "}
-              <span className="text-[#7B61FF]">
-                {uniqueSkills.length} {uniqueSkills.length === 1 ? "skill" : "skills"}
-              </span>
-              {" "}&middot;{" "}
-              <span className="text-muted-foreground font-normal">{totalRuns} events processed</span>
-            </>
-          )}
-        </h2>
       </div>
 
       {/* Launched — hero section */}
