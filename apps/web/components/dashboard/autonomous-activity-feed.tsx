@@ -42,7 +42,8 @@ function DetailPanel({
   skill: SkillInfo | null
   onClose: () => void
 }) {
-  const payload = ex.trigger_payload
+  const payload = ex.trigger_payload as Record<string, unknown> | null
+  const model = payload?.model ? String(payload.model) : null
   const results = payload?.responseResults as Record<string, number> | undefined
 
   return (
@@ -73,10 +74,10 @@ function DetailPanel({
           <span className="text-muted-foreground">Event</span>
           <p className="text-foreground mt-0.5">{ex.trigger_event}</p>
         </div>
-        {payload?.model && (
+        {model && (
           <div>
             <span className="text-muted-foreground">Data Model</span>
-            <p className="text-foreground mt-0.5">{String(payload.model)}</p>
+            <p className="text-foreground mt-0.5">{model}</p>
           </div>
         )}
         {results && (
