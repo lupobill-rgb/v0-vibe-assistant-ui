@@ -169,7 +169,7 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
     console.log(`${logPrefix} Resolved skill: ${skill.plugin_name}/${skill.skill_name}`);
 
     // 1b. Create a job record for this autonomous execution
-    const { data: jobRow } = await sbJob
+    const { data: jobRow, error: insertJobErr } = await sbJob
       .from('jobs')
       .insert({
         org_id: exec.organization_id,
@@ -182,6 +182,9 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
       .single();
     job = jobRow;
 
+    if (insertJobErr) {
+      console.error(`${logPrefix} Job insert failed: ${insertJobErr.message}`);
+    }
     if (job) {
       await sbJob.from('autonomous_executions')
         .update({ job_id: job.id })
