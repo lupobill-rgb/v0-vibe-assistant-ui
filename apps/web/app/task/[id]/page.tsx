@@ -28,7 +28,11 @@ export default function TaskPage({ params }: TaskPageProps) {
         const task = await fetchJob(id)
         if (!task) break
         if (task.preview_url) {
-          setPreviewUrl(`${API_URL}${task.preview_url}`)
+          setPreviewUrl(
+            task.preview_url.startsWith('http')
+              ? task.preview_url
+              : `${API_URL}${task.preview_url}`
+          )
           break
         }
         if (task.execution_state === "failed") break
