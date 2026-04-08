@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getPlatformSupabaseClient } from '../supabase/client';
 
-const COOLDOWN_MINUTES = 15;
-
 @Injectable()
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
@@ -29,35 +27,10 @@ export class WebhookService {
     const teamsData = integration.teams as unknown as { id: string; org_id: string };
     const team = { id: teamsData.id, org_id: teamsData.org_id };
 
-    const provider = payload.providerConfigKey.toLowerCase();
-    const { data: skills } = await this.sb.from('skill_registry')
-      .select('id, skill_name')
-      .eq('is_active', true)
-      .filter('trigger_on::text', 'ilike', `%${provider}:%`);
-    if (!skills?.length) { this.logger.log(`No skills matched: ${triggerSource}`); return { queued: 0 }; }
-
-    let queued = 0;
-    for (const skill of skills) {
-      const cutoff = new Date(Date.now() - COOLDOWN_MINUTES * 60_000).toISOString();
-      const { data: recent } = await this.sb.from('autonomous_executions').select('id')
-        .eq('organization_id', team.org_id).eq('skill_id', skill.id).gte('created_at', cutoff).limit(1);
-      if (recent?.length) { this.logger.log(`Cooldown active: ${skill.skill_name}`); continue; }
-
-      const { error: insertErr } = await this.sb.from('autonomous_executions').insert({
-        organization_id: team.org_id, team_id: team.id, skill_id: skill.id,
-        trigger_source: triggerSource, trigger_event: payload.syncName,
-        trigger_payload: { connectionId: payload.connectionId, model: payload.model,
-          responseResults: payload.responseResults, modifiedAfter: payload.modifiedAfter },
-        status: 'pending', cascade_depth: 0,
-      });
-      if (insertErr) this.logger.error(`Failed to queue ${skill.skill_name}: ${insertErr.message}`);
-      else { this.logger.log(`Queued: skill=${skill.skill_name} org=${team.org_id}`); queued++; }
-    }
-
-    // Non-blocking sync + recommendations
+    // Non-blocking sync + recommendations (no autonomous executions — those fire from user actions only)
     this.syncNangoRecords(payload, team.id, team.org_id).catch(err =>
       this.logger.error('Sync failed (non-blocking):', err.message));
-    return { queued };
+    return { queued: 0 };
   }
 
   async syncNangoRecords(
