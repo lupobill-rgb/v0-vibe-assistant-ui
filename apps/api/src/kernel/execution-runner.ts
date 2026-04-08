@@ -358,10 +358,16 @@ async function executeOne(exec: AutonomousExecution): Promise<void> {
  * Returns true if work was found, false if idle.
  */
 async function pollOnce(): Promise<boolean> {
+  if (_isExecuting) return false;
   try {
     const exec = await claimPendingExecution();
     if (!exec) return false;
-    await executeOne(exec);
+    _isExecuting = true;
+    try {
+      await executeOne(exec);
+    } finally {
+      _isExecuting = false;
+    }
     return true;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -370,6 +376,7 @@ async function pollOnce(): Promise<boolean> {
   }
 }
 
+let _isExecuting = false;
 let _intervalHandle: ReturnType<typeof setInterval> | null = null;
 
 /**
@@ -388,15 +395,7 @@ export function startExecutionRunner(intervalMs: number = POLL_INTERVAL_MS): voi
   pollOnce();
 
   _intervalHandle = setInterval(async () => {
-    const didWork = await pollOnce();
-    if (didWork) {
-      // If we found work, check for more but cap iterations to avoid blocking event loop
-      let remaining = MAX_DRAIN_ITERATIONS;
-      let more = true;
-      while (more && remaining-- > 0) {
-        more = await pollOnce();
-      }
-    }
+    await pollOnce();
   }, intervalMs);
 }
 
