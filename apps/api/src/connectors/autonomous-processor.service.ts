@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { getPlatformSupabaseClient } from '../supabase/client';
 
@@ -74,20 +75,22 @@ export class AutonomousProcessorService {
     // Build prompt and insert job
     const prompt = `Using the ${skill.name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
 
-    const { data: job, error: jobErr } = await this.sb
+    const jobId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const { error: jobErr } = await this.sb
       .from('jobs')
       .insert({
-        org_id: execution.org_id,
-        team_id: execution.team_id,
-        user_id: null,
-        prompt,
-        source: 'autonomous',
-        skill_id: execution.skill_id,
-        status: 'queued',
-        created_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single();
+        id: jobId,
+        user_prompt: prompt,
+        project_id: null,
+        source_branch: `autonomous/${execution.skill_id}`,
+        destination_branch: 'main',
+        execution_state: 'queued',
+        iteration_count: 0,
+        initiated_at: now,
+        last_modified: now,
+      });
+    const job = { id: jobId };
 
     if (jobErr || !job) {
       this.logger.error(`Failed to create job for execution ${execution.id}: ${jobErr?.message}`);
