@@ -845,14 +845,18 @@ Build the dashboard using the AGGREGATED STATS above for all numbers, totals, ch
       }
 
       if (org) {
-        const budgetLimit = await storage.getTenantBudget(org.id);
-        if (budgetLimit !== null) {
-          const currentSpend = await storage.getTenantSpend(org.id);
-          if (currentSpend >= budgetLimit) {
-            return res.status(402).json({
-              error: `Budget exceeded: $${currentSpend.toFixed(4)} spent of $${budgetLimit.toFixed(2)} limit.`,
-            });
+        try {
+          const budgetLimit = await storage.getTenantBudget(org.id);
+          if (budgetLimit !== null) {
+            const currentSpend = await storage.getTenantSpend(org.id);
+            if (currentSpend >= budgetLimit) {
+              return res.status(402).json({
+                error: `Budget exceeded: $${currentSpend.toFixed(4)} spent of $${budgetLimit.toFixed(2)} limit.`,
+              });
+            }
           }
+        } catch (budgetErr: any) {
+          console.warn(`[BILLING] Budget check failed (non-blocking): ${budgetErr.message}`);
         }
       }
 

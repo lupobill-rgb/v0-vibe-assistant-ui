@@ -748,12 +748,20 @@ export class VibeStorage {
     const projectIds = await this.getProjectIdsForOrg(orgId);
     if (projectIds.length === 0) return [];
 
-    const { data: jobs, error } = await this.sb
-      .from('jobs')
-      .select('initiated_at, llm_model, llm_prompt_tokens, llm_completion_tokens')
-      .in('project_id', projectIds)
-      .not('llm_prompt_tokens', 'is', null);
-    if (error) throw new Error(`Failed to get billing usage: ${error.message}`);
+    // Chunk project IDs to avoid PostgREST URL length limits
+    const CHUNK_SIZE = 30;
+    const allJobs: any[] = [];
+    for (let i = 0; i < projectIds.length; i += CHUNK_SIZE) {
+      const chunk = projectIds.slice(i, i + CHUNK_SIZE);
+      const { data: jobs, error } = await this.sb
+        .from('jobs')
+        .select('initiated_at, llm_model, llm_prompt_tokens, llm_completion_tokens')
+        .in('project_id', chunk)
+        .not('llm_prompt_tokens', 'is', null);
+      if (error) throw new Error(`Failed to get billing usage: ${error.message}`);
+      if (jobs) allJobs.push(...jobs);
+    }
+    const jobs = allJobs;
 
     // Group by date + model
     const groups = new Map<string, { input_tokens: number; output_tokens: number; job_count: number }>();
