@@ -56,18 +56,14 @@ export class WebhookController {
   }
 
   private async resolveOrgAndTeam(connectionId: string): Promise<{ orgId: string; teamId: string } | null> {
-    const parts = connectionId.split('__');
-    if (parts.length < 2) return null;
-    const teamId = parts[0];
-
     const { data, error } = await this.sb
-      .from('teams')
-      .select('id, org_id')
-      .eq('id', teamId)
+      .from('team_integrations')
+      .select('team_id, teams!inner(organization_id)')
+      .eq('nango_connection_id', connectionId)
       .limit(1)
       .single();
     if (error || !data) return null;
-    return { orgId: data.org_id, teamId: data.id };
+    return { orgId: (data as any).teams.organization_id, teamId: data.team_id };
   }
 
   private async resolveMatchingSkills(
