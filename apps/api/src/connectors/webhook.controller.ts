@@ -18,6 +18,7 @@ export class WebhookController {
   async handleWebhook(@Body() body: any): Promise<{ ok: true; queued: number }> {
     try {
       const { connectionId, providerConfigKey, syncName, model, queryTimeStamp } = body ?? {};
+      this.logger.log(`Webhook raw body: ${JSON.stringify(body)}`);
       if (!connectionId || !providerConfigKey || !syncName || !model || !queryTimeStamp) {
         this.logger.warn('Webhook missing required fields', { connectionId, providerConfigKey, syncName });
         return { ok: true, queued: 0 };
