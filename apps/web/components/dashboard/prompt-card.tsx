@@ -287,6 +287,12 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
         await fireJob(prompt.trim())
         return
       }
+      if (reply && reply.trimStart().startsWith('{') && reply.includes('"enrichedPrompt"')) {
+        const collected = conversationRef.current.filter(m => m.role === 'user').map(m => m.content).join('\n\n')
+        setMessages([{ role: "assistant", text: "Starting your build..." }])
+        await fireJob(collected)
+        return
+      }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
     } catch (err) {
@@ -368,6 +374,12 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
         await fireJob(prompt.trim())
         return
       }
+      if (reply && reply.trimStart().startsWith('{') && reply.includes('"enrichedPrompt"')) {
+        const collected = conversationRef.current.filter(m => m.role === 'user').map(m => m.content).join('\n\n')
+        setMessages([{ role: "assistant", text: "Starting your build..." }])
+        await fireJob(collected)
+        return
+      }
       conversationRef.current.push({ role: "assistant", content: reply })
       setMessages([{ role: "assistant", text: reply }])
     } catch (err) {
@@ -408,6 +420,14 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
       if (isHtmlResponse(reply)) {
         setMessages((m) => [...m, { role: "assistant", text: "Building your app..." }])
         const collected = conversationRef.current.filter(m => m.role === 'user').map(m => m.content).join('\n\n')
+        await fireJob(collected)
+        return
+      }
+      // Safety net: never show raw JSON to the user — if it looks like a
+      // truncated ready signal, fire the build with collected conversation
+      if (reply && reply.trimStart().startsWith('{') && reply.includes('"enrichedPrompt"')) {
+        const collected = conversationRef.current.filter(m => m.role === 'user').map(m => m.content).join('\n\n')
+        setMessages((m) => [...m, { role: "assistant", text: "Starting your build..." }])
         await fireJob(collected)
         return
       }
