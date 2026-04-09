@@ -1575,9 +1575,10 @@ Include ALL rows from the original data with their final calculated values. This
           }
         }
       })();
-    } catch (error) {
-      console.error('Error creating task:', error);
-      res.status(500).json({ error: 'Failed to create task' });
+    } catch (error: any) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error('Error creating task:', detail);
+      res.status(500).json({ error: `Failed to create task: ${detail}` });
     }
   });
 

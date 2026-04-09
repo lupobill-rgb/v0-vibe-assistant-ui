@@ -429,7 +429,22 @@ export class VibeStorage {
     const { error } = await this.sb
       .from('jobs')
       .insert(insert);
-    if (error) throw new Error(`Failed to create task: ${error.message}`);
+
+    // If the insert failed due to conversation_id column not existing yet,
+    // retry without it so the job can still be created.
+    if (error) {
+      const msg = error.message || '';
+      if (msg.includes('conversation_id')) {
+        console.warn(`[STORAGE] conversation_id column missing on jobs table, retrying without it`);
+        const { conversation_id, ...insertWithout } = insert;
+        const { error: retryError } = await this.sb
+          .from('jobs')
+          .insert(insertWithout);
+        if (retryError) throw new Error(`Failed to create task: ${retryError.message}`);
+        return;
+      }
+      throw new Error(`Failed to create task: ${error.message}`);
+    }
   }
 
   async getTask(taskId: string): Promise<VibeTask | undefined> {
