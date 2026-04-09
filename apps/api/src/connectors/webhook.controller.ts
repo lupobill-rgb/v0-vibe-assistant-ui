@@ -59,12 +59,12 @@ export class WebhookController {
   private async resolveOrgAndTeam(connectionId: string): Promise<{ orgId: string; teamId: string } | null> {
     const { data, error } = await this.sb
       .from('team_integrations')
-      .select('team_id, teams!inner(organization_id)')
+      .select('team_id, teams!inner(org_id)')
       .eq('nango_connection_id', connectionId)
       .limit(1)
       .single();
     if (error || !data) return null;
-    return { orgId: (data as any).teams.organization_id, teamId: data.team_id };
+    return { orgId: (data as any).teams.org_id, teamId: data.team_id };
   }
 
   private async resolveMatchingSkills(
