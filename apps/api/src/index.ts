@@ -1180,9 +1180,8 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
           }
 
           // ── Dashboard fast path ── bypass planner, single Edge call ──
-          // Fast path removed — LLM + department skills determine output format
-          // File uploads still route here: uploaded data needs the single-call dashboard path
-          if (upload_id) {
+          // Activated for dashboard mode (keyword/team match) or file uploads
+          if (resolvedMode === 'dashboard' || upload_id) {
             try {
               await storage.updateTaskState(taskId, 'building');
               await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
@@ -1390,7 +1389,33 @@ Include ALL rows from the original data with their final calculated values. This
               if (fenceMatch) raw = fenceMatch[1].trim();
               // Strip trailing commas before } or ] (common LLM mistake)
               raw = raw.replace(/,\s*([\]}])/g, '$1');
-              planPages = JSON.parse(raw);
+              // Try parsing as-is first; if it fails, extract the first valid JSON object/array
+              try {
+                planPages = JSON.parse(raw);
+              } catch {
+                // LLM may have appended text after the JSON — find the outermost {} or []
+                const jsonStart = raw.search(/[{[]/);
+                if (jsonStart >= 0) {
+                  const opener = raw[jsonStart];
+                  const closer = opener === '{' ? '}' : ']';
+                  let depth = 0;
+                  let jsonEnd = -1;
+                  for (let ci = jsonStart; ci < raw.length; ci++) {
+                    if (raw[ci] === opener) depth++;
+                    else if (raw[ci] === closer) depth--;
+                    if (depth === 0) { jsonEnd = ci; break; }
+                  }
+                  if (jsonEnd > jsonStart) {
+                    const extracted = raw.slice(jsonStart, jsonEnd + 1).replace(/,\s*([\]}])/g, '$1');
+                    planPages = JSON.parse(extracted);
+                    console.log(`[PLAN] Extracted JSON from position ${jsonStart}-${jsonEnd} (stripped ${raw.length - jsonEnd - 1} trailing chars)`);
+                  } else {
+                    throw new Error(`Could not extract JSON from plan response (${raw.length} chars)`);
+                  }
+                } else {
+                  throw new Error(`No JSON found in plan response (${raw.length} chars)`);
+                }
+              }
             } else {
               planPages = planData.diff;
             }
@@ -1506,10 +1531,11 @@ Include ALL rows from the original data with their final calculated values. This
             });
             await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
           } else {
-            // ── Fallback: single-page build with mode: 'html' ──
-            await storage.logEvent(taskId, 'Calling Edge Function (single-page mode)...', 'info');
+            // ── Fallback: single-page build ──
+            const fallbackMode = resolvedMode === 'dashboard' ? 'dashboard' : 'html';
+            await storage.logEvent(taskId, `Calling Edge Function (single-page ${fallbackMode} mode)...`, 'info');
             console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
-            const fallbackResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'html', color_block: colorBlock });
+            const fallbackResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: fallbackMode, color_block: colorBlock });
             modelCalls += 1;
             if (!fallbackResult.ok) throw new Error(fallbackResult.text || `Edge Function returned ${fallbackResult.status}`);
 

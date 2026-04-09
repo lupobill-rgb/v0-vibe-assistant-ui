@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from 'next/server'
 
-export const maxDuration = 60
+export const maxDuration = 120
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ptaqytvztkhjpuawdxng.supabase.co'
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
@@ -37,23 +37,30 @@ Output MUST start <!DOCTYPE html> and end </html>.`
 async function callAnthropic(messages: Array<{ role: string; content: string }>, system: string, maxTokens: number) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      system,
-      messages,
-    }),
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error?.message || `Anthropic API error ${res.status}`)
-  return data.content?.[0]?.text || ''
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 90_000) // 90s timeout
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: maxTokens,
+        system,
+        messages,
+      }),
+      signal: controller.signal,
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error?.message || `Anthropic API error ${res.status}`)
+    return data.content?.[0]?.text || ''
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 async function callEdgeFunction(prompt: string, system: string, maxTokens: number, opts?: { mode?: string; context?: string }) {
@@ -134,11 +141,31 @@ export async function POST(request: Request) {
     if (edit) {
       const prompt = editPrompt || messages?.[messages.length - 1]?.content || ''
       let trimmedContext = context ?? ''
-      if (trimmedContext.length > 50000) {
-        trimmedContext = trimmedContext.slice(0, 50000) + '\n<!-- HTML truncated for size -->'
+      // Limit context to 30K chars to avoid timeouts on large dashboards
+      if (trimmedContext.length > 30000) {
+        trimmedContext = trimmedContext.slice(0, 30000) + '\n<!-- HTML truncated for size -->'
       }
+      const editSystem = 'You are an expert web developer. Make ONLY the requested change to the HTML. Preserve everything else exactly. Return complete HTML starting with <!DOCTYPE html>. No explanations. Raw HTML only.'
       const editMessages = [{ role: 'user', content: trimmedContext ? `Current HTML:\n${trimmedContext}\n\nEdit request: ${prompt}` : prompt }]
-      let html = await callAnthropic(editMessages, 'You are an expert web developer. Make ONLY the requested change to the HTML. Preserve everything else exactly. Return complete HTML starting with <!DOCTYPE html>. No explanations. Raw HTML only.', 16000)
+
+      let html = ''
+      try {
+        html = await callAnthropic(editMessages, editSystem, 16000)
+      } catch (anthropicErr: any) {
+        console.warn(`[EDIT] Anthropic call failed (${anthropicErr.message}), falling back to Edge Function`)
+        // Fall back to Edge Function (has 4-provider failover chain)
+        try {
+          const edgePrompt = trimmedContext
+            ? `Current HTML:\n${trimmedContext}\n\nEdit request: ${prompt}`
+            : prompt
+          const edgeData = await callEdgeFunction(edgePrompt, editSystem, 16000, { mode: 'html' })
+          html = edgeData.diff || ''
+        } catch (edgeErr: any) {
+          console.error(`[EDIT] Edge Function fallback also failed: ${edgeErr.message}`)
+          return NextResponse.json({ error: `Edit failed: ${anthropicErr.message}` }, { status: 502 })
+        }
+      }
+
       if (html.startsWith('```')) {
         html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
       }
