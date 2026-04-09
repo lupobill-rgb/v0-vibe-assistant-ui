@@ -1139,6 +1139,21 @@ STRUCTURAL REQUIREMENTS:
 - Never generate React or JSX
 - Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 16384;
+
+      // SAMPLE DATA OVERRIDE: when no real data source is connected,
+      // allow the LLM to hardcode realistic sample data so charts render
+      const isSampleData = /\bsample data\b/i.test(prompt) || /\[Data source: sample data\]/i.test(prompt);
+      if (isSampleData) {
+        baseSystemMsg += `
+
+SAMPLE DATA MODE — OVERRIDES "no hardcoded data" rules above:
+This user has NO connected data sources and chose to build with sample data.
+You MUST generate realistic, domain-appropriate hardcoded data arrays for ALL charts, KPIs, and tables.
+Do NOT use vibeLoadData(). Do NOT show empty states. Do NOT show "No data yet" messages.
+Instead, define const SAMPLE_DATA arrays with 10-20 realistic rows and use them to populate every chart, KPI card, and table.
+Make the data look real: use plausible names, dates, amounts, percentages, and statuses for the domain.
+The dashboard must look fully populated and impressive on first load.`;
+      }
     } else if (mode === "app") {
       baseSystemMsg = APP_SYSTEM;
       defaultMaxTokens = 16384;
@@ -1172,11 +1187,24 @@ STRUCTURAL REQUIREMENTS:
     console.log(`[token-budget] mode=${mode || 'diff'} model=${model} system≈${estSystemTokens}tok prompt≈${estPromptTokens}tok total≈${estSystemTokens + estPromptTokens}tok maxOutput=${resolvedMaxTokens}`);
 
     // Append content enforcement to user message based on intent
+    const isSampleDataPrompt = /\bsample data\b/i.test(prompt) || /\[Data source: sample data\]/i.test(prompt);
     if (isDashboardPrompt(prompt) && mode !== "dashboard") {
       // Only append CHART_ENFORCEMENT for non-dashboard modes (e.g. page/html)
       // Dashboard mode already has comprehensive chart instructions in DASHBOARD_SYSTEM;
       // appending CHART_ENFORCEMENT would contradict its data-sourcing rules.
-      prompt = prompt + CHART_ENFORCEMENT;
+      if (isSampleDataPrompt) {
+        // Override: use hardcoded sample data instead of vibeLoadData
+        prompt = prompt + `
+
+MANDATORY CHART REQUIREMENT:
+This dashboard MUST include Chart.js charts with REALISTIC HARDCODED SAMPLE DATA.
+The user has no connected data source. Do NOT use vibeLoadData(). Do NOT show empty states.
+Generate const SAMPLE_DATA arrays with 10-20 realistic domain-appropriate rows.
+Use these arrays to populate ALL Chart.js charts, KPI cards, and data tables.
+Include at least 3 charts (bar, line, doughnut) and 4-6 KPI cards — all fully populated.`;
+      } else {
+        prompt = prompt + CHART_ENFORCEMENT;
+      }
     } else if (isLandingPagePrompt(prompt)) {
       prompt = prompt + LANDING_PAGE_ENFORCEMENT;
     }
