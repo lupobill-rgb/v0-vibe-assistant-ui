@@ -319,6 +319,24 @@ export async function POST(request: Request) {
     }
 
     const text = await callAnthropic(anthropicMessages, intakeSystem, 500)
+
+    // Detect ready signal in Claude's response and return structured data
+    // so the client never sees raw JSON in the chat
+    try {
+      const stripped = text.replace(/```(?:json)?\s*\n?/g, '').replace(/\n?```\s*$/g, '').trim()
+      const parsed = JSON.parse(stripped)
+      if (parsed.ready && parsed.enrichedPrompt) {
+        return NextResponse.json({
+          text: parsed.summary ? `Got it — building: ${parsed.summary}` : 'Starting your build...',
+          ready: true,
+          enrichedPrompt: parsed.enrichedPrompt,
+          summary: parsed.summary || '',
+        })
+      }
+    } catch {
+      // Not JSON or not a ready signal — return as normal text
+    }
+
     return NextResponse.json({ text })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

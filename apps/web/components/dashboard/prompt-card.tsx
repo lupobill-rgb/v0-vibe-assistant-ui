@@ -270,7 +270,8 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
       const reply = response.text
       if (response.ready && response.enrichedPrompt) {
         setEnrichedPrompt(response.enrichedPrompt)
-        setMessages([{ role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        const displayText = response.summary ? `Got it — building: ${response.summary}` : 'Starting your build...'
+        setMessages([{ role: "assistant", text: displayText }])
         await fireJob(response.enrichedPrompt)
         return
       }
@@ -348,7 +349,8 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
       // Server-side ready detection
       if (response.ready && response.enrichedPrompt) {
         setEnrichedPrompt(response.enrichedPrompt)
-        setMessages([{ role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        const displayText = response.summary ? `Got it — building: ${response.summary}` : 'Starting your build...'
+        setMessages([{ role: "assistant", text: displayText }])
         await fireJob(response.enrichedPrompt)
         return
       }
@@ -388,7 +390,8 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
       const reply = response.text
       // Server-side ready detection
       if (response.ready && response.enrichedPrompt) {
-        setMessages((m) => [...m, { role: "assistant", text: reply || `Got it — building: ${response.summary}` }])
+        const displayText = response.summary ? `Got it — building: ${response.summary}` : 'Starting your build...'
+        setMessages((m) => [...m, { role: "assistant", text: displayText }])
         setEnrichedPrompt(response.enrichedPrompt)
         await fireJob(response.enrichedPrompt)
         return
