@@ -318,23 +318,74 @@ export async function POST(request: Request) {
       }
     }
 
-    const text = await callAnthropic(anthropicMessages, intakeSystem, 500)
+    // 2000 tokens to ensure enrichedPrompt JSON isn't truncated mid-response
+    const text = await callAnthropic(anthropicMessages, intakeSystem, 2000)
 
     // Detect ready signal in Claude's response and return structured data
     // so the client never sees raw JSON in the chat
+    // Strategy: try strict parse first, then brace-matching for embedded JSON
+    let readySignal: { ready: boolean; enrichedPrompt: string; summary?: string } | null = null
+    // 1. Direct JSON.parse
     try {
       const stripped = text.replace(/```(?:json)?\s*\n?/g, '').replace(/\n?```\s*$/g, '').trim()
       const parsed = JSON.parse(stripped)
-      if (parsed.ready && parsed.enrichedPrompt) {
-        return NextResponse.json({
-          text: parsed.summary ? `Got it — building: ${parsed.summary}` : 'Starting your build...',
-          ready: true,
-          enrichedPrompt: parsed.enrichedPrompt,
-          summary: parsed.summary || '',
-        })
+      if (parsed.ready && parsed.enrichedPrompt) readySignal = parsed
+    } catch {}
+    // 2. Brace-matching fallback (handles extra text around JSON)
+    if (!readySignal) {
+      const start = text.indexOf('{')
+      if (start >= 0) {
+        let depth = 0, inStr = false, esc = false
+        for (let i = start; i < text.length; i++) {
+          const ch = text[i]
+          if (esc) { esc = false; continue }
+          if (ch === '\\' && inStr) { esc = true; continue }
+          if (ch === '"') { inStr = !inStr; continue }
+          if (inStr) continue
+          if (ch === '{') depth++
+          else if (ch === '}') { depth--; if (depth === 0) {
+            try { const p = JSON.parse(text.slice(start, i + 1)); if (p.ready && p.enrichedPrompt) readySignal = p } catch {}
+            break
+          }}
+        }
       }
-    } catch {
-      // Not JSON or not a ready signal — return as normal text
+    }
+    // 3. Last resort: if response contains ready markers but JSON is truncated,
+    //    extract enrichedPrompt via regex so raw JSON never reaches the user
+    if (!readySignal && text.includes('"ready"') && text.includes('"enrichedPrompt"')) {
+      const epMatch = text.match(/"enrichedPrompt"\s*:\s*"([\s\S]+?)(?:"\s*[,}]|$)/)
+      const sumMatch = text.match(/"summary"\s*:\s*"([\s\S]+?)(?:"\s*[,}]|$)/)
+      if (epMatch) {
+        readySignal = {
+          ready: true,
+          enrichedPrompt: epMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+          summary: sumMatch ? sumMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : '',
+        }
+      }
+    }
+
+    if (readySignal) {
+      return NextResponse.json({
+        text: readySignal.summary ? `Got it — building: ${readySignal.summary}` : 'Starting your build...',
+        ready: true,
+        enrichedPrompt: readySignal.enrichedPrompt,
+        summary: readySignal.summary || '',
+      })
+    }
+
+    // Final safety net: never return raw JSON-like text to the client
+    if (text.trimStart().startsWith('{') && text.includes('"enrichedPrompt"')) {
+      // Truncated or malformed ready signal — extract what we can from conversation
+      const collectedPrompt = messages
+        .filter((m: { role: string }) => m.role === 'user')
+        .map((m: { content: string }) => m.content)
+        .join('\n\n')
+      return NextResponse.json({
+        text: 'Starting your build...',
+        ready: true,
+        enrichedPrompt: collectedPrompt,
+        summary: 'Building from your conversation',
+      })
     }
 
     return NextResponse.json({ text })
