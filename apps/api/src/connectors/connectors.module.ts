@@ -3,10 +3,11 @@ import { ConnectorsController, ConnectorsTeamController } from './connectors.con
 import { WebhookController } from './webhook.controller';
 import { NangoService } from './nango.service';
 import { WebhookService } from './webhook.service';
+import { AutonomousSchedulerService } from './autonomous-scheduler.service';
 
 @Module({
   controllers: [ConnectorsController, WebhookController, ConnectorsTeamController],
-  providers: [NangoService, WebhookService],
+  providers: [NangoService, WebhookService, AutonomousSchedulerService],
   exports: [NangoService, WebhookService],
 })
 export class ConnectorsModule {}
