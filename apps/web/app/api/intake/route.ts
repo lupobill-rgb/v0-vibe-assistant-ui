@@ -283,7 +283,7 @@ export async function POST(request: Request) {
           hasActiveConnectors = connectors.some((c: { status?: string }) => c.status === 'active')
         }
         if (isDashboard && !hasActiveConnectors) {
-          intakeSystem += `\n\nOVERRIDE â€” no connectors are active. Ask 1 focused question before building. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
+          intakeSystem += `\n\nOVERRIDE — no connectors are active. Ask 1 focused question before building. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. IMPORTANT: In the enrichedPrompt, include the phrase “sample data” so the builder knows to hardcode realistic data into charts instead of querying empty databases. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
         }
       } catch (connErr) {
         console.warn('[INTAKE] connector check failed â€” proceeding without:', connErr)
