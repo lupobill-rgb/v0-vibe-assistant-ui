@@ -779,7 +779,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           </div>
         ) : null}
       </div>
-      <div className="w-full md:w-[560px] flex-shrink-0 flex flex-col order-first md:order-none" style={{ background: '#13131a', fontFamily: 'Inter, sans-serif' }}>
+      <div className="w-full md:w-[400px] flex-shrink-0 flex flex-col order-first md:order-none" style={{ background: '#13131a', fontFamily: 'Inter, sans-serif' }}>
         {/* ── [1] MOBILE TOGGLE ── */}
         <button
           type="button"
@@ -886,7 +886,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
               </div>
             </div>
             {/* RIGHT COLUMN — tool panel */}
-            <div style={{ width: 180, flexShrink: 0, borderLeft: '1px solid #1e1e2a', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
+            <div style={{ width: 140, flexShrink: 0, borderLeft: '1px solid #1e1e2a', padding: '14px 8px', display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
               <span style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6b7280', marginBottom: 2 }}>Tools used</span>
               {TOOL_STEPS.map(step => {
                 const isDone = completedTools.includes(step)
