@@ -104,7 +104,7 @@ export class WebhookController {
       .from('autonomous_executions')
       .insert({
         skill_id: skill.id,
-        org_id: orgId,
+        organization_id: orgId,
         team_id: teamId,
         trigger_source: provider,
         trigger_event: payload,
