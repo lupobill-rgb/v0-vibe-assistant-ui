@@ -41,7 +41,7 @@ async function claimPendingExecution(): Promise<AutonomousExecution | null> {
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
     .limit(CLAIM_BATCH_SIZE)
-    .single();
+    .maybeSingle();
 
   if (fetchErr || !pending) return null;
 
@@ -52,7 +52,7 @@ async function claimPendingExecution(): Promise<AutonomousExecution | null> {
     .eq('id', pending.id)
     .eq('status', 'pending')
     .select('id, organization_id, team_id, skill_id, trigger_source, trigger_event, trigger_payload')
-    .single();
+    .maybeSingle();
 
   if (claimErr || !claimed) {
     // Another worker claimed it
