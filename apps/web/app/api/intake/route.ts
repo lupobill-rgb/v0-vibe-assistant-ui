@@ -148,21 +148,22 @@ export async function POST(request: Request) {
       const editSystem = 'You are an expert web developer. Make ONLY the requested change to the HTML. Preserve everything else exactly. Return complete HTML starting with <!DOCTYPE html>. No explanations. Raw HTML only.'
       const editMessages = [{ role: 'user', content: trimmedContext ? `Current HTML:\n${trimmedContext}\n\nEdit request: ${prompt}` : prompt }]
 
+      // Use Edge Function as primary — runs on Supabase (150s timeout) with
+      // 4-provider failover chain. Avoids Vercel function timeout ("Load failed").
+      const edgePrompt = trimmedContext
+        ? `Current HTML:\n${trimmedContext}\n\nEdit request: ${prompt}`
+        : prompt
       let html = ''
       try {
-        html = await callAnthropic(editMessages, editSystem, 16000)
-      } catch (anthropicErr: any) {
-        console.warn(`[EDIT] Anthropic call failed (${anthropicErr.message}), falling back to Edge Function`)
-        // Fall back to Edge Function (has 4-provider failover chain)
+        const edgeData = await callEdgeFunction(edgePrompt, editSystem, 16000, { mode: 'html' })
+        html = edgeData.diff || ''
+      } catch (edgeErr: any) {
+        console.warn(`[EDIT] Edge Function failed (${edgeErr.message}), falling back to Anthropic direct`)
         try {
-          const edgePrompt = trimmedContext
-            ? `Current HTML:\n${trimmedContext}\n\nEdit request: ${prompt}`
-            : prompt
-          const edgeData = await callEdgeFunction(edgePrompt, editSystem, 16000, { mode: 'html' })
-          html = edgeData.diff || ''
-        } catch (edgeErr: any) {
-          console.error(`[EDIT] Edge Function fallback also failed: ${edgeErr.message}`)
-          return NextResponse.json({ error: `Edit failed: ${anthropicErr.message}` }, { status: 502 })
+          html = await callAnthropic(editMessages, editSystem, 16000)
+        } catch (anthropicErr: any) {
+          console.error(`[EDIT] Anthropic fallback also failed: ${anthropicErr.message}`)
+          return NextResponse.json({ error: `Edit failed: ${edgeErr.message}` }, { status: 502 })
         }
       }
 
