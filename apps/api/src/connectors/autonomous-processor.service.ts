@@ -72,6 +72,21 @@ export class AutonomousProcessorService {
       return;
     }
 
+    // Resolve project for this team
+    const { data: project } = await this.sb
+      .from('projects')
+      .select('id')
+      .eq('team_id', execution.team_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!project) {
+      this.logger.warn(`No project found for team ${execution.team_id}, skipping`);
+      await this.sb.from('autonomous_executions').update({ status: 'skipped' }).eq('id', execution.id);
+      return;
+    }
+
     // Build prompt and insert job
     const prompt = `Using the ${skill.name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
 
@@ -82,7 +97,7 @@ export class AutonomousProcessorService {
       .insert({
         id: jobId,
         user_prompt: prompt,
-        project_id: null,
+        project_id: project.id,
         source_branch: `autonomous/${execution.skill_id}`,
         destination_branch: 'main',
         execution_state: 'queued',
