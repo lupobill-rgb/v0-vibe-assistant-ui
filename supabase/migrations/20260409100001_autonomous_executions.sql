@@ -1,10 +1,8 @@
 -- Reactive Kernel Stage 1: evolve autonomous_executions to full spec
 -- Adds missing columns for cascade tracking & aligns types
 
--- org_id alias (table uses organization_id; add org_id as generated column)
-ALTER TABLE autonomous_executions
-  ADD COLUMN IF NOT EXISTS org_id uuid
-    GENERATED ALWAYS AS (organization_id) STORED;
+-- NOTE: org_id generated column removed — API uses organization_id directly.
+-- Generated columns cause PostgREST 406 errors on schema cache reload.
 
 -- trigger_event: convert from TEXT to JSONB if needed
 DO $$
