@@ -714,16 +714,25 @@ async function bootstrap() {
       }
 
       // Golden template matching: if prompt matches a template, inject its content directly
-      const goldenMatch = await resolveGoldenTemplateMatch(prompt);
+      let goldenMatch = { matched: false, skillName: '', content: '' };
+      try {
+        goldenMatch = await resolveGoldenTemplateMatch(prompt);
+      } catch (gtmErr: any) {
+        console.warn(`[GOLDEN] resolveGoldenTemplateMatch failed (non-blocking): ${gtmErr.message}`);
+      }
 
       // Kernel context injection: prepend team/role/brand identity to prompt
       let enrichedPrompt = prompt;
       let injectSupabaseHelpers = false;
       if (user_id && org) {
-        const kernel = await resolveKernelContext(user_id, org.id, project.team_id, prompt, mode);
-        if (kernel.context) {
-          enrichedPrompt = `${kernel.context}\n\nUSER REQUEST:\n${prompt}`;
-          injectSupabaseHelpers = kernel.injectSupabaseHelpers;
+        try {
+          const kernel = await resolveKernelContext(user_id, org.id, project.team_id, prompt, mode);
+          if (kernel.context) {
+            enrichedPrompt = `${kernel.context}\n\nUSER REQUEST:\n${prompt}`;
+            injectSupabaseHelpers = kernel.injectSupabaseHelpers;
+          }
+        } catch (kernelErr: any) {
+          console.warn(`[KERNEL] resolveKernelContext failed (non-blocking): ${kernelErr.message}`);
         }
       }
 

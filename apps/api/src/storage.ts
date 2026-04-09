@@ -430,21 +430,25 @@ export class VibeStorage {
       .from('jobs')
       .insert(insert);
 
-    // If the insert failed due to conversation_id column not existing yet,
-    // retry without it so the job can still be created.
-    if (error) {
-      const msg = error.message || '';
-      if (msg.includes('conversation_id')) {
-        console.warn(`[STORAGE] conversation_id column missing on jobs table, retrying without it`);
-        const { conversation_id, ...insertWithout } = insert;
-        const { error: retryError } = await this.sb
-          .from('jobs')
-          .insert(insertWithout);
-        if (retryError) throw new Error(`Failed to create task: ${retryError.message}`);
-        return;
-      }
-      throw new Error(`Failed to create task: ${error.message}`);
-    }
+    if (!error) return;
+
+    // If insert failed, retry with only core columns (strip any that may not exist yet)
+    console.warn(`[STORAGE] createTask failed: ${error.message} — retrying with core columns only`);
+    const coreInsert: Record<string, unknown> = {
+      id: task.task_id,
+      user_prompt: task.user_prompt,
+      project_id: task.project_id || null,
+      source_branch: task.source_branch,
+      destination_branch: task.destination_branch,
+      execution_state: task.execution_state,
+      iteration_count: 0,
+      initiated_at: task.initiated_at || new Date().toISOString(),
+      last_modified: task.last_modified || new Date().toISOString(),
+    };
+    const { error: retryError } = await this.sb
+      .from('jobs')
+      .insert(coreInsert);
+    if (retryError) throw new Error(`Failed to create task: ${retryError.message} (original: ${error.message})`);
   }
 
   async getTask(taskId: string): Promise<VibeTask | undefined> {
