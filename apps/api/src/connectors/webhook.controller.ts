@@ -19,7 +19,7 @@ export class WebhookController {
     try {
       const { connectionId, providerConfigKey, syncName, model, queryTimeStamp } = body ?? {};
       this.logger.log(`Webhook raw body: ${JSON.stringify(body)}`);
-      if (!connectionId || !providerConfigKey || !syncName || !model || !queryTimeStamp) {
+      if (!connectionId || !providerConfigKey || !syncName) {
         this.logger.warn('Webhook missing required fields', { connectionId, providerConfigKey, syncName });
         return { ok: true, queued: 0 };
       }
@@ -30,7 +30,7 @@ export class WebhookController {
         return { ok: true, queued: 0 };
       }
 
-      const skills = await this.resolveMatchingSkills(resolved.orgId, resolved.teamId, providerConfigKey, syncName);
+      const skills = await this.resolveMatchingSkills(resolved.orgId, resolved.teamId, providerConfigKey, syncName, model);
       if (!skills.length) {
         this.logger.log(`No matching skills for ${providerConfigKey}:${syncName}`);
         return { ok: true, queued: 0 };
@@ -68,7 +68,7 @@ export class WebhookController {
   }
 
   private async resolveMatchingSkills(
-    _orgId: string, _teamId: string, provider: string, syncName: string,
+    _orgId: string, _teamId: string, provider: string, syncName: string, model?: string,
   ): Promise<any[]> {
     const { data, error } = await this.sb
       .from('skill_registry')
@@ -78,7 +78,7 @@ export class WebhookController {
     if (error || !data) return [];
     return data.filter((s: any) => {
       const t = s.trigger_on;
-      return t?.provider === provider && t?.sync === syncName;
+      return t?.provider === provider && (t?.sync === syncName || (model && t?.sync === model));
     });
   }
 
