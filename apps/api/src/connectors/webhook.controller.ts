@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode, Logger } from '@nestjs/common';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import { AutonomousProcessorService } from './autonomous-processor.service';
 
 /**
  * Autonomous webhook controller — receives Nango sync events and creates
@@ -9,6 +10,7 @@ import { getPlatformSupabaseClient } from '../supabase/client';
 @Controller('connectors')
 export class WebhookController {
   private readonly logger = new Logger(WebhookController.name);
+  constructor(private readonly autonomousProcessor: AutonomousProcessorService) {}
   private get sb() { return getPlatformSupabaseClient(); }
 
   @Post('webhook')
@@ -37,7 +39,12 @@ export class WebhookController {
       let queued = 0;
       for (const skill of skills) {
         this.createAutonomousJob(skill, resolved.orgId, resolved.teamId, providerConfigKey, payload)
-          .then(created => { if (created) queued++; })
+          .then(created => {
+            if (created) {
+              queued++;
+              setImmediate(() => this.autonomousProcessor.processQueuedExecutions().catch(e => this.logger.error(e)));
+            }
+          })
           .catch(err => this.logger.error(`Job creation failed: ${err.message}`));
       }
 

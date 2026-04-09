@@ -7,17 +7,18 @@ import { dispatchPendingExecutions } from '../kernel/execution-dispatcher';
 export class AutonomousSchedulerService {
   private readonly logger = new Logger('AutonomousScheduler');
 
-  @Cron('*/2 * * * *')
+  @Cron('*/30 * * * *')
   async tick(): Promise<void> {
-    this.logger.log('tick');
+    this.logger.log('[AutonomousScheduler] orphan recovery tick');
     try {
       const sb = getPlatformSupabaseClient();
 
-      // Find distinct orgs with queued executions
+      // Find distinct orgs with orphaned queued executions (older than 10 min)
       const { data: queued } = await sb
         .from('autonomous_executions')
         .select('organization_id')
-        .eq('status', 'queued');
+        .eq('status', 'queued')
+        .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString());
       const orgIds = [...new Set(queued?.map((r) => r.organization_id) ?? [])];
       if (orgIds.length === 0) {
         this.logger.log('no queued executions');
