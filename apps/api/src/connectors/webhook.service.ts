@@ -30,6 +30,8 @@ export class WebhookService {
     // Non-blocking sync + recommendations (no autonomous executions — those fire from user actions only)
     this.syncNangoRecords(payload, team.id, team.org_id).catch(err =>
       this.logger.error('Sync failed (non-blocking):', err.message));
+    this.generateRecommendations(team.org_id, team.id, payload.providerConfigKey, payload.model)
+      .catch(err => this.logger.error('Recommendations failed (non-blocking):', err.message));
     return { queued: 0 };
   }
 
@@ -72,8 +74,6 @@ export class WebhookService {
       } catch (e: any) { this.logger.warn(`Record upsert failed: ${e.message}`); }
     }
     this.logger.log(`Synced ${records.length} ${payload.model} records for team ${teamId}`);
-    this.generateRecommendations(orgId, teamId, payload.providerConfigKey, payload.model).catch(err =>
-      this.logger.error('Recommendations failed (non-blocking):', err.message));
   }
 
   async generateRecommendations(orgId: string, teamId: string, _provider: string, model: string): Promise<void> {
