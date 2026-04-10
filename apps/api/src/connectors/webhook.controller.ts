@@ -16,8 +16,10 @@ export class WebhookController {
   @Post('webhook')
   @HttpCode(200)
   async handleWebhook(@Body() body: any): Promise<{ ok: true; queued: number }> {
-    // ── KILL SWITCH: HubSpot/Nango automations disabled — burning credits and causing bugs ──
-    this.logger.warn('Nango webhook disabled (kill switch active). Ignoring event.');
+    // ── DISABLED: autonomous executions from webhooks burn LLM credits too fast ──
+    // Data sync still flows via WebhookService.handleNangoEvent. Re-enable when
+    // recommendations move to a daily cron and spend caps are verified.
+    this.logger.log('Autonomous webhook processing disabled — data sync only mode.');
     return { ok: true, queued: 0 };
     try {
       const { connectionId, providerConfigKey, syncName, model, queryTimeStamp } = body ?? {};
