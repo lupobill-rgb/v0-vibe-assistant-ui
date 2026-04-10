@@ -86,13 +86,13 @@ export class AutonomousProcessorService {
       return;
     }
 
-    // Prevent duplicate builds within 24 hours
+    // Prevent duplicate builds within 1 hour
     const { data: recentJob } = await this.sb
       .from('jobs')
       .select('id, execution_state')
       .eq('project_id', project.id)
       .in('execution_state', ['completed', 'building', 'calling_llm', 'planning'])
-      .gte('initiated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .gte('initiated_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
       .limit(1)
       .maybeSingle();
 
