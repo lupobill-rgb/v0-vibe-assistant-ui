@@ -23,6 +23,10 @@ const VALID_PROVIDERS = new Set<string>(Object.values(ConnectorType));
  * any trigger_on starting with "provider:".
  */
 router.post('/:provider', async (req: Request, res: Response) => {
+  // ── KILL SWITCH: HubSpot/Nango automations disabled — burning credits and causing bugs ──
+  console.warn('[webhook] Kill switch active. Ignoring all provider webhooks.');
+  return res.status(200).json({ matched: 0, queued: 0, message: 'Webhooks disabled (kill switch)' });
+
   try {
     // Auth: require shared secret header (if configured)
     if (WEBHOOK_SECRET) {

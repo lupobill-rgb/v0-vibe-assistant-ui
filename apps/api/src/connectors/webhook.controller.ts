@@ -16,6 +16,9 @@ export class WebhookController {
   @Post('webhook')
   @HttpCode(200)
   async handleWebhook(@Body() body: any): Promise<{ ok: true; queued: number }> {
+    // ── KILL SWITCH: HubSpot/Nango automations disabled — burning credits and causing bugs ──
+    this.logger.warn('Nango webhook disabled (kill switch active). Ignoring event.');
+    return { ok: true, queued: 0 };
     try {
       const { connectionId, providerConfigKey, syncName, model, queryTimeStamp } = body ?? {};
       this.logger.log(`Webhook raw body: ${JSON.stringify(body)}`);

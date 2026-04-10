@@ -31,9 +31,20 @@ export class WebhookService {
     this.upsertSkillProjects(team.id, payload.providerConfigKey, payload.model).catch(err =>
       this.logger.error('Skill project upsert failed (non-blocking):', err.message));
 
-    // Non-blocking sync + recommendations (no autonomous executions — those fire from user actions only)
+    // Always sync data (free — just DB writes)
     this.syncNangoRecords(payload, team.id, team.org_id).catch(err =>
       this.logger.error('Sync failed (non-blocking):', err.message));
+
+    // Only run LLM recommendations if kill switch is OFF
+    const { data: org } = await this.sb
+      .from('organizations')
+      .select('autonomous_kill_switch')
+      .eq('id', team.org_id)
+      .single();
+    if (org?.autonomous_kill_switch !== false) {
+      this.logger.log(`Autonomous kill switch active for org ${team.org_id} — data synced, skipping recommendations`);
+      return { queued: 0 };
+    }
     this.generateRecommendations(team.org_id, team.id, payload.providerConfigKey, payload.model)
       .then(async (count) => {
         await this.sb.from('team_integrations').update({
@@ -99,15 +110,26 @@ export class WebhookService {
       .eq('team_id', teamId).gte('created_at', ago30d);
 
     const prompt = `You are an AI business advisor. Based on this org data, generate 1-3 actionable recommendations for the ${model} team. Be specific and quantitative. Return ONLY a JSON array, no markdown:\n[{"title":string,"rationale":string,"proposed_action":string,"estimated_impact":string,"priority":"high"|"medium"|"low","team_function":string}]\n\nData: ${JSON.stringify({ deals, spend, usage })}`;
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
-    });
-    if (!res.ok) { this.logger.warn(`Anthropic API error: ${res.status}`); return 0; }
-
     let recs: any[];
-    try { recs = JSON.parse(((await res.json()) as any).content[0].text); } catch { this.logger.warn('Bad recommendations JSON'); return 0; }
+    // Use DeepSeek as primary (cheapest), fall back to OpenAI
+    const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
+      body: JSON.stringify({ model: 'deepseek-chat', max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
+    }).catch(() => null);
+
+    if (deepseekRes?.ok) {
+      try { recs = JSON.parse(((await deepseekRes.json()) as any).choices[0].message.content); } catch { recs = []; }
+    } else {
+      this.logger.warn(`[LLM-FALLBACK] DeepSeek failed (${deepseekRes?.status ?? 'network'}), falling back to OpenAI`);
+      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
+      }).catch(() => null);
+      if (!openaiRes?.ok) { this.logger.warn(`OpenAI also failed (${openaiRes?.status ?? 'network'})`); return 0; }
+      try { recs = JSON.parse(((await openaiRes.json()) as any).choices[0].message.content); } catch { this.logger.warn('Bad recommendations JSON from OpenAI'); return 0; }
+    }
     if (!Array.isArray(recs)) return 0;
 
     let count = 0;
@@ -155,25 +177,17 @@ export class WebhookService {
         .maybeSingle();
 
       if (existing) {
-        // Update existing project instead of creating a new one
         await this.sb.from('projects')
           .update({ last_synced: new Date().toISOString() })
           .eq('id', existing.id);
-        this.logger.log(`Updated existing project ${existing.id} for skill ${skill.skill_name}`);
-
-        // Also skip any queued autonomous executions for this skill+team to prevent duplicate builds
-        await this.sb.from('autonomous_executions')
-          .update({ status: 'skipped' })
-          .eq('skill_id', skill.id)
-          .eq('team_id', teamId)
-          .eq('status', 'queued');
+        this.logger.log(`Updated project ${existing.id} for skill ${skill.skill_name}`);
       }
     }
   }
 
   async getGuardrailStatus(orgId: string): Promise<{ autonomousEnabled: boolean }> {
-    const { data } = await this.sb.from('org_feature_flags')
-      .select('autonomous_enabled').eq('org_id', orgId).single();
-    return { autonomousEnabled: data?.autonomous_enabled ?? false };
+    const { data } = await this.sb.from('organizations')
+      .select('autonomous_kill_switch').eq('id', orgId).single();
+    return { autonomousEnabled: data?.autonomous_kill_switch === false };
   }
 }
