@@ -158,6 +158,32 @@ function buildBlobUrl(pages: PageData[], activeFile: string, teamId?: string): s
     html = credentialsScript + '\n' + html
   }
 
+  // Fix canvas elements missing required inline styles (LLM sometimes omits them)
+  html = html.replace(
+    /<canvas([^>]*?)>/gi,
+    (_match, attrs: string) => {
+      // Extract height attribute value, default to 200
+      const hMatch = attrs.match(/height\s*=\s*["']?(\d+)["']?/i)
+      const h = hMatch ? hMatch[1] : '200'
+      // Add height attribute if missing
+      if (!hMatch) attrs += ` height="${h}"`
+      // Add or replace inline style with !important height
+      const styleStr = `height:${h}px !important; max-height:${h}px;`
+      if (/style\s*=/i.test(attrs)) {
+        attrs = attrs.replace(/style\s*=\s*["']([^"']*)["']/i, `style="${styleStr} $1"`)
+      } else {
+        attrs += ` style="${styleStr}"`
+      }
+      return `<canvas${attrs}>`
+    }
+  )
+
+  // Inject Chart.js responsive fix — ensure maintainAspectRatio is false
+  const chartFix = '<script>document.addEventListener("DOMContentLoaded",function(){if(window.Chart){var o=Chart.defaults;o.responsive=true;o.maintainAspectRatio=false;}});</script>'
+  if (html.toLowerCase().includes('</head>')) {
+    html = html.replace(/(<\/head>)/i, `${chartFix}\n$1`)
+  }
+
   // Inject router script to handle #filename.html navigation
   const routerScript = pages.length > 1 ? '<script>' +
     'window.addEventListener("hashchange",function(){' +

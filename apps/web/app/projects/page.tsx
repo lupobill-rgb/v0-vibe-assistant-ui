@@ -9,6 +9,8 @@ import { fetchProjects, type Project } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
 import { ImportGithubDialog } from "@/components/dialogs/import-github-dialog"
+import { RecommendationBanner } from "@/components/dashboard/recommendation-banner"
+import { useTeam } from "@/contexts/TeamContext"
 
 export default function ProjectsPage() {
   const [projectCount, setProjectCount] = useState<number | null>(null)
@@ -16,6 +18,7 @@ export default function ProjectsPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const router = useRouter()
+  const { currentTeam, currentOrg } = useTeam()
 
   useEffect(() => {
     fetchProjects().then((data: Project[]) => setProjectCount(data.length))
@@ -68,6 +71,13 @@ export default function ProjectsPage() {
             </div>
           </div>
         </div>
+
+        {/* Recommendation Banner */}
+        {currentTeam && currentOrg && (
+          <div className="px-4 sm:px-6 pt-4">
+            <RecommendationBanner teamId={currentTeam.id} orgId={currentOrg.id} context="home" />
+          </div>
+        )}
 
         {/* Projects Grid */}
         <ProjectsGrid key={refreshKey} />
