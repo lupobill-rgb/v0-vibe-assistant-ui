@@ -35,6 +35,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { CreateProjectDialog } from "@/components/dialogs/create-project-dialog"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
 import { supabase } from "@/lib/supabase"
 import { fetchBillingStatus, type BillingStatus } from "@/lib/api"
@@ -133,16 +134,19 @@ export function AppSidebar({ currentOrg, currentTeam, userRole, availableTeams, 
           collapsed ? "w-[68px]" : "w-[240px]"
         )}
       >
-        {/* Logo / Brand */}
+        {/* Logo / Brand + Notifications */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border flex-shrink-0">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-[#00E5A0] via-[#00B4D8] to-[#7B61FF]">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
           </div>
           {!collapsed && (
-            <span className="text-lg font-extrabold tracking-[-1px]" style={{ fontFamily: "'Syne', sans-serif" }}>
-              <span className="text-[#E8ECF4]">UBI</span>
-              <span style={{ background: 'linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Vibe</span>
-            </span>
+            <>
+              <span className="text-lg font-extrabold tracking-[-1px] flex-1" style={{ fontFamily: "'Syne', sans-serif" }}>
+                <span className="text-[#E8ECF4]">UBI</span>
+                <span style={{ background: 'linear-gradient(135deg, #00E5A0 0%, #00B4D8 50%, #7B61FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Vibe</span>
+              </span>
+              <NotificationBell />
+            </>
           )}
         </div>
 

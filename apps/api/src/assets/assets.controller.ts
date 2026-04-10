@@ -86,6 +86,65 @@ export class AssetsController {
   }
 
   /**
+   * POST /assets/:id/share
+   * Share an asset with specific users, teams, or roles.
+   */
+  @Post(':id/share')
+  async share(
+    @Req() req: Request, @Param('id') assetId: string,
+    @Body() body: { targets: { type: 'user' | 'team' | 'role'; id?: string; role?: string }[]; message?: string; access_level?: string },
+  ) {
+    const userId = extractUserId(req);
+    if (!userId) throw new UnauthorizedException('Authentication required');
+    if (!body.targets?.length) throw new BadRequestException('targets[] required');
+
+    const sb = getPlatformSupabaseClient();
+    const { data: membership } = await sb
+      .from('team_members').select('team_id, role, teams(org_id)')
+      .eq('user_id', userId).limit(1).single();
+    if (!membership) throw new BadRequestException('User has no team membership');
+
+    // Role gate: Manager+ can share
+    const SHARE_ROLES = ['Manager', 'Director', 'Executive', 'Admin'];
+    if (!SHARE_ROLES.includes((membership as any).role)) {
+      throw new BadRequestException('Manager role or above required to share');
+    }
+
+    const orgId = (membership as any).teams?.org_id;
+    if (!orgId) throw new BadRequestException('Could not resolve organization');
+
+    try {
+      const result = await this.assetsService.shareAsset(
+        assetId, userId, orgId, body.targets, body.message, body.access_level,
+      );
+      return result;
+    } catch (err: any) {
+      throw new InternalServerErrorException(err.message);
+    }
+  }
+
+  /**
+   * GET /assets/shared-with-me
+   * Assets shared with the current user.
+   */
+  @Get('shared-with-me')
+  async sharedWithMe(@Req() req: Request) {
+    const userId = extractUserId(req);
+    if (!userId) throw new UnauthorizedException('Authentication required');
+
+    const sb = getPlatformSupabaseClient();
+    const { data: membership } = await sb
+      .from('team_members').select('team_id, teams(org_id)')
+      .eq('user_id', userId).limit(1).single();
+    if (!membership) return [];
+
+    const orgId = (membership as any).teams?.org_id;
+    if (!orgId) return [];
+
+    return this.assetsService.getSharedWithMe(userId, orgId);
+  }
+
+  /**
    * POST /assets/:id/subscribe
    * Subscribe current team to an asset.
    */
