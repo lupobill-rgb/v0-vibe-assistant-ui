@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import { dispatchPendingExecutions } from '../kernel/execution-dispatcher';
 
 const router = express.Router();
 
@@ -129,6 +130,13 @@ router.post('/recommendations/:id/decide', async (req: Request, res: Response) =
         .select('id')
         .single();
       execution_id = exec?.id ?? null;
+    }
+
+    // Fire the dispatcher so the queued execution gets picked up immediately
+    if (decision === 'approved' && execution_id) {
+      dispatchPendingExecutions().catch((err) => {
+        console.error('[approvals] dispatchPendingExecutions error:', err);
+      });
     }
 
     res.json({ decision, execution_id });

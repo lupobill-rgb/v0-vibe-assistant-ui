@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { API_URL } from "@/lib/api"
-import { Sparkles, X } from "lucide-react"
+import { Sparkles, X, Loader2 } from "lucide-react"
 
 interface Recommendation {
   id: string
@@ -47,6 +48,8 @@ export function RecommendationBanner({ teamId }: Props) {
   const [rec, setRec] = useState<Recommendation | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [running, setRunning] = useState(false)
+  const router = useRouter()
 
   const fetchRec = useCallback(async () => {
     if (!teamId) return
@@ -67,8 +70,9 @@ export function RecommendationBanner({ teamId }: Props) {
   useEffect(() => { fetchRec() }, [fetchRec])
 
   const decide = async (decision: "approved" | "rejected") => {
-    if (!rec) return
+    if (!rec || running) return
     const headers = await getAuthHeaders()
+    if (decision === "approved") setRunning(true)
     const res = await fetch(
       `${API_URL}/api/approvals/recommendations/${rec.id}/decide`,
       { method: "POST", headers, body: JSON.stringify({ decision }) },
@@ -76,10 +80,36 @@ export function RecommendationBanner({ teamId }: Props) {
     if (res.ok) {
       addDismissedId(rec.id)
       if (decision === "approved") {
-        setToast("Skill queued \u2014 UbiVibe is on it")
-        setTimeout(() => setToast(null), 3000)
+        setToast("Building \u2014 finding your project...")
+        const data = await res.json()
+        // Poll for the job created by the autonomous processor
+        if (data.execution_id) {
+          for (let i = 0; i < 10; i++) {
+            await new Promise(r => setTimeout(r, 1500))
+            const { data: exec } = await supabase
+              .from("autonomous_executions")
+              .select("job_id")
+              .eq("id", data.execution_id)
+              .single()
+            if (exec?.job_id) {
+              const { data: job } = await supabase
+                .from("jobs")
+                .select("project_id")
+                .eq("id", exec.job_id)
+                .single()
+              if (job?.project_id) {
+                router.push(`/building/${job.project_id}`)
+                return
+              }
+            }
+          }
+        }
+        setToast("Skill queued \u2014 check Projects for updates")
+        setTimeout(() => { setToast(null); setRunning(false) }, 3000)
       }
       setRec(null)
+    } else {
+      setRunning(false)
     }
   }
 
@@ -102,13 +132,15 @@ export function RecommendationBanner({ teamId }: Props) {
         </div>
         <button
           onClick={() => decide("approved")}
-          className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+          disabled={running}
+          className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
         >
-          Run this
+          {running ? <><Loader2 className="h-3 w-3 animate-spin" /> Building...</> : "Run this"}
         </button>
         <button
           onClick={() => decide("rejected")}
-          className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+          disabled={running}
+          className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors disabled:opacity-50"
           aria-label="Dismiss"
         >
           <X className="h-4 w-4" />
