@@ -972,7 +972,7 @@ async function callDeepseek(systemMsg: string, prompt: string, maxTokens = 4096)
     },
     body: JSON.stringify({
       model: "deepseek-chat",
-      max_tokens: Math.min(maxTokens, 16384),
+      max_tokens: Math.min(maxTokens, 8192),
       messages: [
         { role: "system", content: systemMsg },
         { role: "user", content: prompt },
