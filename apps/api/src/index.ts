@@ -1057,7 +1057,7 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
               if (classification.type === 'rate-limit') {
                 console.log(`[LLM-FALLBACK] triggered on fetch error: ${classification.reason}`);
                 fallbacks += 1;
-                const fallbackModel = model === 'claude' ? 'gpt' : 'claude';
+                const fallbackModel = model === 'deepseek' ? 'gpt' : 'deepseek';
                 return attempt(fallbackModel);
               }
               throw fetchErr;
@@ -1091,7 +1091,7 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
 
             console.log(`[LLM-FALLBACK] fallback triggered after retry: ${classification.reason}`);
             fallbacks += 1;
-            const fallbackModel = model === 'claude' ? 'gpt' : 'claude';
+            const fallbackModel = model === 'deepseek' ? 'gpt' : 'deepseek';
             return attempt(fallbackModel);
           };
 

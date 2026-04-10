@@ -110,7 +110,7 @@ export interface DiffResult {
 export async function generateDiff(
   prompt: string,
   context?: string,
-  model: string = "claude",
+  model: string = "deepseek",
   teamName?: string,
   teamId?: string,
 ): Promise<DiffResult> {

@@ -35,24 +35,32 @@ NEVER use alert(), confirm(), or prompt(). Use showToast() for all user feedback
 Output MUST start <!DOCTYPE html> and end </html>.`
 
 async function callAnthropic(messages: Array<{ role: string; content: string }>, system: string, maxTokens: number) {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+  // Use DeepSeek as primary (cheaper), fall back to Anthropic
+  const deepseekKey = process.env.DEEPSEEK_API_KEY
+  const anthropicKey = process.env.ANTHROPIC_API_KEY
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 90_000) // 90s timeout
+  const timeout = setTimeout(() => controller.abort(), 90_000)
   try {
+    if (deepseekKey) {
+      const res = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deepseekKey}` },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          max_tokens: maxTokens,
+          messages: [{ role: 'system', content: system }, ...messages],
+        }),
+        signal: controller.signal,
+      })
+      const data = await res.json()
+      if (res.ok) return data.choices?.[0]?.message?.content || ''
+      console.warn('[intake] DeepSeek failed, falling back to Anthropic:', data.error?.message)
+    }
+    if (!anthropicKey) throw new Error('No LLM API key configured (DEEPSEEK_API_KEY or ANTHROPIC_API_KEY)')
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: maxTokens,
-        system,
-        messages,
-      }),
+      headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, system, messages }),
       signal: controller.signal,
     })
     const data = await res.json()
@@ -66,7 +74,7 @@ async function callAnthropic(messages: Array<{ role: string; content: string }>,
 async function callEdgeFunction(prompt: string, system: string, maxTokens: number, opts?: { mode?: string; context?: string }) {
   const body: Record<string, unknown> = {
     prompt,
-    model: 'claude',
+    model: 'deepseek',
     system,
     max_tokens: maxTokens,
   }

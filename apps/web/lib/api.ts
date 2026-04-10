@@ -408,7 +408,7 @@ export async function generateDashboard(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       prompt: `${DASHBOARD_SYSTEM_PROMPT}\n\nUser request: ${prompt}`,
-      model: 'claude',
+      model: 'deepseek',
       ...(projectId && { projectId }),
     }),
   })
@@ -444,7 +444,7 @@ export async function generateMultiPageSite(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: `You are VIBE, an AI website builder. Return ONLY a complete, self-contained HTML page (no markdown fences, no explanation). Use a modern dark theme with clean typography.\n\nSite brief: ${prompt}\nPage: ${page.name} — ${page.instruction}`,
-          model: 'claude',
+          model: 'deepseek',
           ...(projectId && { projectId }),
         }),
       })

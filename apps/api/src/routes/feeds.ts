@@ -172,7 +172,7 @@ async function getFeedRecommendations(
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt, system, model: 'claude', max_tokens: 512 }),
+      body: JSON.stringify({ prompt, system, model: 'deepseek', max_tokens: 512 }),
     });
     if (!llmRes.ok) {
       console.warn(`[FEEDS] Edge function returned ${llmRes.status}`);
