@@ -108,30 +108,28 @@ export class AutonomousProcessorService {
     // Build prompt and insert job
     const prompt = `Using the ${skill.name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
 
-    const apiUrl = process.env.RAILWAY_API_URL || 'http://localhost:3001';
-    const response = await fetch(`${apiUrl}/jobs`, {
+    const apiBase = process.env.RAILWAY_INTERNAL_URL || `http://localhost:${process.env.PORT || 3001}`;
+    const jobRes = await fetch(`${apiBase}/jobs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Internal-Service': 'autonomous-processor',
-        'X-Team-Id': execution.team_id,
-        'X-Org-Id': execution.organization_id,
+        'Authorization': `Bearer ${process.env.VIBE_SERVICE_TOKEN || ''}`,
+        'X-User-Id': process.env.VIBE_ADMIN_USER_ID || 'e167c9d1-0680-4cbb-80a0-5c75453584b9',
       },
       body: JSON.stringify({
         prompt,
         project_id: project.id,
         conversation_id: execution.id,
         mode: 'dashboard',
-        type: 'autonomous',
       }),
-    });
+    }).catch(err => { throw new Error(`Job API call failed: ${err.message}`); });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Job creation failed: ${response.status} ${errText}`);
+    if (!jobRes.ok) {
+      const errText = await jobRes.text();
+      throw new Error(`Job creation failed: ${jobRes.status} ${errText}`);
     }
 
-    const jobData = await response.json() as any;
+    const jobData = await jobRes.json() as any;
     const job = { id: jobData.task_id || jobData.id };
 
     // Mark execution complete with job reference
@@ -140,6 +138,6 @@ export class AutonomousProcessorService {
       .update({ job_id: job.id, status: 'complete' })
       .eq('id', execution.id);
 
-    this.logger.log(`[AutonomousProcessor] dispatched job ${job.id} for skill ${skill.name}`);
+    this.logger.log(`[AutonomousProcessor] dispatched job ${job.id} for skill ${skill.skill_name}`);
   }
 }
