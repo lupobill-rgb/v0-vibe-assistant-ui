@@ -91,7 +91,7 @@ export class WebhookController {
       .select('id')
       .eq('skill_id', skill.id)
       .eq('team_id', teamId)
-      .neq('status', 'failed')
+      .in('status', ['queued', 'running', 'complete'])
       .gte('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString())
       .limit(1);
 
