@@ -121,8 +121,10 @@ export class AutonomousProcessorService {
       return;
     }
 
-    // Build prompt and insert job
-    const prompt = `Using the ${skill.name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
+    // Build prompt using skill metadata so the golden template matcher routes correctly
+    const teamFunction = skill.team_function || 'operations';
+    const skillDesc = skill.description ? ` — ${skill.description}` : '';
+    const prompt = `Build a ${teamFunction} dashboard using the ${skill.skill_name} skill${skillDesc}. Analyze the incoming ${execution.trigger_source} data and generate the appropriate ${teamFunction} output for this team.`;
 
     const apiBase = process.env.RAILWAY_INTERNAL_URL || `http://localhost:${process.env.PORT || 3001}`;
     const jobRes = await fetch(`${apiBase}/jobs`, {
