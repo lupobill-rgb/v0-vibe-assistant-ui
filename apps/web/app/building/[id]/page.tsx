@@ -512,31 +512,53 @@ export default function BuildingPage({ params }: BuildingPageProps) {
   }, [task?.execution_state, task?.user_prompt, projectName])
 
   // Fetch feed recommendations after build completes (once)
+  // Fetch available cross-team feeds via direct DB query (no LLM dependency)
   const feedRecsFetchedRef = useRef(false)
   useEffect(() => {
-    if (task?.execution_state !== 'completed' || !jobId || !projectTeamId) return
+    if (task?.execution_state !== 'completed' || !projectTeamId) return
     if (feedRecsFetchedRef.current) return
     feedRecsFetchedRef.current = true
     let cancelled = false
     ;(async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const token = session?.access_token
-        const res = await fetch(`${API_URL}/api/feeds/recommendations?jobId=${jobId}&teamId=${projectTeamId}`, {
-          headers: {
-            'X-Tenant-Id': TENANT_ID,
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          },
-        })
-        if (!res.ok || cancelled) return
-        const data = await res.json()
-        if (!cancelled && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
-          setFeedRecs(data.recommendations.slice(0, 2))
-        }
-      } catch { /* non-blocking — empty recs is fine */ }
+        // Get org_id for this team
+        const { data: team } = await supabase
+          .from('teams').select('org_id').eq('id', projectTeamId).single()
+        if (!team?.org_id || cancelled) return
+
+        // Get org-visible assets from other teams
+        const { data: assets } = await supabase
+          .from('published_assets')
+          .select('id, name, asset_type, team_id, description, teams!inner(name)')
+          .eq('visibility', 'org')
+          .eq('org_id', team.org_id)
+          .eq('is_active', true)
+          .neq('team_id', projectTeamId)
+          .limit(4)
+        if (!assets?.length || cancelled) return
+
+        // Check which are already subscribed
+        const { data: subs } = await supabase
+          .from('feed_subscriptions')
+          .select('asset_id')
+          .eq('subscriber_team_id', projectTeamId)
+          .eq('status', 'active')
+        const subSet = new Set((subs ?? []).map((s: any) => s.asset_id))
+
+        const available = assets
+          .filter((a: any) => !subSet.has(a.id))
+          .slice(0, 2)
+          .map((a: any) => ({
+            assetId: a.id,
+            feedName: a.name,
+            publisherTeam: (a as any).teams?.name ?? 'another team',
+            reason: a.description || `${a.asset_type} shared by ${(a as any).teams?.name ?? 'another team'}`,
+          }))
+        if (!cancelled && available.length > 0) setFeedRecs(available)
+      } catch { /* non-blocking */ }
     })()
     return () => { cancelled = true }
-  }, [task?.execution_state, jobId, projectTeamId])
+  }, [task?.execution_state, projectTeamId])
 
   const handleSubscribeFeed = useCallback(async (assetId: string, feedName: string) => {
     if (!projectTeamId || subscribedIds.has(assetId)) return
@@ -554,14 +576,13 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       })
       if (!res.ok) return
       setSubscribedIds(prev => new Set(prev).add(assetId))
-      const projectType = task?.user_prompt?.split(' ').slice(0, 4).join(' ') || 'project'
       setChatMessages(prev => [...prev, {
         id: Date.now(),
         role: 'vibe' as const,
-        text: `Subscribed to ${feedName}. Try: "Rebuild this ${projectType} with ${feedName} data included"`,
+        text: `Subscribed to ${feedName}! Your next build will include this data. Visit Feed to manage subscriptions.`,
       }])
     } catch { /* silent — button stays enabled for retry */ }
-  }, [projectTeamId, subscribedIds, task?.user_prompt])
+  }, [projectTeamId, subscribedIds])
 
   // Auto-scroll chat to bottom on new messages
   useEffect(() => {
