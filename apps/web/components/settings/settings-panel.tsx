@@ -154,17 +154,17 @@ export function SettingsPanel() {
   // autonomous_kill_switch=true means automations are OFF (inverted for UI)
   useEffect(() => {
     if (!currentOrg?.id) { setAutonomousLoading(false); return }
-    supabase
-      .from("organizations")
-      .select("autonomous_kill_switch")
-      .eq("id", currentOrg.id)
-      .single()
-      .then(({ data }) => {
-        // kill_switch=true → automations disabled → toggle OFF
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from("organizations")
+          .select("autonomous_kill_switch")
+          .eq("id", currentOrg.id)
+          .single()
         setAutonomousEnabled(data?.autonomous_kill_switch === false)
-        setAutonomousLoading(false)
-      })
-      .catch(() => setAutonomousLoading(false))
+      } catch { /* ignore */ }
+      setAutonomousLoading(false)
+    })()
   }, [currentOrg?.id])
 
   const handleAutonomousToggle = async () => {
