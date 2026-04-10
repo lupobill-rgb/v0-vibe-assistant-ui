@@ -70,26 +70,32 @@ function FieldRow({ label, value, description, badge }: FieldRowProps) {
   )
 }
 
-type LlmProvider = "deepseek" | "openai" | "anthropic"
+type LlmProvider = "deepseek" | "gpt" | "claude" | "gemini"
 
 const LLM_OPTIONS: { value: LlmProvider; label: string; model: string; description: string }[] = [
   {
     value: "deepseek",
     label: "DeepSeek V3",
     model: "deepseek-chat",
-    description: "Cost-effective code generation — default for staging",
+    description: "Cost-effective — default for staging",
   },
   {
-    value: "openai",
+    value: "gpt",
     label: "OpenAI GPT-4o",
     model: "gpt-4o",
     description: "Code generation via OpenAI",
   },
   {
-    value: "anthropic",
+    value: "claude",
     label: "Anthropic Claude",
     model: "claude-sonnet-4",
     description: "Highest quality — production use",
+  },
+  {
+    value: "gemini",
+    label: "Google Gemini",
+    model: "gemini-2.0-flash",
+    description: "Large context, cost-effective",
   },
 ]
 
@@ -97,7 +103,7 @@ export function SettingsPanel() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
   const [healthLoading, setHealthLoading] = useState(true)
   const [healthError, setHealthError] = useState(false)
-  const [llmProvider, setLlmProvider] = useState<LlmProvider>("deepseek")
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>("gpt")
   const [bgProvider, setBgProvider] = useState<LlmProvider>("deepseek")
   const [autonomousEnabled, setAutonomousEnabled] = useState(false)
   const [autonomousLoading, setAutonomousLoading] = useState(true)
