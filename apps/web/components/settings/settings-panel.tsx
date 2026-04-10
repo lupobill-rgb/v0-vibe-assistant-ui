@@ -119,15 +119,35 @@ export function SettingsPanel() {
       })
   }, [])
 
-  // Load persisted LLM preference
+  // Load LLM preference from organizations table
+  const [llmSaving, setLlmSaving] = useState(false)
   useEffect(() => {
-    const saved = localStorage.getItem(LLM_STORAGE_KEY) as LlmProvider | null
-    if (saved === "deepseek" || saved === "openai" || saved === "anthropic") setLlmProvider(saved)
-  }, [])
+    if (!currentOrg?.id) return
+    supabase
+      .from("organizations")
+      .select("preferred_llm")
+      .eq("id", currentOrg.id)
+      .single()
+      .then(({ data }) => {
+        const saved = data?.preferred_llm as LlmProvider | null
+        if (saved && LLM_OPTIONS.some((o) => o.value === saved)) {
+          setLlmProvider(saved)
+          localStorage.setItem(LLM_STORAGE_KEY, saved)
+        }
+      })
+  }, [currentOrg?.id])
 
-  const handleLlmChange = (provider: LlmProvider) => {
+  const handleLlmChange = async (provider: LlmProvider) => {
+    if (llmSaving) return
     setLlmProvider(provider)
     localStorage.setItem(LLM_STORAGE_KEY, provider)
+    if (!currentOrg?.id) return
+    setLlmSaving(true)
+    await supabase
+      .from("organizations")
+      .update({ preferred_llm: provider })
+      .eq("id", currentOrg.id)
+    setLlmSaving(false)
   }
 
   // Load autonomous kill switch from organizations table

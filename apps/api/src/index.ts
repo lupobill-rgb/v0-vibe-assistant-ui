@@ -654,7 +654,8 @@ async function bootstrap() {
       const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', type = 'standard', debug_job_id, upload_id: bodyUploadId, conversation_id } = req.body;
       const user_id = extractUserId(req);
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
-      const resolvedModel: string = ['claude', 'gpt', 'deepseek', 'gemini', 'fireworks'].includes(model) ? model : 'deepseek';
+      // Model resolved after org lookup below
+      let resolvedModel: string = ['claude', 'gpt', 'deepseek', 'gemini', 'fireworks'].includes(model) ? model : '';
 
       if (!user_id) {
         return res.status(401).json({ error: 'Authentication required: provide a valid Authorization header' });
@@ -683,6 +684,14 @@ async function bootstrap() {
 
       // Budget enforcement via org
       const org = await storage.getOrgForProject(project_id);
+
+      // Resolve LLM: explicit request param > org preference > deepseek default
+      if (!resolvedModel && org?.id) {
+        const { data: orgRow } = await getPlatformSupabaseClient()
+          .from('organizations').select('preferred_llm').eq('id', org.id).single();
+        resolvedModel = orgRow?.preferred_llm || 'deepseek';
+      }
+      if (!resolvedModel) resolvedModel = 'deepseek';
 
       // ── Tier-based project limit enforcement ──
       if (org) {

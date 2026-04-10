@@ -71,10 +71,10 @@ async function callAnthropic(messages: Array<{ role: string; content: string }>,
   }
 }
 
-async function callEdgeFunction(prompt: string, system: string, maxTokens: number, opts?: { mode?: string; context?: string }) {
+async function callEdgeFunction(prompt: string, system: string, maxTokens: number, opts?: { mode?: string; context?: string; model?: string }) {
   const body: Record<string, unknown> = {
     prompt,
-    model: 'deepseek',
+    model: opts?.model || 'deepseek',
     system,
     max_tokens: maxTokens,
   }
@@ -143,9 +143,11 @@ async function fetchUploadSummary(uploadId: string, userJwt?: string | null): Pr
 export async function POST(request: Request) {
   // Extract user JWT from incoming request for authenticated Supabase calls
   const userJwt = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') || null
-  let messages, build, edit, editPrompt, context, project_id, upload_id, team_id, user_id, org_id
+  let messages, build, edit, editPrompt, context, project_id, upload_id, team_id, user_id, org_id, preferred_model
   try {
-    ({ messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id, user_id, org_id } = await request.json())
+    ({ messages, build, edit, prompt: editPrompt, context, project_id, upload_id, team_id, user_id, org_id, preferred_model } = await request.json())
+    // Use client-provided model preference, default to deepseek
+    const llmModel = ['deepseek', 'claude', 'gpt', 'gemini', 'fireworks'].includes(preferred_model) ? preferred_model : 'deepseek'
     if (edit) {
       const prompt = editPrompt || messages?.[messages.length - 1]?.content || ''
       let trimmedContext = context ?? ''
@@ -163,7 +165,7 @@ export async function POST(request: Request) {
         : prompt
       let html = ''
       try {
-        const edgeData = await callEdgeFunction(edgePrompt, editSystem, 16000, { mode: 'html' })
+        const edgeData = await callEdgeFunction(edgePrompt, editSystem, 16000, { mode: 'html', model: llmModel })
         html = edgeData.diff || ''
       } catch (edgeErr: any) {
         console.warn(`[EDIT] Edge Function failed (${edgeErr.message}), falling back to Anthropic direct`)
@@ -224,7 +226,7 @@ export async function POST(request: Request) {
         }
       }
 
-      const data = await callEdgeFunction(prompt, APP_SYSTEM, 16000)
+      const data = await callEdgeFunction(prompt, APP_SYSTEM, 16000, { model: llmModel })
       let html = data.diff || ''
       if (html.startsWith('```')) {
         html = html.replace(/^```(?:html)?\n?/, '').replace(/\n?```$/, '')
