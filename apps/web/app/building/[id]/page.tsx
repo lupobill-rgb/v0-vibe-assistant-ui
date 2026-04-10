@@ -138,8 +138,14 @@ function buildBlobUrl(pages: PageData[], activeFile: string, teamId?: string): s
   const page = pages.find((p) => p.filename === activeFile) || pages[0]
   if (!page) return null
 
-  // Substitute template placeholders with real values
+  // Strip markdown fences that LLMs sometimes wrap around HTML output
   let html = page.html
+    .replace(/^```(?:html|HTML)?\s*\n?/, '')
+    .replace(/\n?```\s*$/, '')
+    .trim()
+
+  // Substitute template placeholders with real values
+  html = html
     .replace(/__SUPABASE_URL__/g, SUPABASE_URL)
     .replace(/__SUPABASE_ANON_KEY__/g, SUPABASE_ANON_KEY)
     .replace(/__TEAM_ID__/g, teamId || '')
@@ -614,7 +620,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           edit: true,
           context: currentHtml,
           messages: [{ role: 'user', content: input }],
-          preferred_model: localStorage.getItem('vibe_llm_provider') || 'deepseek',
+          preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'deepseek'),
         }),
       })
       let json: any = {}
@@ -685,7 +691,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           edit: true,
           context: currentHtml,
           messages: [{ role: 'user', content: prompt }],
-          preferred_model: localStorage.getItem('vibe_llm_provider') || 'deepseek',
+          preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'deepseek'),
         }),
       })
       let json: any = {}

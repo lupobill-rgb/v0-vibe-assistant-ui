@@ -33,7 +33,7 @@ const DASHBOARD_KEYWORDS = [
 
 const SITE_KEYWORDS = [
   "multi-page","multipage","multi page","website","site with pages",
-  "about page","blog",
+  "about page","blog","landing page","landing",
 ];
 
 // Simple single-purpose prompts should never trigger app mode

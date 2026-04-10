@@ -199,7 +199,7 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}) },
-        body: JSON.stringify({ messages, upload_id: uploadIdRef.current, team_id: currentTeam?.id, org_id: currentOrg?.id, user_id: user?.id, project_id: projectIdRef.current, preferred_model: localStorage.getItem('vibe_llm_provider') || 'deepseek' }),
+        body: JSON.stringify({ messages, upload_id: uploadIdRef.current, team_id: currentTeam?.id, org_id: currentOrg?.id, user_id: user?.id, project_id: projectIdRef.current, preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'deepseek') }),
         signal: controller.signal,
       })
       const data = await res.json()
