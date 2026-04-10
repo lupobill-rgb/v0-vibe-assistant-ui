@@ -308,7 +308,17 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         .eq('id', id)
         .maybeSingle()
       if (directJob?.id) return directJob.id
-      // Fall back to project_id lookup (latest job for that project)
+      // Prefer completed jobs first, fall back to most recent
+      const { data: completed } = await supabase
+        .from('jobs')
+        .select('id')
+        .eq('project_id', id)
+        .eq('execution_state', 'completed')
+        .order('initiated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (completed?.id) return completed.id
+
       const { data: latest, error } = await supabase
         .from('jobs')
         .select('id')
