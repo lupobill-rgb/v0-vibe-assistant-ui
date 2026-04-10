@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { getPlatformSupabaseClient } from '../supabase/client';
 
@@ -90,31 +89,31 @@ export class AutonomousProcessorService {
     // Build prompt and insert job
     const prompt = `Using the ${skill.name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
 
-    const jobId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const { error: jobErr } = await this.sb
-      .from('jobs')
-      .insert({
-        id: jobId,
-        user_prompt: prompt,
+    const apiUrl = process.env.RAILWAY_API_URL || 'http://localhost:3001';
+    const response = await fetch(`${apiUrl}/jobs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Service': 'autonomous-processor',
+        'X-Team-Id': execution.team_id,
+        'X-Org-Id': execution.organization_id,
+      },
+      body: JSON.stringify({
+        prompt,
         project_id: project.id,
-        source_branch: `autonomous/${execution.skill_id}`,
-        destination_branch: 'main',
-        execution_state: 'queued',
-        iteration_count: 0,
-        initiated_at: now,
-        last_modified: now,
-      });
-    const job = { id: jobId };
+        conversation_id: execution.id,
+        mode: 'dashboard',
+        type: 'autonomous',
+      }),
+    });
 
-    if (jobErr || !job) {
-      this.logger.error(`Failed to create job for execution ${execution.id}: ${jobErr?.message}`);
-      await this.sb
-        .from('autonomous_executions')
-        .update({ status: 'failed' })
-        .eq('id', execution.id);
-      return;
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Job creation failed: ${response.status} ${errText}`);
     }
+
+    const jobData = await response.json() as any;
+    const job = { id: jobData.task_id || jobData.id };
 
     // Mark execution complete with job reference
     await this.sb
