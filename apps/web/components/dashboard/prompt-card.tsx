@@ -45,8 +45,26 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
     if (saved) uploadIdRef.current = saved
   }
   useEffect(() => {
-    if (initialPrompt && !prompt) setPrompt(initialPrompt)
-  }, [initialPrompt])
+    if (!selectedProjectId) {
+      if (initialPrompt && !prompt) setPrompt(initialPrompt)
+      return
+    }
+    supabase
+      .from('jobs')
+      .select('id, execution_state')
+      .eq('project_id', selectedProjectId)
+      .in('execution_state', ['completed', 'building', 'calling_llm', 'planning'])
+      .order('initiated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.id) {
+          router.push(`/building/${selectedProjectId}`)
+        } else if (initialPrompt && !prompt) {
+          setPrompt(initialPrompt)
+        }
+      })
+  }, [selectedProjectId, initialPrompt])
 
   const handleLimitError = (err: unknown): boolean => {
     const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : ''
