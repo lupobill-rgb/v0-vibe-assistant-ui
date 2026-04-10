@@ -124,16 +124,18 @@ export function SettingsPanel() {
     localStorage.setItem(LLM_STORAGE_KEY, provider)
   }
 
-  // Load autonomous flag from org_feature_flags
+  // Load autonomous kill switch from organizations table
+  // autonomous_kill_switch=true means automations are OFF (inverted for UI)
   useEffect(() => {
     if (!currentOrg?.id) { setAutonomousLoading(false); return }
     supabase
-      .from("org_feature_flags")
-      .select("autonomous_enabled")
-      .eq("org_id", currentOrg.id)
+      .from("organizations")
+      .select("autonomous_kill_switch")
+      .eq("id", currentOrg.id)
       .single()
       .then(({ data }) => {
-        setAutonomousEnabled(data?.autonomous_enabled ?? false)
+        // kill_switch=true → automations disabled → toggle OFF
+        setAutonomousEnabled(data?.autonomous_kill_switch === false)
         setAutonomousLoading(false)
       })
       .catch(() => setAutonomousLoading(false))
@@ -141,13 +143,15 @@ export function SettingsPanel() {
 
   const handleAutonomousToggle = async () => {
     if (!currentOrg?.id || autonomousSaving) return
-    const newValue = !autonomousEnabled
+    const newEnabled = !autonomousEnabled
     setAutonomousSaving(true)
-    setAutonomousEnabled(newValue)
+    setAutonomousEnabled(newEnabled)
+    // kill_switch is inverted: enabled=true → kill_switch=false
     const { error } = await supabase
-      .from("org_feature_flags")
-      .upsert({ org_id: currentOrg.id, autonomous_enabled: newValue }, { onConflict: "org_id" })
-    if (error) setAutonomousEnabled(!newValue) // revert on failure
+      .from("organizations")
+      .update({ autonomous_kill_switch: !newEnabled })
+      .eq("id", currentOrg.id)
+    if (error) setAutonomousEnabled(!newEnabled) // revert on failure
     setAutonomousSaving(false)
   }
 

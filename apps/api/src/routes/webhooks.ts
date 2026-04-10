@@ -111,16 +111,16 @@ router.post('/:provider', async (req: Request, res: Response) => {
       }
     }
 
-    // Human-in-the-loop: check if autonomous mode is enabled for this org
+    // Human-in-the-loop: check organizations.autonomous_kill_switch
     if (resolvedOrgId) {
-      const { data: flags } = await sb
-        .from('org_feature_flags')
-        .select('autonomous_enabled')
-        .eq('org_id', resolvedOrgId)
+      const { data: org } = await sb
+        .from('organizations')
+        .select('autonomous_kill_switch')
+        .eq('id', resolvedOrgId)
         .single();
-      if (!flags?.autonomous_enabled) {
-        console.log(`[webhook] Autonomous disabled for org ${resolvedOrgId} — skipping`);
-        return res.status(200).json({ matched: skills.length, queued: 0, message: 'Autonomous processing disabled for this org' });
+      if (org?.autonomous_kill_switch !== false) {
+        console.log(`[webhook] Kill switch active for org ${resolvedOrgId} — skipping`);
+        return res.status(200).json({ matched: skills.length, queued: 0, message: 'Autonomous processing disabled (kill switch)' });
       }
     }
 

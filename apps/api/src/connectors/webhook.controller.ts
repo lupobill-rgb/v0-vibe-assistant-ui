@@ -30,14 +30,14 @@ export class WebhookController {
         return { ok: true, queued: 0 };
       }
 
-      // Human-in-the-loop: check if autonomous mode is enabled for this org
-      const { data: flags } = await this.sb
-        .from('org_feature_flags')
-        .select('autonomous_enabled')
-        .eq('org_id', resolved.orgId)
+      // Human-in-the-loop: check organizations.autonomous_kill_switch
+      const { data: org } = await this.sb
+        .from('organizations')
+        .select('autonomous_kill_switch')
+        .eq('id', resolved.orgId)
         .single();
-      if (!flags?.autonomous_enabled) {
-        this.logger.log(`Autonomous disabled for org ${resolved.orgId} — skipping execution`);
+      if (org?.autonomous_kill_switch !== false) {
+        this.logger.log(`Autonomous kill switch active for org ${resolved.orgId} — skipping`);
         return { ok: true, queued: 0 };
       }
 

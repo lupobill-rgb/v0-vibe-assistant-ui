@@ -71,6 +71,18 @@ async function runExecution(
 ): Promise<void> {
   const { id, organization_id, team_id, skill_id, trigger_source, trigger_event, trigger_payload } = exec;
 
+  // Check kill switch before doing any LLM work
+  const { data: org } = await sb
+    .from('organizations')
+    .select('autonomous_kill_switch')
+    .eq('id', organization_id)
+    .single();
+  if (org?.autonomous_kill_switch !== false) {
+    console.log(`[dispatcher] Kill switch active for org ${organization_id}, failing execution ${id}`);
+    await failExecution(sb, id, 'autonomous_kill_switch is active');
+    return;
+  }
+
   // Mark as running
   const { error: updateErr } = await sb
     .from('autonomous_executions')
