@@ -27,6 +27,41 @@ export class WebhookService {
     const teamsData = integration.teams as unknown as { id: string; org_id: string };
     const team = { id: teamsData.id, org_id: teamsData.org_id };
 
+    // ── Throttle gate 1: Cooldown — skip if an execution ran in the last 15 min ──
+    const cooldownCutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+    const { data: recentExec } = await this.sb
+      .from('autonomous_executions')
+      .select('id')
+      .eq('team_id', team.id)
+      .in('status', ['completed', 'running'])
+      .gte('created_at', cooldownCutoff)
+      .limit(1);
+    if (recentExec?.length) {
+      this.logger.log(`Throttle: cooldown active for team ${team.id}, skipping`);
+      return { queued: 0 };
+    }
+
+    // ── Throttle gate 2: Dedup — skip if Nango sync changed nothing ──
+    if (payload.responseResults.added === 0 && payload.responseResults.updated === 0) {
+      this.logger.log(`Throttle: no records changed for team ${team.id}, skipping`);
+      return { queued: 0 };
+    }
+
+    // ── Throttle gate 3: Spend cap — skip if monthly Claude spend >= $50 ──
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const { data: spendRows } = await this.sb
+      .from('team_spend')
+      .select('amount')
+      .eq('team_id', team.id)
+      .eq('vendor', 'claude')
+      .gte('spend_date', monthStart);
+    const totalSpend = (spendRows ?? []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    if (totalSpend >= 50) {
+      this.logger.warn(`Throttle: team ${team.id} monthly Claude spend $${totalSpend.toFixed(2)} >= $50 cap, skipping`);
+      return { queued: 0 };
+    }
+
     // Non-blocking sync + recommendations (no autonomous executions — those fire from user actions only)
     this.syncNangoRecords(payload, team.id, team.org_id).catch(err =>
       this.logger.error('Sync failed (non-blocking):', err.message));
