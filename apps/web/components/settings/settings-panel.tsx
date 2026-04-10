@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { fetchHealth, TENANT_ID, type HealthStatus } from "@/lib/api"
-import { CheckCircle2, XCircle, Loader2, Server, Key, Cpu, Shield } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { useTeam } from "@/contexts/TeamContext"
+import { CheckCircle2, XCircle, Loader2, Server, Key, Cpu, Shield, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const LLM_STORAGE_KEY = "vibe_llm_provider"
@@ -90,6 +92,10 @@ export function SettingsPanel() {
   const [healthLoading, setHealthLoading] = useState(true)
   const [healthError, setHealthError] = useState(false)
   const [llmProvider, setLlmProvider] = useState<LlmProvider>("openai")
+  const [autonomousEnabled, setAutonomousEnabled] = useState(false)
+  const [autonomousLoading, setAutonomousLoading] = useState(true)
+  const [autonomousSaving, setAutonomousSaving] = useState(false)
+  const { currentOrg } = useTeam()
 
   const apiUrl =
     (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
@@ -116,6 +122,33 @@ export function SettingsPanel() {
   const handleLlmChange = (provider: LlmProvider) => {
     setLlmProvider(provider)
     localStorage.setItem(LLM_STORAGE_KEY, provider)
+  }
+
+  // Load autonomous flag from org_feature_flags
+  useEffect(() => {
+    if (!currentOrg?.id) { setAutonomousLoading(false); return }
+    supabase
+      .from("org_feature_flags")
+      .select("autonomous_enabled")
+      .eq("org_id", currentOrg.id)
+      .single()
+      .then(({ data }) => {
+        setAutonomousEnabled(data?.autonomous_enabled ?? false)
+        setAutonomousLoading(false)
+      })
+      .catch(() => setAutonomousLoading(false))
+  }, [currentOrg?.id])
+
+  const handleAutonomousToggle = async () => {
+    if (!currentOrg?.id || autonomousSaving) return
+    const newValue = !autonomousEnabled
+    setAutonomousSaving(true)
+    setAutonomousEnabled(newValue)
+    const { error } = await supabase
+      .from("org_feature_flags")
+      .upsert({ org_id: currentOrg.id, autonomous_enabled: newValue }, { onConflict: "org_id" })
+    if (error) setAutonomousEnabled(!newValue) // revert on failure
+    setAutonomousSaving(false)
   }
 
   const apiStatus = healthLoading
@@ -244,6 +277,56 @@ export function SettingsPanel() {
           value="300,000 ms (5 min)"
           description="Shared timeout for all preflight stages (PREFLIGHT_TIMEOUT)"
         />
+      </Section>
+
+      {/* Autonomous Automations */}
+      <Section title="Automations" icon={Zap}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">Autonomous Executions</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              When enabled, incoming data from connected integrations (HubSpot, Salesforce, etc.)
+              can trigger AI-powered recommendations and autonomous skill executions.
+              When disabled, data still syncs but no LLM calls are made.
+            </p>
+          </div>
+          <button
+            onClick={handleAutonomousToggle}
+            disabled={autonomousLoading || autonomousSaving || !currentOrg}
+            className={cn(
+              "relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 flex-shrink-0",
+              autonomousEnabled
+                ? "bg-[#00E5A0]"
+                : "bg-secondary border border-border",
+              (autonomousLoading || autonomousSaving || !currentOrg) && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-4 w-4 rounded-full bg-white transition-transform duration-200",
+                autonomousEnabled ? "translate-x-6" : "translate-x-1"
+              )}
+            />
+          </button>
+        </div>
+        <div className={cn(
+          "flex items-center gap-2 text-xs px-3 py-2 rounded-lg border",
+          autonomousEnabled
+            ? "text-emerald-400 bg-emerald-500/5 border-emerald-500/20"
+            : "text-muted-foreground bg-secondary/50 border-border/50"
+        )}>
+          {autonomousEnabled ? (
+            <>
+              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+              Automations are active. Webhook events will trigger AI recommendations.
+            </>
+          ) : (
+            <>
+              <Shield className="w-3.5 h-3.5 flex-shrink-0" />
+              Human-in-the-loop mode. Data syncs silently — no AI credits consumed.
+            </>
+          )}
+        </div>
       </Section>
 
       {/* Authentication */}

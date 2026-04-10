@@ -16,11 +16,6 @@ export class WebhookController {
   @Post('webhook')
   @HttpCode(200)
   async handleWebhook(@Body() body: any): Promise<{ ok: true; queued: number }> {
-    // ── DISABLED: autonomous executions from webhooks burn LLM credits too fast ──
-    // Data sync still flows via WebhookService.handleNangoEvent. Re-enable when
-    // recommendations move to a daily cron and spend caps are verified.
-    this.logger.log('Autonomous webhook processing disabled — data sync only mode.');
-    return { ok: true, queued: 0 };
     try {
       const { connectionId, providerConfigKey, syncName, model, queryTimeStamp } = body ?? {};
       this.logger.log(`Webhook raw body: ${JSON.stringify(body)}`);
@@ -32,6 +27,17 @@ export class WebhookController {
       const resolved = await this.resolveOrgAndTeam(connectionId);
       if (!resolved) {
         this.logger.warn(`Unknown connection: ${connectionId}`);
+        return { ok: true, queued: 0 };
+      }
+
+      // Human-in-the-loop: check if autonomous mode is enabled for this org
+      const { data: flags } = await this.sb
+        .from('org_feature_flags')
+        .select('autonomous_enabled')
+        .eq('org_id', resolved.orgId)
+        .single();
+      if (!flags?.autonomous_enabled) {
+        this.logger.log(`Autonomous disabled for org ${resolved.orgId} — skipping execution`);
         return { ok: true, queued: 0 };
       }
 

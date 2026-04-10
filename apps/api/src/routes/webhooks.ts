@@ -23,12 +23,6 @@ const VALID_PROVIDERS = new Set<string>(Object.values(ConnectorType));
  * any trigger_on starting with "provider:".
  */
 router.post('/:provider', async (req: Request, res: Response) => {
-  // ── DISABLED: autonomous executions from webhooks burn LLM credits too fast ──
-  // Data sync still flows via WebhookService. Re-enable when recommendations
-  // move to a daily cron and spend caps are verified.
-  console.log('[webhook] Autonomous webhook processing disabled — data sync only mode.');
-  return res.status(200).json({ matched: 0, queued: 0, message: 'Autonomous processing disabled — data sync only' });
-
   try {
     // Auth: require shared secret header (if configured)
     if (WEBHOOK_SECRET) {
@@ -114,6 +108,19 @@ router.post('/:provider', async (req: Request, res: Response) => {
         console.log(`[webhook] Resolved org=${resolvedOrgId} team=${resolvedTeamId} from connectionId=${connectionId}`);
       } else {
         console.warn(`[webhook] No team_integrations row for connectionId=${connectionId}`);
+      }
+    }
+
+    // Human-in-the-loop: check if autonomous mode is enabled for this org
+    if (resolvedOrgId) {
+      const { data: flags } = await sb
+        .from('org_feature_flags')
+        .select('autonomous_enabled')
+        .eq('org_id', resolvedOrgId)
+        .single();
+      if (!flags?.autonomous_enabled) {
+        console.log(`[webhook] Autonomous disabled for org ${resolvedOrgId} — skipping`);
+        return res.status(200).json({ matched: skills.length, queued: 0, message: 'Autonomous processing disabled for this org' });
       }
     }
 
