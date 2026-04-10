@@ -110,26 +110,16 @@ export class WebhookService {
       .eq('team_id', teamId).gte('created_at', ago30d);
 
     const prompt = `You are an AI business advisor. Based on this org data, generate 1-3 actionable recommendations for the ${model} team. Be specific and quantitative. Return ONLY a JSON array, no markdown:\n[{"title":string,"rationale":string,"proposed_action":string,"estimated_impact":string,"priority":"high"|"medium"|"low","team_function":string}]\n\nData: ${JSON.stringify({ deals, spend, usage })}`;
-    let recs: any[];
-    // Use DeepSeek as primary (cheapest), fall back to OpenAI
-    const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
-      body: JSON.stringify({ model: 'deepseek-chat', max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
-    }).catch(() => null);
 
-    if (deepseekRes?.ok) {
-      try { recs = JSON.parse(((await deepseekRes.json()) as any).choices[0].message.content); } catch { recs = []; }
-    } else {
-      this.logger.warn(`[LLM-FALLBACK] DeepSeek failed (${deepseekRes?.status ?? 'network'}), falling back to OpenAI`);
-      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
-      }).catch(() => null);
-      if (!openaiRes?.ok) { this.logger.warn(`OpenAI also failed (${openaiRes?.status ?? 'network'})`); return 0; }
-      try { recs = JSON.parse(((await openaiRes.json()) as any).choices[0].message.content); } catch { this.logger.warn('Bad recommendations JSON from OpenAI'); return 0; }
-    }
+    // Read org's preferred background LLM
+    const { data: orgRow } = await this.sb
+      .from('organizations').select('preferred_llm_background').eq('id', orgId).single();
+    const bgModel = orgRow?.preferred_llm_background || 'deepseek';
+
+    let recs: any[];
+    const text = await this.callBackground(bgModel, prompt);
+    if (!text) return 0;
+    try { recs = JSON.parse(text); } catch { this.logger.warn('Bad recommendations JSON'); return 0; }
     if (!Array.isArray(recs)) return 0;
 
     let count = 0;
@@ -183,6 +173,66 @@ export class WebhookService {
         this.logger.log(`Updated project ${existing.id} for skill ${skill.skill_name}`);
       }
     }
+  }
+
+  /** Route a short-output LLM call to the org's preferred background provider. */
+  private async callBackground(provider: string, prompt: string): Promise<string | null> {
+    const providers: Record<string, { url: string; key: string; model: string; parse: (d: any) => string }> = {
+      deepseek: {
+        url: 'https://api.deepseek.com/chat/completions',
+        key: process.env.DEEPSEEK_API_KEY || '',
+        model: 'deepseek-chat',
+        parse: (d) => d.choices?.[0]?.message?.content ?? '',
+      },
+      openai: {
+        url: 'https://api.openai.com/v1/chat/completions',
+        key: process.env.OPENAI_API_KEY || '',
+        model: 'gpt-4o-mini',
+        parse: (d) => d.choices?.[0]?.message?.content ?? '',
+      },
+      anthropic: {
+        url: 'https://api.anthropic.com/v1/messages',
+        key: process.env.ANTHROPIC_API_KEY || '',
+        model: 'claude-haiku-4-5-20251001',
+        parse: (d) => d.content?.[0]?.text ?? '',
+      },
+    };
+
+    const tryProvider = async (name: string): Promise<string | null> => {
+      const p = providers[name];
+      if (!p?.key) return null;
+      const isAnthropic = name === 'anthropic';
+      const res = await fetch(p.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(isAnthropic
+            ? { 'x-api-key': p.key, 'anthropic-version': '2023-06-01' }
+            : { Authorization: `Bearer ${p.key}` }),
+        },
+        body: JSON.stringify(isAnthropic
+          ? { model: p.model, max_tokens: 800, messages: [{ role: 'user', content: prompt }] }
+          : { model: p.model, max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
+      }).catch(() => null);
+      if (!res?.ok) return null;
+      const data = await res.json();
+      return p.parse(data) || null;
+    };
+
+    // Try preferred, then fallback chain
+    const result = await tryProvider(provider);
+    if (result) return result;
+    this.logger.warn(`[BG-LLM] ${provider} failed, trying fallbacks`);
+    const fallbacks = Object.keys(providers).filter(k => k !== provider);
+    for (const fb of fallbacks) {
+      const fbResult = await tryProvider(fb);
+      if (fbResult) {
+        this.logger.warn(`[BG-LLM] Succeeded on fallback: ${fb}`);
+        return fbResult;
+      }
+    }
+    this.logger.error('[BG-LLM] All providers failed');
+    return null;
   }
 
   async getGuardrailStatus(orgId: string): Promise<{ autonomousEnabled: boolean }> {

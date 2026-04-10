@@ -98,6 +98,7 @@ export function SettingsPanel() {
   const [healthLoading, setHealthLoading] = useState(true)
   const [healthError, setHealthError] = useState(false)
   const [llmProvider, setLlmProvider] = useState<LlmProvider>("deepseek")
+  const [bgProvider, setBgProvider] = useState<LlmProvider>("deepseek")
   const [autonomousEnabled, setAutonomousEnabled] = useState(false)
   const [autonomousLoading, setAutonomousLoading] = useState(true)
   const [autonomousSaving, setAutonomousSaving] = useState(false)
@@ -119,22 +120,26 @@ export function SettingsPanel() {
       })
   }, [])
 
-  // Load LLM preference from organizations table
+  // Load LLM preferences from organizations table
   const [llmSaving, setLlmSaving] = useState(false)
+  const [bgSaving, setBgSaving] = useState(false)
   useEffect(() => {
     if (!currentOrg?.id) return
-    supabase
-      .from("organizations")
-      .select("preferred_llm")
-      .eq("id", currentOrg.id)
-      .single()
-      .then(({ data }) => {
-        const saved = data?.preferred_llm as LlmProvider | null
-        if (saved && LLM_OPTIONS.some((o) => o.value === saved)) {
-          setLlmProvider(saved)
-          localStorage.setItem(LLM_STORAGE_KEY, saved)
-        }
-      })
+    ;(async () => {
+      const { data } = await supabase
+        .from("organizations")
+        .select("preferred_llm, preferred_llm_background")
+        .eq("id", currentOrg.id)
+        .single()
+      if (data?.preferred_llm && LLM_OPTIONS.some((o) => o.value === data.preferred_llm)) {
+        setLlmProvider(data.preferred_llm as LlmProvider)
+        localStorage.setItem(LLM_STORAGE_KEY, data.preferred_llm)
+      }
+      if (data?.preferred_llm_background && LLM_OPTIONS.some((o) => o.value === data.preferred_llm_background)) {
+        setBgProvider(data.preferred_llm_background as LlmProvider)
+        localStorage.setItem("vibe_llm_background", data.preferred_llm_background)
+      }
+    })()
   }, [currentOrg?.id])
 
   const handleLlmChange = async (provider: LlmProvider) => {
@@ -148,6 +153,19 @@ export function SettingsPanel() {
       .update({ preferred_llm: provider })
       .eq("id", currentOrg.id)
     setLlmSaving(false)
+  }
+
+  const handleBgChange = async (provider: LlmProvider) => {
+    if (bgSaving) return
+    setBgProvider(provider)
+    localStorage.setItem("vibe_llm_background", provider)
+    if (!currentOrg?.id) return
+    setBgSaving(true)
+    await supabase
+      .from("organizations")
+      .update({ preferred_llm_background: provider })
+      .eq("id", currentOrg.id)
+    setBgSaving(false)
   }
 
   // Load autonomous kill switch from organizations table
@@ -228,23 +246,51 @@ export function SettingsPanel() {
 
       {/* LLM Configuration */}
       <Section title="LLM Configuration" icon={Cpu}>
-        {/* Provider selector */}
+        {/* Build Provider */}
         <div>
-          <p className="text-sm font-medium text-foreground mb-1">LLM Provider</p>
+          <p className="text-sm font-medium text-foreground mb-1">Build Provider</p>
           <p className="text-xs text-muted-foreground mb-3">
-            Choose which AI model powers code generation. Your preference is saved locally
-            and sent with each job.
+            Powers dashboard and site generation. Needs high output token limits.
           </p>
           <div className="flex gap-2">
             {LLM_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => handleLlmChange(opt.value)}
+                disabled={llmSaving}
                 className={cn(
                   "flex-1 flex flex-col items-start px-4 py-3 rounded-xl border text-left transition-all duration-200",
                   llmProvider === opt.value
                     ? "border-[#00E5A0]/60 bg-[#00E5A0]/10 text-foreground"
-                    : "border-border bg-secondary/40 text-muted-foreground hover:border-border hover:bg-secondary"
+                    : "border-border bg-secondary/40 text-muted-foreground hover:border-border hover:bg-secondary",
+                  llmSaving && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <span className="text-sm font-medium">{opt.label}</span>
+                <span className="text-[11px] mt-0.5 font-mono opacity-70">{opt.model}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Data Processor */}
+        <div>
+          <p className="text-sm font-medium text-foreground mb-1">Data Processor</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Powers recommendations, intake chat, and background data analysis. Short outputs — cost-effective models work well.
+          </p>
+          <div className="flex gap-2">
+            {LLM_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handleBgChange(opt.value)}
+                disabled={bgSaving}
+                className={cn(
+                  "flex-1 flex flex-col items-start px-4 py-3 rounded-xl border text-left transition-all duration-200",
+                  bgProvider === opt.value
+                    ? "border-[#7B61FF]/60 bg-[#7B61FF]/10 text-foreground"
+                    : "border-border bg-secondary/40 text-muted-foreground hover:border-border hover:bg-secondary",
+                  bgSaving && "opacity-50 cursor-not-allowed"
                 )}
               >
                 <span className="text-sm font-medium">{opt.label}</span>
@@ -255,25 +301,16 @@ export function SettingsPanel() {
         </div>
 
         <FieldRow
-          label="Active Model"
+          label="Build Provider"
           value={selectedOption.model}
           description={selectedOption.description}
-          badge={{ text: "User-selected", variant: "success" }}
+          badge={{ text: "Builds", variant: "success" }}
         />
         <FieldRow
-          label="Max Iterations"
-          value="6"
-          description="Maximum LLM retry iterations per task (MAX_ITERATIONS)"
-        />
-        <FieldRow
-          label="Max Context Size"
-          value="50,000 chars"
-          description="Maximum repository context sent to LLM (MAX_CONTEXT_SIZE)"
-        />
-        <FieldRow
-          label="Max Diff Size"
-          value="5,000 chars"
-          description="Maximum generated diff size (MAX_DIFF_SIZE)"
+          label="Data Processor"
+          value={LLM_OPTIONS.find((o) => o.value === bgProvider)?.model ?? "deepseek-chat"}
+          description={LLM_OPTIONS.find((o) => o.value === bgProvider)?.description ?? ""}
+          badge={{ text: "Background", variant: "neutral" }}
         />
       </Section>
 
