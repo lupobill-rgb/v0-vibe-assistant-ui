@@ -70,20 +70,26 @@ function FieldRow({ label, value, description, badge }: FieldRowProps) {
   )
 }
 
-type LlmProvider = "openai" | "anthropic"
+type LlmProvider = "deepseek" | "openai" | "anthropic"
 
 const LLM_OPTIONS: { value: LlmProvider; label: string; model: string; description: string }[] = [
   {
+    value: "deepseek",
+    label: "DeepSeek V3",
+    model: "deepseek-chat",
+    description: "Cost-effective code generation — default for staging",
+  },
+  {
     value: "openai",
-    label: "OpenAI GPT-4",
-    model: "gpt-4 (temperature=0)",
-    description: "Deterministic code generation via OpenAI",
+    label: "OpenAI GPT-4o",
+    model: "gpt-4o",
+    description: "Code generation via OpenAI",
   },
   {
     value: "anthropic",
     label: "Anthropic Claude",
-    model: "claude-3-5-sonnet",
-    description: "Code generation via Anthropic Claude",
+    model: "claude-sonnet-4",
+    description: "Highest quality — production use",
   },
 ]
 
@@ -91,7 +97,7 @@ export function SettingsPanel() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
   const [healthLoading, setHealthLoading] = useState(true)
   const [healthError, setHealthError] = useState(false)
-  const [llmProvider, setLlmProvider] = useState<LlmProvider>("openai")
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>("deepseek")
   const [autonomousEnabled, setAutonomousEnabled] = useState(false)
   const [autonomousLoading, setAutonomousLoading] = useState(true)
   const [autonomousSaving, setAutonomousSaving] = useState(false)
@@ -116,7 +122,7 @@ export function SettingsPanel() {
   // Load persisted LLM preference
   useEffect(() => {
     const saved = localStorage.getItem(LLM_STORAGE_KEY) as LlmProvider | null
-    if (saved === "openai" || saved === "anthropic") setLlmProvider(saved)
+    if (saved === "deepseek" || saved === "openai" || saved === "anthropic") setLlmProvider(saved)
   }, [])
 
   const handleLlmChange = (provider: LlmProvider) => {

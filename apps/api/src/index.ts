@@ -654,7 +654,7 @@ async function bootstrap() {
       const { prompt, project_id, base_branch = 'main', target_branch, model, mode = 'starter', type = 'standard', debug_job_id, upload_id: bodyUploadId, conversation_id } = req.body;
       const user_id = extractUserId(req);
       const budgets = (mode === 'dashboard') ? DASHBOARD_BUILD_BUDGETS : INITIAL_BUILD_BUDGETS;
-      const resolvedModel: 'claude' | 'gpt' = model === 'gpt' ? 'gpt' : 'claude';
+      const resolvedModel: string = ['claude', 'gpt', 'deepseek', 'gemini', 'fireworks'].includes(model) ? model : 'deepseek';
 
       if (!user_id) {
         return res.status(401).json({ error: 'Authentication required: provide a valid Authorization header' });

@@ -959,6 +959,42 @@ async function callGemini(systemMsg: string, prompt: string, maxTokens = 4096, s
   };
 }
 
+/** Call DeepSeek directly via DeepSeek API and return { diff, usage }. Throws on failure. */
+async function callDeepseek(systemMsg: string, prompt: string, maxTokens = 4096) {
+  const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
+  if (!apiKey) throw new Error("DEEPSEEK_API_KEY not configured");
+
+  const res = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      max_tokens: Math.min(maxTokens, 16384),
+      messages: [
+        { role: "system", content: systemMsg },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error?.message ?? JSON.stringify(data));
+  }
+
+  return {
+    diff: data.choices?.[0]?.message?.content ?? "",
+    usage: {
+      input_tokens: data.usage?.prompt_tokens ?? 0,
+      output_tokens: data.usage?.completion_tokens ?? 0,
+      total_tokens: data.usage?.total_tokens ?? 0,
+    },
+  };
+}
+
 /** Call DeepSeek V3 via Fireworks AI and return { diff, usage }. Throws on failure. */
 async function callFireworks(systemMsg: string, prompt: string, maxTokens = 4096) {
   const apiKey = Deno.env.get("FIREWORKS_API_KEY");
@@ -1003,6 +1039,7 @@ const PROVIDERS: Record<string, ProviderFn> = {
   claude: callClaude,
   gpt: callGpt,
   gemini: callGemini,
+  deepseek: callDeepseek,
   fireworks: callFireworks,
 };
 
@@ -1011,15 +1048,17 @@ const PROVIDER_CONTEXT_LIMITS: Record<string, number> = {
   claude: 200_000,
   gpt: 128_000,
   gemini: 1_000_000,
+  deepseek: 64_000,
   fireworks: 128_000,
 };
 
-/** Ordered failover chains. Primary pipeline cascades through all 4 providers. */
+/** Ordered failover chains. Primary pipeline cascades through all providers. */
 const FAILOVER_CHAIN: Record<string, string[]> = {
-  claude: ["gpt", "gemini", "fireworks"],
-  gpt: ["claude", "gemini", "fireworks"],
-  gemini: ["claude", "gpt", "fireworks"],
-  fireworks: ["claude", "gpt", "gemini"],
+  claude: ["gpt", "deepseek", "gemini", "fireworks"],
+  gpt: ["deepseek", "claude", "gemini", "fireworks"],
+  gemini: ["deepseek", "claude", "gpt", "fireworks"],
+  deepseek: ["gpt", "gemini", "claude", "fireworks"],
+  fireworks: ["deepseek", "claude", "gpt", "gemini"],
 };
 
 /** Rough token estimate (~3.5 chars per token, conservative). */
@@ -1070,7 +1109,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    let { prompt, context, model = "claude", system, max_tokens, mode, color_block, team_name, org_name, inject_supabase_helpers, system_prefix } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string; team_name?: string; org_name?: string; inject_supabase_helpers?: boolean; system_prefix?: string };
+    let { prompt, context, model = "deepseek", system, max_tokens, mode, color_block, team_name, org_name, inject_supabase_helpers, system_prefix } = await req.json() as { prompt: string; context?: string; model?: string; system?: string; max_tokens?: number; mode?: string; color_block?: string; team_name?: string; org_name?: string; inject_supabase_helpers?: boolean; system_prefix?: string };
     if (!prompt) {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
         status: 400,
