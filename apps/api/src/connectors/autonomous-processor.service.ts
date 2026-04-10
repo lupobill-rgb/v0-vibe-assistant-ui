@@ -71,19 +71,35 @@ export class AutonomousProcessorService {
       return;
     }
 
-    // Resolve project for this team
-    const { data: project } = await this.sb
+    // Find or create a dedicated project for this skill
+    const skillProjectName = `[Auto] ${skill.skill_name}`;
+    let project: { id: string } | null = null;
+
+    const { data: existingProject } = await this.sb
       .from('projects')
       .select('id')
       .eq('team_id', execution.team_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .eq('name', skillProjectName)
       .maybeSingle();
 
-    if (!project) {
-      this.logger.warn(`No project found for team ${execution.team_id}, skipping`);
-      await this.sb.from('autonomous_executions').update({ status: 'skipped' }).eq('id', execution.id);
-      return;
+    if (existingProject) {
+      project = existingProject;
+    } else {
+      const { data: newProject, error: projErr } = await this.sb
+        .from('projects')
+        .insert({
+          name: skillProjectName,
+          team_id: execution.team_id,
+          local_path: `/auto/${execution.team_id}/${skill.skill_name}`,
+        })
+        .select('id')
+        .single();
+      if (projErr || !newProject) {
+        this.logger.error(`Failed to create project for skill ${skill.skill_name}: ${projErr?.message}`);
+        await this.sb.from('autonomous_executions').update({ status: 'failed' }).eq('id', execution.id);
+        return;
+      }
+      project = newProject;
     }
 
     // Prevent duplicate builds within 1 hour
