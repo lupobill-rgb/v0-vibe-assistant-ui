@@ -86,8 +86,27 @@ export class AutonomousProcessorService {
       return;
     }
 
-    // Build prompt and insert job via internal API call
-    const prompt = `Using the ${skill.skill_name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
+    // Prevent duplicate builds within 24 hours
+    const { data: recentJob } = await this.sb
+      .from('jobs')
+      .select('id, execution_state')
+      .eq('project_id', project.id)
+      .in('execution_state', ['completed', 'building', 'calling_llm', 'planning'])
+      .gte('initiated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .limit(1)
+      .maybeSingle();
+
+    if (recentJob) {
+      this.logger.log(`[AutonomousProcessor] project ${project.id} has recent job ${recentJob.id}, skipping`);
+      await this.sb
+        .from('autonomous_executions')
+        .update({ status: 'skipped' })
+        .eq('id', execution.id);
+      return;
+    }
+
+    // Build prompt and insert job
+    const prompt = `Using the ${skill.name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
 
     const apiBase = process.env.RAILWAY_INTERNAL_URL || `http://localhost:${process.env.PORT || 3001}`;
     const jobRes = await fetch(`${apiBase}/jobs`, {
