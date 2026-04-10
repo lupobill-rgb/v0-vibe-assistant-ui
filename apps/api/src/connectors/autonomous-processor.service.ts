@@ -106,7 +106,17 @@ export class AutonomousProcessorService {
     }
 
     // Build prompt and insert job
-    const prompt = `Using the ${skill.name} skill, analyze the incoming ${execution.trigger_source} data and generate the appropriate output for this team.`;
+    const prompt = `Build a ${skill.name} dashboard for the Sales team using live data from our connected HubSpot CRM.
+
+Use vibeLoadData('gtm_deals') to fetch real deal data including deal name, amount, stage, close date, and owner. Display actual deal records — not placeholder data.
+
+Show:
+- Total pipeline value from real deals
+- Deals by stage with actual counts and values
+- Individual deal table with name, amount, stage, close date
+- Risk flags for deals with no recent activity
+
+The data is already synced and available. Build a complete working dashboard that renders our actual pipeline.`;
 
     const apiBase = process.env.RAILWAY_INTERNAL_URL || `http://localhost:${process.env.PORT || 3001}`;
     const jobRes = await fetch(`${apiBase}/jobs`, {
