@@ -27,45 +27,23 @@ export class WebhookService {
     const teamsData = integration.teams as unknown as { id: string; org_id: string };
     const team = { id: teamsData.id, org_id: teamsData.org_id };
 
-    // ── Throttle gate 1: Cooldown — skip if an execution ran in the last 15 min ──
-    const cooldownCutoff = new Date(Date.now() - 15 * 60_000).toISOString();
-    const { data: recentExec } = await this.sb
-      .from('autonomous_executions')
-      .select('id')
-      .eq('team_id', team.id)
-      .in('status', ['completed', 'running'])
-      .gte('created_at', cooldownCutoff)
-      .limit(1);
-    if (recentExec?.length) {
-      this.logger.log(`Throttle: cooldown active for team ${team.id}, skipping`);
-      return { queued: 0 };
-    }
-
-    // ── Throttle gate 2: Dedup — skip if Nango sync changed nothing ──
-    if (payload.responseResults.added === 0 && payload.responseResults.updated === 0) {
-      this.logger.log(`Throttle: no records changed for team ${team.id}, skipping`);
-      return { queued: 0 };
-    }
-
-    // ── Throttle gate 3: Spend cap — skip if monthly Claude spend >= $50 ──
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const { data: spendRows } = await this.sb
-      .from('team_spend')
-      .select('amount')
-      .eq('team_id', team.id)
-      .eq('vendor', 'claude')
-      .gte('spend_date', monthStart);
-    const totalSpend = (spendRows ?? []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    if (totalSpend >= 50) {
-      this.logger.warn(`Throttle: team ${team.id} monthly Claude spend $${totalSpend.toFixed(2)} >= $50 cap, skipping`);
-      return { queued: 0 };
-    }
+    // Upsert existing projects for matching skills instead of creating duplicates
+    this.upsertSkillProjects(team.id, payload.providerConfigKey, payload.model).catch(err =>
+      this.logger.error('Skill project upsert failed (non-blocking):', err.message));
 
     // Non-blocking sync + recommendations (no autonomous executions — those fire from user actions only)
     this.syncNangoRecords(payload, team.id, team.org_id).catch(err =>
       this.logger.error('Sync failed (non-blocking):', err.message));
     this.generateRecommendations(team.org_id, team.id, payload.providerConfigKey, payload.model)
+      .then(async (count) => {
+        await this.sb.from('team_integrations').update({
+          config: {
+            last_sync_at: new Date().toISOString(),
+            last_recommendation_count: count,
+            last_sync_model: payload.model,
+          },
+        }).eq('connection_id', payload.connectionId);
+      })
       .catch(err => this.logger.error('Recommendations failed (non-blocking):', err.message));
     return { queued: 0 };
   }
@@ -111,7 +89,7 @@ export class WebhookService {
     this.logger.log(`Synced ${records.length} ${payload.model} records for team ${teamId}`);
   }
 
-  async generateRecommendations(orgId: string, teamId: string, _provider: string, model: string): Promise<void> {
+  async generateRecommendations(orgId: string, teamId: string, _provider: string, model: string): Promise<number> {
     const { data: deals } = await this.sb.from('gtm_deals').select('stage, value, probability, expected_close_date')
       .eq('organization_id', orgId).neq('stage', 'closed_lost').limit(50);
     const { data: spend } = await this.sb.from('team_spend').select('category, amount, vendor')
@@ -126,11 +104,11 @@ export class WebhookService {
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
     });
-    if (!res.ok) { this.logger.warn(`Anthropic API error: ${res.status}`); return; }
+    if (!res.ok) { this.logger.warn(`Anthropic API error: ${res.status}`); return 0; }
 
     let recs: any[];
-    try { recs = JSON.parse(((await res.json()) as any).content[0].text); } catch { this.logger.warn('Bad recommendations JSON'); return; }
-    if (!Array.isArray(recs)) return;
+    try { recs = JSON.parse(((await res.json()) as any).content[0].text); } catch { this.logger.warn('Bad recommendations JSON'); return 0; }
+    if (!Array.isArray(recs)) return 0;
 
     let count = 0;
     for (const rec of recs) {
@@ -148,6 +126,49 @@ export class WebhookService {
       if (!error) count++;
     }
     this.logger.log(`Generated ${count} recommendations for org ${orgId}`);
+    return count;
+  }
+
+  /**
+   * Upsert logic: find skills matching this trigger source, then for each skill
+   * check if a project already exists for team_id + skill name. If found, update
+   * its last_synced timestamp. If not found, skip (let autonomous processor create it).
+   * This prevents duplicate dashboards from repeated webhook events.
+   */
+  async upsertSkillProjects(teamId: string, provider: string, model: string): Promise<void> {
+    const triggerOn = `${provider}:${model}`;
+    const { data: skills } = await this.sb
+      .from('skill_registry')
+      .select('id, skill_name')
+      .eq('trigger_on', triggerOn)
+      .eq('is_active', true);
+
+    if (!skills?.length) return;
+
+    for (const skill of skills) {
+      const projectName = `[Auto] ${skill.skill_name}`;
+      const { data: existing } = await this.sb
+        .from('projects')
+        .select('id')
+        .eq('team_id', teamId)
+        .eq('name', projectName)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing project instead of creating a new one
+        await this.sb.from('projects')
+          .update({ last_synced: new Date().toISOString() })
+          .eq('id', existing.id);
+        this.logger.log(`Updated existing project ${existing.id} for skill ${skill.skill_name}`);
+
+        // Also skip any queued autonomous executions for this skill+team to prevent duplicate builds
+        await this.sb.from('autonomous_executions')
+          .update({ status: 'skipped' })
+          .eq('skill_id', skill.id)
+          .eq('team_id', teamId)
+          .eq('status', 'queued');
+      }
+    }
   }
 
   async getGuardrailStatus(orgId: string): Promise<{ autonomousEnabled: boolean }> {

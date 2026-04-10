@@ -27,6 +27,22 @@ interface Props {
   context?: "home" | "operations" | "executive" | "billing"
 }
 
+const DISMISSED_KEY = "vibe_dismissed_recommendations"
+
+function getDismissedIds(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]"))
+  } catch { return new Set() }
+}
+
+function addDismissedId(id: string) {
+  const ids = getDismissedIds()
+  ids.add(id)
+  // Keep last 100 to avoid unbounded growth
+  const arr = [...ids].slice(-100)
+  localStorage.setItem(DISMISSED_KEY, JSON.stringify(arr))
+}
+
 export function RecommendationBanner({ teamId }: Props) {
   const [rec, setRec] = useState<Recommendation | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -41,8 +57,10 @@ export function RecommendationBanner({ teamId }: Props) {
       .eq("status", "pending")
       .gt("expires_at", new Date().toISOString())
       .order("priority", { ascending: true })
-      .limit(2)
-    setRec(data?.[0] ?? null)
+      .limit(5)
+    const dismissed = getDismissedIds()
+    const next = data?.find((r) => !dismissed.has(r.id)) ?? null
+    setRec(next)
     setLoaded(true)
   }, [teamId])
 
@@ -56,6 +74,7 @@ export function RecommendationBanner({ teamId }: Props) {
       { method: "POST", headers, body: JSON.stringify({ decision }) },
     )
     if (res.ok) {
+      addDismissedId(rec.id)
       if (decision === "approved") {
         setToast("Skill queued \u2014 UbiVibe is on it")
         setTimeout(() => setToast(null), 3000)
