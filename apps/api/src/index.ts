@@ -1188,9 +1188,11 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
             await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: 'deterministic', modelCalls: 0, retries: 0, fallbacks: 0 }, totalTokens: 0, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
             await storage.updateTaskUsageMetrics(taskId, { llm_model: 'deterministic', llm_prompt_tokens: 0, llm_completion_tokens: 0, llm_total_tokens: 0 });
             await storage.updateTaskState(taskId, 'completed');
-            if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
+            // Deterministic template builds do NOT consume credits — zero LLM cost.
+            // Credits are only consumed on LLM-generated (custom) builds.
+            // This keeps template builds free for all tiers, enabling the "wow moment."
             if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: html, department: auditDepartment });
-            await storage.logEvent(taskId, `Dashboard completed (deterministic template: ${goldenMatch.skillName})`, 'success');
+            await storage.logEvent(taskId, `Dashboard completed (deterministic template: ${goldenMatch.skillName} — zero credits consumed)`, 'success');
             return;
           }
 

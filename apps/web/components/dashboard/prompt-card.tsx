@@ -272,6 +272,15 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
         if (uploadIdRef.current) linkUploadToProject(uploadIdRef.current, project.id).catch(() => {})
       }
     }
+    // Sample data path: skip intake Q&A, fire job directly with original prompt.
+    // The API's deterministic template path handles skeleton + sample data injection.
+    // No LLM calls needed — the template has embedded sample data.
+    if (resolvedPath === "sample") {
+      const samplePrompt = prompt.trim() + "\n[Data source: sample data]"
+      setMessages([{ role: "assistant", text: "Building with sample data — no AI generation needed..." }])
+      await fireJob(samplePrompt)
+      return
+    }
     const pathNote = resolvedPath === "connected" ? `\n[Data source: connected CRM (${activeConnectors.join(", ")})]`
       : resolvedPath === "upload" ? `\n[Data source: file upload]`
       : resolvedPath === "manual" ? `\n[Data source: manual entry]`
