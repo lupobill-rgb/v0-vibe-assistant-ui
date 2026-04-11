@@ -11,7 +11,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Skip auth check on public pages
-    if (pathname === "/login" || pathname === "/select-team" || pathname === "/pricing") {
+    if (pathname === "/login" || pathname === "/select-team" || pathname === "/pricing" || pathname.startsWith("/landing")) {
       setReady(true)
       return
     }

@@ -77,13 +77,15 @@ export function resolveMode(prompt: string, teamName?: string): string {
   // Strong app signals always win (crm, crud, full-stack, kanban, etc.)
   if (isStrongApp) return "app";
 
+  // Explicit page-type keywords override dashboard content keywords.
+  // "Build a landing page with pipeline stats" → site, not dashboard.
+  if (isSite) return "site";
+
   // Dashboard keywords beat weak app keywords
   if (isDashboard) return "dashboard";
 
   // Weak app keywords only trigger app mode for longer, complex prompts
   if (isWeakApp && wordCount >= 20) return "app";
-
-  if (isSite) return "site";
 
   // Fall back to team default
   const teamKey = (teamName || "").toLowerCase();
