@@ -1200,7 +1200,9 @@ STRUCTURAL REQUIREMENTS:
 - Include a data table with relevant columns for the domain, populated via vibeLoadData — show "No data yet" row if empty
 - NEVER define const SAMPLE_DATA or any hardcoded data arrays — all data comes from vibeLoadData()
 - Detect the domain from the user prompt and use contextually relevant metrics
-CRITICAL: Output the COMPLETE HTML from <!DOCTYPE html> to </html>. Do NOT stop early. Every section, chart, and table must be fully generated.` + (context ? "\nContext:\n" + context : "");
+- Never use alert(), confirm(), or prompt()
+- Never generate React or JSX
+- Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 16384;
 
       // SAMPLE DATA OVERRIDE: when no real data source is connected,
@@ -1270,21 +1272,6 @@ Include at least 3 charts (bar, line, doughnut) and 4-6 KPI cards — all fully 
       }
     } else if (isLandingPagePrompt(prompt)) {
       prompt = prompt + LANDING_PAGE_ENFORCEMENT;
-    }
-
-    // ── Dashboard output format enforcement (appended to end of user prompt) ──
-    // GPT and other models follow end-of-prompt instructions more reliably.
-    // This reinforces the most critical output requirements at the very end.
-    if (mode === "dashboard") {
-      prompt += `
-
-OUTPUT FORMAT REMINDER — follow exactly:
-1. Start with <!DOCTYPE html>, end with </html>. Complete HTML only.
-2. Include 4 KPI stat cards, 2+ Chart.js charts (bar/line/doughnut), and a data table.
-3. Place each chart <script> IMMEDIATELY after its <canvas> — do not defer to a single DOMContentLoaded block at the bottom.
-4. Use CSS grid layout: grid-cols-[256px_1fr] with sidebar + main content area.
-5. Every <canvas> needs: height="200" style="height:200px !important; max-height:200px;"
-6. Generate the FULL dashboard — do NOT stop early or truncate any section.`;
     }
 
     // ── Multi-provider failover (see docs/llm-redundancy-plan.md) ──────
