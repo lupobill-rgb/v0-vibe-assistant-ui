@@ -16,7 +16,7 @@ export default function PricingRoute() {
             <div>
               <h1 className="text-xl font-semibold text-foreground">Pricing</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Choose the right plan for your team
+                Free for 30 days. Simple per-user pricing after that.
               </p>
             </div>
           </div>
