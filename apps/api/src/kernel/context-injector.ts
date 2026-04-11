@@ -698,9 +698,10 @@ export async function resolveGoldenTemplateMatch(
     }
   }
 
-  // Threshold: 25% bidirectional match AND at least 2 overlapping keywords
+  // Threshold: 25% bidirectional match AND at least 3 overlapping keywords
+  // Min 3 prevents weak matches like "track expenses" matching a full finance dashboard
   const MATCH_THRESHOLD = 0.25;
-  const MIN_OVERLAP = 2;
+  const MIN_OVERLAP = 3;
   if (bestScore >= MATCH_THRESHOLD && bestOverlap >= MIN_OVERLAP && bestSkill) {
     console.log(`[KERNEL] Golden template match: "${bestSkill.skill_name}" (score=${bestScore.toFixed(2)}, overlap=${bestOverlap})`);
     return {

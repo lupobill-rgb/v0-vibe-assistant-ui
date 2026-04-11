@@ -149,9 +149,10 @@ export function validateStarterSiteQuality(files: Array<{ route: string; html: s
       const canvasCount = (html.match(/<canvas[\s>]/gi) || []).length;
       const chartInitCount = (rawHtml.match(/new\s+Chart\s*\(/g) || []).length;
       if (canvasCount > 0 && chartInitCount === 0) reasons.push(`${file.route}: canvas elements found but no Chart.js initialization (new Chart())`);
-      // KPI stat cards: check for at least 2 metric-like containers
-      const hasStatCards = (rawHtml.match(/stat|kpi|metric|card/gi) || []).length >= 2;
-      if (!hasStatCards) reasons.push(`${file.route}: missing KPI/stat cards`);
+      // KPI stat cards: look for actual metric patterns — large numbers, currency, percentages
+      // Checks for text-3xl/text-4xl (large metric numbers) or common KPI label patterns
+      const kpiPatterns = (rawHtml.match(/text-3xl|text-4xl|text-2xl font-bold|font-bold text-2xl|kpi|stat-card|data-kpi/gi) || []).length;
+      if (kpiPatterns < 2) reasons.push(`${file.route}: missing KPI/stat cards (need large metric text or data-kpi attributes)`);
       // HTML completeness: must end with </html>
       if (!rawHtml.trim().endsWith('</html>')) reasons.push(`${file.route}: HTML output incomplete (missing </html>)`);
       // Nav element required

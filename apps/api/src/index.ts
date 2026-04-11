@@ -1363,9 +1363,21 @@ ${dashData.diff}`;
                     if (repairResult.ok) {
                       const repairData = JSON.parse(repairResult.text);
                       if (repairData.diff && repairData.diff.trim().length > dashData.diff.trim().length * 0.5) {
-                        dashData.diff = repairData.diff;
-                        if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
-                        await storage.logEvent(taskId, `Dashboard repair pass completed (${repairData.usage?.total_tokens ?? 0} tokens)`, 'info');
+                        // Only accept repair if it passes MORE quality checks than the original
+                        const repairQuality = validateStarterSiteQuality(
+                          [{ route: '/', html: repairData.diff }],
+                          /placeholder|sample data/i.test(prompt),
+                          true,
+                        );
+                        const originalFailCount = dashQuality.reasons.length;
+                        const repairFailCount = repairQuality.reasons.length;
+                        if (repairFailCount < originalFailCount) {
+                          dashData.diff = repairData.diff;
+                          if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
+                          await storage.logEvent(taskId, `Dashboard repair accepted: ${originalFailCount} → ${repairFailCount} failures (${repairData.usage?.total_tokens ?? 0} tokens)`, 'info');
+                        } else {
+                          await storage.logEvent(taskId, `Repair rejected — did not improve quality (${originalFailCount} → ${repairFailCount} failures). Keeping original.`, 'warning');
+                        }
                       } else {
                         await storage.logEvent(taskId, 'Repair output too short — keeping original', 'warning');
                       }
