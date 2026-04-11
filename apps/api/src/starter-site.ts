@@ -139,10 +139,23 @@ export function validateStarterSiteQuality(files: Array<{ route: string; html: s
   for (const file of files) {
     const html = file.html.toLowerCase();
     if (isDashboard) {
-      // Dashboard pages need charts/canvas, not CTAs/sections
-      if (!/<canvas[\s>]/.test(html) && !/<table[\s>]/.test(html)) reasons.push(`${file.route}: missing chart or table`);
-      if (!/<title>.+<\/title>/.test(html)) reasons.push(`${file.route}: missing title`);
-      if ((html.match(/<script[\s>]/g) || []).length < 2) reasons.push(`${file.route}: missing chart scripts`);
+      // Dashboard quality gate: ensures model-agnostic output quality
+      const rawHtml = file.html;
+      if (!/<canvas[\s>]/i.test(html)) reasons.push(`${file.route}: missing chart canvas elements`);
+      if (!/<table[\s>]/i.test(html)) reasons.push(`${file.route}: missing data table`);
+      if (!/<title>.+<\/title>/i.test(html)) reasons.push(`${file.route}: missing title`);
+      if ((html.match(/<script[\s>]/gi) || []).length < 2) reasons.push(`${file.route}: missing chart scripts`);
+      // Chart.js initialization: every canvas must have a corresponding new Chart() call
+      const canvasCount = (html.match(/<canvas[\s>]/gi) || []).length;
+      const chartInitCount = (rawHtml.match(/new\s+Chart\s*\(/g) || []).length;
+      if (canvasCount > 0 && chartInitCount === 0) reasons.push(`${file.route}: canvas elements found but no Chart.js initialization (new Chart())`);
+      // KPI stat cards: check for at least 2 metric-like containers
+      const hasStatCards = (rawHtml.match(/stat|kpi|metric|card/gi) || []).length >= 2;
+      if (!hasStatCards) reasons.push(`${file.route}: missing KPI/stat cards`);
+      // HTML completeness: must end with </html>
+      if (!rawHtml.trim().endsWith('</html>')) reasons.push(`${file.route}: HTML output incomplete (missing </html>)`);
+      // Nav element required
+      if (!/<nav[\s>]/i.test(html)) reasons.push(`${file.route}: missing navigation`);
     } else {
       if (!/<h1[\s>]/.test(html)) reasons.push(`${file.route}: missing H1`);
       if ((html.match(/<section[\s>]/g) || []).length < 2) reasons.push(`${file.route}: requires at least 2 sections`);

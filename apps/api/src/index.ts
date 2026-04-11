@@ -1328,6 +1328,56 @@ Include ALL rows from the original data with their final calculated values. This
                 }
               }
 
+              // ── Dashboard quality validation gate ──────────────────────
+              // Ensures model-agnostic quality: same checks regardless of GPT, Claude, etc.
+              const dashQuality = validateStarterSiteQuality(
+                [{ route: '/', html: dashData.diff }],
+                /placeholder|sample data/i.test(prompt),
+                true, // isDashboard
+              );
+              if (!dashQuality.ok) {
+                await storage.logEvent(taskId, `Dashboard quality gate failed: ${dashQuality.reasons.join(' | ')}`, 'warning');
+                // Attempt a single repair call with dashboard-specific prompt
+                const elapsedMs = Date.now() - startedAtMs;
+                const remainingMs = budgets.stepDeadlinesMs.building - elapsedMs;
+                if (remainingMs > 30_000) { // Only repair if >30s budget remains
+                  await storage.logEvent(taskId, 'Attempting dashboard quality repair pass', 'info');
+                  const repairPrompt = `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.
+Repair this dashboard HTML so it includes ALL of the following:
+- <nav> element with navigation links
+- At least 4 KPI/stat cards with metric values
+- At least 2 Chart.js charts with <canvas> elements AND corresponding new Chart() initialization scripts immediately after each canvas
+- A data table with <table> element
+- <title> tag with descriptive dashboard name
+- Sidebar + main content CSS grid layout: grid-cols-[256px_1fr]
+- Every <canvas> must have: height="200" style="height:200px !important; max-height:200px;"
+Keep all existing Tailwind classes, CSS variables (var(--bg), var(--primary), etc.), fonts, and vibeLoadData() calls intact.
+Fix ONLY what is missing — preserve everything that already works.
+${dashData.diff}`;
+                  try {
+                    const repairResult = await Promise.race([
+                      edgeCall({ prompt: repairPrompt, model: resolvedModel, mode: 'edit', color_block: dashColorBlock }),
+                      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Repair timed out')), remainingMs - 5_000)),
+                    ]);
+                    modelCalls += 1;
+                    if (repairResult.ok) {
+                      const repairData = JSON.parse(repairResult.text);
+                      if (repairData.diff && repairData.diff.trim().length > dashData.diff.trim().length * 0.5) {
+                        dashData.diff = repairData.diff;
+                        if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
+                        await storage.logEvent(taskId, `Dashboard repair pass completed (${repairData.usage?.total_tokens ?? 0} tokens)`, 'info');
+                      } else {
+                        await storage.logEvent(taskId, 'Repair output too short — keeping original', 'warning');
+                      }
+                    }
+                  } catch (repairErr: any) {
+                    await storage.logEvent(taskId, `Dashboard repair failed (non-blocking): ${repairErr.message}`, 'warning');
+                  }
+                } else {
+                  await storage.logEvent(taskId, `Skipping repair — insufficient time budget (${Math.round(remainingMs / 1000)}s remaining)`, 'warning');
+                }
+              }
+
               const previewDir = path.join(PREVIEWS_DIR, taskId);
               fs.mkdirSync(previewDir, { recursive: true });
               fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(dashData.diff));
