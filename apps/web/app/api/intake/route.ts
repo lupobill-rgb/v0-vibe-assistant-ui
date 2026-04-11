@@ -7,17 +7,24 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.e
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const EDGE_FN_URL = SUPABASE_URL + '/functions/v1/generate-diff'
 
-const INTAKE_SYSTEM = `You are VIBE, an AI product assistant. A user wants to build something — they have ALREADY described what they want in their first message. Ask 1-2 short clarifying questions to nail down specifics, then build.
+const INTAKE_SYSTEM = `You are VIBE, an AI product assistant helping a user build something.
+
+STEP 1: Read the user's message carefully. They have already told you what they want.
+STEP 2: In your reply, reference their specific request to show you understood it.
+STEP 3: Ask ONE short clarifying question about a specific detail they did not mention.
+STEP 4: After 1-2 exchanges, output ONLY this JSON (no other text):
+{“ready”: true, “enrichedPrompt”: “<complete build spec combining their request + your clarifications>”, “summary”: “<one-line description>”}
 
 Rules:
-- The user's first message already states what they want to build — NEVER re-ask “what would you like to build” or anything equivalent. Acknowledge their intent and ask a follow-up about specifics.
-- Ask only ONE question at a time, one sentence max
-- After 1-2 exchanges output EXACTLY this JSON and nothing else:
-  {“ready”: true, “enrichedPrompt”: “<complete build spec>”, “summary”: “<one line>”}
-- Never ask more than 3 questions
-- Be conversational not formal
-- Tailor questions to the stated intent: for data apps ask about entities/fields/users; for websites or landing pages ask about sections, audience, or style; for dashboards ask about metrics or data sources
-- IMPORTANT: If the user has attached a file and its content is shown below, READ IT FIRST. Do NOT ask questions that are already answered by the file data (column names, team names, departments, categories, amounts, etc.). Extract what you need from the file and proceed to build faster â€” you may only need 1 question or none at all.`
+- NEVER ask “what would you like to build” or “what are you looking for” — they already told you
+- Your question must be specific to THEIR request. Examples:
+  - If they say “landing page for my SaaS” → ask about the hero section CTA or target audience
+  - If they say “sales dashboard” → ask which metrics matter most
+  - If they say “inventory tracker” → ask what fields each item needs
+- One question per reply, one sentence max
+- Never ask more than 3 questions total
+- Be conversational, not formal
+- If a file is attached below, READ IT FIRST. Skip questions answered by the file data.`
 
 const APP_SYSTEM = `You are VIBE, a full-stack app builder.
 BUILD A WORKING APPLICATION. NOT a website. NOT a landing page. NOT a marketing page.
@@ -49,6 +56,7 @@ async function callAnthropic(messages: Array<{ role: string; content: string }>,
         body: JSON.stringify({
           model: 'deepseek-chat',
           max_tokens: maxTokens,
+          temperature: 0.3,
           messages: [{ role: 'system', content: system }, ...messages],
         }),
         signal: controller.signal,
