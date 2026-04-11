@@ -701,7 +701,7 @@ export async function resolveGoldenTemplateMatch(
   // Threshold: 25% bidirectional match AND at least 3 overlapping keywords
   // Min 3 prevents weak matches like "track expenses" matching a full finance dashboard
   const MATCH_THRESHOLD = 0.25;
-  const MIN_OVERLAP = 3;
+  const MIN_OVERLAP = 2;
   if (bestScore >= MATCH_THRESHOLD && bestOverlap >= MIN_OVERLAP && bestSkill) {
     const hasSkeleton = !!(bestSkill as any).html_skeleton;
     console.log(`[KERNEL] Golden template match: "${bestSkill.skill_name}" (score=${bestScore.toFixed(2)}, overlap=${bestOverlap}, skeleton=${hasSkeleton})`);
