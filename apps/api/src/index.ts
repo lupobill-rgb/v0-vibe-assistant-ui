@@ -1272,11 +1272,15 @@ Include ALL rows from the original data with their final calculated values. This
               ]);
               modelCalls += 1;
               if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
-              let dashData: { diff: string; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
+              let dashData: { diff: string; truncated?: boolean; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
               try {
                 dashData = JSON.parse(dashResult.text);
               } catch {
                 throw new Error(`Dashboard edge returned invalid JSON (${dashResult.text.length} chars)`);
+              }
+              if (dashData.truncated) {
+                console.warn(`[DASHBOARD-TRUNCATED] LLM output was truncated — HTML may be incomplete (${dashData.diff?.length ?? 0} chars)`);
+                await storage.logEvent(taskId, 'Warning: LLM output was truncated. Dashboard HTML may be incomplete — closing tags were auto-repaired.', 'warning');
               }
               if (dashData.usage?.total_tokens) totalTokens += dashData.usage.total_tokens;
 

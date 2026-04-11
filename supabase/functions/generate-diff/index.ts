@@ -875,8 +875,13 @@ async function callClaude(systemMsg: string, prompt: string, maxTokens = 4096) {
     throw new Error(data.error?.message ?? JSON.stringify(data));
   }
 
+  const stopReason = data.stop_reason;
+  if (stopReason === "max_tokens") {
+    console.warn(`[CLAUDE-TRUNCATION] Output truncated (stop_reason=max_tokens). Output tokens: ${data.usage?.output_tokens}, max_tokens: ${maxTokens}`);
+  }
   return {
     diff: data.content?.[0]?.type === "text" ? data.content[0].text : "",
+    truncated: stopReason === "max_tokens",
     usage: {
       input_tokens: data.usage?.input_tokens ?? 0,
       output_tokens: data.usage?.output_tokens ?? 0,
@@ -911,8 +916,14 @@ async function callGpt(systemMsg: string, prompt: string, maxTokens = 4096) {
     throw new Error(data.error?.message ?? JSON.stringify(data));
   }
 
+  const content = data.choices?.[0]?.message?.content ?? "";
+  const finishReason = data.choices?.[0]?.finish_reason;
+  if (finishReason === "length") {
+    console.warn(`[GPT-TRUNCATION] Output truncated (finish_reason=length). Output tokens: ${data.usage?.completion_tokens}, max_tokens: ${Math.min(maxTokens, 16384)}`);
+  }
   return {
-    diff: data.choices?.[0]?.message?.content ?? "",
+    diff: content,
+    truncated: finishReason === "length",
     usage: {
       input_tokens: data.usage?.prompt_tokens ?? 0,
       output_tokens: data.usage?.completion_tokens ?? 0,
@@ -948,9 +959,14 @@ async function callGemini(systemMsg: string, prompt: string, maxTokens = 4096, s
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   const usageMeta = data.usageMetadata;
+  const finishReason = data.candidates?.[0]?.finishReason;
+  if (finishReason === "MAX_TOKENS") {
+    console.warn(`[GEMINI-TRUNCATION] Output truncated (finishReason=MAX_TOKENS). Output tokens: ${usageMeta?.candidatesTokenCount}`);
+  }
 
   return {
     diff: text,
+    truncated: finishReason === "MAX_TOKENS",
     usage: {
       input_tokens: usageMeta?.promptTokenCount ?? 0,
       output_tokens: usageMeta?.candidatesTokenCount ?? 0,
@@ -985,8 +1001,13 @@ async function callDeepseek(systemMsg: string, prompt: string, maxTokens = 4096)
     throw new Error(data.error?.message ?? JSON.stringify(data));
   }
 
+  const finishReason = data.choices?.[0]?.finish_reason;
+  if (finishReason === "length") {
+    console.warn(`[DEEPSEEK-TRUNCATION] Output truncated (finish_reason=length). Output tokens: ${data.usage?.completion_tokens}`);
+  }
   return {
     diff: data.choices?.[0]?.message?.content ?? "",
+    truncated: finishReason === "length",
     usage: {
       input_tokens: data.usage?.prompt_tokens ?? 0,
       output_tokens: data.usage?.completion_tokens ?? 0,
@@ -1021,8 +1042,13 @@ async function callFireworks(systemMsg: string, prompt: string, maxTokens = 4096
     throw new Error(data.error?.message ?? JSON.stringify(data));
   }
 
+  const finishReason = data.choices?.[0]?.finish_reason;
+  if (finishReason === "length") {
+    console.warn(`[FIREWORKS-TRUNCATION] Output truncated (finish_reason=length). Output tokens: ${data.usage?.completion_tokens}`);
+  }
   return {
     diff: data.choices?.[0]?.message?.content ?? "",
+    truncated: finishReason === "length",
     usage: {
       input_tokens: data.usage?.prompt_tokens ?? 0,
       output_tokens: data.usage?.completion_tokens ?? 0,
@@ -1033,7 +1059,7 @@ async function callFireworks(systemMsg: string, prompt: string, maxTokens = 4096
 
 // ── Provider registry & failover chain ───────────────────────────────
 
-type ProviderFn = (s: string, p: string, m?: number) => Promise<{ diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } }>;
+type ProviderFn = (s: string, p: string, m?: number) => Promise<{ diff: string; truncated?: boolean; usage: { input_tokens: number; output_tokens: number; total_tokens: number } }>;
 
 const PROVIDERS: Record<string, ProviderFn> = {
   claude: callClaude,
@@ -1152,20 +1178,8 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
     } else if (mode === "dashboard") {
       // Single LLM call — no separate design spec phase
       // Previous 2-call approach hit Supabase 150s wall-time limit causing 504s
-      const HARD_BLOCK = `
-ABSOLUTE HARD STOP: This file will be rendered in a plain browser iframe.
-It has NO build system, NO Node.js, NO React, NO webpack, NO Next.js.
-The output MUST be a single self-contained HTML file.
-Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files.
-If you generate ANY of the following the page will be completely blank:
-- import or export statements
-- React, ReactDOM, JSX, TSX
-- Next.js, Vite, webpack references
-- alert(), confirm(), prompt()
-- Any module bundler syntax
-Every interactive feature MUST use vanilla JavaScript only.
-The file MUST start with <!DOCTYPE html> and end with </html>.
-`;
+      // HARD_BLOCK condensed — detailed anti-React rules already in DASHBOARD_SYSTEM
+      const HARD_BLOCK = `RENDERING ENVIRONMENT: plain browser iframe. No build system. No Node.js. No React. Vanilla JS only. Single self-contained HTML file. Navigation via JS onclick show/hide — never href to .html files.\n`;
       baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
 STRUCTURAL REQUIREMENTS:
 - Include at least 4 KPI stat cards populated via vibeLoadData — show "--" if no data
@@ -1174,9 +1188,7 @@ STRUCTURAL REQUIREMENTS:
 - Include a data table with relevant columns for the domain, populated via vibeLoadData — show "No data yet" row if empty
 - NEVER define const SAMPLE_DATA or any hardcoded data arrays — all data comes from vibeLoadData()
 - Detect the domain from the user prompt and use contextually relevant metrics
-- Never use alert(), confirm(), or prompt()
-- Never generate React or JSX
-- Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
+CRITICAL: Output the COMPLETE HTML from <!DOCTYPE html> to </html>. Do NOT stop early. Every section, chart, and table must be fully generated.` + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 16384;
 
       // SAMPLE DATA OVERRIDE: when no real data source is connected,
@@ -1248,11 +1260,26 @@ Include at least 3 charts (bar, line, doughnut) and 4-6 KPI cards — all fully 
       prompt = prompt + LANDING_PAGE_ENFORCEMENT;
     }
 
+    // ── Dashboard output format enforcement (appended to end of user prompt) ──
+    // GPT and other models follow end-of-prompt instructions more reliably.
+    // This reinforces the most critical output requirements at the very end.
+    if (mode === "dashboard") {
+      prompt += `
+
+OUTPUT FORMAT REMINDER — follow exactly:
+1. Start with <!DOCTYPE html>, end with </html>. Complete HTML only.
+2. Include 4 KPI stat cards, 2+ Chart.js charts (bar/line/doughnut), and a data table.
+3. Place each chart <script> IMMEDIATELY after its <canvas> — do not defer to a single DOMContentLoaded block at the bottom.
+4. Use CSS grid layout: grid-cols-[256px_1fr] with sidebar + main content area.
+5. Every <canvas> needs: height="200" style="height:200px !important; max-height:200px;"
+6. Generate the FULL dashboard — do NOT stop early or truncate any section.`;
+    }
+
     // ── Multi-provider failover (see docs/llm-redundancy-plan.md) ──────
     // Try requested model first, then cascade through failover chain.
     // Skip providers whose context window can't fit the request.
     // Failover is PRE-stream only — no mid-stream provider switches.
-    let result: { diff: string; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
+    let result: { diff: string; truncated?: boolean; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
     let fallbackUsed = false;
     let originalModel = model;
     let usedModel = model;
@@ -1325,9 +1352,37 @@ Include at least 3 charts (bar, line, doughnut) and 4-6 KPI cards — all fully 
       }
     }
 
+    // ── HTML truncation repair for dashboard/site/html modes ──────────
+    // If the LLM hit its output token limit, the HTML may be cut off mid-tag.
+    // Detect and repair by closing missing tags so the preview still renders.
+    if ((mode === "dashboard" || mode === "html" || mode === "site" || mode === "app") && result.diff) {
+      const trimmed = result.diff.trim();
+      if (trimmed.startsWith("<!DOCTYPE html") || trimmed.startsWith("<html")) {
+        if (!trimmed.endsWith("</html>")) {
+          console.warn(`[HTML-REPAIR] Output missing </html> — truncated output detected (${trimmed.length} chars). Appending closing tags.`);
+          // Close any open script/style tags, then close body and html
+          let repaired = result.diff;
+          const openScripts = (repaired.match(/<script[\s>]/g) || []).length;
+          const closeScripts = (repaired.match(/<\/script>/g) || []).length;
+          if (openScripts > closeScripts) {
+            repaired += "\n</script>";
+          }
+          const openStyles = (repaired.match(/<style[\s>]/g) || []).length;
+          const closeStyles = (repaired.match(/<\/style>/g) || []).length;
+          if (openStyles > closeStyles) {
+            repaired += "\n</style>";
+          }
+          if (!repaired.includes("</body>")) repaired += "\n</body>";
+          if (!repaired.includes("</html>")) repaired += "\n</html>";
+          result.diff = repaired;
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         diff: result.diff,
+        truncated: result.truncated ?? false,
         usage: result.usage,
         model: usedModel,
         mode: mode || "diff",
