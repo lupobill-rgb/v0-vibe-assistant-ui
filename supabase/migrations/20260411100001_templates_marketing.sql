@@ -12,7 +12,117 @@ SELECT
   'email-analytics',
   'marketing',
   'Build an interactive email marketing performance dashboard with open rates, click-through rates, subscriber growth, campaign comparisons, deliverability metrics, and segment engagement. Use for email, newsletter, open rate, click rate, subscribers, campaigns, deliverability analysis.',
-  E'---\nname: email-analytics\ndescription: Build an interactive email marketing performance dashboard with open rates, click-through rates, subscriber growth, campaign comparisons, deliverability metrics, and segment engagement. Use for email, newsletter, open rate, click rate, subscribers, campaigns, deliverability analysis.\nargument-hint: "<email platform or campaign description>"\n---\n\n# /email-analytics - Email Marketing Performance Dashboard\n\nBuild a self-contained interactive HTML dashboard for email marketing analytics — open/click rates, campaign performance, subscriber growth, segment engagement, and deliverability health.\n\n## Usage\n\n```\n/email-analytics <description of email platform or campaign set>\n```\n\n## Workflow\n\n### 1. Understand the Email Program\n\nDetermine:\n- **Email types**: Newsletter, promotional, transactional, drip/nurture, re-engagement\n- **Send frequency**: Daily, weekly, bi-weekly, monthly\n- **Audience size**: Total subscribers, active vs dormant segmentation\n- **Platform**: Mailchimp, SendGrid, HubSpot, Klaviyo, or custom\n- **Key goals**: Revenue per email, list growth, engagement uplift, churn reduction\n\n### 2. Gather the Data\n\n**If data is provided:** Parse CSV/JSON, identify campaign columns, metric columns, date fields.\n\n**If working from description:** Generate a realistic sample dataset with 20-40 campaigns over 6 months. Note clearly that sample data is in use.\n\n### 3. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Email Analytics Dashboard            [Filters]       |\n+------------+------------+------------+---------------+\n| Open Rate  | Click-     | Unsubscribe| Revenue       |\n| (%)        | Through    | Rate (%)   | per Email ($) |\n|            | Rate (%)   |            |               |\n+------------------------------------------------------+\n| OVERVIEW                                             |\n+------------------------+-----------------------------+\n| Open/Click Trends      | Performance by Campaign     |\n| (line over time)       | (bar chart)                 |\n+------------------------+-----------------------------+\n| CAMPAIGNS                                            |\n+------------------------------------------------------+\n| Campaign Detail Table (sortable, filterable)         |\n| Campaign | Sent | Opens | Clicks | CTR | Unsubs |   |\n| Revenue                                              |\n+------------------------------------------------------+\n| SEGMENTS                                             |\n+------------------------+-----------------------------+\n| Subscriber Growth      | Engagement by Segment       |\n| (line over time)       | (grouped bar)               |\n+------------------------+-----------------------------+\n| DELIVERABILITY                                       |\n+------------------------------------------------------+\n| Bounce rate, spam complaints, inbox placement        |\n+------------------------------------------------------+\n```\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Line | Open/click rate trends over time (dual axis) |\n| Bar | Performance comparison across campaigns |\n| Line | Subscriber growth over time (total, new, churned) |\n| Grouped bar | Engagement metrics by audience segment |\n\n### 5. KPI Calculations\n\n- Open Rate: unique opens / delivered x 100\n- Click-Through Rate (CTR): unique clicks / delivered x 100\n- Click-to-Open Rate (CTOR): unique clicks / unique opens x 100\n- Unsubscribe Rate: unsubscribes / delivered x 100\n- Revenue per Email: total email-attributed revenue / emails delivered\n- Bounce Rate: bounces / sent x 100\n- List Growth Rate: (new subscribers - unsubscribes) / total list x 100\n\n### 6. Sections\n\n**Overview** - Top KPI cards plus trend lines. At-a-glance health of the email program.\n\n**Campaigns** - Sortable table with per-campaign drill-down: Campaign name, Date sent, Sent count, Opens, Clicks, CTR, Unsubscribes, Revenue. Color-code CTR: green (above avg), yellow (at avg), red (below avg).\n\n**Segments** - Grouped bar comparing open rate, CTR, and revenue across segments (e.g., new subscribers, engaged, dormant, VIP). Subscriber growth line chart.\n\n**Deliverability** - Bounce rate trend, spam complaint rate, inbox vs spam placement ratio. Flag any metric exceeding industry thresholds (bounce >2%, spam >0.1%).\n\n### 7. Filters\n\n- Date range pickers\n- Campaign type dropdown (newsletter, promotional, drip, transactional)\n- Segment dropdown\n- Send status (sent, scheduled, draft)\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: email-analytics
+description: Build an interactive email marketing performance dashboard with open rates, click-through rates, subscriber growth, campaign comparisons, deliverability metrics, and segment engagement. Use for email, newsletter, open rate, click rate, subscribers, campaigns, deliverability analysis.
+argument-hint: "<email platform or campaign description>"
+---
+
+# /email-analytics - Email Marketing Performance Dashboard
+
+Build a self-contained interactive HTML dashboard for email marketing analytics — open/click rates, campaign performance, subscriber growth, segment engagement, and deliverability health.
+
+## Usage
+
+```
+/email-analytics <description of email platform or campaign set>
+```
+
+## Workflow
+
+### 1. Understand the Email Program
+
+Determine:
+- **Email types**: Newsletter, promotional, transactional, drip/nurture, re-engagement
+- **Send frequency**: Daily, weekly, bi-weekly, monthly
+- **Audience size**: Total subscribers, active vs dormant segmentation
+- **Platform**: Mailchimp, SendGrid, HubSpot, Klaviyo, or custom
+- **Key goals**: Revenue per email, list growth, engagement uplift, churn reduction
+
+### 2. Gather the Data
+
+**If data is provided:** Parse CSV/JSON, identify campaign columns, metric columns, date fields.
+
+**If working from description:** Generate a realistic sample dataset with 20-40 campaigns over 6 months. Note clearly that sample data is in use.
+
+### 3. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Email Analytics Dashboard            [Filters]       |
++------------+------------+------------+---------------+
+| Open Rate  | Click-     | Unsubscribe| Revenue       |
+| (%)        | Through    | Rate (%)   | per Email ($) |
+|            | Rate (%)   |            |               |
++------------------------------------------------------+
+| OVERVIEW                                             |
++------------------------+-----------------------------+
+| Open/Click Trends      | Performance by Campaign     |
+| (line over time)       | (bar chart)                 |
++------------------------+-----------------------------+
+| CAMPAIGNS                                            |
++------------------------------------------------------+
+| Campaign Detail Table (sortable, filterable)         |
+| Campaign | Sent | Opens | Clicks | CTR | Unsubs |   |
+| Revenue                                              |
++------------------------------------------------------+
+| SEGMENTS                                             |
++------------------------+-----------------------------+
+| Subscriber Growth      | Engagement by Segment       |
+| (line over time)       | (grouped bar)               |
++------------------------+-----------------------------+
+| DELIVERABILITY                                       |
++------------------------------------------------------+
+| Bounce rate, spam complaints, inbox placement        |
++------------------------------------------------------+
+```
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Line | Open/click rate trends over time (dual axis) |
+| Bar | Performance comparison across campaigns |
+| Line | Subscriber growth over time (total, new, churned) |
+| Grouped bar | Engagement metrics by audience segment |
+
+### 5. KPI Calculations
+
+- Open Rate: unique opens / delivered x 100
+- Click-Through Rate (CTR): unique clicks / delivered x 100
+- Click-to-Open Rate (CTOR): unique clicks / unique opens x 100
+- Unsubscribe Rate: unsubscribes / delivered x 100
+- Revenue per Email: total email-attributed revenue / emails delivered
+- Bounce Rate: bounces / sent x 100
+- List Growth Rate: (new subscribers - unsubscribes) / total list x 100
+
+### 6. Sections
+
+**Overview** - Top KPI cards plus trend lines. At-a-glance health of the email program.
+
+**Campaigns** - Sortable table with per-campaign drill-down: Campaign name, Date sent, Sent count, Opens, Clicks, CTR, Unsubscribes, Revenue. Color-code CTR: green (above avg), yellow (at avg), red (below avg).
+
+**Segments** - Grouped bar comparing open rate, CTR, and revenue across segments (e.g., new subscribers, engaged, dormant, VIP). Subscriber growth line chart.
+
+**Deliverability** - Bounce rate trend, spam complaint rate, inbox vs spam placement ratio. Flag any metric exceeding industry thresholds (bounce >2%, spam >0.1%).
+
+### 7. Filters
+
+- Date range pickers
+- Campaign type dropdown (newsletter, promotional, drip, transactional)
+- Segment dropdown
+- Send status (sent, scheduled, draft)
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -29,7 +139,119 @@ SELECT
   'social-media',
   'marketing',
   'Build an interactive social media analytics dashboard with follower growth, engagement rates, post performance, reach trends, and platform comparisons. Use for social media, followers, engagement, posts, impressions, reach, instagram, linkedin, twitter analysis.',
-  E'---\nname: social-media\ndescription: Build an interactive social media analytics dashboard with follower growth, engagement rates, post performance, reach trends, and platform comparisons. Use for social media, followers, engagement, posts, impressions, reach, instagram, linkedin, twitter analysis.\nargument-hint: "<social platforms or brand name>"\n---\n\n# /social-media - Social Media Analytics Dashboard\n\nBuild a self-contained interactive HTML dashboard for social media analytics — follower growth, engagement rates, post performance, reach and impressions, and cross-platform comparison.\n\n## Usage\n\n```\n/social-media <description of social platforms or brand>\n```\n\n## Workflow\n\n### 1. Understand the Social Presence\n\nDetermine:\n- **Platforms**: Instagram, LinkedIn, Twitter/X, Facebook, TikTok, YouTube\n- **Content types**: Image, video, carousel, story, reel, text post, article\n- **Posting frequency**: Daily, 3x/week, weekly per platform\n- **Audience**: B2B, B2C, mixed; demographics and regions\n- **Goals**: Brand awareness, lead generation, community building, traffic\n\n### 2. Gather the Data\n\n**If data is provided:** Parse CSV/JSON, identify platform, post type, date, and metric columns.\n\n**If working from description:** Generate a realistic sample dataset with 50-100 posts across 3 months and multiple platforms. Note clearly that sample data is in use.\n\n### 3. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Social Media Dashboard               [Filters]       |\n+------------+------------+------------+---------------+\n| Total      | Engagement | Total      | Social-       |\n| Followers  | Rate (%)   | Reach      | Attributed    |\n|            |            |            | Conversions   |\n+------------------------------------------------------+\n| OVERVIEW                                             |\n+------------------------+-----------------------------+\n| Follower Growth by     | Engagement by Content Type  |\n| Platform (line)        | (bar chart)                 |\n+------------------------+-----------------------------+\n| BY PLATFORM                                          |\n+------------------------------------------------------+\n| Platform cards: per-platform KPIs + sparklines       |\n+------------------------------------------------------+\n| CONTENT PERFORMANCE                                  |\n+------------------------+-----------------------------+\n| Post Performance       | Reach Trend                 |\n| (bar chart)            | (line chart)                |\n+------------------------+-----------------------------+\n| Post Performance Table (sortable, filterable)        |\n| Date | Platform | Content | Impressions | Engagement |\n| | Clicks | Shares                                    |\n+------------------------------------------------------+\n| AUDIENCE                                             |\n+------------------------------------------------------+\n| Demographics, top regions, growth sources            |\n+------------------------------------------------------+\n```\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Line | Follower growth over time, one series per platform |\n| Bar | Engagement metrics by content type (image, video, carousel, etc.) |\n| Bar | Top posts by engagement or impressions |\n| Line | Reach/impressions trend over time |\n\n### 5. KPI Calculations\n\n- Total Followers: sum of followers across all active platforms\n- Engagement Rate: (likes + comments + shares) / impressions x 100\n- Reach: unique accounts that saw content in period\n- Impressions: total views (including repeats)\n- Social-Attributed Conversions: conversions tracked via UTM or pixel from social\n- Virality Rate: shares / impressions x 100\n- Amplification Rate: shares per post / total followers x 100\n\n### 6. Sections\n\n**Overview** - Aggregate KPI cards plus follower growth line and engagement-by-type bar. High-level health of the social program.\n\n**By Platform** - Card per platform showing followers, engagement rate, best post, posting frequency. Platform-color coded (Instagram gradient, LinkedIn blue, Twitter/X black, Facebook blue, TikTok pink/cyan).\n\n**Content Performance** - Bar chart of top-performing posts. Sortable table: Date, Platform, Content type, Caption preview, Impressions, Engagement, Clicks, Shares. Reach trend line.\n\n**Audience** - Follower demographics (age, gender if available), top geographic regions, follower source breakdown (organic, paid, viral).\n\n### 7. Filters\n\n- Date range pickers\n- Platform multi-select\n- Content type dropdown (image, video, carousel, story, reel, article)\n- Metric selector (engagement, impressions, reach, clicks)\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: social-media
+description: Build an interactive social media analytics dashboard with follower growth, engagement rates, post performance, reach trends, and platform comparisons. Use for social media, followers, engagement, posts, impressions, reach, instagram, linkedin, twitter analysis.
+argument-hint: "<social platforms or brand name>"
+---
+
+# /social-media - Social Media Analytics Dashboard
+
+Build a self-contained interactive HTML dashboard for social media analytics — follower growth, engagement rates, post performance, reach and impressions, and cross-platform comparison.
+
+## Usage
+
+```
+/social-media <description of social platforms or brand>
+```
+
+## Workflow
+
+### 1. Understand the Social Presence
+
+Determine:
+- **Platforms**: Instagram, LinkedIn, Twitter/X, Facebook, TikTok, YouTube
+- **Content types**: Image, video, carousel, story, reel, text post, article
+- **Posting frequency**: Daily, 3x/week, weekly per platform
+- **Audience**: B2B, B2C, mixed; demographics and regions
+- **Goals**: Brand awareness, lead generation, community building, traffic
+
+### 2. Gather the Data
+
+**If data is provided:** Parse CSV/JSON, identify platform, post type, date, and metric columns.
+
+**If working from description:** Generate a realistic sample dataset with 50-100 posts across 3 months and multiple platforms. Note clearly that sample data is in use.
+
+### 3. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Social Media Dashboard               [Filters]       |
++------------+------------+------------+---------------+
+| Total      | Engagement | Total      | Social-       |
+| Followers  | Rate (%)   | Reach      | Attributed    |
+|            |            |            | Conversions   |
++------------------------------------------------------+
+| OVERVIEW                                             |
++------------------------+-----------------------------+
+| Follower Growth by     | Engagement by Content Type  |
+| Platform (line)        | (bar chart)                 |
++------------------------+-----------------------------+
+| BY PLATFORM                                          |
++------------------------------------------------------+
+| Platform cards: per-platform KPIs + sparklines       |
++------------------------------------------------------+
+| CONTENT PERFORMANCE                                  |
++------------------------+-----------------------------+
+| Post Performance       | Reach Trend                 |
+| (bar chart)            | (line chart)                |
++------------------------+-----------------------------+
+| Post Performance Table (sortable, filterable)        |
+| Date | Platform | Content | Impressions | Engagement |
+| | Clicks | Shares                                    |
++------------------------------------------------------+
+| AUDIENCE                                             |
++------------------------------------------------------+
+| Demographics, top regions, growth sources            |
++------------------------------------------------------+
+```
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Line | Follower growth over time, one series per platform |
+| Bar | Engagement metrics by content type (image, video, carousel, etc.) |
+| Bar | Top posts by engagement or impressions |
+| Line | Reach/impressions trend over time |
+
+### 5. KPI Calculations
+
+- Total Followers: sum of followers across all active platforms
+- Engagement Rate: (likes + comments + shares) / impressions x 100
+- Reach: unique accounts that saw content in period
+- Impressions: total views (including repeats)
+- Social-Attributed Conversions: conversions tracked via UTM or pixel from social
+- Virality Rate: shares / impressions x 100
+- Amplification Rate: shares per post / total followers x 100
+
+### 6. Sections
+
+**Overview** - Aggregate KPI cards plus follower growth line and engagement-by-type bar. High-level health of the social program.
+
+**By Platform** - Card per platform showing followers, engagement rate, best post, posting frequency. Platform-color coded (Instagram gradient, LinkedIn blue, Twitter/X black, Facebook blue, TikTok pink/cyan).
+
+**Content Performance** - Bar chart of top-performing posts. Sortable table: Date, Platform, Content type, Caption preview, Impressions, Engagement, Clicks, Shares. Reach trend line.
+
+**Audience** - Follower demographics (age, gender if available), top geographic regions, follower source breakdown (organic, paid, viral).
+
+### 7. Filters
+
+- Date range pickers
+- Platform multi-select
+- Content type dropdown (image, video, carousel, story, reel, article)
+- Metric selector (engagement, impressions, reach, clicks)
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -46,7 +268,121 @@ SELECT
   'event-management',
   'marketing',
   'Build an interactive event and webinar management dashboard with registrations, attendance rates, lead conversion, event ROI, and scheduling. Use for event, webinar, conference, registrations, attendance, event ROI, speakers management.',
-  E'---\nname: event-management\ndescription: Build an interactive event and webinar management dashboard with registrations, attendance rates, lead conversion, event ROI, and scheduling. Use for event, webinar, conference, registrations, attendance, event ROI, speakers management.\nargument-hint: "<event program or conference name>"\n---\n\n# /event-management - Event / Webinar Management Dashboard\n\nBuild a self-contained interactive HTML dashboard for event and webinar management — registration tracking, attendance analytics, lead conversion, ROI measurement, and event scheduling.\n\n## Usage\n\n```\n/event-management <description of event program or conference>\n```\n\n## Workflow\n\n### 1. Understand the Event Program\n\nDetermine:\n- **Event types**: Webinar, conference, trade show, workshop, meetup, product launch\n- **Frequency**: One-off, series (monthly webinars), annual conference\n- **Scale**: Attendees per event (50-person webinar vs 5,000-person conference)\n- **Goals**: Lead generation, brand awareness, customer education, partner engagement\n- **Revenue model**: Free, paid tickets, sponsored, hybrid\n\n### 2. Gather the Data\n\n**If data is provided:** Parse CSV/JSON, identify event name, date, type, registration, attendance, and conversion columns.\n\n**If working from description:** Generate a realistic sample dataset with 15-30 events over 12 months across multiple event types. Note clearly that sample data is in use.\n\n### 3. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Event Management Dashboard           [Filters]       |\n+------------+------------+------------+---------------+\n| Total      | Attendance | Lead Conv  | Cost per      |\n| Registra-  | Rate (%)   | from       | Attendee ($)  |\n| tions      |            | Events     |               |\n+------------------------------------------------------+\n| OVERVIEW                                             |\n+------------------------+-----------------------------+\n| Registration vs        | Leads Generated by Event    |\n| Attendance (grouped    | (bar chart)                 |\n| bar)                   |                             |\n+------------------------+-----------------------------+\n| UPCOMING EVENTS                                      |\n+------------------------------------------------------+\n| Upcoming events list with registration progress bars |\n+------------------------------------------------------+\n| PAST PERFORMANCE                                     |\n+------------------------+-----------------------------+\n| Event ROI              | Registration Timeline       |\n| (bar chart)            | (line chart)                |\n+------------------------+-----------------------------+\n| Event Detail Table (sortable, filterable)            |\n| Event | Date | Type | Registrations | Attended |    |\n| Leads | Cost | ROI                                   |\n+------------------------------------------------------+\n| LEAD CONVERSION                                      |\n+------------------------------------------------------+\n| Conversion funnel: registered > attended > engaged > |\n| MQL > SQL by event                                   |\n+------------------------------------------------------+\n```\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Grouped bar | Registration count vs attendance count per event |\n| Bar | Leads generated per event |\n| Bar | Event ROI comparison (revenue or pipeline vs cost) |\n| Line | Registration timeline (cumulative registrations over time leading up to events) |\n\n### 5. KPI Calculations\n\n- Total Registrations: sum of registrations across all events in period\n- Attendance Rate: total attended / total registered x 100\n- Lead Conversion from Events: leads generated from events / total attendees x 100\n- Cost per Attendee: total event spend / total attendees\n- Event ROI: (pipeline or revenue attributed - event cost) / event cost x 100\n- No-Show Rate: (registered - attended) / registered x 100\n- Avg Registrations per Event: total registrations / event count\n\n### 6. Sections\n\n**Overview** - Top KPI cards plus registration-vs-attendance grouped bar and leads-by-event bar. Snapshot of event program health.\n\n**Upcoming Events** - Cards or list for future events: event name, date, type, venue/platform, registration count vs capacity, progress bar. Days until event. Speaker names.\n\n**Past Performance** - Event ROI bar chart. Registration timeline line showing how registrations accumulated before each event. Sortable table: Event, Date, Type, Registrations, Attended, Leads, Cost, ROI. Color-code ROI: green (>100%), yellow (0-100%), red (<0%).\n\n**Lead Conversion** - Funnel visualization: Registered > Attended > Engaged (asked questions / visited booth) > MQL > SQL. Conversion rate at each stage. Breakdown by event type.\n\n### 7. Filters\n\n- Date range pickers\n- Event type dropdown (webinar, conference, trade show, workshop, meetup)\n- Status (upcoming, completed, cancelled)\n- Region / location\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: event-management
+description: Build an interactive event and webinar management dashboard with registrations, attendance rates, lead conversion, event ROI, and scheduling. Use for event, webinar, conference, registrations, attendance, event ROI, speakers management.
+argument-hint: "<event program or conference name>"
+---
+
+# /event-management - Event / Webinar Management Dashboard
+
+Build a self-contained interactive HTML dashboard for event and webinar management — registration tracking, attendance analytics, lead conversion, ROI measurement, and event scheduling.
+
+## Usage
+
+```
+/event-management <description of event program or conference>
+```
+
+## Workflow
+
+### 1. Understand the Event Program
+
+Determine:
+- **Event types**: Webinar, conference, trade show, workshop, meetup, product launch
+- **Frequency**: One-off, series (monthly webinars), annual conference
+- **Scale**: Attendees per event (50-person webinar vs 5,000-person conference)
+- **Goals**: Lead generation, brand awareness, customer education, partner engagement
+- **Revenue model**: Free, paid tickets, sponsored, hybrid
+
+### 2. Gather the Data
+
+**If data is provided:** Parse CSV/JSON, identify event name, date, type, registration, attendance, and conversion columns.
+
+**If working from description:** Generate a realistic sample dataset with 15-30 events over 12 months across multiple event types. Note clearly that sample data is in use.
+
+### 3. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Event Management Dashboard           [Filters]       |
++------------+------------+------------+---------------+
+| Total      | Attendance | Lead Conv  | Cost per      |
+| Registra-  | Rate (%)   | from       | Attendee ($)  |
+| tions      |            | Events     |               |
++------------------------------------------------------+
+| OVERVIEW                                             |
++------------------------+-----------------------------+
+| Registration vs        | Leads Generated by Event    |
+| Attendance (grouped    | (bar chart)                 |
+| bar)                   |                             |
++------------------------+-----------------------------+
+| UPCOMING EVENTS                                      |
++------------------------------------------------------+
+| Upcoming events list with registration progress bars |
++------------------------------------------------------+
+| PAST PERFORMANCE                                     |
++------------------------+-----------------------------+
+| Event ROI              | Registration Timeline       |
+| (bar chart)            | (line chart)                |
++------------------------+-----------------------------+
+| Event Detail Table (sortable, filterable)            |
+| Event | Date | Type | Registrations | Attended |    |
+| Leads | Cost | ROI                                   |
++------------------------------------------------------+
+| LEAD CONVERSION                                      |
++------------------------------------------------------+
+| Conversion funnel: registered > attended > engaged > |
+| MQL > SQL by event                                   |
++------------------------------------------------------+
+```
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Grouped bar | Registration count vs attendance count per event |
+| Bar | Leads generated per event |
+| Bar | Event ROI comparison (revenue or pipeline vs cost) |
+| Line | Registration timeline (cumulative registrations over time leading up to events) |
+
+### 5. KPI Calculations
+
+- Total Registrations: sum of registrations across all events in period
+- Attendance Rate: total attended / total registered x 100
+- Lead Conversion from Events: leads generated from events / total attendees x 100
+- Cost per Attendee: total event spend / total attendees
+- Event ROI: (pipeline or revenue attributed - event cost) / event cost x 100
+- No-Show Rate: (registered - attended) / registered x 100
+- Avg Registrations per Event: total registrations / event count
+
+### 6. Sections
+
+**Overview** - Top KPI cards plus registration-vs-attendance grouped bar and leads-by-event bar. Snapshot of event program health.
+
+**Upcoming Events** - Cards or list for future events: event name, date, type, venue/platform, registration count vs capacity, progress bar. Days until event. Speaker names.
+
+**Past Performance** - Event ROI bar chart. Registration timeline line showing how registrations accumulated before each event. Sortable table: Event, Date, Type, Registrations, Attended, Leads, Cost, ROI. Color-code ROI: green (>100%), yellow (0-100%), red (<0%).
+
+**Lead Conversion** - Funnel visualization: Registered > Attended > Engaged (asked questions / visited booth) > MQL > SQL. Conversion rate at each stage. Breakdown by event type.
+
+### 7. Filters
+
+- Date range pickers
+- Event type dropdown (webinar, conference, trade show, workshop, meetup)
+- Status (upcoming, completed, cancelled)
+- Region / location
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -63,7 +399,135 @@ SELECT
   'abm-dashboard',
   'marketing',
   'Build an interactive account-based marketing dashboard with target account engagement, pipeline attribution, engagement scoring, account penetration, and tier analysis. Use for ABM, account based, target accounts, engagement score, account penetration, intent signal tracking.',
-  E'---\nname: abm-dashboard\ndescription: Build an interactive account-based marketing dashboard with target account engagement, pipeline attribution, engagement scoring, account penetration, and tier analysis. Use for ABM, account based, target accounts, engagement score, account penetration, intent signal tracking.\nargument-hint: "<ABM program or target account list>"\n---\n\n# /abm-dashboard - Account-Based Marketing Dashboard\n\nBuild a self-contained interactive HTML dashboard for account-based marketing — target account engagement tracking, pipeline attribution, engagement scoring, account penetration rates, and tier-based analysis.\n\n## Usage\n\n```\n/abm-dashboard <description of ABM program or target account list>\n```\n\n## Workflow\n\n### 1. Understand the ABM Program\n\nDetermine:\n- **ABM model**: One-to-one (strategic), one-to-few (lite), one-to-many (programmatic)\n- **Account tiers**: Tier 1 (strategic, high-touch), Tier 2 (mid-touch), Tier 3 (programmatic)\n- **Target account list size**: 10-50 (strategic) to 500+ (programmatic)\n- **Engagement channels**: Direct mail, ads, email, events, content, sales outreach\n- **Intent data sources**: Bombora, 6sense, G2, TrustRadius, or manual signals\n\n### 2. Gather the Data\n\n**If data is provided:** Parse CSV/JSON, identify account name, tier, contacts, engagement metrics, pipeline, and stage columns.\n\n**If working from description:** Generate a realistic sample dataset with 30-60 target accounts across 3 tiers with engagement and pipeline data. Note clearly that sample data is in use.\n\n### 3. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| ABM Dashboard                        [Filters]       |\n+------------+------------+------------+---------------+\n| Target     | Pipeline   | Avg        | Account       |\n| Accounts   | from ABM   | Engagement | Penetration   |\n| Engaged    | ($)        | Score      | Rate (%)      |\n+------------------------------------------------------+\n| OVERVIEW                                             |\n+------------------------+-----------------------------+\n| Account Engagement     | Pipeline by Account         |\n| Tiers (doughnut)       | (horizontal bar)            |\n+------------------------+-----------------------------+\n| ACCOUNT TIERS                                        |\n+------------------------------------------------------+\n| Tier breakdown cards with account counts, avg        |\n| engagement, pipeline, and conversion rates           |\n+------------------------------------------------------+\n| PIPELINE                                             |\n+------------------------+-----------------------------+\n| Engagement Trend       | Channel Effectiveness       |\n| (line over time)       | (bar chart)                 |\n+------------------------+-----------------------------+\n| ENGAGEMENT                                           |\n+------------------------------------------------------+\n| Account Detail Table (sortable, filterable)          |\n| Account | Tier | Contacts Engaged | Engagement      |\n| Score | Pipeline Value | Stage | Last Touch          |\n+------------------------------------------------------+\n```\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Doughnut | Account distribution across engagement tiers (highly engaged, warming, cold) |\n| Horizontal bar | Pipeline value by account (top accounts, sorted descending) |\n| Line | Aggregate engagement score trend over time |\n| Bar | Channel effectiveness (engagement contribution by channel: ads, email, events, content, direct mail) |\n\n### 5. KPI Calculations\n\n- Target Accounts Engaged: count of accounts with engagement score > threshold in period\n- Pipeline from ABM: sum of pipeline value for deals linked to ABM target accounts\n- Avg Engagement Score: mean engagement score across all target accounts (0-100 scale)\n- Account Penetration Rate: accounts with 2+ contacts engaged / total target accounts x 100\n- Multi-Threading Score: avg contacts engaged per account\n- ABM-Influenced Revenue: closed-won revenue from target accounts\n- Engagement Velocity: rate of engagement score change over time\n\n### 6. Engagement Scoring Model\n\nWeight engagement signals:\n- Website visit: 1 pt\n- Content download: 5 pts\n- Email open: 2 pts\n- Email click: 5 pts\n- Ad click: 3 pts\n- Event registration: 10 pts\n- Event attendance: 15 pts\n- Meeting booked: 20 pts\n- Intent signal: 10 pts\n\nEngagement tiers: Hot (75-100), Warm (40-74), Cool (15-39), Cold (0-14).\nColor code: Hot=#2e7d32, Warm=#f9a825, Cool=#ef6c00, Cold=#c62828.\n\n### 7. Sections\n\n**Overview** - Top KPI cards plus engagement tier doughnut and pipeline-by-account horizontal bar. At-a-glance ABM program health.\n\n**Account Tiers** - Card per tier: account count, avg engagement score, total pipeline, conversion rate, top account name. Progress bar showing engaged vs total accounts per tier.\n\n**Pipeline** - Engagement trend line (weekly or monthly avg engagement score). Channel effectiveness bar chart. Pipeline stage breakdown for ABM accounts vs non-ABM comparison.\n\n**Engagement** - Sortable detail table: Account, Tier, Contacts Engaged, Engagement Score (with color-coded badge), Pipeline Value, Deal Stage, Last Touch Date. Search by account name. Inline sparkline for engagement trend per account.\n\n### 8. Filters\n\n- Account tier dropdown (Tier 1, Tier 2, Tier 3)\n- Engagement level (hot, warm, cool, cold)\n- Pipeline stage\n- Date range pickers\n- Industry / vertical\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: abm-dashboard
+description: Build an interactive account-based marketing dashboard with target account engagement, pipeline attribution, engagement scoring, account penetration, and tier analysis. Use for ABM, account based, target accounts, engagement score, account penetration, intent signal tracking.
+argument-hint: "<ABM program or target account list>"
+---
+
+# /abm-dashboard - Account-Based Marketing Dashboard
+
+Build a self-contained interactive HTML dashboard for account-based marketing — target account engagement tracking, pipeline attribution, engagement scoring, account penetration rates, and tier-based analysis.
+
+## Usage
+
+```
+/abm-dashboard <description of ABM program or target account list>
+```
+
+## Workflow
+
+### 1. Understand the ABM Program
+
+Determine:
+- **ABM model**: One-to-one (strategic), one-to-few (lite), one-to-many (programmatic)
+- **Account tiers**: Tier 1 (strategic, high-touch), Tier 2 (mid-touch), Tier 3 (programmatic)
+- **Target account list size**: 10-50 (strategic) to 500+ (programmatic)
+- **Engagement channels**: Direct mail, ads, email, events, content, sales outreach
+- **Intent data sources**: Bombora, 6sense, G2, TrustRadius, or manual signals
+
+### 2. Gather the Data
+
+**If data is provided:** Parse CSV/JSON, identify account name, tier, contacts, engagement metrics, pipeline, and stage columns.
+
+**If working from description:** Generate a realistic sample dataset with 30-60 target accounts across 3 tiers with engagement and pipeline data. Note clearly that sample data is in use.
+
+### 3. Dashboard Layout
+
+```
++------------------------------------------------------+
+| ABM Dashboard                        [Filters]       |
++------------+------------+------------+---------------+
+| Target     | Pipeline   | Avg        | Account       |
+| Accounts   | from ABM   | Engagement | Penetration   |
+| Engaged    | ($)        | Score      | Rate (%)      |
++------------------------------------------------------+
+| OVERVIEW                                             |
++------------------------+-----------------------------+
+| Account Engagement     | Pipeline by Account         |
+| Tiers (doughnut)       | (horizontal bar)            |
++------------------------+-----------------------------+
+| ACCOUNT TIERS                                        |
++------------------------------------------------------+
+| Tier breakdown cards with account counts, avg        |
+| engagement, pipeline, and conversion rates           |
++------------------------------------------------------+
+| PIPELINE                                             |
++------------------------+-----------------------------+
+| Engagement Trend       | Channel Effectiveness       |
+| (line over time)       | (bar chart)                 |
++------------------------+-----------------------------+
+| ENGAGEMENT                                           |
++------------------------------------------------------+
+| Account Detail Table (sortable, filterable)          |
+| Account | Tier | Contacts Engaged | Engagement      |
+| Score | Pipeline Value | Stage | Last Touch          |
++------------------------------------------------------+
+```
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Doughnut | Account distribution across engagement tiers (highly engaged, warming, cold) |
+| Horizontal bar | Pipeline value by account (top accounts, sorted descending) |
+| Line | Aggregate engagement score trend over time |
+| Bar | Channel effectiveness (engagement contribution by channel: ads, email, events, content, direct mail) |
+
+### 5. KPI Calculations
+
+- Target Accounts Engaged: count of accounts with engagement score > threshold in period
+- Pipeline from ABM: sum of pipeline value for deals linked to ABM target accounts
+- Avg Engagement Score: mean engagement score across all target accounts (0-100 scale)
+- Account Penetration Rate: accounts with 2+ contacts engaged / total target accounts x 100
+- Multi-Threading Score: avg contacts engaged per account
+- ABM-Influenced Revenue: closed-won revenue from target accounts
+- Engagement Velocity: rate of engagement score change over time
+
+### 6. Engagement Scoring Model
+
+Weight engagement signals:
+- Website visit: 1 pt
+- Content download: 5 pts
+- Email open: 2 pts
+- Email click: 5 pts
+- Ad click: 3 pts
+- Event registration: 10 pts
+- Event attendance: 15 pts
+- Meeting booked: 20 pts
+- Intent signal: 10 pts
+
+Engagement tiers: Hot (75-100), Warm (40-74), Cool (15-39), Cold (0-14).
+Color code: Hot=#2e7d32, Warm=#f9a825, Cool=#ef6c00, Cold=#c62828.
+
+### 7. Sections
+
+**Overview** - Top KPI cards plus engagement tier doughnut and pipeline-by-account horizontal bar. At-a-glance ABM program health.
+
+**Account Tiers** - Card per tier: account count, avg engagement score, total pipeline, conversion rate, top account name. Progress bar showing engaged vs total accounts per tier.
+
+**Pipeline** - Engagement trend line (weekly or monthly avg engagement score). Channel effectiveness bar chart. Pipeline stage breakdown for ABM accounts vs non-ABM comparison.
+
+**Engagement** - Sortable detail table: Account, Tier, Contacts Engaged, Engagement Score (with color-coded badge), Pipeline Value, Deal Stage, Last Touch Date. Search by account name. Inline sparkline for engagement trend per account.
+
+### 8. Filters
+
+- Account tier dropdown (Tier 1, Tier 2, Tier 3)
+- Engagement level (hot, warm, cool, cold)
+- Pipeline stage
+- Date range pickers
+- Industry / vertical
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry

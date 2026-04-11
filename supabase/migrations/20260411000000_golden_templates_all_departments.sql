@@ -12,7 +12,91 @@ SELECT
   'marketing-dashboard',
   'marketing',
   'Build an interactive marketing performance dashboard with campaign ROI, channel attribution, lead funnel, CAC trends, and conversion tracking.',
-  E'---\nname: marketing-dashboard\ndescription: Build an interactive marketing performance dashboard with campaign ROI, channel attribution, lead funnel, CAC trends, and conversion tracking. Use when analyzing marketing spend, campaign effectiveness, lead generation, or channel performance.\nargument-hint: "<marketing team or campaign data>"\n---\n\n# /marketing-dashboard - Marketing Performance Dashboard\n\nBuild a self-contained interactive HTML dashboard for marketing performance — campaign ROI, channel attribution, lead funnel visualization, CAC/LTV trends, and conversion tracking.\n\n## Workflow\n\n### 1. Understand the Marketing Org\n\nDetermine:\n- **Channels**: Paid search, paid social, organic, email, events, content, referral, direct\n- **Funnel stages**: Visitor → Lead → MQL → SQL → Opportunity → Customer\n- **Budget allocation**: Monthly/quarterly by channel\n- **Key metrics**: CAC, LTV, ROAS, CPL, MQL-to-SQL conversion, pipeline contribution\n- **Attribution model**: First-touch, last-touch, multi-touch, linear\n\n### 2. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Marketing Performance Dashboard      [Filters]       |\n+------------+------------+------------+---------------+\n| Total      | Customer   | Marketing  | MQL to SQL    |\n| Leads      | Acq. Cost  | ROI        | Conv. Rate    |\n+------------------------------------------------------+\n| Lead Funnel              | Spend by Channel          |\n| (horizontal bar)         | (doughnut)                |\n+------------------------+-----------------------------+\n| Campaign Performance    | Channel Trend               |\n| (bar: spend vs revenue) | (line: leads over time)     |\n+------------------------+-----------------------------+\n| Campaign Detail Table (sortable, filterable)         |\n+------------------------------------------------------+\n```\n\n### 3. KPI Cards (4 minimum)\n\n- Total Leads (count, trend vs prior period)\n- Customer Acquisition Cost (currency, trend arrow)\n- Marketing ROI / ROAS (percentage or multiplier)\n- MQL→SQL Conversion Rate (percentage)\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Horizontal bar | Lead funnel by stage (Visitor→Lead→MQL→SQL→Opp→Customer) |\n| Doughnut | Budget/spend allocation by channel |\n| Grouped bar | Campaign spend vs revenue generated |\n| Line | Leads/conversions trend over 12 months |\n| Bar | Top performing campaigns by ROI |\n\n### 5. Channel Attribution\n\nBreak down by channel: paid search, paid social, organic search, email, events, referral.\nShow: spend, leads generated, cost per lead, conversion rate, attributed revenue.\nColor-code by performance: green (above target), yellow (near target), red (below target).\n\n### 6. Campaign Table\n\nColumns: Campaign Name, Channel, Status (Active/Paused/Completed), Spend, Leads, CPL, Conversions, Revenue, ROI.\nSortable by any column. Search filter. Status badges color-coded.\n\n### 7. Filters\n\n- Date range picker (7D / 30D / 90D / 1Y)\n- Channel multi-select\n- Campaign status filter\n- Budget range slider\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: marketing-dashboard
+description: Build an interactive marketing performance dashboard with campaign ROI, channel attribution, lead funnel, CAC trends, and conversion tracking. Use when analyzing marketing spend, campaign effectiveness, lead generation, or channel performance.
+argument-hint: "<marketing team or campaign data>"
+---
+
+# /marketing-dashboard - Marketing Performance Dashboard
+
+Build a self-contained interactive HTML dashboard for marketing performance — campaign ROI, channel attribution, lead funnel visualization, CAC/LTV trends, and conversion tracking.
+
+## Workflow
+
+### 1. Understand the Marketing Org
+
+Determine:
+- **Channels**: Paid search, paid social, organic, email, events, content, referral, direct
+- **Funnel stages**: Visitor → Lead → MQL → SQL → Opportunity → Customer
+- **Budget allocation**: Monthly/quarterly by channel
+- **Key metrics**: CAC, LTV, ROAS, CPL, MQL-to-SQL conversion, pipeline contribution
+- **Attribution model**: First-touch, last-touch, multi-touch, linear
+
+### 2. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Marketing Performance Dashboard      [Filters]       |
++------------+------------+------------+---------------+
+| Total      | Customer   | Marketing  | MQL to SQL    |
+| Leads      | Acq. Cost  | ROI        | Conv. Rate    |
++------------------------------------------------------+
+| Lead Funnel              | Spend by Channel          |
+| (horizontal bar)         | (doughnut)                |
++------------------------+-----------------------------+
+| Campaign Performance    | Channel Trend               |
+| (bar: spend vs revenue) | (line: leads over time)     |
++------------------------+-----------------------------+
+| Campaign Detail Table (sortable, filterable)         |
++------------------------------------------------------+
+```
+
+### 3. KPI Cards (4 minimum)
+
+- Total Leads (count, trend vs prior period)
+- Customer Acquisition Cost (currency, trend arrow)
+- Marketing ROI / ROAS (percentage or multiplier)
+- MQL→SQL Conversion Rate (percentage)
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Horizontal bar | Lead funnel by stage (Visitor→Lead→MQL→SQL→Opp→Customer) |
+| Doughnut | Budget/spend allocation by channel |
+| Grouped bar | Campaign spend vs revenue generated |
+| Line | Leads/conversions trend over 12 months |
+| Bar | Top performing campaigns by ROI |
+
+### 5. Channel Attribution
+
+Break down by channel: paid search, paid social, organic search, email, events, referral.
+Show: spend, leads generated, cost per lead, conversion rate, attributed revenue.
+Color-code by performance: green (above target), yellow (near target), red (below target).
+
+### 6. Campaign Table
+
+Columns: Campaign Name, Channel, Status (Active/Paused/Completed), Spend, Leads, CPL, Conversions, Revenue, ROI.
+Sortable by any column. Search filter. Status badges color-coded.
+
+### 7. Filters
+
+- Date range picker (7D / 30D / 90D / 1Y)
+- Channel multi-select
+- Campaign status filter
+- Budget range slider
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -29,7 +113,97 @@ SELECT
   'finance-dashboard',
   'finance',
   'Build an interactive finance dashboard with budget allocation, expense tracking, cash flow trends, revenue forecasting, and departmental spend analysis.',
-  E'---\nname: finance-dashboard\ndescription: Build an interactive finance dashboard with budget allocation, expense tracking, cash flow trends, revenue forecasting, and departmental spend analysis. Use when analyzing budgets, P&L, cash flow, expense categories, or financial planning.\nargument-hint: "<finance data or budget period>"\n---\n\n# /finance-dashboard - Finance & Budget Dashboard\n\nBuild a self-contained interactive HTML dashboard for financial management — budget allocation, expense tracking, cash flow analysis, revenue forecasting, and departmental spend breakdowns.\n\n## Workflow\n\n### 1. Understand the Financial Context\n\nDetermine:\n- **Reporting period**: Monthly, quarterly, annual, YTD\n- **Budget structure**: By department, cost center, project, or category\n- **Key metrics**: Revenue, COGS, gross margin, operating expenses, EBITDA, net income\n- **Forecast model**: Linear, seasonal, growth-adjusted\n- **Currency**: USD, EUR, GBP, or multi-currency\n\n### 2. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Finance Dashboard                    [Period]        |\n+------------+------------+------------+---------------+\n| Total      | Operating  | Gross      | Budget        |\n| Revenue    | Expenses   | Margin %   | Variance      |\n+------------------------------------------------------+\n| Revenue vs Expenses     | Budget Allocation           |\n| (line: actual vs plan)  | (doughnut by department)    |\n+------------------------+-----------------------------+\n| Cash Flow Waterfall     | Expense Category Breakdown  |\n| (bar: in/out/net)       | (horizontal bar)            |\n+------------------------+-----------------------------+\n| Budget vs Actual Table (by department/category)      |\n+------------------------------------------------------+\n```\n\n### 3. KPI Cards (4 minimum)\n\n- Total Revenue (currency, % change vs prior period)\n- Operating Expenses (currency, trend arrow)\n- Gross Margin (percentage, trend arrow)\n- Budget Variance (currency or %, over/under indicator)\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Line (dual axis) | Revenue vs expenses over 12 months, with plan/forecast as dashed |\n| Doughnut | Budget allocation by department |\n| Bar (waterfall style) | Cash flow: inflows, outflows, net cash |\n| Horizontal bar | Expense breakdown by category (payroll, SaaS, marketing, etc.) |\n| Bar | Budget vs actual by department (grouped: budget, actual, variance) |\n\n### 5. Budget vs Actual Analysis\n\nFor each department/category:\n- Budgeted amount, actual spend, variance ($ and %)\n- Color-code: green (under budget), yellow (within 5%), red (over budget)\n- Running total and projected year-end based on current burn rate\n\n### 6. Cash Flow\n\nMonthly view: operating inflows, operating outflows, investing, financing, net change.\nRunning balance line overlay. Highlight months with negative net cash flow.\n\n### 7. Finance Table\n\nColumns: Department/Category, Budget, Actual, Variance ($), Variance (%), Status.\nSortable. Subtotals by group. Status badges: On Track / At Risk / Over Budget.\n\n### 8. Filters\n\n- Period selector (Monthly / Quarterly / Annual / YTD)\n- Department multi-select\n- Category filter\n- Comparison toggle (vs prior year, vs budget, vs forecast)\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: finance-dashboard
+description: Build an interactive finance dashboard with budget allocation, expense tracking, cash flow trends, revenue forecasting, and departmental spend analysis. Use when analyzing budgets, P&L, cash flow, expense categories, or financial planning.
+argument-hint: "<finance data or budget period>"
+---
+
+# /finance-dashboard - Finance & Budget Dashboard
+
+Build a self-contained interactive HTML dashboard for financial management — budget allocation, expense tracking, cash flow analysis, revenue forecasting, and departmental spend breakdowns.
+
+## Workflow
+
+### 1. Understand the Financial Context
+
+Determine:
+- **Reporting period**: Monthly, quarterly, annual, YTD
+- **Budget structure**: By department, cost center, project, or category
+- **Key metrics**: Revenue, COGS, gross margin, operating expenses, EBITDA, net income
+- **Forecast model**: Linear, seasonal, growth-adjusted
+- **Currency**: USD, EUR, GBP, or multi-currency
+
+### 2. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Finance Dashboard                    [Period]        |
++------------+------------+------------+---------------+
+| Total      | Operating  | Gross      | Budget        |
+| Revenue    | Expenses   | Margin %   | Variance      |
++------------------------------------------------------+
+| Revenue vs Expenses     | Budget Allocation           |
+| (line: actual vs plan)  | (doughnut by department)    |
++------------------------+-----------------------------+
+| Cash Flow Waterfall     | Expense Category Breakdown  |
+| (bar: in/out/net)       | (horizontal bar)            |
++------------------------+-----------------------------+
+| Budget vs Actual Table (by department/category)      |
++------------------------------------------------------+
+```
+
+### 3. KPI Cards (4 minimum)
+
+- Total Revenue (currency, % change vs prior period)
+- Operating Expenses (currency, trend arrow)
+- Gross Margin (percentage, trend arrow)
+- Budget Variance (currency or %, over/under indicator)
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Line (dual axis) | Revenue vs expenses over 12 months, with plan/forecast as dashed |
+| Doughnut | Budget allocation by department |
+| Bar (waterfall style) | Cash flow: inflows, outflows, net cash |
+| Horizontal bar | Expense breakdown by category (payroll, SaaS, marketing, etc.) |
+| Bar | Budget vs actual by department (grouped: budget, actual, variance) |
+
+### 5. Budget vs Actual Analysis
+
+For each department/category:
+- Budgeted amount, actual spend, variance ($ and %)
+- Color-code: green (under budget), yellow (within 5%), red (over budget)
+- Running total and projected year-end based on current burn rate
+
+### 6. Cash Flow
+
+Monthly view: operating inflows, operating outflows, investing, financing, net change.
+Running balance line overlay. Highlight months with negative net cash flow.
+
+### 7. Finance Table
+
+Columns: Department/Category, Budget, Actual, Variance ($), Variance (%), Status.
+Sortable. Subtotals by group. Status badges: On Track / At Risk / Over Budget.
+
+### 8. Filters
+
+- Period selector (Monthly / Quarterly / Annual / YTD)
+- Department multi-select
+- Category filter
+- Comparison toggle (vs prior year, vs budget, vs forecast)
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -46,7 +220,97 @@ SELECT
   'hr-dashboard',
   'hr',
   'Build an interactive HR dashboard with headcount tracking, attrition trends, hiring pipeline, employee satisfaction scores, and department org breakdown.',
-  E'---\nname: hr-dashboard\ndescription: Build an interactive HR dashboard with headcount tracking, attrition trends, hiring pipeline, employee satisfaction scores, and department org breakdown. Use when analyzing workforce data, turnover, recruiting, DEI metrics, or employee engagement.\nargument-hint: "<HR data or team scope>"\n---\n\n# /hr-dashboard - HR / People Dashboard\n\nBuild a self-contained interactive HTML dashboard for human resources — headcount tracking, attrition analysis, hiring pipeline, employee satisfaction, and department breakdowns.\n\n## Workflow\n\n### 1. Understand the HR Context\n\nDetermine:\n- **Org size**: Total headcount, departments, locations\n- **Key metrics**: Headcount, attrition rate, time-to-hire, offer acceptance rate, eNPS\n- **Reporting cadence**: Monthly, quarterly\n- **DEI dimensions**: Gender, ethnicity, age band, tenure, level\n- **Hiring stages**: Applied → Screened → Interview → Offer → Hired\n\n### 2. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| People & HR Dashboard                [Period]        |\n+------------+------------+------------+---------------+\n| Total      | Attrition  | Open       | Avg Time      |\n| Headcount  | Rate       | Positions  | to Hire       |\n+------------------------------------------------------+\n| Headcount Trend          | Department Breakdown       |\n| (line: hires vs exits)   | (doughnut)                 |\n+------------------------+-----------------------------+\n| Hiring Pipeline          | Satisfaction Scores        |\n| (horizontal bar funnel)  | (bar by department)        |\n+------------------------+-----------------------------+\n| Employee Directory Table (sortable, searchable)      |\n+------------------------------------------------------+\n```\n\n### 3. KPI Cards (4 minimum)\n\n- Total Headcount (number, net change this period)\n- Attrition Rate (percentage, trend arrow, annualized)\n- Open Positions (count, change vs prior month)\n- Avg Time to Hire (days, trend arrow)\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Line (dual) | Monthly hires vs departures over 12 months |\n| Doughnut | Headcount by department |\n| Horizontal bar | Hiring pipeline funnel (Applied→Screened→Interview→Offer→Hired) |\n| Bar | Employee satisfaction/eNPS by department |\n| Stacked bar | Tenure distribution by department |\n\n### 5. Attrition Analysis\n\nMonthly attrition rate = departures / avg headcount * 100.\nBreak down by: voluntary vs involuntary, department, tenure band, level.\nHighlight departments above org-wide average in red.\n\n### 6. Hiring Pipeline\n\nFunnel visualization: Applied → Screened → Interview → Offer → Hired.\nConversion rates between each stage. Average days per stage.\nColor progression from light to dark as candidates advance.\n\n### 7. Employee Table\n\nColumns: Name, Department, Role, Level, Location, Start Date, Tenure, Status.\nSearchable, sortable. Status badges: Active (green), On Leave (yellow), Exiting (red).\n\n### 8. Filters\n\n- Date range (Monthly / Quarterly / YTD)\n- Department multi-select\n- Location filter\n- Level/band filter\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: hr-dashboard
+description: Build an interactive HR dashboard with headcount tracking, attrition trends, hiring pipeline, employee satisfaction scores, and department org breakdown. Use when analyzing workforce data, turnover, recruiting, DEI metrics, or employee engagement.
+argument-hint: "<HR data or team scope>"
+---
+
+# /hr-dashboard - HR / People Dashboard
+
+Build a self-contained interactive HTML dashboard for human resources — headcount tracking, attrition analysis, hiring pipeline, employee satisfaction, and department breakdowns.
+
+## Workflow
+
+### 1. Understand the HR Context
+
+Determine:
+- **Org size**: Total headcount, departments, locations
+- **Key metrics**: Headcount, attrition rate, time-to-hire, offer acceptance rate, eNPS
+- **Reporting cadence**: Monthly, quarterly
+- **DEI dimensions**: Gender, ethnicity, age band, tenure, level
+- **Hiring stages**: Applied → Screened → Interview → Offer → Hired
+
+### 2. Dashboard Layout
+
+```
++------------------------------------------------------+
+| People & HR Dashboard                [Period]        |
++------------+------------+------------+---------------+
+| Total      | Attrition  | Open       | Avg Time      |
+| Headcount  | Rate       | Positions  | to Hire       |
++------------------------------------------------------+
+| Headcount Trend          | Department Breakdown       |
+| (line: hires vs exits)   | (doughnut)                 |
++------------------------+-----------------------------+
+| Hiring Pipeline          | Satisfaction Scores        |
+| (horizontal bar funnel)  | (bar by department)        |
++------------------------+-----------------------------+
+| Employee Directory Table (sortable, searchable)      |
++------------------------------------------------------+
+```
+
+### 3. KPI Cards (4 minimum)
+
+- Total Headcount (number, net change this period)
+- Attrition Rate (percentage, trend arrow, annualized)
+- Open Positions (count, change vs prior month)
+- Avg Time to Hire (days, trend arrow)
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Line (dual) | Monthly hires vs departures over 12 months |
+| Doughnut | Headcount by department |
+| Horizontal bar | Hiring pipeline funnel (Applied→Screened→Interview→Offer→Hired) |
+| Bar | Employee satisfaction/eNPS by department |
+| Stacked bar | Tenure distribution by department |
+
+### 5. Attrition Analysis
+
+Monthly attrition rate = departures / avg headcount * 100.
+Break down by: voluntary vs involuntary, department, tenure band, level.
+Highlight departments above org-wide average in red.
+
+### 6. Hiring Pipeline
+
+Funnel visualization: Applied → Screened → Interview → Offer → Hired.
+Conversion rates between each stage. Average days per stage.
+Color progression from light to dark as candidates advance.
+
+### 7. Employee Table
+
+Columns: Name, Department, Role, Level, Location, Start Date, Tenure, Status.
+Searchable, sortable. Status badges: Active (green), On Leave (yellow), Exiting (red).
+
+### 8. Filters
+
+- Date range (Monthly / Quarterly / YTD)
+- Department multi-select
+- Location filter
+- Level/band filter
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -63,7 +327,97 @@ SELECT
   'legal-dashboard',
   'legal',
   'Build an interactive legal dashboard with contract tracking, compliance status, matter pipeline, spend analysis, and deadline management.',
-  E'---\nname: legal-dashboard\ndescription: Build an interactive legal dashboard with contract tracking, compliance status, matter pipeline, spend analysis, and deadline management. Use when analyzing legal matters, contract lifecycle, regulatory compliance, outside counsel spend, or litigation status.\nargument-hint: "<legal team or contract data>"\n---\n\n# /legal-dashboard - Legal & Compliance Dashboard\n\nBuild a self-contained interactive HTML dashboard for legal operations — contract tracking, compliance monitoring, matter pipeline, legal spend analysis, and deadline management.\n\n## Workflow\n\n### 1. Understand the Legal Context\n\nDetermine:\n- **Practice areas**: Corporate, employment, IP, regulatory, litigation, commercial contracts\n- **Contract types**: NDA, MSA, SaaS, employment, vendor, partnership\n- **Compliance frameworks**: SOC 2, GDPR, HIPAA, SOX, industry-specific\n- **Key metrics**: Open matters, contracts pending, avg review time, outside counsel spend\n- **Risk levels**: Critical, high, medium, low\n\n### 2. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Legal & Compliance Dashboard         [Period]        |\n+------------+------------+------------+---------------+\n| Active     | Contracts  | Compliance | Legal Spend   |\n| Matters    | Pending    | Score %    | This Quarter  |\n+------------------------------------------------------+\n| Matter Pipeline          | Spend by Category         |\n| (horizontal bar by stage)| (doughnut)                |\n+------------------------+-----------------------------+\n| Compliance Status       | Contract Expiry Timeline   |\n| (bar by framework)      | (line: upcoming deadlines) |\n+------------------------+-----------------------------+\n| Contracts & Matters Table (sortable, filterable)     |\n+------------------------------------------------------+\n```\n\n### 3. KPI Cards (4 minimum)\n\n- Active Matters (count, change vs prior quarter)\n- Contracts Pending Review (count, avg days in review)\n- Compliance Score (percentage across all frameworks)\n- Legal Spend This Quarter (currency, vs budget)\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Horizontal bar | Matter pipeline by stage (Intake→Review→Active→Resolution→Closed) |\n| Doughnut | Legal spend by category (outside counsel, internal, filing fees, settlements) |\n| Bar | Compliance status by framework (% compliant per SOC2, GDPR, HIPAA, etc.) |\n| Line | Contract expirations and renewals over next 12 months |\n| Bar | Matters by practice area and priority |\n\n### 5. Compliance Tracking\n\nFor each framework: total controls, compliant count, non-compliant, in-progress.\nOverall score = compliant / total * 100. Color: green (>90%), yellow (70-90%), red (<70%).\nList overdue items with days overdue and assigned owner.\n\n### 6. Contract Lifecycle\n\nStages: Draft → Internal Review → Counterparty Review → Negotiation → Executed → Active → Expiring.\nAvg days per stage. Bottleneck identification. Renewal alerts for contracts expiring within 90 days.\n\n### 7. Legal Table\n\nColumns: Matter/Contract Name, Type, Status, Priority, Assigned To, Created, Deadline, Value.\nSortable. Priority badges: Critical (red), High (orange), Medium (yellow), Low (green).\n\n### 8. Filters\n\n- Date range (30D / 90D / 1Y / All)\n- Practice area / type multi-select\n- Status filter\n- Priority filter\n- Assigned attorney filter\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: legal-dashboard
+description: Build an interactive legal dashboard with contract tracking, compliance status, matter pipeline, spend analysis, and deadline management. Use when analyzing legal matters, contract lifecycle, regulatory compliance, outside counsel spend, or litigation status.
+argument-hint: "<legal team or contract data>"
+---
+
+# /legal-dashboard - Legal & Compliance Dashboard
+
+Build a self-contained interactive HTML dashboard for legal operations — contract tracking, compliance monitoring, matter pipeline, legal spend analysis, and deadline management.
+
+## Workflow
+
+### 1. Understand the Legal Context
+
+Determine:
+- **Practice areas**: Corporate, employment, IP, regulatory, litigation, commercial contracts
+- **Contract types**: NDA, MSA, SaaS, employment, vendor, partnership
+- **Compliance frameworks**: SOC 2, GDPR, HIPAA, SOX, industry-specific
+- **Key metrics**: Open matters, contracts pending, avg review time, outside counsel spend
+- **Risk levels**: Critical, high, medium, low
+
+### 2. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Legal & Compliance Dashboard         [Period]        |
++------------+------------+------------+---------------+
+| Active     | Contracts  | Compliance | Legal Spend   |
+| Matters    | Pending    | Score %    | This Quarter  |
++------------------------------------------------------+
+| Matter Pipeline          | Spend by Category         |
+| (horizontal bar by stage)| (doughnut)                |
++------------------------+-----------------------------+
+| Compliance Status       | Contract Expiry Timeline   |
+| (bar by framework)      | (line: upcoming deadlines) |
++------------------------+-----------------------------+
+| Contracts & Matters Table (sortable, filterable)     |
++------------------------------------------------------+
+```
+
+### 3. KPI Cards (4 minimum)
+
+- Active Matters (count, change vs prior quarter)
+- Contracts Pending Review (count, avg days in review)
+- Compliance Score (percentage across all frameworks)
+- Legal Spend This Quarter (currency, vs budget)
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Horizontal bar | Matter pipeline by stage (Intake→Review→Active→Resolution→Closed) |
+| Doughnut | Legal spend by category (outside counsel, internal, filing fees, settlements) |
+| Bar | Compliance status by framework (% compliant per SOC2, GDPR, HIPAA, etc.) |
+| Line | Contract expirations and renewals over next 12 months |
+| Bar | Matters by practice area and priority |
+
+### 5. Compliance Tracking
+
+For each framework: total controls, compliant count, non-compliant, in-progress.
+Overall score = compliant / total * 100. Color: green (>90%), yellow (70-90%), red (<70%).
+List overdue items with days overdue and assigned owner.
+
+### 6. Contract Lifecycle
+
+Stages: Draft → Internal Review → Counterparty Review → Negotiation → Executed → Active → Expiring.
+Avg days per stage. Bottleneck identification. Renewal alerts for contracts expiring within 90 days.
+
+### 7. Legal Table
+
+Columns: Matter/Contract Name, Type, Status, Priority, Assigned To, Created, Deadline, Value.
+Sortable. Priority badges: Critical (red), High (orange), Medium (yellow), Low (green).
+
+### 8. Filters
+
+- Date range (30D / 90D / 1Y / All)
+- Practice area / type multi-select
+- Status filter
+- Priority filter
+- Assigned attorney filter
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -80,7 +434,102 @@ SELECT
   'executive-dashboard',
   'admin',
   'Build an interactive executive summary dashboard with company KPIs, revenue performance, department scorecards, team health, and strategic initiative tracking.',
-  E'---\nname: executive-dashboard\ndescription: Build an interactive executive summary dashboard with company KPIs, revenue performance, department scorecards, team health, and strategic initiative tracking. Use when building C-suite views, board reports, company-wide performance summaries, or leadership dashboards.\nargument-hint: "<company or leadership scope>"\n---\n\n# /executive-dashboard - Executive Summary Dashboard\n\nBuild a self-contained interactive HTML dashboard for executive leadership — company-wide KPIs, revenue performance, department scorecards, team health metrics, and strategic initiative tracking.\n\n## Workflow\n\n### 1. Understand the Executive Context\n\nDetermine:\n- **Company stage**: Startup, growth, enterprise\n- **Key business metrics**: ARR/MRR, growth rate, burn rate, runway, headcount\n- **Departments to track**: Sales, Marketing, Product, Engineering, Finance, HR\n- **Strategic initiatives**: OKRs, quarterly goals, major projects\n- **Board reporting needs**: Investor metrics, unit economics\n\n### 2. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Executive Dashboard                  [Quarter]       |\n+------------+------------+------------+---------------+\n| Revenue    | Growth     | Burn Rate  | Runway        |\n| (ARR/MRR)  | Rate %     | (monthly)  | (months)      |\n+------------------------------------------------------+\n| Revenue Trend            | Revenue by Segment        |\n| (line: actual vs target) | (doughnut)                |\n+------------------------+-----------------------------+\n| Department Scorecards   | Team Health                 |\n| (bar: targets vs actual)| (bar: satisfaction scores)  |\n+------------------------+-----------------------------+\n| Strategic Initiatives Table (OKRs/goals tracker)     |\n+------------------------------------------------------+\n```\n\n### 3. KPI Cards (4 minimum)\n\n- Revenue / ARR (currency, % growth vs prior period)\n- Growth Rate (percentage, MoM or QoQ)\n- Burn Rate (monthly spend, trend arrow)\n- Runway (months remaining at current burn, alert if <12)\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Line (dual) | Revenue actual vs plan/target over 12 months |\n| Doughnut | Revenue segmentation (by product, region, or customer tier) |\n| Grouped bar | Department scorecards: target vs actual for each dept KPI |\n| Bar | Team health / eNPS scores by department |\n| Line | Monthly growth rate trend with target line |\n\n### 5. Department Scorecards\n\nFor each department show 2-3 key metrics with target vs actual:\n- Sales: Pipeline, closed revenue, win rate\n- Marketing: Leads, CAC, campaign ROI\n- Product: Feature velocity, bug count, NPS\n- Engineering: Sprint velocity, uptime, deploy frequency\n- Finance: Burn rate, gross margin, collections\n- HR: Headcount, attrition, time-to-hire\n\nColor-code: green (≥100% of target), yellow (80-99%), red (<80%).\n\n### 6. Strategic Initiatives\n\nOKR or goal tracker: Objective, Key Results, Owner, Progress (%), Status, Due Date.\nProgress bar visualization. Status: On Track (green), At Risk (yellow), Behind (red), Complete (blue).\n\n### 7. Executive Table\n\nColumns: Initiative, Owner, Department, Progress, Status, Target Date, Notes.\nSortable. Progress bar in cell. Status badges color-coded.\n\n### 8. Filters\n\n- Period selector (Monthly / Quarterly / Annual / YTD)\n- Department filter\n- Initiative status filter\n- Comparison toggle (vs prior period, vs plan)\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: executive-dashboard
+description: Build an interactive executive summary dashboard with company KPIs, revenue performance, department scorecards, team health, and strategic initiative tracking. Use when building C-suite views, board reports, company-wide performance summaries, or leadership dashboards.
+argument-hint: "<company or leadership scope>"
+---
+
+# /executive-dashboard - Executive Summary Dashboard
+
+Build a self-contained interactive HTML dashboard for executive leadership — company-wide KPIs, revenue performance, department scorecards, team health metrics, and strategic initiative tracking.
+
+## Workflow
+
+### 1. Understand the Executive Context
+
+Determine:
+- **Company stage**: Startup, growth, enterprise
+- **Key business metrics**: ARR/MRR, growth rate, burn rate, runway, headcount
+- **Departments to track**: Sales, Marketing, Product, Engineering, Finance, HR
+- **Strategic initiatives**: OKRs, quarterly goals, major projects
+- **Board reporting needs**: Investor metrics, unit economics
+
+### 2. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Executive Dashboard                  [Quarter]       |
++------------+------------+------------+---------------+
+| Revenue    | Growth     | Burn Rate  | Runway        |
+| (ARR/MRR)  | Rate %     | (monthly)  | (months)      |
++------------------------------------------------------+
+| Revenue Trend            | Revenue by Segment        |
+| (line: actual vs target) | (doughnut)                |
++------------------------+-----------------------------+
+| Department Scorecards   | Team Health                 |
+| (bar: targets vs actual)| (bar: satisfaction scores)  |
++------------------------+-----------------------------+
+| Strategic Initiatives Table (OKRs/goals tracker)     |
++------------------------------------------------------+
+```
+
+### 3. KPI Cards (4 minimum)
+
+- Revenue / ARR (currency, % growth vs prior period)
+- Growth Rate (percentage, MoM or QoQ)
+- Burn Rate (monthly spend, trend arrow)
+- Runway (months remaining at current burn, alert if <12)
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Line (dual) | Revenue actual vs plan/target over 12 months |
+| Doughnut | Revenue segmentation (by product, region, or customer tier) |
+| Grouped bar | Department scorecards: target vs actual for each dept KPI |
+| Bar | Team health / eNPS scores by department |
+| Line | Monthly growth rate trend with target line |
+
+### 5. Department Scorecards
+
+For each department show 2-3 key metrics with target vs actual:
+- Sales: Pipeline, closed revenue, win rate
+- Marketing: Leads, CAC, campaign ROI
+- Product: Feature velocity, bug count, NPS
+- Engineering: Sprint velocity, uptime, deploy frequency
+- Finance: Burn rate, gross margin, collections
+- HR: Headcount, attrition, time-to-hire
+
+Color-code: green (≥100% of target), yellow (80-99%), red (<80%).
+
+### 6. Strategic Initiatives
+
+OKR or goal tracker: Objective, Key Results, Owner, Progress (%), Status, Due Date.
+Progress bar visualization. Status: On Track (green), At Risk (yellow), Behind (red), Complete (blue).
+
+### 7. Executive Table
+
+Columns: Initiative, Owner, Department, Progress, Status, Target Date, Notes.
+Sortable. Progress bar in cell. Status badges color-coded.
+
+### 8. Filters
+
+- Period selector (Monthly / Quarterly / Annual / YTD)
+- Department filter
+- Initiative status filter
+- Comparison toggle (vs prior period, vs plan)
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
@@ -97,7 +546,98 @@ SELECT
   'operations-dashboard',
   'operations',
   'Build an interactive operations dashboard with workflow tracking, resource utilization, project timelines, SLA compliance, and process efficiency metrics.',
-  E'---\nname: operations-dashboard\ndescription: Build an interactive operations dashboard with workflow tracking, resource utilization, project timelines, SLA compliance, and process efficiency metrics. Use when analyzing operational workflows, capacity planning, project delivery, supply chain, or service-level performance.\nargument-hint: "<operations team or process data>"\n---\n\n# /operations-dashboard - Operations Management Dashboard\n\nBuild a self-contained interactive HTML dashboard for operations — workflow tracking, resource utilization, project timelines, SLA compliance, and process efficiency analysis.\n\n## Workflow\n\n### 1. Understand the Operations Context\n\nDetermine:\n- **Operations type**: Project delivery, supply chain, service ops, IT ops, facilities\n- **Key metrics**: Throughput, cycle time, utilization rate, SLA compliance, on-time delivery\n- **Workflow stages**: Backlog → In Progress → Review → Done (or custom pipeline)\n- **Resource model**: Teams, individuals, contractors, capacity hours\n- **SLA targets**: Response time, resolution time, uptime, delivery deadlines\n\n### 2. Dashboard Layout\n\n```\n+------------------------------------------------------+\n| Operations Dashboard                 [Period]        |\n+------------+------------+------------+---------------+\n| Active     | Avg Cycle  | Resource   | SLA           |\n| Projects   | Time       | Util. %    | Compliance %  |\n+------------------------------------------------------+\n| Project Pipeline         | Resource Utilization       |\n| (horizontal bar by stage)| (bar by team/person)       |\n+------------------------+-----------------------------+\n| Throughput Trend        | SLA Performance             |\n| (line: completed/week)  | (bar: met vs missed)        |\n+------------------------+-----------------------------+\n| Project / Task Tracker Table (sortable, filterable)  |\n+------------------------------------------------------+\n```\n\n### 3. KPI Cards (4 minimum)\n\n- Active Projects/Tasks (count, change vs prior period)\n- Avg Cycle Time (days, trend arrow)\n- Resource Utilization (percentage, by capacity vs allocated)\n- SLA Compliance Rate (percentage, trend arrow)\n\n### 4. Key Visualizations\n\n| Chart | Purpose |\n|-------|--------|\n| Horizontal bar | Project pipeline by stage (Backlog→In Progress→Review→Done) |\n| Bar | Resource utilization by team member or team |\n| Line | Weekly throughput trend (tasks/projects completed) |\n| Grouped bar | SLA targets met vs missed by category |\n| Doughnut | Work distribution by project type or priority |\n\n### 5. Resource Management\n\nFor each resource/team: total capacity hours, allocated hours, utilization %.\nColor-code: green (70-85% utilized), yellow (85-95%), red (>95% overloaded or <50% underutilized).\nIdentify bottlenecks and available capacity.\n\n### 6. SLA Tracking\n\nBy category: target time, actual avg time, compliance %.\nTrend line showing compliance over last 12 weeks/months.\nFlag categories below 95% compliance threshold.\n\n### 7. Operations Table\n\nColumns: Project/Task, Owner, Priority, Stage, Start Date, Due Date, Cycle Time, Status.\nSortable. Status badges: On Track, At Risk, Overdue, Complete. Priority: P0-P3 color-coded.\n\n### 8. Filters\n\n- Date range (7D / 30D / 90D / 1Y)\n- Stage/status multi-select\n- Team/owner filter\n- Priority filter\n- Project type filter\n\nAll filters update every chart, KPI, and table simultaneously.\n\nCHART.JS LOADING (MANDATORY):\n1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();\n3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>\n4. Chart initialization must reference canvas by getElementById, never querySelector.\n5. If Chart.js fails to load, show a text fallback with the data in a table.\n6. NEVER use import statements for Chart.js — use the global Chart object from CDN.\n7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.',
+  $$---
+name: operations-dashboard
+description: Build an interactive operations dashboard with workflow tracking, resource utilization, project timelines, SLA compliance, and process efficiency metrics. Use when analyzing operational workflows, capacity planning, project delivery, supply chain, or service-level performance.
+argument-hint: "<operations team or process data>"
+---
+
+# /operations-dashboard - Operations Management Dashboard
+
+Build a self-contained interactive HTML dashboard for operations — workflow tracking, resource utilization, project timelines, SLA compliance, and process efficiency analysis.
+
+## Workflow
+
+### 1. Understand the Operations Context
+
+Determine:
+- **Operations type**: Project delivery, supply chain, service ops, IT ops, facilities
+- **Key metrics**: Throughput, cycle time, utilization rate, SLA compliance, on-time delivery
+- **Workflow stages**: Backlog → In Progress → Review → Done (or custom pipeline)
+- **Resource model**: Teams, individuals, contractors, capacity hours
+- **SLA targets**: Response time, resolution time, uptime, delivery deadlines
+
+### 2. Dashboard Layout
+
+```
++------------------------------------------------------+
+| Operations Dashboard                 [Period]        |
++------------+------------+------------+---------------+
+| Active     | Avg Cycle  | Resource   | SLA           |
+| Projects   | Time       | Util. %    | Compliance %  |
++------------------------------------------------------+
+| Project Pipeline         | Resource Utilization       |
+| (horizontal bar by stage)| (bar by team/person)       |
++------------------------+-----------------------------+
+| Throughput Trend        | SLA Performance             |
+| (line: completed/week)  | (bar: met vs missed)        |
++------------------------+-----------------------------+
+| Project / Task Tracker Table (sortable, filterable)  |
++------------------------------------------------------+
+```
+
+### 3. KPI Cards (4 minimum)
+
+- Active Projects/Tasks (count, change vs prior period)
+- Avg Cycle Time (days, trend arrow)
+- Resource Utilization (percentage, by capacity vs allocated)
+- SLA Compliance Rate (percentage, trend arrow)
+
+### 4. Key Visualizations
+
+| Chart | Purpose |
+|-------|--------|
+| Horizontal bar | Project pipeline by stage (Backlog→In Progress→Review→Done) |
+| Bar | Resource utilization by team member or team |
+| Line | Weekly throughput trend (tasks/projects completed) |
+| Grouped bar | SLA targets met vs missed by category |
+| Doughnut | Work distribution by project type or priority |
+
+### 5. Resource Management
+
+For each resource/team: total capacity hours, allocated hours, utilization %.
+Color-code: green (70-85% utilized), yellow (85-95%), red (>95% overloaded or <50% underutilized).
+Identify bottlenecks and available capacity.
+
+### 6. SLA Tracking
+
+By category: target time, actual avg time, compliance %.
+Trend line showing compliance over last 12 weeks/months.
+Flag categories below 95% compliance threshold.
+
+### 7. Operations Table
+
+Columns: Project/Task, Owner, Priority, Stage, Start Date, Due Date, Cycle Time, Status.
+Sortable. Status badges: On Track, At Risk, Overdue, Complete. Priority: P0-P3 color-coded.
+
+### 8. Filters
+
+- Date range (7D / 30D / 90D / 1Y)
+- Stage/status multi-select
+- Team/owner filter
+- Priority filter
+- Project type filter
+
+All filters update every chart, KPI, and table simultaneously.
+
+CHART.JS LOADING (MANDATORY):
+1. Include Chart.js CDN in <head>: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+2. ALL chart initialization code MUST be inside an IIFE placed immediately after its <canvas>: (function(){ new Chart(...); })();
+3. Every <canvas> element must have a unique id attribute and explicit height: <canvas id="chart1" height="200" style="height:200px !important; max-height:200px;"></canvas>
+4. Chart initialization must reference canvas by getElementById, never querySelector.
+5. If Chart.js fails to load, show a text fallback with the data in a table.
+6. NEVER use import statements for Chart.js — use the global Chart object from CDN.
+7. NEVER use type:"horizontalBar" — use type:"bar" with options.indexAxis:"y" instead.$$,
   true
 WHERE NOT EXISTS (
   SELECT 1 FROM skill_registry
