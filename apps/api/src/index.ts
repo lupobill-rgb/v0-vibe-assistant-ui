@@ -1461,6 +1461,27 @@ ${dashData.diff}`;
               if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
               if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: dashData.diff, department: auditDepartment });
               await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
+
+              // ── Auto-cache skeleton: backfill html_skeleton for golden templates ──
+              // After first successful LLM build, cache the output so future builds use the deterministic path.
+              if (goldenMatch.matched && !goldenMatch.htmlSkeleton
+                  && dashData.diff.length > 20000 && dashData.diff.includes('new Chart(')) {
+                try {
+                  const { error: cacheErr } = await getPlatformSupabaseClient()
+                    .from('skill_registry')
+                    .update({ html_skeleton: dashData.diff })
+                    .eq('skill_name', goldenMatch.skillName);
+                  if (cacheErr) {
+                    console.error(`[GOLDEN-CACHE] Failed to cache skeleton for "${goldenMatch.skillName}": ${cacheErr.message}`);
+                  } else {
+                    console.log(`[GOLDEN-CACHE] Cached html_skeleton for "${goldenMatch.skillName}" (${dashData.diff.length} chars)`);
+                    await storage.logEvent(taskId, `Cached golden template skeleton: ${goldenMatch.skillName} (${dashData.diff.length} chars — future builds will be deterministic)`, 'info');
+                  }
+                } catch (cacheWriteErr: any) {
+                  console.error(`[GOLDEN-CACHE] Exception caching skeleton: ${cacheWriteErr.message}`);
+                }
+              }
+
               return;
             } catch (dashErr: any) {
               await storage.logEvent(taskId, `Dashboard fast path failed (${dashErr.message}), falling back to planner pipeline`, 'warning');
