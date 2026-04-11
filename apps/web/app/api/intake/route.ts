@@ -278,23 +278,29 @@ export async function POST(request: Request) {
       }
     }
 
-    // FIX 1: Check if team has active connectors â€” skip data questions if none connected
+    // Always pass connector status so the LLM can ask smart, contextual questions
     if (team_id) {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vibeapi-production-fdd1.up.railway.app'
         const connRes = await fetch(`${apiUrl}/connectors/${team_id}`, {
           headers: { 'Content-Type': 'application/json' },
         })
-        const lastUserMsg = messages?.[messages.length - 1]?.content?.toLowerCase() || ''
-        const isDashboard = /\b(dashboard|analytics|report|metrics|pipeline|revenue|sales|forecast|crm|data)\b/.test(lastUserMsg)
-        let hasActiveConnectors = false
+        let activeConnectorNames: string[] = []
         if (connRes.ok) {
           const connData = await connRes.json()
           const connectors = Array.isArray(connData) ? connData : connData?.connectors || []
-          hasActiveConnectors = connectors.some((c: { status?: string }) => c.status === 'active')
+          activeConnectorNames = connectors
+            .filter((c: { status?: string }) => c.status === 'active')
+            .map((c: { connector_type?: string }) => c.connector_type || 'unknown')
         }
-        if (isDashboard && !hasActiveConnectors) {
-          intakeSystem += `\n\nOVERRIDE — no connectors are active. Ask 1 focused question before building. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. IMPORTANT: In the enrichedPrompt, include the phrase “sample data” so the builder knows to hardcode realistic data into charts instead of querying empty databases. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
+        if (activeConnectorNames.length > 0) {
+          intakeSystem += `\n\nDATA CONTEXT: The user has active data connectors: ${activeConnectorNames.join(', ')}. Only mention this if relevant to their build request.`
+        } else {
+          const lastUserMsg = messages?.[messages.length - 1]?.content?.toLowerCase() || ''
+          const needsData = /\b(dashboard|analytics|report|metrics|pipeline|revenue|sales|forecast|crm|data|tracker|inventory|orders)\b/.test(lastUserMsg)
+          if (needsData) {
+            intakeSystem += `\n\nDATA CONTEXT: No data connectors are active. Use realistic sample data for the build spec. Do not present lettered options. Do not mention CSV or file upload. IMPORTANT: In the enrichedPrompt, include the phrase “sample data” so the builder knows to hardcode realistic data into charts instead of querying empty databases. Include this Guided Next Step in the enrichedPrompt: 'Connect your CRM to use live data.'`
+          }
         }
       } catch (connErr) {
         console.warn('[INTAKE] connector check failed â€” proceeding without:', connErr)

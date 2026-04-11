@@ -325,13 +325,9 @@ export function PromptCard({ selectedProjectId, initialPrompt }: { selectedProje
   const startIntake = async () => {
     if (!prompt.trim() || submitting || teamLoading) return
 
-    // If no data path chosen yet and no file uploaded, show greeting first (no LLM call)
-    if (dataPath === null && !uploadIdRef.current) {
-      setIntaking(true)
-      const waiting = await checkConnectorsAndGreet()
-      setIntaking(false)
-      if (waiting) return // stay on greeting screen until user picks a path
-    }
+    // Go straight to the LLM — the server-side intake route already fetches
+    // connector status and injects it into the system prompt so the LLM can
+    // ask smart, contextual questions based on the actual user prompt.
 
     setStage("intake")
     setIntaking(true)
