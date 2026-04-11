@@ -259,11 +259,11 @@ SET html_skeleton = $$<!DOCTYPE html>
   </script>
 </body>
 </html>$$
-WHERE skill_name = 'executive-command-dashboard' AND plugin_name = 'executive';
+WHERE skill_name = 'executive-command-dashboard';
 
 -- Also update executive-dashboard (from our migration) if it exists
 UPDATE skill_registry
-SET html_skeleton = (SELECT html_skeleton FROM skill_registry WHERE skill_name = 'executive-command-dashboard' AND plugin_name = 'executive' LIMIT 1)
-WHERE skill_name = 'executive-dashboard' AND plugin_name = 'executive' AND html_skeleton IS NULL;
+SET html_skeleton = (SELECT html_skeleton FROM skill_registry WHERE skill_name = 'executive-command-dashboard' LIMIT 1)
+WHERE skill_name = 'executive-dashboard' AND html_skeleton IS NULL;
 
 NOTIFY pgrst, 'reload schema';
