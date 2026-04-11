@@ -1,0 +1,909 @@
+-- Migration: Populate html_skeleton for pharma-phase4-dashboard.
+-- Phase 4 Post-Market Surveillance Dashboard — FDA 21 CFR Part 11, CDISC SDTM, ICH E6, ISO 27001, REMS.
+
+INSERT INTO skill_registry (plugin_name, skill_name, team_function, description, content, is_active)
+SELECT 'pharma','pharma-phase4-dashboard','pharma',
+  'Phase 4 post-market surveillance dashboard — pharmacovigilance, REMS compliance, real-world evidence, signal detection, 21 CFR Part 11 audit trail.',
+  'Phase 4 Post-Market Surveillance Dashboard', true
+WHERE NOT EXISTS (SELECT 1 FROM skill_registry WHERE skill_name='pharma-phase4-dashboard');
+
+UPDATE skill_registry
+SET html_skeleton = $$<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{BRAND_COMPANY}} — Phase 4 Post-Market Surveillance Dashboard</title>
+  <meta name="description" content="Phase 4 post-market surveillance dashboard — pharmacovigilance, REMS compliance, real-world evidence, signal detection, and 21 CFR Part 11 audit trail for {{BRAND_COMPANY}}.">
+  <script>window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";</script>
+  <script>window.__VIBE_TEAM_ID__="__TEAM_ID__";</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui'],display:['Space Grotesk','system-ui']}}}}</script>
+  <style>
+    :root{--bg:#0A0E17;--text:#E2E8F0;--primary:#00E5A0;--accent:#00B4D8;--violet:#7B61FF;--surface:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);--warning:#F59E0B;--danger:#EF4444}
+    body{background:var(--bg);color:var(--text);margin:0;font-family:'Inter',system-ui,sans-serif}
+    .font-display{font-family:'Space Grotesk',system-ui,sans-serif}
+    .nav-tab{padding:10px 20px;border-radius:10px;font-size:0.875rem;font-weight:500;cursor:pointer;transition:all 0.2s;color:rgba(226,232,240,0.6);background:transparent;border:none}
+    .nav-tab:hover{color:var(--text);background:rgba(255,255,255,0.04)}
+    .nav-tab.active{color:var(--primary);background:rgba(0,229,160,0.1);font-weight:600}
+    .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;transition:border-color 0.2s}
+    .kpi-card:hover{border-color:rgba(0,229,160,0.25)}
+    .badge{padding:2px 10px;border-radius:9999px;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em}
+    .badge-active{background:rgba(0,229,160,0.15);color:#00E5A0}
+    .badge-closed{background:rgba(0,180,216,0.15);color:#00B4D8}
+    .badge-pending{background:rgba(245,158,11,0.15);color:#F59E0B}
+    .badge-overdue{background:rgba(239,68,68,0.15);color:#ef4444}
+    .badge-submitted{background:rgba(0,180,216,0.15);color:#00B4D8}
+    .badge-approved{background:rgba(0,229,160,0.15);color:#00E5A0}
+    .badge-compliant{background:rgba(0,229,160,0.15);color:#00E5A0}
+    .badge-non-compliant{background:rgba(239,68,68,0.15);color:#ef4444}
+    .badge-monitoring{background:rgba(123,97,255,0.15);color:#7B61FF}
+    .badge-signal{background:rgba(239,68,68,0.15);color:#ef4444}
+    .badge-no-signal{background:rgba(0,229,160,0.15);color:#00E5A0}
+    .badge-under-review{background:rgba(245,158,11,0.15);color:#F59E0B}
+    .badge-pass{background:rgba(0,229,160,0.15);color:#00E5A0}
+    .badge-fail{background:rgba(239,68,68,0.15);color:#ef4444}
+    .badge-serious{background:rgba(239,68,68,0.15);color:#ef4444}
+    .badge-non-serious{background:rgba(0,229,160,0.15);color:#00E5A0}
+    .badge-fatal{background:rgba(239,68,68,0.3);color:#ef4444}
+    .badge-draft{background:rgba(255,255,255,0.08);color:rgba(226,232,240,0.6)}
+    table{width:100%;border-collapse:collapse}
+    th{text-align:left;font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;opacity:0.5;padding:12px 16px;border-bottom:1px solid var(--border)}
+    td{padding:12px 16px;font-size:0.875rem;border-bottom:1px solid var(--border)}
+    .glass-nav{background:rgba(10,14,23,0.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
+    .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px}
+    .audit-row{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid var(--border)}
+    .audit-row:last-child{border-bottom:none}
+    .audit-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex-shrink:0}
+    .iso-panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px}
+    .progress-bar{height:8px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden}
+    .progress-fill{height:100%;border-radius:4px;transition:width 0.4s ease}
+    .rems-meter{width:100%;height:12px;border-radius:6px;background:rgba(255,255,255,0.06);overflow:hidden;position:relative}
+    .rems-meter-fill{height:100%;border-radius:6px;transition:width 0.6s ease}
+    .tab-panel{display:none}
+    .tab-panel.active{display:block}
+  </style>
+  <script>
+  window.__VIBE_SAMPLE__ = {
+    /* ===== 24 months spontaneous report data ===== */
+    spontaneousReports: (function(){
+      var months=[];
+      var baseSerious=8, baseNonSerious=45;
+      for(var i=0;i<24;i++){
+        var m=new Date(2024,4+i,1);
+        var label=m.toLocaleString('default',{month:'short'})+' '+m.getFullYear();
+        var seriousVariation=Math.round((Math.random()-0.4)*6);
+        var nonSeriousVariation=Math.round((Math.random()-0.3)*15);
+        var serious=Math.max(2,baseSerious+seriousVariation+Math.round(i*0.3));
+        var nonSerious=Math.max(10,baseNonSerious+nonSeriousVariation+Math.round(i*0.8));
+        months.push({month:label,serious:serious,nonSerious:nonSerious,total:serious+nonSerious,fatal:Math.random()<0.12?1:0});
+      }
+      return months;
+    })(),
+
+    /* ===== Adverse event signal detection — 12 months ===== */
+    signalDetection: (function(){
+      var months=[];
+      var baseRate=2.4;
+      var threshold=3.2;
+      for(var i=0;i<12;i++){
+        var m=new Date(2025,4+i,1);
+        var label=m.toLocaleString('default',{month:'short'})+' '+m.getFullYear();
+        var drift=Math.random()*0.6-0.15+i*0.08;
+        var rate=Math.round((baseRate+drift)*100)/100;
+        months.push({month:label,reportRate:rate,threshold:threshold});
+      }
+      return months;
+    })(),
+
+    /* ===== 6 REMS compliance elements ===== */
+    remsCompliance: [
+      {element:'Medication Guide Distribution',requirement:'100% of dispensed Rx',score:98.7,target:100,status:'Compliant',lastAudit:'2026-03-15',nextReview:'2026-06-15'},
+      {element:'ETASU: Prescriber Certification',requirement:'All prescribers certified',score:96.2,target:100,status:'Compliant',lastAudit:'2026-03-10',nextReview:'2026-06-10'},
+      {element:'ETASU: Pharmacy Certification',requirement:'All pharmacies enrolled',score:94.1,target:100,status:'Compliant',lastAudit:'2026-03-12',nextReview:'2026-06-12'},
+      {element:'ETASU: Patient Enrollment',requirement:'Informed consent documented',score:91.8,target:100,status:'Non-Compliant',lastAudit:'2026-03-08',nextReview:'2026-04-30'},
+      {element:'Communication Plan',requirement:'HCP letters sent within 30d',score:100.0,target:100,status:'Compliant',lastAudit:'2026-02-28',nextReview:'2026-05-28'},
+      {element:'Implementation System',requirement:'Quarterly REMS assessments',score:97.5,target:100,status:'Compliant',lastAudit:'2026-03-01',nextReview:'2026-06-01'}
+    ],
+
+    /* ===== 4 real-world vs trial endpoint comparisons ===== */
+    realWorldVsTrial: [
+      {endpoint:'Overall Response Rate',trialValue:62.4,realWorldValue:58.2,delta:-4.2,unit:'%',significance:'p=0.041'},
+      {endpoint:'Median PFS',trialValue:9.8,realWorldValue:8.1,delta:-1.7,unit:'months',significance:'p=0.023'},
+      {endpoint:'12-Month OS Rate',trialValue:78.5,realWorldValue:74.9,delta:-3.6,unit:'%',significance:'p=0.068'},
+      {endpoint:'Grade 3+ AE Rate',trialValue:34.1,realWorldValue:41.7,delta:7.6,unit:'%',significance:'p=0.012'}
+    ],
+
+    /* ===== 8 signal detection entries with PRR scores ===== */
+    signalEntries: [
+      {drug:'VB-2048',event:'Hepatotoxicity',observedRate:3.42,expectedRate:1.10,prr:3.11,ror:3.28,status:'Signal',reportCount:47,lastUpdated:'2026-04-08'},
+      {drug:'VB-2048',event:'Peripheral Neuropathy',observedRate:2.81,expectedRate:1.85,prr:1.52,ror:1.61,status:'Under Review',reportCount:38,lastUpdated:'2026-04-07'},
+      {drug:'VB-2048',event:'Neutropenia',observedRate:5.10,expectedRate:4.80,prr:1.06,ror:1.08,status:'No Signal',reportCount:69,lastUpdated:'2026-04-06'},
+      {drug:'VB-2048',event:'Cardiac Arrhythmia',observedRate:1.94,expectedRate:0.65,prr:2.98,ror:3.14,status:'Signal',reportCount:26,lastUpdated:'2026-04-09'},
+      {drug:'VB-3072',event:'Renal Impairment',observedRate:2.15,expectedRate:1.92,prr:1.12,ror:1.15,status:'No Signal',reportCount:29,lastUpdated:'2026-04-05'},
+      {drug:'VB-3072',event:'Thrombocytopenia',observedRate:3.67,expectedRate:2.10,prr:1.75,ror:1.82,status:'Under Review',reportCount:50,lastUpdated:'2026-04-04'},
+      {drug:'VB-3072',event:'Interstitial Lung Disease',observedRate:0.89,expectedRate:0.22,prr:4.05,ror:4.18,status:'Signal',reportCount:12,lastUpdated:'2026-04-10'},
+      {drug:'VB-1024',event:'Stevens-Johnson Syndrome',observedRate:0.14,expectedRate:0.05,prr:2.80,ror:2.91,status:'Under Review',reportCount:3,lastUpdated:'2026-04-03'}
+    ],
+
+    /* ===== 7 regulatory submissions with due dates ===== */
+    regulatorySubmissions: [
+      {id:'SUB-2026-041',type:'PBRER / PSUR',dueDate:'2026-04-30',status:'Draft',daysRemaining:19,agency:'EMA',product:'VB-2048'},
+      {id:'SUB-2026-042',type:'IND Safety Report',dueDate:'2026-04-18',status:'Pending',daysRemaining:7,agency:'FDA',product:'VB-2048'},
+      {id:'SUB-2026-043',type:'REMS Assessment',dueDate:'2026-05-15',status:'Draft',daysRemaining:34,agency:'FDA',product:'VB-2048'},
+      {id:'SUB-2026-044',type:'DSUR',dueDate:'2026-06-01',status:'Pending',daysRemaining:51,agency:'FDA / EMA',product:'VB-3072'},
+      {id:'SUB-2026-045',type:'IND Annual Report',dueDate:'2026-05-30',status:'Draft',daysRemaining:49,agency:'FDA',product:'VB-1024'},
+      {id:'SUB-2026-046',type:'SUSAR Notification',dueDate:'2026-04-14',status:'Submitted',daysRemaining:3,agency:'FDA / EMA',product:'VB-2048'},
+      {id:'SUB-2026-047',type:'Risk Management Plan Update',dueDate:'2026-07-01',status:'Pending',daysRemaining:81,agency:'EMA',product:'VB-3072'}
+    ],
+
+    /* ===== KPI summary ===== */
+    kpis: {
+      reportsReceived30d:342,
+      seriousAdverseEvents:28,
+      remsCompliance:96.4,
+      signalAlerts:3,
+      regulatoryPending:7,
+      realWorldVsTrialDelta:-4.2
+    },
+
+    /* ===== Audit trail — 21 CFR Part 11 electronic signatures ===== */
+    auditTrail: [
+      {timestamp:'2026-04-11T09:15:00Z',user:'Dr. Sarah Chen',role:'Drug Safety Physician',action:'Approved SUSAR narrative for Case VB-2048-SAE-0291',esigStatus:'Valid',ip:'10.0.14.22',meaning:'Reviewed and approved per 21 CFR 312.32(c)(1)'},
+      {timestamp:'2026-04-11T08:42:00Z',user:'James Hartley',role:'Pharmacovigilance Analyst',action:'Submitted 15-day expedited IND safety report',esigStatus:'Valid',ip:'10.0.14.35',meaning:'Completed and submitted per regulatory requirement'},
+      {timestamp:'2026-04-10T16:30:00Z',user:'Dr. Maya Patel',role:'VP Regulatory Affairs',action:'Signed off PBRER executive summary for VB-2048',esigStatus:'Valid',ip:'10.0.14.11',meaning:'Final approval for regulatory submission'},
+      {timestamp:'2026-04-10T14:15:00Z',user:'Robert Kim',role:'REMS Program Manager',action:'Updated ETASU patient enrollment tracking to 91.8%',esigStatus:'Valid',ip:'10.0.14.44',meaning:'Quarterly REMS metric update'},
+      {timestamp:'2026-04-10T11:20:00Z',user:'Emily Torres',role:'Signal Detection Analyst',action:'Elevated ILD signal for VB-3072 — PRR 4.05 exceeds threshold',esigStatus:'Valid',ip:'10.0.14.28',meaning:'Signal validated per CIOMS working group criteria'},
+      {timestamp:'2026-04-09T17:05:00Z',user:'Dr. Sarah Chen',role:'Drug Safety Physician',action:'Closed cardiac arrhythmia signal review — confirmed safety signal',esigStatus:'Valid',ip:'10.0.14.22',meaning:'Signal confirmed; risk management plan update initiated'},
+      {timestamp:'2026-04-09T10:30:00Z',user:'Li Wei',role:'Quality Assurance',action:'Completed quarterly ISO 27001 controls audit — 112/114 implemented',esigStatus:'Valid',ip:'10.0.14.50',meaning:'ISO surveillance audit compliance verification'},
+      {timestamp:'2026-04-08T15:45:00Z',user:'Dr. Maya Patel',role:'VP Regulatory Affairs',action:'Approved risk-benefit assessment update for VB-2048 label change',esigStatus:'Valid',ip:'10.0.14.11',meaning:'Supporting data reviewed for sNDA submission'},
+      {timestamp:'2026-04-08T09:00:00Z',user:'James Hartley',role:'Pharmacovigilance Analyst',action:'Processed 14 new spontaneous ICSR reports from FAERS download',esigStatus:'Valid',ip:'10.0.14.35',meaning:'Routine individual case safety report processing'},
+      {timestamp:'2026-04-07T14:20:00Z',user:'Robert Kim',role:'REMS Program Manager',action:'Sent non-compliance notice to 3 uncertified prescribers',esigStatus:'Valid',ip:'10.0.14.44',meaning:'REMS ETASU enforcement action'}
+    ],
+
+    /* ===== ISO 27001 Controls ===== */
+    isoControls: {
+      overallScore:94,
+      totalControls:114,
+      implemented:112,
+      nonConformities:3,
+      lastAudit:'2026-04-09',
+      nextAudit:'2026-07-09',
+      categories:[
+        {name:'A.5 Information Security Policies',controls:2,implemented:2,status:'Pass'},
+        {name:'A.6 Organization of Information Security',controls:7,implemented:7,status:'Pass'},
+        {name:'A.7 Human Resource Security',controls:6,implemented:6,status:'Pass'},
+        {name:'A.8 Asset Management',controls:10,implemented:10,status:'Pass'},
+        {name:'A.9 Access Control',controls:14,implemented:14,status:'Pass'},
+        {name:'A.10 Cryptography',controls:2,implemented:2,status:'Pass'},
+        {name:'A.11 Physical & Environmental Security',controls:15,implemented:15,status:'Pass'},
+        {name:'A.12 Operations Security',controls:14,implemented:13,status:'Partial'},
+        {name:'A.13 Communications Security',controls:7,implemented:7,status:'Pass'},
+        {name:'A.14 System Acquisition & Development',controls:13,implemented:12,status:'Partial'},
+        {name:'A.15 Supplier Relationships',controls:5,implemented:5,status:'Pass'},
+        {name:'A.16 Incident Management',controls:7,implemented:7,status:'Pass'},
+        {name:'A.17 Business Continuity',controls:4,implemented:4,status:'Pass'},
+        {name:'A.18 Compliance',controls:8,implemented:8,status:'Pass'}
+      ]
+    },
+
+    /* ===== REMS Audit Log ===== */
+    remsAuditLog: [
+      {requirement:'Medication Guide Distribution',status:'Compliant',lastVerified:'2026-03-15',nextReview:'2026-06-15',verifiedBy:'Robert Kim'},
+      {requirement:'Prescriber Certification',status:'Compliant',lastVerified:'2026-03-10',nextReview:'2026-06-10',verifiedBy:'Robert Kim'},
+      {requirement:'Pharmacy Certification',status:'Compliant',lastVerified:'2026-03-12',nextReview:'2026-06-12',verifiedBy:'Robert Kim'},
+      {requirement:'Patient Enrollment & Consent',status:'Non-Compliant',lastVerified:'2026-03-08',nextReview:'2026-04-30',verifiedBy:'Robert Kim'},
+      {requirement:'Communication Plan Execution',status:'Compliant',lastVerified:'2026-02-28',nextReview:'2026-05-28',verifiedBy:'Dr. Maya Patel'},
+      {requirement:'Implementation System Assessment',status:'Compliant',lastVerified:'2026-03-01',nextReview:'2026-06-01',verifiedBy:'Dr. Maya Patel'}
+    ]
+  };
+  </script>
+</head>
+<body>
+  <!-- ===== GLASS NAVBAR ===== -->
+  <nav class="glass-nav sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#00E5A0,#00B4D8)">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#0A0E17" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span class="font-display font-semibold text-sm">{{BRAND_COMPANY}}</span>
+      <span class="text-xs px-2 py-0.5 rounded-full" style="background:rgba(0,229,160,0.1);color:#00E5A0;">Phase 4</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-xs opacity-40">Post-Market Surveillance</span>
+      <span class="text-xs opacity-30">|</span>
+      <span class="text-xs opacity-40">Last refresh: just now</span>
+    </div>
+  </nav>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <!-- TITLE -->
+    <div class="mb-8">
+      <h1 class="font-display text-2xl font-bold mb-2" style="background:linear-gradient(135deg,#00E5A0,#00B4D8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Phase 4 Post-Market Surveillance Dashboard</h1>
+      <p class="text-sm opacity-50">Pharmacovigilance, REMS compliance, real-world evidence, and regulatory submissions — 21 CFR Part 11 compliant</p>
+    </div>
+
+    <!-- NAV TABS -->
+    <div class="flex flex-wrap gap-2 mb-8" id="tab-nav">
+      <button class="nav-tab active" data-tab="overview">Overview</button>
+      <button class="nav-tab" data-tab="pharmacovigilance">Pharmacovigilance</button>
+      <button class="nav-tab" data-tab="rems">REMS Compliance</button>
+      <button class="nav-tab" data-tab="rwe">Real-World Evidence</button>
+      <button class="nav-tab" data-tab="audit">Audit Trail</button>
+    </div>
+
+    <!-- ===================== OVERVIEW TAB ===================== -->
+    <div class="tab-panel active" id="panel-overview">
+      <!-- KPI CARDS -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8" id="kpi-grid">
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Reports Received (30d)</div>
+          <div class="font-display text-2xl font-bold" id="kpi-reports" style="color:#00E5A0;">—</div>
+          <div class="text-xs opacity-40 mt-1">Spontaneous + solicited</div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Serious AEs</div>
+          <div class="font-display text-2xl font-bold" id="kpi-sae" style="color:#EF4444;">—</div>
+          <div class="text-xs opacity-40 mt-1">Requiring expedited report</div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">REMS Compliance</div>
+          <div class="font-display text-2xl font-bold" id="kpi-rems" style="color:#00B4D8;">—</div>
+          <div class="text-xs opacity-40 mt-1">Across 6 elements</div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Signal Alerts</div>
+          <div class="font-display text-2xl font-bold" id="kpi-signals" style="color:#F59E0B;">—</div>
+          <div class="text-xs opacity-40 mt-1">Active signals detected</div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Reg. Submissions</div>
+          <div class="font-display text-2xl font-bold" id="kpi-submissions" style="color:#7B61FF;">—</div>
+          <div class="text-xs opacity-40 mt-1">Pending submissions</div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">RW vs Trial Efficacy</div>
+          <div class="font-display text-2xl font-bold" id="kpi-rwe-delta" style="color:#EF4444;">—</div>
+          <div class="text-xs opacity-40 mt-1">Primary endpoint delta</div>
+        </div>
+      </div>
+
+      <!-- OVERVIEW CHARTS ROW 1 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="chart-card">
+          <h3 class="font-display text-sm font-semibold mb-1">Adverse Event Signal Detection</h3>
+          <p class="text-xs opacity-40 mb-4">Report rate vs baseline threshold — 12 months</p>
+          <canvas id="chart-signal-detection" height="260"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3 class="font-display text-sm font-semibold mb-1">REMS Compliance by Requirement</h3>
+          <p class="text-xs opacity-40 mb-4">Compliance score across 6 REMS elements</p>
+          <canvas id="chart-rems-compliance" height="260"></canvas>
+        </div>
+      </div>
+
+      <!-- OVERVIEW CHARTS ROW 2 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="chart-card">
+          <h3 class="font-display text-sm font-semibold mb-1">Real-World vs Trial Efficacy</h3>
+          <p class="text-xs opacity-40 mb-4">Grouped comparison across 4 endpoints</p>
+          <canvas id="chart-rwe-comparison" height="260"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3 class="font-display text-sm font-semibold mb-1">Spontaneous Report Volume Trend</h3>
+          <p class="text-xs opacity-40 mb-4">Monthly reports by seriousness — 24 months</p>
+          <canvas id="chart-report-trend" height="260"></canvas>
+        </div>
+      </div>
+
+      <!-- SIGNAL DETECTION TABLE -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">Signal Detection Summary</h3>
+        <p class="text-xs opacity-40 mb-4">Disproportionality analysis — PRR-based signal screening</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Drug</th>
+                <th>Adverse Event</th>
+                <th>Observed Rate</th>
+                <th>Expected Rate</th>
+                <th>PRR</th>
+                <th>Signal Status</th>
+              </tr>
+            </thead>
+            <tbody id="signal-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- REGULATORY SUBMISSIONS TABLE -->
+      <div class="chart-card">
+        <h3 class="font-display text-sm font-semibold mb-1">Regulatory Submissions</h3>
+        <p class="text-xs opacity-40 mb-4">Pending and upcoming regulatory filing deadlines</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Submission ID</th>
+                <th>Type</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Days Remaining</th>
+              </tr>
+            </thead>
+            <tbody id="submission-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== PHARMACOVIGILANCE TAB ===================== -->
+    <div class="tab-panel" id="panel-pharmacovigilance">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Total ICSRs (24mo)</div>
+          <div class="font-display text-2xl font-bold" id="kpi-total-icsr" style="color:#00E5A0;">—</div>
+          <div class="text-xs opacity-40 mt-1">Individual Case Safety Reports</div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Serious Rate</div>
+          <div class="font-display text-2xl font-bold" id="kpi-serious-rate" style="color:#EF4444;">—</div>
+          <div class="text-xs opacity-40 mt-1">Proportion of serious AEs</div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Fatal Events (24mo)</div>
+          <div class="font-display text-2xl font-bold" id="kpi-fatal" style="color:#EF4444;">—</div>
+          <div class="text-xs opacity-40 mt-1">Fatal outcome reports</div>
+        </div>
+      </div>
+
+      <!-- Full signal detection chart -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">Adverse Event Signal Detection — Detailed</h3>
+        <p class="text-xs opacity-40 mb-4">Monthly report rate vs safety threshold — all products</p>
+        <canvas id="chart-signal-detection-detail" height="300"></canvas>
+      </div>
+
+      <!-- Full report trend chart -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">Spontaneous Reporting Trend — 24 Months</h3>
+        <p class="text-xs opacity-40 mb-4">Serious vs non-serious, with fatal overlay</p>
+        <canvas id="chart-report-trend-detail" height="300"></canvas>
+      </div>
+
+      <!-- Extended signal table -->
+      <div class="chart-card">
+        <h3 class="font-display text-sm font-semibold mb-1">Signal Detection — Extended Analysis</h3>
+        <p class="text-xs opacity-40 mb-4">PRR and ROR with report counts and last update</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Drug</th>
+                <th>Adverse Event</th>
+                <th>Observed</th>
+                <th>Expected</th>
+                <th>PRR</th>
+                <th>ROR</th>
+                <th>Reports</th>
+                <th>Last Updated</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="signal-table-extended"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== REMS COMPLIANCE TAB ===================== -->
+    <div class="tab-panel" id="panel-rems">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Overall REMS Compliance</div>
+          <div class="font-display text-3xl font-bold" id="kpi-rems-overall" style="color:#00B4D8;">—</div>
+          <div class="rems-meter mt-3"><div class="rems-meter-fill" id="rems-overall-bar" style="width:0%;background:#00B4D8;"></div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="text-xs uppercase tracking-wider opacity-40 mb-1">Non-Compliant Elements</div>
+          <div class="font-display text-3xl font-bold" id="kpi-rems-noncompliant" style="color:#EF4444;">—</div>
+          <div class="text-xs opacity-40 mt-1">Requiring corrective action</div>
+        </div>
+      </div>
+
+      <!-- REMS compliance bar chart -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">REMS Compliance by Element</h3>
+        <p class="text-xs opacity-40 mb-4">Target: 100% for all elements — ETASU requirements</p>
+        <canvas id="chart-rems-detail" height="300"></canvas>
+      </div>
+
+      <!-- REMS element detail table -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">REMS Element Details</h3>
+        <p class="text-xs opacity-40 mb-4">Compliance status, scores, and review schedule</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Element</th>
+                <th>Requirement</th>
+                <th>Score</th>
+                <th>Target</th>
+                <th>Status</th>
+                <th>Last Audit</th>
+                <th>Next Review</th>
+              </tr>
+            </thead>
+            <tbody id="rems-detail-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- REMS Audit Log -->
+      <div class="chart-card">
+        <h3 class="font-display text-sm font-semibold mb-1">REMS Audit Log</h3>
+        <p class="text-xs opacity-40 mb-4">Verification history and upcoming reviews</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Requirement</th>
+                <th>Status</th>
+                <th>Last Verified</th>
+                <th>Next Review</th>
+                <th>Verified By</th>
+              </tr>
+            </thead>
+            <tbody id="rems-audit-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== REAL-WORLD EVIDENCE TAB ===================== -->
+    <div class="tab-panel" id="panel-rwe">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="rwe-kpi-grid"></div>
+
+      <!-- RWE vs Trial chart -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">Real-World vs Clinical Trial Efficacy</h3>
+        <p class="text-xs opacity-40 mb-4">Head-to-head endpoint comparison with significance values</p>
+        <canvas id="chart-rwe-detail" height="320"></canvas>
+      </div>
+
+      <!-- RWE detail table -->
+      <div class="chart-card">
+        <h3 class="font-display text-sm font-semibold mb-1">Endpoint Comparison — Detailed</h3>
+        <p class="text-xs opacity-40 mb-4">Real-world data vs pivotal trial results</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Trial Result</th>
+                <th>Real-World Result</th>
+                <th>Delta</th>
+                <th>Unit</th>
+                <th>Significance</th>
+              </tr>
+            </thead>
+            <tbody id="rwe-detail-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== AUDIT TRAIL TAB ===================== -->
+    <div class="tab-panel" id="panel-audit">
+      <!-- 21 CFR Part 11 Electronic Signature Log -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">21 CFR Part 11 — Electronic Signature Log</h3>
+        <p class="text-xs opacity-40 mb-4">Tamper-evident audit trail with electronic signature verification</p>
+        <div id="audit-trail-container"></div>
+      </div>
+
+      <!-- ISO 27001 Panel -->
+      <div class="iso-panel mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-display text-sm font-semibold mb-1">ISO 27001 Information Security</h3>
+            <p class="text-xs opacity-40">Annex A controls implementation status</p>
+          </div>
+          <div class="flex items-center gap-4">
+            <div class="text-right">
+              <div class="font-display text-2xl font-bold" id="iso-score" style="color:#00E5A0;">—</div>
+              <div class="text-xs opacity-40">Security Score</div>
+            </div>
+            <div class="text-right">
+              <div class="font-display text-2xl font-bold" id="iso-nc" style="color:#F59E0B;">—</div>
+              <div class="text-xs opacity-40">Non-Conformities</div>
+            </div>
+            <div class="text-right">
+              <div class="font-display text-2xl font-bold" id="iso-controls" style="color:#00B4D8;">—</div>
+              <div class="text-xs opacity-40">Controls</div>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-3" id="iso-controls-container"></div>
+      </div>
+
+      <!-- ISO Control Detail Table -->
+      <div class="chart-card mb-6">
+        <h3 class="font-display text-sm font-semibold mb-1">ISO 27001 — Control Category Detail</h3>
+        <p class="text-xs opacity-40 mb-4">Implementation status per Annex A control category</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Total</th>
+                <th>Implemented</th>
+                <th>% Complete</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="iso-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- REMS Audit Log (duplicate for audit tab) -->
+      <div class="chart-card">
+        <h3 class="font-display text-sm font-semibold mb-1">REMS Audit Log</h3>
+        <p class="text-xs opacity-40 mb-4">Requirement verification status and review schedule</p>
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Requirement</th>
+                <th>Status</th>
+                <th>Last Verified</th>
+                <th>Next Review</th>
+                <th>Verified By</th>
+              </tr>
+            </thead>
+            <tbody id="rems-audit-table-2"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="max-w-7xl mx-auto px-6 py-8 mt-8 border-t" style="border-color:var(--border);">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="text-xs opacity-30">{{BRAND_COMPANY}} — Phase 4 Post-Market Surveillance Dashboard</div>
+      <div class="flex items-center gap-4">
+        <span class="text-xs opacity-30">FDA 21 CFR Part 11</span>
+        <span class="text-xs opacity-30">CDISC SDTM</span>
+        <span class="text-xs opacity-30">ICH E6</span>
+        <span class="text-xs opacity-30">ISO 27001</span>
+        <span class="text-xs opacity-30">REMS</span>
+      </div>
+      <div class="text-xs opacity-30">Generated by VIBE</div>
+    </div>
+  </footer>
+
+  <script>
+  document.addEventListener('DOMContentLoaded',function(){
+    var S;
+    try{S=window.__VIBE_SAMPLE__||{};}catch(e){S={};}
+
+    /* ===== TAB NAVIGATION ===== */
+    var tabs=document.querySelectorAll('.nav-tab');
+    var panels=document.querySelectorAll('.tab-panel');
+    tabs.forEach(function(tab){
+      tab.addEventListener('click',function(){
+        tabs.forEach(function(t){t.classList.remove('active');});
+        panels.forEach(function(p){p.classList.remove('active');});
+        tab.classList.add('active');
+        var target=tab.getAttribute('data-tab');
+        var panel=document.getElementById('panel-'+target);
+        if(panel)panel.classList.add('active');
+      });
+    });
+
+    /* ===== KPI CARDS ===== */
+    try{
+      var k=S.kpis||{};
+      document.getElementById('kpi-reports').textContent=k.reportsReceived30d||'—';
+      document.getElementById('kpi-sae').textContent=k.seriousAdverseEvents||'—';
+      document.getElementById('kpi-rems').textContent=(k.remsCompliance||'—')+'%';
+      document.getElementById('kpi-signals').textContent=k.signalAlerts||'—';
+      document.getElementById('kpi-submissions').textContent=(k.regulatoryPending||'—')+' pending';
+      document.getElementById('kpi-rwe-delta').textContent=(k.realWorldVsTrialDelta>0?'+':'')+k.realWorldVsTrialDelta+'%';
+    }catch(e){console.warn('KPI render error',e);}
+
+    /* ===== CHART DEFAULTS ===== */
+    try{
+      Chart.defaults.color='rgba(226,232,240,0.6)';
+      Chart.defaults.borderColor='rgba(255,255,255,0.06)';
+      Chart.defaults.font.family='Inter,system-ui,sans-serif';
+      Chart.defaults.font.size=11;
+      Chart.defaults.plugins.legend.labels.usePointStyle=true;
+      Chart.defaults.plugins.legend.labels.pointStyleWidth=8;
+      Chart.defaults.plugins.legend.labels.padding=16;
+    }catch(e){console.warn('Chart defaults error',e);}
+
+    /* ===== CHART 1: Adverse Event Signal Detection (line) ===== */
+    try{
+      var sigData=S.signalDetection||[];
+      new Chart(document.getElementById('chart-signal-detection'),{
+        type:'line',
+        data:{
+          labels:sigData.map(function(d){return d.month;}),
+          datasets:[
+            {label:'Report Rate',data:sigData.map(function(d){return d.reportRate;}),borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.1)',fill:true,tension:0.3,pointRadius:3,pointHoverRadius:5},
+            {label:'Baseline Threshold',data:sigData.map(function(d){return d.threshold;}),borderColor:'#EF4444',borderDash:[6,4],pointRadius:0,fill:false}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,title:{display:true,text:'Rate per 1000 patients'}}},plugins:{tooltip:{mode:'index',intersect:false}}}
+      });
+    }catch(e){console.warn('Signal detection chart error',e);}
+
+    /* ===== CHART 2: REMS Compliance by Requirement (bar) ===== */
+    try{
+      var remsData=S.remsCompliance||[];
+      var remsLabels=remsData.map(function(d){var parts=d.element.split(':');return parts.length>1?parts[1].trim():d.element;});
+      new Chart(document.getElementById('chart-rems-compliance'),{
+        type:'bar',
+        data:{
+          labels:remsLabels,
+          datasets:[{
+            label:'Compliance %',
+            data:remsData.map(function(d){return d.score;}),
+            backgroundColor:remsData.map(function(d){return d.score>=95?'rgba(0,229,160,0.7)':d.score>=90?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)';}),
+            borderRadius:6,
+            maxBarThickness:40
+          }]
+        },
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{min:80,max:102,title:{display:true,text:'Compliance %'}},y:{ticks:{font:{size:10}}}},plugins:{legend:{display:false}}}
+      });
+    }catch(e){console.warn('REMS compliance chart error',e);}
+
+    /* ===== CHART 3: Real-World vs Trial Efficacy (grouped bar) ===== */
+    try{
+      var rweData=S.realWorldVsTrial||[];
+      new Chart(document.getElementById('chart-rwe-comparison'),{
+        type:'bar',
+        data:{
+          labels:rweData.map(function(d){return d.endpoint;}),
+          datasets:[
+            {label:'Clinical Trial',data:rweData.map(function(d){return d.trialValue;}),backgroundColor:'rgba(0,180,216,0.7)',borderRadius:6,maxBarThickness:30},
+            {label:'Real-World',data:rweData.map(function(d){return d.realWorldValue;}),backgroundColor:'rgba(123,97,255,0.7)',borderRadius:6,maxBarThickness:30}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true}},plugins:{tooltip:{callbacks:{afterLabel:function(ctx){var d=rweData[ctx.dataIndex];return d?'Delta: '+(d.delta>0?'+':'')+d.delta+d.unit+' ('+d.significance+')':'';}}},legend:{position:'top'}}}
+      });
+    }catch(e){console.warn('RWE comparison chart error',e);}
+
+    /* ===== CHART 4: Spontaneous Report Volume Trend (line, 24 months) ===== */
+    try{
+      var rptData=S.spontaneousReports||[];
+      new Chart(document.getElementById('chart-report-trend'),{
+        type:'line',
+        data:{
+          labels:rptData.map(function(d){return d.month;}),
+          datasets:[
+            {label:'Non-Serious',data:rptData.map(function(d){return d.nonSerious;}),borderColor:'#00B4D8',backgroundColor:'rgba(0,180,216,0.08)',fill:true,tension:0.3,pointRadius:2},
+            {label:'Serious',data:rptData.map(function(d){return d.serious;}),borderColor:'#EF4444',backgroundColor:'rgba(239,68,68,0.08)',fill:true,tension:0.3,pointRadius:2},
+            {label:'Fatal',data:rptData.map(function(d){return d.fatal;}),borderColor:'#7B61FF',backgroundColor:'rgba(123,97,255,0.08)',fill:false,tension:0.3,pointRadius:2,borderDash:[4,3]}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,title:{display:true,text:'Report Count'}}},plugins:{tooltip:{mode:'index',intersect:false}}}
+      });
+    }catch(e){console.warn('Report trend chart error',e);}
+
+    /* ===== SIGNAL DETECTION TABLE (overview) ===== */
+    try{
+      var stb=document.getElementById('signal-table-body');
+      if(stb)(S.signalEntries||[]).forEach(function(d){
+        var statusClass=d.status==='Signal'?'badge-signal':d.status==='No Signal'?'badge-no-signal':'badge-under-review';
+        stb.innerHTML+='<tr><td class="font-mono text-xs">'+d.drug+'</td><td>'+d.event+'</td><td class="font-mono">'+d.observedRate.toFixed(2)+'</td><td class="font-mono">'+d.expectedRate.toFixed(2)+'</td><td class="font-mono font-semibold" style="color:'+(d.prr>=2?'#EF4444':d.prr>=1.5?'#F59E0B':'#00E5A0')+';">'+d.prr.toFixed(2)+'</td><td><span class="badge '+statusClass+'">'+d.status+'</span></td></tr>';
+      });
+    }catch(e){console.warn('Signal table error',e);}
+
+    /* ===== REGULATORY SUBMISSIONS TABLE ===== */
+    try{
+      var sub=document.getElementById('submission-table-body');
+      if(sub)(S.regulatorySubmissions||[]).forEach(function(d){
+        var statusClass=d.status==='Submitted'?'badge-submitted':d.status==='Draft'?'badge-draft':'badge-pending';
+        var daysColor=d.daysRemaining<=7?'#EF4444':d.daysRemaining<=30?'#F59E0B':'#00E5A0';
+        sub.innerHTML+='<tr><td class="font-mono text-xs">'+d.id+'</td><td>'+d.type+'</td><td class="font-mono">'+d.dueDate+'</td><td><span class="badge '+statusClass+'">'+d.status+'</span></td><td class="font-mono font-semibold" style="color:'+daysColor+';">'+d.daysRemaining+'d</td></tr>';
+      });
+    }catch(e){console.warn('Submission table error',e);}
+
+    /* ===== PHARMACOVIGILANCE TAB — KPIs ===== */
+    try{
+      var rptAll=S.spontaneousReports||[];
+      var totalIcsr=rptAll.reduce(function(a,d){return a+d.total;},0);
+      var totalSerious=rptAll.reduce(function(a,d){return a+d.serious;},0);
+      var totalFatal=rptAll.reduce(function(a,d){return a+d.fatal;},0);
+      var seriousRate=totalIcsr>0?((totalSerious/totalIcsr)*100).toFixed(1):'0';
+      document.getElementById('kpi-total-icsr').textContent=totalIcsr.toLocaleString();
+      document.getElementById('kpi-serious-rate').textContent=seriousRate+'%';
+      document.getElementById('kpi-fatal').textContent=totalFatal;
+    }catch(e){console.warn('PV KPI error',e);}
+
+    /* ===== PHARMACOVIGILANCE — Signal Detection Detail Chart ===== */
+    try{
+      var sigData2=S.signalDetection||[];
+      new Chart(document.getElementById('chart-signal-detection-detail'),{
+        type:'line',
+        data:{
+          labels:sigData2.map(function(d){return d.month;}),
+          datasets:[
+            {label:'Observed Report Rate',data:sigData2.map(function(d){return d.reportRate;}),borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.15)',fill:true,tension:0.3,pointRadius:4,pointBackgroundColor:'#00E5A0',pointHoverRadius:6},
+            {label:'Safety Threshold',data:sigData2.map(function(d){return d.threshold;}),borderColor:'#EF4444',borderDash:[8,4],pointRadius:0,fill:false,borderWidth:2}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,title:{display:true,text:'Rate per 1000 patients'},grid:{color:'rgba(255,255,255,0.04)'}},x:{grid:{color:'rgba(255,255,255,0.04)'}}},plugins:{tooltip:{mode:'index',intersect:false}}}
+      });
+    }catch(e){console.warn('PV signal detail chart error',e);}
+
+    /* ===== PHARMACOVIGILANCE — Report Trend Detail Chart ===== */
+    try{
+      var rptDetail=S.spontaneousReports||[];
+      new Chart(document.getElementById('chart-report-trend-detail'),{
+        type:'line',
+        data:{
+          labels:rptDetail.map(function(d){return d.month;}),
+          datasets:[
+            {label:'Non-Serious',data:rptDetail.map(function(d){return d.nonSerious;}),borderColor:'#00B4D8',backgroundColor:'rgba(0,180,216,0.12)',fill:true,tension:0.3,pointRadius:3},
+            {label:'Serious',data:rptDetail.map(function(d){return d.serious;}),borderColor:'#EF4444',backgroundColor:'rgba(239,68,68,0.12)',fill:true,tension:0.3,pointRadius:3},
+            {label:'Fatal',data:rptDetail.map(function(d){return d.fatal;}),borderColor:'#7B61FF',backgroundColor:'rgba(123,97,255,0.08)',fill:false,tension:0.3,pointRadius:3,borderDash:[4,3],borderWidth:2}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,title:{display:true,text:'Report Count'},grid:{color:'rgba(255,255,255,0.04)'}},x:{grid:{color:'rgba(255,255,255,0.04)'}}},plugins:{tooltip:{mode:'index',intersect:false}}}
+      });
+    }catch(e){console.warn('PV report trend detail error',e);}
+
+    /* ===== PHARMACOVIGILANCE — Extended Signal Table ===== */
+    try{
+      var stbExt=document.getElementById('signal-table-extended');
+      if(stbExt)(S.signalEntries||[]).forEach(function(d){
+        var statusClass=d.status==='Signal'?'badge-signal':d.status==='No Signal'?'badge-no-signal':'badge-under-review';
+        stbExt.innerHTML+='<tr><td class="font-mono text-xs">'+d.drug+'</td><td>'+d.event+'</td><td class="font-mono">'+d.observedRate.toFixed(2)+'</td><td class="font-mono">'+d.expectedRate.toFixed(2)+'</td><td class="font-mono font-semibold" style="color:'+(d.prr>=2?'#EF4444':d.prr>=1.5?'#F59E0B':'#00E5A0')+';">'+d.prr.toFixed(2)+'</td><td class="font-mono" style="color:'+(d.ror>=2?'#EF4444':d.ror>=1.5?'#F59E0B':'#00E5A0')+';">'+d.ror.toFixed(2)+'</td><td class="font-mono">'+d.reportCount+'</td><td class="font-mono text-xs opacity-60">'+d.lastUpdated+'</td><td><span class="badge '+statusClass+'">'+d.status+'</span></td></tr>';
+      });
+    }catch(e){console.warn('Extended signal table error',e);}
+
+    /* ===== REMS TAB — KPIs ===== */
+    try{
+      var remsAll=S.remsCompliance||[];
+      var overallRems=remsAll.length>0?(remsAll.reduce(function(a,d){return a+d.score;},0)/remsAll.length).toFixed(1):'—';
+      var nonCompliantCount=remsAll.filter(function(d){return d.status==='Non-Compliant';}).length;
+      document.getElementById('kpi-rems-overall').textContent=overallRems+'%';
+      document.getElementById('rems-overall-bar').style.width=overallRems+'%';
+      document.getElementById('kpi-rems-noncompliant').textContent=nonCompliantCount;
+    }catch(e){console.warn('REMS KPI error',e);}
+
+    /* ===== REMS TAB — Detail Chart ===== */
+    try{
+      var remsDetail=S.remsCompliance||[];
+      var remsDetailLabels=remsDetail.map(function(d){var parts=d.element.split(':');return parts.length>1?parts[1].trim():d.element;});
+      new Chart(document.getElementById('chart-rems-detail'),{
+        type:'bar',
+        data:{
+          labels:remsDetailLabels,
+          datasets:[
+            {label:'Compliance Score',data:remsDetail.map(function(d){return d.score;}),backgroundColor:remsDetail.map(function(d){return d.score>=95?'rgba(0,229,160,0.7)':d.score>=90?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)';}),borderRadius:6,maxBarThickness:40},
+            {label:'Target (100%)',data:remsDetail.map(function(){return 100;}),type:'line',borderColor:'rgba(239,68,68,0.5)',borderDash:[6,4],pointRadius:0,fill:false}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{min:85,max:102,title:{display:true,text:'Score %'},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}}}}
+      });
+    }catch(e){console.warn('REMS detail chart error',e);}
+
+    /* ===== REMS TAB — Detail Table ===== */
+    try{
+      var remsTb=document.getElementById('rems-detail-table');
+      if(remsTb)(S.remsCompliance||[]).forEach(function(d){
+        var statusClass=d.status==='Compliant'?'badge-compliant':'badge-non-compliant';
+        var scoreColor=d.score>=95?'#00E5A0':d.score>=90?'#F59E0B':'#EF4444';
+        remsTb.innerHTML+='<tr><td class="text-sm font-medium">'+d.element+'</td><td class="text-xs opacity-60">'+d.requirement+'</td><td class="font-mono font-semibold" style="color:'+scoreColor+';">'+d.score.toFixed(1)+'%</td><td class="font-mono">'+d.target+'%</td><td><span class="badge '+statusClass+'">'+d.status+'</span></td><td class="font-mono text-xs opacity-60">'+d.lastAudit+'</td><td class="font-mono text-xs opacity-60">'+d.nextReview+'</td></tr>';
+      });
+    }catch(e){console.warn('REMS detail table error',e);}
+
+    /* ===== REMS TAB — Audit Log ===== */
+    try{
+      var remsAudit=document.getElementById('rems-audit-table');
+      if(remsAudit)(S.remsAuditLog||[]).forEach(function(d){
+        var statusClass=d.status==='Compliant'?'badge-compliant':'badge-non-compliant';
+        remsAudit.innerHTML+='<tr><td class="text-sm">'+d.requirement+'</td><td><span class="badge '+statusClass+'">'+d.status+'</span></td><td class="font-mono text-xs">'+d.lastVerified+'</td><td class="font-mono text-xs">'+d.nextReview+'</td><td class="text-xs opacity-60">'+d.verifiedBy+'</td></tr>';
+      });
+    }catch(e){console.warn('REMS audit table error',e);}
+
+    /* ===== RWE TAB — KPI Cards ===== */
+    try{
+      var rweKpi=document.getElementById('rwe-kpi-grid');
+      if(rweKpi)(S.realWorldVsTrial||[]).forEach(function(d){
+        var deltaColor=d.endpoint.indexOf('AE')>=0?(d.delta>0?'#EF4444':'#00E5A0'):(d.delta<0?'#EF4444':'#00E5A0');
+        rweKpi.innerHTML+='<div class="kpi-card"><div class="text-xs uppercase tracking-wider opacity-40 mb-1">'+d.endpoint+'</div><div class="font-display text-xl font-bold" style="color:'+deltaColor+';">'+(d.delta>0?'+':'')+d.delta+d.unit+'</div><div class="text-xs opacity-40 mt-1">Trial: '+d.trialValue+d.unit+' | RW: '+d.realWorldValue+d.unit+'</div><div class="text-xs mt-1 opacity-50">'+d.significance+'</div></div>';
+      });
+    }catch(e){console.warn('RWE KPI error',e);}
+
+    /* ===== RWE TAB — Detail Chart ===== */
+    try{
+      var rweDetail=S.realWorldVsTrial||[];
+      new Chart(document.getElementById('chart-rwe-detail'),{
+        type:'bar',
+        data:{
+          labels:rweDetail.map(function(d){return d.endpoint;}),
+          datasets:[
+            {label:'Clinical Trial',data:rweDetail.map(function(d){return d.trialValue;}),backgroundColor:'rgba(0,180,216,0.7)',borderRadius:6,maxBarThickness:35},
+            {label:'Real-World',data:rweDetail.map(function(d){return d.realWorldValue;}),backgroundColor:'rgba(123,97,255,0.7)',borderRadius:6,maxBarThickness:35}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,0.04)'}},x:{grid:{color:'rgba(255,255,255,0.04)'}}},plugins:{tooltip:{callbacks:{afterLabel:function(ctx){var d=rweDetail[ctx.dataIndex];return d?'Delta: '+(d.delta>0?'+':'')+d.delta+d.unit+'\n'+d.significance:'';}}},legend:{position:'top'}}}
+      });
+    }catch(e){console.warn('RWE detail chart error',e);}
+
+    /* ===== RWE TAB — Detail Table ===== */
+    try{
+      var rweTb=document.getElementById('rwe-detail-table');
+      if(rweTb)(S.realWorldVsTrial||[]).forEach(function(d){
+        var deltaColor=d.endpoint.indexOf('AE')>=0?(d.delta>0?'#EF4444':'#00E5A0'):(d.delta<0?'#EF4444':'#00E5A0');
+        rweTb.innerHTML+='<tr><td class="text-sm font-medium">'+d.endpoint+'</td><td class="font-mono">'+d.trialValue+d.unit+'</td><td class="font-mono">'+d.realWorldValue+d.unit+'</td><td class="font-mono font-semibold" style="color:'+deltaColor+';">'+(d.delta>0?'+':'')+d.delta+d.unit+'</td><td class="text-xs opacity-60">'+d.unit+'</td><td class="font-mono text-xs">'+d.significance+'</td></tr>';
+      });
+    }catch(e){console.warn('RWE detail table error',e);}
+
+    /* ===== AUDIT TAB — 21 CFR Part 11 Electronic Signature Log ===== */
+    try{
+      var auditC=document.getElementById('audit-trail-container');
+      if(auditC)(S.auditTrail||[]).forEach(function(d){
+        var ts=new Date(d.timestamp);
+        var timeStr=ts.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+        var dotColor=d.esigStatus==='Valid'?'#00E5A0':'#EF4444';
+        auditC.innerHTML+='<div class="audit-row"><div class="audit-dot" style="background:'+dotColor+';"></div><div class="flex-1"><div class="flex items-center gap-2 mb-1"><span class="text-sm font-medium">'+d.user+'</span><span class="text-xs opacity-40">'+d.role+'</span><span class="badge badge-active" style="font-size:0.6rem;">e-sig: '+d.esigStatus+'</span></div><div class="text-sm opacity-80 mb-1">'+d.action+'</div><div class="text-xs opacity-40">'+d.meaning+'</div><div class="flex items-center gap-3 mt-1"><span class="text-xs font-mono opacity-30">'+timeStr+'</span><span class="text-xs font-mono opacity-30">IP: '+d.ip+'</span></div></div></div>';
+      });
+    }catch(e){console.warn('Audit trail error',e);}
+
+    /* ===== AUDIT TAB — ISO 27001 KPIs ===== */
+    try{
+      var iso=S.isoControls||{};
+      document.getElementById('iso-score').textContent=(iso.overallScore||'—')+'%';
+      document.getElementById('iso-nc').textContent=iso.nonConformities||'—';
+      document.getElementById('iso-controls').textContent=(iso.implemented||'—')+'/'+(iso.totalControls||'—');
+    }catch(e){console.warn('ISO KPI error',e);}
+
+    /* ===== AUDIT TAB — ISO 27001 Controls Progress ===== */
+    try{
+      var isoC=document.getElementById('iso-controls-container');
+      if(isoC)(S.isoControls.categories||[]).forEach(function(cat){
+        var pct=Math.round((cat.implemented/cat.controls)*100);
+        var barColor=cat.status==='Pass'?'#00E5A0':cat.status==='Partial'?'#F59E0B':'#EF4444';
+        isoC.innerHTML+='<div class="flex items-center gap-3"><div class="text-xs opacity-60 w-48 truncate">'+cat.name+'</div><div class="progress-bar flex-1"><div class="progress-fill" style="width:'+pct+'%;background:'+barColor+';"></div></div><div class="text-xs font-mono opacity-60 w-12 text-right">'+cat.implemented+'/'+cat.controls+'</div></div>';
+      });
+    }catch(e){console.warn('ISO controls error',e);}
+
+    /* ===== AUDIT TAB — ISO Control Detail Table ===== */
+    try{
+      var isoTb=document.getElementById('iso-table-body');
+      if(isoTb)(S.isoControls.categories||[]).forEach(function(cat){
+        var pct=Math.round((cat.implemented/cat.controls)*100);
+        var statusBadge=cat.status==='Pass'?'badge-pass':cat.status==='Partial'?'badge-pending':'badge-fail';
+        isoTb.innerHTML+='<tr><td class="text-sm font-medium">'+cat.name+'</td><td class="font-mono">'+cat.controls+'</td><td class="font-mono" style="color:#00E5A0;">'+cat.implemented+'</td><td class="font-mono">'+pct+'%</td><td><span class="badge '+statusBadge+'">'+cat.status+'</span></td></tr>';
+      });
+    }catch(e){console.warn('ISO table error',e);}
+
+    /* ===== AUDIT TAB — REMS Audit Log (copy) ===== */
+    try{
+      var remsAudit2=document.getElementById('rems-audit-table-2');
+      if(remsAudit2)(S.remsAuditLog||[]).forEach(function(d){
+        var statusClass=d.status==='Compliant'?'badge-compliant':'badge-non-compliant';
+        remsAudit2.innerHTML+='<tr><td class="text-sm">'+d.requirement+'</td><td><span class="badge '+statusClass+'">'+d.status+'</span></td><td class="font-mono text-xs">'+d.lastVerified+'</td><td class="font-mono text-xs">'+d.nextReview+'</td><td class="text-xs opacity-60">'+d.verifiedBy+'</td></tr>';
+      });
+    }catch(e){console.warn('REMS audit table 2 error',e);}
+  });
+  </script>
+</body>
+</html>$$,
+    updated_at = now()
+WHERE skill_name = 'pharma-phase4-dashboard';
+
+NOTIFY pgrst, 'reload schema';
