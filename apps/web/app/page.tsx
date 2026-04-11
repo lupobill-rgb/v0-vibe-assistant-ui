@@ -25,7 +25,19 @@ export default function HomePage() {
           .eq("organization_id", currentOrg.id)
           .single()
         if (data?.stage === "onboarding") {
-          router.replace("/onboarding")
+          // Only redirect if an onboarding session actually exists,
+          // otherwise the user hits a dead-end "No Onboarding Session" page
+          const { data: session } = await supabase
+            .from("onboarding_sessions")
+            .select("id")
+            .eq("organization_id", currentOrg.id)
+            .limit(1)
+            .single()
+          if (session) {
+            router.replace("/onboarding")
+          } else {
+            setChecked(true)
+          }
         } else {
           setChecked(true)
         }

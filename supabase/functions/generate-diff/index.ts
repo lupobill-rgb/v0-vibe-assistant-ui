@@ -1146,7 +1146,7 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
       // Move context to user message instead of system to save context window
       prompt = `Edit request: ${prompt}\n\nCurrent HTML to edit:\n${context ?? ""}`;
       defaultMaxTokens = 24000;
-    } else if (mode === "html") {
+    } else if (mode === "html" || mode === "site") {
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
     } else if (mode === "dashboard") {
