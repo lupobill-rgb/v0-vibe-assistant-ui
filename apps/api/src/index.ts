@@ -725,7 +725,7 @@ async function bootstrap() {
       }
 
       // Golden template matching: if prompt matches a template, inject its content directly
-      let goldenMatch = { matched: false, skillName: '', content: '' };
+      let goldenMatch: { matched: boolean; skillName: string; content: string; htmlSkeleton: string | null } = { matched: false, skillName: '', content: '', htmlSkeleton: null };
       try {
         goldenMatch = await resolveGoldenTemplateMatch(prompt);
       } catch (gtmErr: any) {
@@ -747,7 +747,7 @@ async function bootstrap() {
         }
       }
 
-      // If a golden template matched, inject its full build blueprint into the prompt
+      // If a golden template matched (no skeleton), inject blueprint into prompt for LLM generation
       if (goldenMatch.matched) {
         enrichedPrompt += `\n\n--- GOLDEN TEMPLATE: ${goldenMatch.skillName} ---\nFollow this template exactly as the primary build blueprint. Do not ask clarifying questions — build directly from these instructions:\n\n${goldenMatch.content}\n--- END GOLDEN TEMPLATE ---`;
         console.log(`[GOLDEN] Injected template "${goldenMatch.skillName}" — skipping clarifying questions`);
@@ -1147,6 +1147,52 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
           // ── Single-page navigation rule ──
           // All output must live in one HTML file; nav links show/hide sections via JS.
           enrichedPrompt += `\n\nNAVIGATION RULE (MANDATORY): Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files. All content must exist in a single HTML file with sections toggled by JS.`;
+
+          // ── Deterministic template path ── zero LLM calls when skeleton exists ──
+          if (goldenMatch.matched && goldenMatch.htmlSkeleton) {
+            console.log(`[GOLDEN-DETERMINISTIC] Template "${goldenMatch.skillName}" has HTML skeleton — bypassing LLM pipeline`);
+            await storage.logEvent(taskId, `Deterministic template path: ${goldenMatch.skillName} (zero LLM calls)`, 'info');
+            await storage.updateTaskState(taskId, 'building');
+
+            // Resolve brand tokens
+            let brandCompany = orgName || 'Company';
+            const brandTeamName = teamName || 'Team';
+            if (org?.id) {
+              const { data: brand } = await getPlatformSupabaseClient()
+                .from('brand_tokens').select('company_name').eq('org_id', org.id).limit(1).single();
+              if (brand?.company_name) brandCompany = brand.company_name;
+            }
+            const skelColorScheme = resolveColorScheme(prompt);
+
+            // Inject brand tokens into skeleton
+            const html = goldenMatch.htmlSkeleton
+              .replace(/\{\{BRAND_COMPANY\}\}/g, brandCompany)
+              .replace(/\{\{BRAND_TEAM\}\}/g, brandTeamName)
+              .replace(/\{\{BRAND_PRIMARY\}\}/g, skelColorScheme.primary)
+              .replace(/\{\{BRAND_BG\}\}/g, skelColorScheme.bg)
+              .replace(/\{\{BRAND_TEXT\}\}/g, skelColorScheme.text)
+              .replace(/\{\{BRAND_SURFACE\}\}/g, skelColorScheme.surface)
+              .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border);
+
+            // Write to preview directory — same flow as dashboard fast path but no LLM
+            const previewDir = path.join(PREVIEWS_DIR, taskId);
+            fs.mkdirSync(previewDir, { recursive: true });
+            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(html));
+            fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
+            const previewToken = signPreviewToken(taskId);
+            await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
+            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html }]));
+            timeline.push({ step: 'deterministic-template', startedAt: new Date(startedAtMs).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - startedAtMs, status: 'completed' });
+            fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
+            await storage.logEvent(taskId, 'Preview generated (deterministic template — zero LLM tokens)', 'info');
+            await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: 'deterministic', modelCalls: 0, retries: 0, fallbacks: 0 }, totalTokens: 0, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
+            await storage.updateTaskUsageMetrics(taskId, { llm_model: 'deterministic', llm_prompt_tokens: 0, llm_completion_tokens: 0, llm_total_tokens: 0 });
+            await storage.updateTaskState(taskId, 'completed');
+            if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
+            if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: html, department: auditDepartment });
+            await storage.logEvent(taskId, `Dashboard completed (deterministic template: ${goldenMatch.skillName})`, 'success');
+            return;
+          }
 
           // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
           if (!upload_id && resolvedMode === 'app') {

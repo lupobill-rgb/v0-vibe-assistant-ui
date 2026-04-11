@@ -647,14 +647,14 @@ function scoreSkill(skill: { skill_name: string; description: string | null }, p
  */
 export async function resolveGoldenTemplateMatch(
   prompt: string,
-): Promise<{ matched: boolean; skillName: string; content: string }> {
-  const NO_MATCH = { matched: false, skillName: '', content: '' };
+): Promise<{ matched: boolean; skillName: string; content: string; htmlSkeleton: string | null }> {
+  const NO_MATCH = { matched: false, skillName: '', content: '', htmlSkeleton: null };
   if (!prompt || prompt.trim().length < 5) return NO_MATCH;
 
   const sb = getPlatformSupabaseClient();
   const { data: skills, error } = await sb
     .from('skill_registry')
-    .select('skill_name, description, content')
+    .select('skill_name, description, content, html_skeleton')
     .eq('is_active', true);
 
   if (error || !skills || skills.length === 0) {
@@ -703,11 +703,13 @@ export async function resolveGoldenTemplateMatch(
   const MATCH_THRESHOLD = 0.25;
   const MIN_OVERLAP = 3;
   if (bestScore >= MATCH_THRESHOLD && bestOverlap >= MIN_OVERLAP && bestSkill) {
-    console.log(`[KERNEL] Golden template match: "${bestSkill.skill_name}" (score=${bestScore.toFixed(2)}, overlap=${bestOverlap})`);
+    const hasSkeleton = !!(bestSkill as any).html_skeleton;
+    console.log(`[KERNEL] Golden template match: "${bestSkill.skill_name}" (score=${bestScore.toFixed(2)}, overlap=${bestOverlap}, skeleton=${hasSkeleton})`);
     return {
       matched: true,
       skillName: bestSkill.skill_name,
       content: bestSkill.content ?? '',
+      htmlSkeleton: (bestSkill as any).html_skeleton ?? null,
     };
   }
 
