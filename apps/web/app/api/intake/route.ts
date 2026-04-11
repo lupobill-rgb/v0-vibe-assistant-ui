@@ -36,37 +36,38 @@ NEVER use alert(), confirm(), or prompt(). Use showToast() for all user feedback
 Output MUST start <!DOCTYPE html> and end </html>.`
 
 async function callAnthropic(messages: Array<{ role: string; content: string }>, system: string, maxTokens: number) {
-  // Use DeepSeek as primary (cheaper), fall back to Anthropic
-  const deepseekKey = process.env.DEEPSEEK_API_KEY
+  // Use Claude as primary for quality (reads prompts, follows instructions),
+  // DeepSeek as fallback for cost savings if Claude is unavailable
   const anthropicKey = process.env.ANTHROPIC_API_KEY
+  const deepseekKey = process.env.DEEPSEEK_API_KEY
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 90_000)
   try {
-    if (deepseekKey) {
-      const res = await fetch('https://api.deepseek.com/chat/completions', {
+    if (anthropicKey) {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deepseekKey}` },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          max_tokens: maxTokens,
-          messages: [{ role: 'system', content: system }, ...messages],
-        }),
+        headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, system, messages }),
         signal: controller.signal,
       })
       const data = await res.json()
-      if (res.ok) return data.choices?.[0]?.message?.content || ''
-      console.warn('[intake] DeepSeek failed, falling back to Anthropic:', data.error?.message)
+      if (res.ok) return data.content?.[0]?.text || ''
+      console.warn('[intake] Claude failed, falling back to DeepSeek:', data.error?.message)
     }
-    if (!anthropicKey) throw new Error('No LLM API key configured (DEEPSEEK_API_KEY or ANTHROPIC_API_KEY)')
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    if (!deepseekKey) throw new Error('No LLM API key configured (ANTHROPIC_API_KEY or DEEPSEEK_API_KEY)')
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, system, messages }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deepseekKey}` },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        max_tokens: maxTokens,
+        messages: [{ role: 'system', content: system }, ...messages],
+      }),
       signal: controller.signal,
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error?.message || `Anthropic API error ${res.status}`)
-    return data.content?.[0]?.text || ''
+    if (!res.ok) throw new Error(data.error?.message || `DeepSeek API error ${res.status}`)
+    return data.choices?.[0]?.message?.content || ''
   } finally {
     clearTimeout(timeout)
   }
