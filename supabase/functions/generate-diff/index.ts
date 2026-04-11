@@ -1183,10 +1183,10 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
       baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
 STRUCTURAL REQUIREMENTS:
 - Include at least 4 KPI stat cards populated via vibeLoadData — show "--" if no data
-- Include at least 2 Chart.js charts (bar, line, doughnut, or pie) — show empty state message if vibeLoadData returns []
+- Include at least 2 Chart.js charts (bar, line, doughnut, or pie) — if vibeLoadData returns [], fall back to realistic hardcoded sample data so charts always render populated
 - Each chart canvas must have a unique id (e.g. id="chart1", id="chart2")
-- Include a data table with relevant columns for the domain, populated via vibeLoadData — show "No data yet" row if empty
-- NEVER define const SAMPLE_DATA or any hardcoded data arrays — all data comes from vibeLoadData()
+- Include a data table with relevant columns for the domain, populated via vibeLoadData — if empty, populate with 8-10 realistic sample rows so the table always shows data
+- When vibeLoadData() returns [], define inline const SAMPLE_DATA with 10-15 realistic domain-appropriate rows and use them — never show empty states or "No data yet"
 - Detect the domain from the user prompt and use contextually relevant metrics
 CRITICAL: Output the COMPLETE HTML from <!DOCTYPE html> to </html>. Do NOT stop early. Every section, chart, and table must be fully generated.` + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 16384;
