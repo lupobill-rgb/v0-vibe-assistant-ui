@@ -1,4 +1,4 @@
--- Migration: Add embedded sample data fallback to executive dashboard skeleton.
+-- Fix: Move sample data to <head> so it loads before chart scripts execute.
 -- When vibeLoadData returns empty (no data source connected), charts and KPIs
 -- populate from realistic hardcoded sample data. Zero LLM calls.
 
