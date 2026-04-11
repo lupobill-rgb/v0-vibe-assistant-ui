@@ -1408,31 +1408,20 @@ ${dashData.diff}`;
             }
           }
 
-          // ── Golden Template Resolution ──────────────────────────────
-          let goldenTemplateContent: string | null = null;
-          try {
-            const { data: goldenMatches } = await getPlatformSupabaseClient()
-              .from('skill_registry')
-              .select('skill_name, content, description')
-              .eq('plugin_name', 'golden-templates')
-              .eq('is_active', true);
-            if (goldenMatches?.length) {
-              const promptLower = prompt.toLowerCase();
-              const match = goldenMatches.find((t: any) =>
-                t.description?.toLowerCase().split(' ').filter((w: string) => w.length > 4)
-                  .some((keyword: string) => promptLower.includes(keyword))
-              );
-              if (match) {
-                goldenTemplateContent = match.content;
-                await storage.logEvent(taskId, `Matched golden template: ${match.skill_name}`, 'info');
+          // ── Golden Template Resolution (planner fallback) ──────────
+          // Skip if the early resolveGoldenTemplateMatch() at line ~730 already matched.
+          // Uses the same function for consistent bidirectional keyword matching.
+          if (!goldenMatch.matched) {
+            try {
+              const plannerGolden = await resolveGoldenTemplateMatch(prompt);
+              if (plannerGolden.matched) {
+                goldenMatch = plannerGolden;
+                enrichedPrompt += `\n\n--- GOLDEN TEMPLATE: ${plannerGolden.skillName} ---\nFollow this template exactly as the primary build blueprint. Do not ask clarifying questions — build directly from these instructions:\n\n${plannerGolden.content}\n--- END GOLDEN TEMPLATE ---`;
+                await storage.logEvent(taskId, `Matched golden template: ${plannerGolden.skillName}`, 'info');
               }
+            } catch (gtErr: any) {
+              console.warn('[KERNEL] golden template lookup failed:', gtErr.message);
             }
-          } catch (gtErr: any) {
-            console.warn('[KERNEL] golden template lookup failed:', gtErr.message);
-          }
-
-          if (goldenTemplateContent) {
-            enrichedPrompt += `\n\n--- GOLDEN TEMPLATE (use this as your generation blueprint, do NOT ask clarifying questions) ---\n\n${goldenTemplateContent}`;
           }
 
           // ── Planning step ──────────────────────────────────────────

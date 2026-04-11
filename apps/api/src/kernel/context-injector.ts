@@ -597,8 +597,27 @@ const MAX_SKILL_BYTES = 16 * 1024; // 16KB cap on injected skill text
 /**
  * Tokenises a string into lowercase alpha-numeric words for scoring.
  */
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+  'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+  'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+  'could', 'should', 'may', 'might', 'can', 'it', 'its', 'this', 'that',
+  'these', 'those', 'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he',
+  'she', 'they', 'them', 'their', 'what', 'which', 'who', 'when', 'where',
+  'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'some',
+  'any', 'no', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+  'just', 'about', 'above', 'after', 'again', 'also', 'as', 'because',
+  'before', 'between', 'if', 'into', 'over', 'then', 'there', 'under',
+  'up', 'out', 'use', 'using', 'show', 'build', 'create', 'make', 'get',
+]);
+
 function tokenize(text: string): Set<string> {
   return new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+}
+
+function tokenizeKeywords(text: string): Set<string> {
+  const all = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return new Set(all.filter(t => t.length > 2 && !STOP_WORDS.has(t)));
 }
 
 /**
@@ -617,10 +636,14 @@ function scoreSkill(skill: { skill_name: string; description: string | null }, p
 
 /**
  * Checks whether the user prompt closely matches a golden template in skill_registry.
- * Searches ALL active skills (cross-department). If the best match exceeds a
- * confidence threshold (≥40% of description tokens overlap with prompt tokens),
- * returns the matched template content for direct injection into the LLM context.
- * This bypasses clarifying questions and gives the LLM a precise build blueprint.
+ * Searches ALL active skills (cross-department). Uses bidirectional keyword matching
+ * with stop-word filtering to handle both short and long prompts.
+ *
+ * Scoring: max(forward_ratio, reverse_ratio) where:
+ *   forward  = description keywords found in prompt / description keyword count
+ *   reverse  = prompt keywords found in description / prompt keyword count
+ * This ensures short prompts like "sales pipeline dashboard" can match long descriptions.
+ * Minimum 2 keyword overlaps required to prevent single-word false positives.
  */
 export async function resolveGoldenTemplateMatch(
   prompt: string,
@@ -639,35 +662,47 @@ export async function resolveGoldenTemplateMatch(
     return NO_MATCH;
   }
 
-  const promptTokens = tokenize(prompt);
-  if (promptTokens.size < 2) return NO_MATCH;
+  const promptKeywords = tokenizeKeywords(prompt);
+  if (promptKeywords.size < 1) return NO_MATCH;
 
   let bestScore = 0;
-  let bestRatio = 0;
+  let bestOverlap = 0;
   let bestSkill: typeof skills[0] | null = null;
 
   for (const skill of skills) {
-    const descTokens = tokenize(skill.description ?? '');
-    if (descTokens.size === 0) continue;
+    const descKeywords = tokenizeKeywords(`${skill.skill_name} ${skill.description ?? ''}`);
+    if (descKeywords.size === 0) continue;
 
-    // Count how many description tokens appear in the prompt
+    // Bidirectional overlap: count keywords that appear in both sets
     let overlap = 0;
-    for (const token of Array.from(descTokens)) {
-      if (promptTokens.has(token)) overlap++;
+    for (const token of Array.from(descKeywords)) {
+      if (promptKeywords.has(token)) overlap++;
     }
-    const ratio = overlap / descTokens.size;
 
-    if (ratio > bestRatio || (ratio === bestRatio && overlap > bestScore)) {
-      bestRatio = ratio;
-      bestScore = overlap;
+    // Forward: what fraction of description keywords are in the prompt
+    const forwardRatio = overlap / descKeywords.size;
+    // Reverse: what fraction of prompt keywords are in the description
+    let reverseOverlap = 0;
+    for (const token of Array.from(promptKeywords)) {
+      if (descKeywords.has(token)) reverseOverlap++;
+    }
+    const reverseRatio = reverseOverlap / promptKeywords.size;
+
+    // Use the higher ratio — this lets short prompts match long descriptions
+    const score = Math.max(forwardRatio, reverseRatio);
+
+    if (score > bestScore || (score === bestScore && overlap > bestOverlap)) {
+      bestScore = score;
+      bestOverlap = overlap;
       bestSkill = skill;
     }
   }
 
-  // Threshold: at least 40% of the template description tokens must appear in the prompt
-  const MATCH_THRESHOLD = 0.4;
-  if (bestRatio >= MATCH_THRESHOLD && bestSkill) {
-    console.log(`[KERNEL] Golden template match: "${bestSkill.skill_name}" (ratio=${bestRatio.toFixed(2)}, overlap=${bestScore})`);
+  // Threshold: 25% bidirectional match AND at least 2 overlapping keywords
+  const MATCH_THRESHOLD = 0.25;
+  const MIN_OVERLAP = 2;
+  if (bestScore >= MATCH_THRESHOLD && bestOverlap >= MIN_OVERLAP && bestSkill) {
+    console.log(`[KERNEL] Golden template match: "${bestSkill.skill_name}" (score=${bestScore.toFixed(2)}, overlap=${bestOverlap})`);
     return {
       matched: true,
       skillName: bestSkill.skill_name,
@@ -675,7 +710,7 @@ export async function resolveGoldenTemplateMatch(
     };
   }
 
-  console.log(`[KERNEL] No golden template match (best ratio=${bestRatio.toFixed(2)}, needed >=${MATCH_THRESHOLD})`);
+  console.log(`[KERNEL] No golden template match (best score=${bestScore.toFixed(2)}, overlap=${bestOverlap}, needed score>=${MATCH_THRESHOLD} + overlap>=${MIN_OVERLAP})`);
   return NO_MATCH;
 }
 
