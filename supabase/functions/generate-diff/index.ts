@@ -1178,8 +1178,20 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
     } else if (mode === "dashboard") {
       // Single LLM call — no separate design spec phase
       // Previous 2-call approach hit Supabase 150s wall-time limit causing 504s
-      // HARD_BLOCK condensed — detailed anti-React rules already in DASHBOARD_SYSTEM
-      const HARD_BLOCK = `RENDERING ENVIRONMENT: plain browser iframe. No build system. No Node.js. No React. Vanilla JS only. Single self-contained HTML file. Navigation via JS onclick show/hide — never href to .html files.\n`;
+      const HARD_BLOCK = `
+ABSOLUTE HARD STOP: This file will be rendered in a plain browser iframe.
+It has NO build system, NO Node.js, NO React, NO webpack, NO Next.js.
+The output MUST be a single self-contained HTML file.
+Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files.
+If you generate ANY of the following the page will be completely blank:
+- import or export statements
+- React, ReactDOM, JSX, TSX
+- Next.js, Vite, webpack references
+- alert(), confirm(), prompt()
+- Any module bundler syntax
+Every interactive feature MUST use vanilla JavaScript only.
+The file MUST start with <!DOCTYPE html> and end with </html>.
+`;
       baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
 STRUCTURAL REQUIREMENTS:
 - Include at least 4 KPI stat cards populated via vibeLoadData — show "--" if no data
