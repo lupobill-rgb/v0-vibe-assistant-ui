@@ -2,6 +2,19 @@
 -- All statements are IF NOT EXISTS / DO $$ so this is safe on existing databases.
 
 -- ==========================================================================
+-- 0. Utility functions (used by triggers in later migrations)
+-- ==========================================================================
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+  RETURNS trigger
+  LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+-- ==========================================================================
 -- 1. Types
 -- ==========================================================================
 DO $$ BEGIN
