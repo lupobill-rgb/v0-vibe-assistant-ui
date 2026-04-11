@@ -27,3 +27,15 @@ CREATE POLICY "service_role_manage_visibility" ON team_visibility
   FOR ALL
   USING (auth.role() = 'service_role')
   WITH CHECK (auth.role() = 'service_role');
+
+-- Re-add the published_assets cross-team read policy (removed from 20260324200000
+-- because team_visibility didn't exist yet at that migration's execution time)
+DROP POLICY IF EXISTS "visible_teams_read_assets" ON published_assets;
+CREATE POLICY "visible_teams_read_assets" ON published_assets
+  FOR SELECT
+  USING (
+    team_id IN (
+      SELECT target_team_id FROM team_visibility
+      WHERE source_team_id IN (SELECT public.user_team_ids())
+    )
+  );
