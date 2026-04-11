@@ -5,12 +5,14 @@ import {
   constructWebhookEvent,
   handleWebhookEvent,
   getBillingStatus,
+  getTrialStatus,
+  getTokenUsageSummary,
 } from './stripe.service';
 import { TierSlug } from './tiers';
 
 const router = express.Router();
 
-const VALID_TIERS: TierSlug[] = ['pro', 'growth', 'team'];
+const VALID_TIERS: TierSlug[] = ['pro', 'growth', 'team', 'portfolio'];
 
 /** POST /api/billing/checkout */
 router.post('/checkout', express.json(), async (req: Request, res: Response) => {
@@ -93,6 +95,38 @@ router.get('/status', express.json(), async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[billing/status] error:', err.message);
     res.status(500).json({ error: 'Failed to get billing status' });
+  }
+});
+
+/** GET /api/billing/trial-status */
+router.get('/trial-status', express.json(), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.query.orgId as string;
+    if (!orgId) {
+      return res.status(400).json({ error: 'orgId query parameter is required' });
+    }
+
+    const trial = await getTrialStatus(orgId);
+    res.json(trial);
+  } catch (err: any) {
+    console.error('[billing/trial-status] error:', err.message);
+    res.status(500).json({ error: 'Failed to get trial status' });
+  }
+});
+
+/** GET /api/billing/token-usage */
+router.get('/token-usage', express.json(), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.query.orgId as string;
+    if (!orgId) {
+      return res.status(400).json({ error: 'orgId query parameter is required' });
+    }
+
+    const usage = await getTokenUsageSummary(orgId);
+    res.json(usage);
+  } catch (err: any) {
+    console.error('[billing/token-usage] error:', err.message);
+    res.status(500).json({ error: 'Failed to get token usage' });
   }
 });
 

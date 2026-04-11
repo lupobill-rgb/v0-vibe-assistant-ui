@@ -1,6 +1,14 @@
 import Stripe from 'stripe';
 import { getPlatformSupabaseClient } from '../supabase/client';
-import { getTierLimits, TierSlug } from './tiers';
+import {
+  getTierLimits,
+  TierSlug,
+  getSeatPriceCents,
+  INCLUDED_TOKENS_PER_USER,
+  OVERAGE_RATE_PER_1K_TOKENS_CENTS,
+  TRIAL_DURATION_DAYS,
+  TRIAL_TOKEN_MARKUP_MULTIPLIER,
+} from './tiers';
 
 let _stripe: Stripe | null = null;
 
@@ -13,6 +21,48 @@ function getStripe(): Stripe {
 }
 
 const sb = () => getPlatformSupabaseClient();
+
+// ── Cost rates from DB ──
+
+interface CostRate {
+  provider: string;
+  model: string;
+  input_per_million: number;
+  output_per_million: number;
+}
+
+/**
+ * Read LLM cost rates from the cost_rates table.
+ * Falls back to hardcoded defaults if the table is empty/missing.
+ */
+export async function getCostRates(): Promise<CostRate[]> {
+  const { data, error } = await sb()
+    .from('cost_rates')
+    .select('provider, model, input_per_million, output_per_million')
+    .is('effective_until', null)
+    .order('provider');
+
+  if (error || !data || data.length === 0) {
+    return [
+      { provider: 'anthropic', model: 'claude', input_per_million: 3.0, output_per_million: 15.0 },
+      { provider: 'openai', model: 'gpt', input_per_million: 10.0, output_per_million: 30.0 },
+    ];
+  }
+  return data;
+}
+
+/** Compute blended cost for a set of tokens using rates from DB. */
+export async function computeTokenCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): Promise<number> {
+  const rates = await getCostRates();
+  const match = rates.find((r) => model.includes(r.model)) || rates[0];
+  const inputCost = (inputTokens / 1_000_000) * match.input_per_million;
+  const outputCost = (outputTokens / 1_000_000) * match.output_per_million;
+  return inputCost + outputCost;
+}
 
 // ── Customer management ──
 
@@ -43,7 +93,41 @@ export async function createOrGetCustomer(
   return customer.id;
 }
 
-// ── Checkout (dynamic pricing) ──
+// ── Trial status ──
+
+export interface TrialStatus {
+  inTrial: boolean;
+  trialEndsAt: string | null;
+  daysRemaining: number;
+  billingModel: string;
+}
+
+export async function getTrialStatus(orgId: string): Promise<TrialStatus> {
+  const { data } = await sb()
+    .from('organizations')
+    .select('trial_started_at, trial_ends_at, billing_model')
+    .eq('id', orgId)
+    .single();
+
+  const org = data as { trial_started_at: string | null; trial_ends_at: string | null; billing_model: string | null } | null;
+
+  if (!org?.trial_ends_at) {
+    return { inTrial: false, trialEndsAt: null, daysRemaining: 0, billingModel: 'seat_token' };
+  }
+
+  const endsAt = new Date(org.trial_ends_at);
+  const now = new Date();
+  const daysRemaining = Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / 86_400_000));
+
+  return {
+    inTrial: daysRemaining > 0,
+    trialEndsAt: org.trial_ends_at,
+    daysRemaining,
+    billingModel: org.billing_model || 'seat_token',
+  };
+}
+
+// ── Checkout (seat-based pricing) ──
 
 export async function createCheckoutSession(
   orgId: string,
@@ -58,7 +142,16 @@ export async function createCheckoutSession(
   }
 
   const customerId = await createOrGetCustomer(orgId, email, orgName);
-  const limits = getTierLimits(tierSlug);
+
+  // Get active user count for volume discount
+  const { data: orgData } = await sb()
+    .from('organizations')
+    .select('active_user_count')
+    .eq('id', orgId)
+    .single();
+  const orgRow = orgData as { active_user_count: number | null } | null;
+  const userCount = Math.max(1, orgRow?.active_user_count || 1);
+  const seatPrice = getSeatPriceCents(userCount);
 
   const session = await getStripe().checkout.sessions.create({
     customer: customerId,
@@ -67,13 +160,20 @@ export async function createCheckoutSession(
       {
         price_data: {
           currency: 'usd',
-          product_data: { name: limits.tierDisplayName },
-          unit_amount: limits.priceMonthly,
+          product_data: {
+            name: `VIBE — ${userCount} seat${userCount > 1 ? 's' : ''}`,
+            metadata: { tierSlug },
+          },
+          unit_amount: seatPrice,
           recurring: { interval: 'month' },
         },
-        quantity: 1,
+        quantity: userCount,
       },
     ],
+    subscription_data: {
+      trial_period_days: TRIAL_DURATION_DAYS,
+      metadata: { orgId, tierSlug, billingModel: 'seat_token' },
+    },
     metadata: { orgId, tierSlug },
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -129,6 +229,7 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
         .update({
           tier_slug: tierSlug,
           subscription_status: 'active',
+          billing_model: 'seat_token',
           stripe_subscription_id:
             typeof session.subscription === 'string'
               ? session.subscription
@@ -196,17 +297,40 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
 
 // ── Billing status ──
 
+interface OrgBillingRow {
+  tier_slug: string | null;
+  subscription_status: string | null;
+  credits_used_this_period: number | null;
+  current_period_end: string | null;
+  billing_model: string | null;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  active_user_count: number | null;
+  tokens_used_this_period: number | null;
+  tokens_included_this_period: number | null;
+}
+
 export async function getBillingStatus(orgId: string) {
-  const { data: org } = await sb()
+  const { data } = await sb()
     .from('organizations')
     .select(
-      'tier_slug, subscription_status, credits_used_this_period, current_period_end',
+      'tier_slug, subscription_status, credits_used_this_period, current_period_end, ' +
+      'billing_model, trial_started_at, trial_ends_at, active_user_count, ' +
+      'tokens_used_this_period, tokens_included_this_period',
     )
     .eq('id', orgId)
     .single();
 
+  const org = data as OrgBillingRow | null;
   const tierSlug = (org?.tier_slug || 'starter') as TierSlug;
   const limits = getTierLimits(tierSlug);
+  const activeUsers = org?.active_user_count || 1;
+  const tokensUsed = org?.tokens_used_this_period || 0;
+  const tokensIncluded = org?.tokens_included_this_period || (INCLUDED_TOKENS_PER_USER * activeUsers);
+
+  // Trial status
+  const trialEndsAt = org?.trial_ends_at ? new Date(org.trial_ends_at) : null;
+  const inTrial = trialEndsAt ? trialEndsAt.getTime() > Date.now() : false;
 
   return {
     tierSlug,
@@ -214,5 +338,87 @@ export async function getBillingStatus(orgId: string) {
     creditsUsed: org?.credits_used_this_period || 0,
     creditsLimit: limits.creditsPerMonth,
     currentPeriodEnd: org?.current_period_end || null,
+    // New seat+token fields
+    billingModel: org?.billing_model || 'seat_token',
+    inTrial,
+    trialEndsAt: org?.trial_ends_at || null,
+    activeUsers,
+    tokensUsed,
+    tokensIncluded,
+    seatPriceCents: getSeatPriceCents(activeUsers),
+    overageRatePer1kCents: OVERAGE_RATE_PER_1K_TOKENS_CENTS,
+  };
+}
+
+// ── Token usage metering ──
+
+export async function recordTokenUsage(
+  orgId: string,
+  userId: string,
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): Promise<void> {
+  const totalTokens = inputTokens + outputTokens;
+  const cost = await computeTokenCost(model, inputTokens, outputTokens);
+  const periodStart = new Date();
+  periodStart.setDate(1);
+  const periodKey = periodStart.toISOString().split('T')[0];
+
+  // Upsert per-user per-period usage
+  await sb().rpc('upsert_token_usage', {
+    p_org_id: orgId,
+    p_user_id: userId,
+    p_period_start: periodKey,
+    p_input_tokens: inputTokens,
+    p_output_tokens: outputTokens,
+    p_total_tokens: totalTokens,
+    p_cost_usd: cost,
+  });
+
+  // Update org-level aggregate via RPC (atomic increment)
+  await sb().rpc('increment_org_tokens', {
+    p_org_id: orgId,
+    p_tokens: totalTokens,
+  });
+}
+
+export async function getTokenUsageSummary(orgId: string) {
+  const periodStart = new Date();
+  periodStart.setDate(1);
+  const periodKey = periodStart.toISOString().split('T')[0];
+
+  const { data } = await sb()
+    .from('token_usage')
+    .select('user_id, total_tokens, estimated_cost_usd')
+    .eq('org_id', orgId)
+    .eq('period_start', periodKey);
+
+  const { data: orgRow } = await sb()
+    .from('organizations')
+    .select('active_user_count, tokens_used_this_period, trial_ends_at')
+    .eq('id', orgId)
+    .single();
+
+  const org = orgRow as { active_user_count: number | null; tokens_used_this_period: number | null; trial_ends_at: string | null } | null;
+  const activeUsers = org?.active_user_count || 1;
+  const totalUsed = org?.tokens_used_this_period || 0;
+  const included = INCLUDED_TOKENS_PER_USER * activeUsers;
+  const overage = Math.max(0, totalUsed - included);
+  const overageCostCents = Math.ceil((overage / 1000) * OVERAGE_RATE_PER_1K_TOKENS_CENTS);
+
+  const trialEndsAt = org?.trial_ends_at ? new Date(org.trial_ends_at) : null;
+  const inTrial = trialEndsAt ? trialEndsAt.getTime() > Date.now() : false;
+
+  return {
+    periodStart: periodKey,
+    activeUsers,
+    totalTokensUsed: totalUsed,
+    tokensIncluded: included,
+    tokensOverage: overage,
+    overageCostCents,
+    inTrial,
+    trialMarkupMultiplier: inTrial ? TRIAL_TOKEN_MARKUP_MULTIPLIER : 1.0,
+    perUserBreakdown: data || [],
   };
 }

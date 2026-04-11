@@ -135,8 +135,15 @@ export function BillingDashboard() {
   }, [currentOrg?.id])
 
   const currentTier = status?.tier_slug ?? "starter"
-  const creditsUsed = status?.credits_used ?? 0
-  const creditsLimit = status?.credits_limit ?? 50
+  const inTrial = status?.in_trial ?? false
+  const trialEndsAt = status?.trial_ends_at
+  const activeUsers = status?.active_users ?? 1
+  const tokensUsed = status?.tokens_used ?? 0
+  const tokensIncluded = status?.tokens_included ?? 750000
+  const seatPriceCents = status?.seat_price_cents ?? 1700
+  const daysLeft = trialEndsAt
+    ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86_400_000))
+    : 0
 
   const handleUpgrade = async () => {
     if (!currentOrg?.id) return
@@ -175,15 +182,21 @@ export function BillingDashboard() {
                 <span className="text-2xl font-bold text-foreground capitalize">
                   {currentTier}
                 </span>
-                <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  Active
-                </span>
+                {inTrial ? (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/20">
+                    Free Trial · {daysLeft} days left
+                  </span>
+                ) : (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Active
+                  </span>
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
-                {creditsUsed} credits used · {creditsLimit === -1 ? "Unlimited" : `${creditsLimit} limit`}
+                {activeUsers} active user{activeUsers !== 1 ? "s" : ""} · ${(seatPriceCents / 100).toFixed(0)}/user/month
               </p>
             </div>
-            {currentTier !== "enterprise" && currentTier !== "team" && (
+            {currentTier !== "enterprise" && currentTier !== "portfolio" && (
               <button
                 onClick={handleUpgrade}
                 disabled={upgrading}
@@ -192,6 +205,32 @@ export function BillingDashboard() {
                 {upgrading && <Loader2 className="w-4 h-4 animate-spin" />}
                 Upgrade
               </button>
+            )}
+          </div>
+
+          {/* Usage allocation bar */}
+          <div className="mt-4 pt-4 border-t border-border/60">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground">Usage this period</span>
+              <span className="text-xs text-muted-foreground">
+                {fmtTokens(tokensUsed)} / {fmtTokens(tokensIncluded)} included
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-secondary overflow-hidden">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  tokensUsed > tokensIncluded
+                    ? "bg-amber-500"
+                    : "bg-gradient-to-r from-[#00E5A0] to-[#7B61FF]",
+                )}
+                style={{ width: `${Math.min(100, (tokensUsed / tokensIncluded) * 100)}%` }}
+              />
+            </div>
+            {tokensUsed > tokensIncluded && (
+              <p className="text-xs text-amber-400 mt-1">
+                {fmtTokens(tokensUsed - tokensIncluded)} overage this period
+              </p>
             )}
           </div>
         </div>

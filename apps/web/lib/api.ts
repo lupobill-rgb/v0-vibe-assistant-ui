@@ -545,6 +545,15 @@ export interface BillingStatus {
   projects_limit: number
   workspaces_limit: number
   builders_limit: number
+  // Seat + token pricing fields
+  billing_model: string
+  in_trial: boolean
+  trial_ends_at: string | null
+  active_users: number
+  tokens_used: number
+  tokens_included: number
+  seat_price_cents: number
+  overage_rate_per_1k_cents: number
 }
 
 export async function fetchBillingStatus(orgId: string): Promise<BillingStatus | null> {
@@ -562,6 +571,14 @@ export async function fetchBillingStatus(orgId: string): Promise<BillingStatus |
       projects_limit: data.projectsLimit ?? data.projects_limit ?? 3,
       workspaces_limit: data.workspacesLimit ?? data.workspaces_limit ?? 1,
       builders_limit: data.buildersLimit ?? data.builders_limit ?? 1,
+      billing_model: data.billingModel ?? data.billing_model ?? 'seat_token',
+      in_trial: data.inTrial ?? data.in_trial ?? false,
+      trial_ends_at: data.trialEndsAt ?? data.trial_ends_at ?? null,
+      active_users: data.activeUsers ?? data.active_users ?? 1,
+      tokens_used: data.tokensUsed ?? data.tokens_used ?? 0,
+      tokens_included: data.tokensIncluded ?? data.tokens_included ?? 750000,
+      seat_price_cents: data.seatPriceCents ?? data.seat_price_cents ?? 1700,
+      overage_rate_per_1k_cents: data.overageRatePer1kCents ?? data.overage_rate_per_1k_cents ?? 0.5,
     }
   } catch {
     return null
