@@ -22,7 +22,7 @@ export interface PlanStep {
 export interface SkillRow {
   id: string;
   skill_name: string;
-  system_prompt: string | null;
+  content: string; // Claude Skills SKILL.md — frontmatter + body (NOT NULL)
   team_function?: string | null;
 }
 
@@ -107,7 +107,7 @@ export class ClaudeWorker implements IWorker {
   private async loadSkill(skillId: string): Promise<SkillRow> {
     const { data, error } = await this.supabase
       .from('skill_registry')
-      .select('id, skill_name, system_prompt, team_function')
+      .select('id, skill_name, content, team_function')
       .eq('id', skillId)
       .maybeSingle();
 
@@ -117,8 +117,10 @@ export class ClaudeWorker implements IWorker {
   }
 
   private composeSystemPrompt(skill: SkillRow): string {
-    const skillPrompt = (skill.system_prompt || '').trim();
-    return skillPrompt ? `${THIN_WRAPPER}\n\n${skillPrompt}` : THIN_WRAPPER;
+    // skill_registry.content holds the SKILL.md (YAML frontmatter + body).
+    // Pass it through as-is; Claude handles markdown + frontmatter natively.
+    const skillBody = (skill.content || '').trim();
+    return skillBody ? `${THIN_WRAPPER}\n\n${skillBody}` : THIN_WRAPPER;
   }
 
   private async runBuild(
