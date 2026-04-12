@@ -185,6 +185,57 @@ Tier 2 (platform completeness):
 - pnl-dashboard, finance-dashboard (Finance)
 - patient-outcomes, hipaa-compliance (Healthcare)
 
+### PRE-MERGE GATE FOR SKELETON SESSIONS — NON-NEGOTIABLE
+
+Today's builds proved these rules are required. Every skeleton session
+must pass ALL checks before any PR is merged or any commit is made.
+
+**Rule 1 — DB FIRST, commit second**
+Apply the skeleton to Supabase DB via MCP BEFORE creating any migration file
+or PR. A merged migration file that was never applied to DB is worthless and
+creates false confidence.
+Sequence: Apply → Verify → THEN commit migration file for audit trail.
+
+**Rule 2 — charts = 0 means REJECT**
+If the verification query returns charts = 0, the skeleton MUST be rebuilt.
+Do not merge. Do not move to the next task.
+A skeleton without Chart.js new Chart() calls will render blank charts
+regardless of how much HTML it contains.
+
+**Rule 3 — Chart.js CDN must be present**
+Every skeleton must include this exact script tag in <head>:
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+If this tag is missing, charts = 0. Always verify CDN is present.
+
+**Rule 4 — Minimum quality gate before merge**
+ALL of these must be true or do not merge:
+- length > 20000 ✓
+- charts >= 4 ✓
+- has_try_catch = true ✓
+- has_team_token = true ✓
+- has_sample_data = true ✓
+
+**Rule 5 — Run verification query, paste results**
+After every apply_migration, run this exact query and paste the results
+as proof before marking the session complete:
+
+```sql
+SELECT skill_name,
+  length(html_skeleton) as length,
+  (LENGTH(html_skeleton) - LENGTH(REPLACE(html_skeleton, 'new Chart(', '')))
+    / LENGTH('new Chart(') as charts,
+  html_skeleton LIKE '%try{%' as has_try_catch,
+  html_skeleton LIKE '%__VIBE_TEAM_ID__%' as has_team_token,
+  html_skeleton LIKE '%window.__VIBE_SAMPLE__%' as has_sample_data
+FROM skill_registry
+WHERE skill_name = '[skill_name]';
+```
+
+**Failure today that these rules prevent:**
+- CRM and Marketing skeletons merged 3x with charts=0 before being caught
+- 5+ migration files merged to GitHub without ever being applied to DB
+- Sessions marked complete without running verification query
+
 ## Never
 
 - Silent failures. Always return plain-English explanation + next action.
