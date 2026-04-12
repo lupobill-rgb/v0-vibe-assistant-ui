@@ -1,628 +1,867 @@
--- CRM Dashboard Skeleton v2: World-class Sales CRM Dashboard
--- Figma-quality, dark theme, 5 nav tabs, 6 KPI cards, 4 charts, 2 tables
+-- CRM Dashboard skeleton v2: Chart.js charts + try/catch vibeLoadData
+-- Replaces raw canvas with new Chart() for all 4 chart panels
 
-UPDATE skill_registry SET html_skeleton = $$<!DOCTYPE html>
+UPDATE skill_registry
+SET html_skeleton = $$<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Sales CRM Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
-window.__SUPABASE_URL__='';
-window.__SUPABASE_ANON_KEY__='';
-window.__VIBE_TEAM_ID__='';
-
-window.__VIBE_SAMPLE__={
-  kpis:[
-    {id:'pipeline',label:'Total Pipeline',value:'$4.2M',trend:'+12%',direction:'up'},
-    {id:'deals',label:'Deals Active',value:'47',trend:'+3',direction:'up'},
-    {id:'winrate',label:'Win Rate',value:'34.2%',trend:'+2.1%',direction:'up'},
-    {id:'avgdeal',label:'Avg Deal Size',value:'$89K',trend:'-4%',direction:'down'},
-    {id:'cycle',label:'Sales Cycle',value:'42 days',trend:'-3d',direction:'up'},
-    {id:'quota',label:'Quota Attainment',value:'78.4%',trend:'+5%',direction:'up'}
+window.__VIBE_SAMPLE__ = {
+  kpis: [
+    {id:"total_pipeline",label:"Total Pipeline",value:"$4.2M",trend:"+12.3%",direction:"up"},
+    {id:"deals",label:"Active Deals",value:"47",trend:"+5",direction:"up"},
+    {id:"win_rate",label:"Win Rate",value:"34.2%",trend:"+2.1%",direction:"up"},
+    {id:"avg_deal",label:"Avg Deal Size",value:"$89K",trend:"-$3K",direction:"down"},
+    {id:"sales_cycle",label:"Sales Cycle",value:"42d",trend:"-4d",direction:"up"},
+    {id:"quota",label:"Quota Attainment",value:"78.4%",trend:"+6.2%",direction:"up"}
   ],
-  deals:[
-    {company:'Acme Corp',stage:'Negotiation',value:320000,closeDate:'2026-04-28',owner:'Sarah Chen',probability:75},
-    {company:'TechVentures Inc',stage:'Proposal',value:185000,closeDate:'2026-05-10',owner:'Marcus Webb',probability:55},
-    {company:'GlobalSync Ltd',stage:'Qualified',value:420000,closeDate:'2026-06-01',owner:'Sarah Chen',probability:35},
-    {company:'Meridian Health',stage:'Prospecting',value:95000,closeDate:'2026-06-15',owner:'Priya Patel',probability:15},
-    {company:'Nexus Financial',stage:'Closed Won',value:210000,closeDate:'2026-03-30',owner:'James Liu',probability:100},
-    {company:'Vertex AI Labs',stage:'Negotiation',value:540000,closeDate:'2026-04-22',owner:'Marcus Webb',probability:80},
-    {company:'Cascade Systems',stage:'Proposal',value:128000,closeDate:'2026-05-05',owner:'Priya Patel',probability:50},
-    {company:'Summit Retail',stage:'Qualified',value:275000,closeDate:'2026-05-20',owner:'James Liu',probability:30},
-    {company:'Pinnacle Media',stage:'Prospecting',value:165000,closeDate:'2026-06-30',owner:'Aisha Johnson',probability:10},
-    {company:'Quantum Dynamics',stage:'Negotiation',value:380000,closeDate:'2026-04-18',owner:'Sarah Chen',probability:70},
-    {company:'Stratos Cloud',stage:'Closed Won',value:195000,closeDate:'2026-03-25',owner:'Aisha Johnson',probability:100},
-    {company:'Helix Biotech',stage:'Proposal',value:445000,closeDate:'2026-05-15',owner:'Marcus Webb',probability:45},
-    {company:'Ironclad Security',stage:'Qualified',value:310000,closeDate:'2026-05-28',owner:'James Liu',probability:25},
-    {company:'Prism Analytics',stage:'Prospecting',value:88000,closeDate:'2026-07-01',owner:'Priya Patel',probability:10},
-    {company:'Orbit SaaS',stage:'Negotiation',value:260000,closeDate:'2026-04-25',owner:'Aisha Johnson',probability:65},
-    {company:'BluePeak Logistics',stage:'Proposal',value:172000,closeDate:'2026-05-08',owner:'Sarah Chen',probability:50},
-    {company:'Vantage HR',stage:'Closed Won',value:148000,closeDate:'2026-03-20',owner:'Marcus Webb',probability:100},
-    {company:'Crestline Mfg',stage:'Qualified',value:520000,closeDate:'2026-06-10',owner:'James Liu',probability:20},
-    {company:'Elevate EdTech',stage:'Prospecting',value:110000,closeDate:'2026-07-15',owner:'Priya Patel',probability:5},
-    {company:'Horizon Pharma',stage:'Negotiation',value:685000,closeDate:'2026-04-30',owner:'Sarah Chen',probability:72},
-    {company:'Apex Consulting',stage:'Proposal',value:230000,closeDate:'2026-05-12',owner:'Aisha Johnson',probability:55},
-    {company:'Titan Industries',stage:'Closed Won',value:340000,closeDate:'2026-03-28',owner:'James Liu',probability:100},
-    {company:'Lumina Design',stage:'Qualified',value:92000,closeDate:'2026-05-25',owner:'Priya Patel',probability:30},
-    {company:'Northstar Data',stage:'Prospecting',value:205000,closeDate:'2026-06-20',owner:'Marcus Webb',probability:12},
-    {company:'Redwood Finance',stage:'Negotiation',value:415000,closeDate:'2026-04-20',owner:'Aisha Johnson',probability:78},
-    {company:'Catalyst Ventures',stage:'Proposal',value:290000,closeDate:'2026-05-18',owner:'Sarah Chen',probability:48},
-    {company:'Zenith Telecom',stage:'Closed Won',value:175000,closeDate:'2026-03-22',owner:'Priya Patel',probability:100},
-    {company:'Atlas Robotics',stage:'Qualified',value:610000,closeDate:'2026-06-05',owner:'James Liu',probability:22},
-    {company:'Empower Health',stage:'Prospecting',value:135000,closeDate:'2026-07-10',owner:'Marcus Webb',probability:8},
-    {company:'Forge Manufacturing',stage:'Negotiation',value:298000,closeDate:'2026-04-26',owner:'Priya Patel',probability:68},
-    {company:'Skyline Properties',stage:'Proposal',value:350000,closeDate:'2026-05-22',owner:'Aisha Johnson',probability:42},
-    {company:'Pulse Digital',stage:'Closed Won',value:125000,closeDate:'2026-03-18',owner:'Sarah Chen',probability:100},
-    {company:'Evergreen Energy',stage:'Qualified',value:480000,closeDate:'2026-06-08',owner:'Marcus Webb',probability:28},
-    {company:'Sterling Legal',stage:'Prospecting',value:78000,closeDate:'2026-07-05',owner:'James Liu',probability:8},
-    {company:'Axiom Software',stage:'Negotiation',value:195000,closeDate:'2026-04-24',owner:'Aisha Johnson',probability:60},
-    {company:'Pacific Trading',stage:'Proposal',value:310000,closeDate:'2026-05-14',owner:'Priya Patel',probability:52},
-    {company:'Beacon Insurance',stage:'Closed Won',value:285000,closeDate:'2026-03-15',owner:'Marcus Webb',probability:100},
-    {company:'Nimbus Cloud',stage:'Qualified',value:190000,closeDate:'2026-05-30',owner:'Sarah Chen',probability:32},
-    {company:'Solaris Power',stage:'Prospecting',value:240000,closeDate:'2026-06-25',owner:'James Liu',probability:10},
-    {company:'Archway Hotels',stage:'Negotiation',value:155000,closeDate:'2026-04-19',owner:'Priya Patel',probability:72},
-    {company:'Keystone Mining',stage:'Proposal',value:520000,closeDate:'2026-05-20',owner:'Aisha Johnson',probability:40},
-    {company:'Falcon Aerospace',stage:'Closed Won',value:410000,closeDate:'2026-03-10',owner:'Sarah Chen',probability:100},
-    {company:'Mosaic Media',stage:'Qualified',value:145000,closeDate:'2026-06-02',owner:'Marcus Webb',probability:25},
-    {company:'Trident Shipping',stage:'Prospecting',value:330000,closeDate:'2026-07-20',owner:'James Liu',probability:6},
-    {company:'Clarity AI',stage:'Negotiation',value:275000,closeDate:'2026-04-27',owner:'Aisha Johnson',probability:65},
-    {company:'Opal Therapeutics',stage:'Proposal',value:390000,closeDate:'2026-05-16',owner:'Priya Patel',probability:45},
-    {company:'Ridgeline Capital',stage:'Closed Won',value:220000,closeDate:'2026-03-12',owner:'Marcus Webb',probability:100}
+  deals: [
+    {id:1,company:"Acme Corp",contact:"Sarah Chen",stage:"Negotiation",value:320000,close_date:"2026-04-28",owner:"Marcus Rivera",probability:75,days_in_stage:8},
+    {id:2,company:"TechFlow Inc",contact:"James Wu",stage:"Proposal",value:185000,close_date:"2026-05-10",owner:"Elena Vasquez",probability:55,days_in_stage:12},
+    {id:3,company:"DataBridge AI",contact:"Priya Patel",stage:"Qualified",value:420000,close_date:"2026-06-15",owner:"Marcus Rivera",probability:35,days_in_stage:5},
+    {id:4,company:"Nexus Systems",contact:"Tom Bradley",stage:"Prospecting",value:95000,close_date:"2026-07-01",owner:"Jordan Kim",probability:15,days_in_stage:3},
+    {id:5,company:"CloudScale",contact:"Lisa Nguyen",stage:"Closed",value:275000,close_date:"2026-04-05",owner:"Elena Vasquez",probability:100,days_in_stage:0},
+    {id:6,company:"Meridian Health",contact:"Dr. Rachel Foster",stage:"Negotiation",value:510000,close_date:"2026-04-22",owner:"Alex Thompson",probability:80,days_in_stage:14},
+    {id:7,company:"Pinnacle Finance",contact:"David Okafor",stage:"Proposal",value:165000,close_date:"2026-05-18",owner:"Jordan Kim",probability:50,days_in_stage:7},
+    {id:8,company:"Vertex Robotics",contact:"Mei Lin Zhang",stage:"Qualified",value:290000,close_date:"2026-06-20",owner:"Marcus Rivera",probability:30,days_in_stage:9},
+    {id:9,company:"Harbor Logistics",contact:"Mike Sullivan",stage:"Prospecting",value:78000,close_date:"2026-07-15",owner:"Sophia Martinez",probability:10,days_in_stage:2},
+    {id:10,company:"Orbit Media",contact:"Anna Kowalski",stage:"Proposal",value:142000,close_date:"2026-05-05",owner:"Alex Thompson",probability:60,days_in_stage:11},
+    {id:11,company:"Sterling Pharma",contact:"Dr. Hassan Ali",stage:"Negotiation",value:680000,close_date:"2026-04-30",owner:"Elena Vasquez",probability:70,days_in_stage:18},
+    {id:12,company:"Quantum Analytics",contact:"Chris Park",stage:"Qualified",value:195000,close_date:"2026-06-10",owner:"Jordan Kim",probability:40,days_in_stage:6},
+    {id:13,company:"BrightPath Ed",contact:"Monica Torres",stage:"Prospecting",value:55000,close_date:"2026-08-01",owner:"Sophia Martinez",probability:12,days_in_stage:1},
+    {id:14,company:"Ironclad Security",contact:"Ben Lawson",stage:"Closed",value:340000,close_date:"2026-03-28",owner:"Marcus Rivera",probability:100,days_in_stage:0},
+    {id:15,company:"Atlas Manufacturing",contact:"Karen Webb",stage:"Proposal",value:225000,close_date:"2026-05-22",owner:"Alex Thompson",probability:45,days_in_stage:15},
+    {id:16,company:"Vantage Energy",contact:"Robert Stein",stage:"Negotiation",value:415000,close_date:"2026-04-25",owner:"Elena Vasquez",probability:65,days_in_stage:10},
+    {id:17,company:"Cascade Software",contact:"Amy Nakamura",stage:"Qualified",value:130000,close_date:"2026-06-28",owner:"Jordan Kim",probability:25,days_in_stage:4},
+    {id:18,company:"Horizon Telecom",contact:"Greg Palmer",stage:"Prospecting",value:88000,close_date:"2026-07-20",owner:"Sophia Martinez",probability:8,days_in_stage:5},
+    {id:19,company:"Ember Creative",contact:"Zoe Richards",stage:"Closed",value:198000,close_date:"2026-04-02",owner:"Alex Thompson",probability:100,days_in_stage:0},
+    {id:20,company:"NovaTech Solutions",contact:"Ryan Chu",stage:"Proposal",value:310000,close_date:"2026-05-12",owner:"Marcus Rivera",probability:55,days_in_stage:9},
+    {id:21,company:"Sapphire Health",contact:"Dr. Nina Kapoor",stage:"Negotiation",value:470000,close_date:"2026-04-20",owner:"Elena Vasquez",probability:72,days_in_stage:16},
+    {id:22,company:"Redline Auto",contact:"Derek Fowler",stage:"Qualified",value:115000,close_date:"2026-06-05",owner:"Jordan Kim",probability:28,days_in_stage:8},
+    {id:23,company:"Apex Consulting",contact:"Tanya Moore",stage:"Prospecting",value:62000,close_date:"2026-08-10",owner:"Sophia Martinez",probability:10,days_in_stage:3},
+    {id:24,company:"Cobalt Industries",contact:"Steven Grant",stage:"Proposal",value:248000,close_date:"2026-05-28",owner:"Alex Thompson",probability:48,days_in_stage:13},
+    {id:25,company:"Zenith Corp",contact:"Julia Hayes",stage:"Closed",value:390000,close_date:"2026-03-15",owner:"Marcus Rivera",probability:100,days_in_stage:0},
+    {id:26,company:"Lighthouse Media",contact:"Paul Vernon",stage:"Negotiation",value:175000,close_date:"2026-04-18",owner:"Jordan Kim",probability:68,days_in_stage:11},
+    {id:27,company:"Prism Analytics",contact:"Laura Chen",stage:"Qualified",value:205000,close_date:"2026-06-22",owner:"Elena Vasquez",probability:32,days_in_stage:7},
+    {id:28,company:"Summit Retail",contact:"Jack Morrison",stage:"Prospecting",value:72000,close_date:"2026-07-25",owner:"Sophia Martinez",probability:14,days_in_stage:4},
+    {id:29,company:"Titanium Tech",contact:"Sarah Blackwell",stage:"Proposal",value:335000,close_date:"2026-05-15",owner:"Marcus Rivera",probability:52,days_in_stage:10},
+    {id:30,company:"Forge Dynamics",contact:"Alan Cooper",stage:"Closed",value:445000,close_date:"2026-04-08",owner:"Elena Vasquez",probability:100,days_in_stage:0},
+    {id:31,company:"Velocity Labs",contact:"Diana Reyes",stage:"Negotiation",value:260000,close_date:"2026-04-26",owner:"Alex Thompson",probability:74,days_in_stage:9},
+    {id:32,company:"Nimbus Cloud",contact:"Kevin Frost",stage:"Qualified",value:180000,close_date:"2026-06-18",owner:"Jordan Kim",probability:38,days_in_stage:6},
+    {id:33,company:"Basalt Mining",contact:"Roger Thompson",stage:"Prospecting",value:105000,close_date:"2026-07-30",owner:"Sophia Martinez",probability:11,days_in_stage:2},
+    {id:34,company:"Echo Systems",contact:"Michelle Park",stage:"Proposal",value:198000,close_date:"2026-05-08",owner:"Alex Thompson",probability:58,days_in_stage:14},
+    {id:35,company:"Aether Biotech",contact:"Dr. Samuel Green",stage:"Negotiation",value:550000,close_date:"2026-04-24",owner:"Marcus Rivera",probability:78,days_in_stage:12},
+    {id:36,company:"Ridgeline Partners",contact:"Catherine Holt",stage:"Qualified",value:145000,close_date:"2026-06-12",owner:"Elena Vasquez",probability:33,days_in_stage:5},
+    {id:37,company:"Onyx Security",contact:"Travis Lee",stage:"Closed",value:310000,close_date:"2026-04-01",owner:"Jordan Kim",probability:100,days_in_stage:0},
+    {id:38,company:"Polaris Ventures",contact:"Natalie Brooks",stage:"Prospecting",value:82000,close_date:"2026-08-05",owner:"Sophia Martinez",probability:9,days_in_stage:1},
+    {id:39,company:"Crestview Hotels",contact:"George Martin",stage:"Proposal",value:270000,close_date:"2026-05-20",owner:"Marcus Rivera",probability:50,days_in_stage:8},
+    {id:40,company:"Flux Energy",contact:"Rebecca Tran",stage:"Negotiation",value:385000,close_date:"2026-04-22",owner:"Elena Vasquez",probability:69,days_in_stage:13},
+    {id:41,company:"Marble Arch Capital",contact:"Ian Stewart",stage:"Qualified",value:220000,close_date:"2026-06-25",owner:"Alex Thompson",probability:36,days_in_stage:7},
+    {id:42,company:"Lunar Dynamics",contact:"Sophie Anderson",stage:"Prospecting",value:68000,close_date:"2026-07-18",owner:"Jordan Kim",probability:13,days_in_stage:3},
+    {id:43,company:"Beacon Health",contact:"Dr. William Fox",stage:"Closed",value:425000,close_date:"2026-03-22",owner:"Alex Thompson",probability:100,days_in_stage:0},
+    {id:44,company:"Spire Technologies",contact:"Angela Liu",stage:"Proposal",value:155000,close_date:"2026-05-25",owner:"Elena Vasquez",probability:47,days_in_stage:11},
+    {id:45,company:"Cardinal Logistics",contact:"Brian Walsh",stage:"Negotiation",value:295000,close_date:"2026-04-19",owner:"Marcus Rivera",probability:71,days_in_stage:15},
+    {id:46,company:"Evergreen Solutions",contact:"Heather Knox",stage:"Qualified",value:170000,close_date:"2026-06-08",owner:"Sophia Martinez",probability:29,days_in_stage:8},
+    {id:47,company:"Stratosphere AI",contact:"Daniel Kim",stage:"Prospecting",value:92000,close_date:"2026-07-22",owner:"Jordan Kim",probability:7,days_in_stage:2}
   ],
-  revenue:[
-    {month:'May 25',actual:380000,target:400000},
-    {month:'Jun 25',actual:420000,target:410000},
-    {month:'Jul 25',actual:395000,target:420000},
-    {month:'Aug 25',actual:460000,target:430000},
-    {month:'Sep 25',actual:445000,target:440000},
-    {month:'Oct 25',actual:510000,target:450000},
-    {month:'Nov 25',actual:485000,target:460000},
-    {month:'Dec 25',actual:530000,target:470000},
-    {month:'Jan 26',actual:495000,target:480000},
-    {month:'Feb 26',actual:540000,target:490000},
-    {month:'Mar 26',actual:575000,target:500000},
-    {month:'Apr 26',actual:null,target:510000}
+  revenue: [
+    {month:"May 25",actual:380000,target:400000},
+    {month:"Jun 25",actual:420000,target:420000},
+    {month:"Jul 25",actual:395000,target:440000},
+    {month:"Aug 25",actual:465000,target:460000},
+    {month:"Sep 25",actual:510000,target:480000},
+    {month:"Oct 25",actual:485000,target:500000},
+    {month:"Nov 25",actual:530000,target:520000},
+    {month:"Dec 25",actual:490000,target:540000},
+    {month:"Jan 26",actual:555000,target:560000},
+    {month:"Feb 26",actual:580000,target:580000},
+    {month:"Mar 26",actual:620000,target:600000},
+    {month:"Apr 26",actual:590000,target:620000}
   ],
-  reps:[
-    {name:'Sarah Chen',closed:12,value:1850000,avatar:'SC'},
-    {name:'Marcus Webb',closed:10,value:1620000,avatar:'MW'},
-    {name:'James Liu',closed:9,value:1540000,avatar:'JL'},
-    {name:'Aisha Johnson',closed:8,value:1380000,avatar:'AJ'},
-    {name:'Priya Patel',closed:7,value:1120000,avatar:'PP'},
-    {name:'David Kim',closed:6,value:980000,avatar:'DK'},
-    {name:'Elena Rossi',closed:5,value:870000,avatar:'ER'},
-    {name:'Tyler Brooks',closed:4,value:650000,avatar:'TB'}
+  reps: [
+    {name:"Marcus Rivera",deals_closed:12,attainment:94,revenue:1420000},
+    {name:"Elena Vasquez",deals_closed:11,attainment:89,revenue:1285000},
+    {name:"Alex Thompson",deals_closed:10,attainment:82,revenue:1105000},
+    {name:"Jordan Kim",deals_closed:8,attainment:76,revenue:920000},
+    {name:"Sophia Martinez",deals_closed:7,attainment:68,revenue:780000},
+    {name:"Tyler Brooks",deals_closed:6,attainment:61,revenue:695000},
+    {name:"Rachel Kim",deals_closed:5,attainment:54,revenue:610000},
+    {name:"Derek Olson",deals_closed:4,attainment:47,revenue:520000}
   ],
-  activity:[
-    {rep:'Sarah Chen',action:'Sent proposal',account:'Acme Corp',date:'2026-04-12',nextStep:'Follow up on pricing'},
-    {rep:'Marcus Webb',action:'Discovery call',account:'TechVentures Inc',date:'2026-04-12',nextStep:'Schedule demo'},
-    {rep:'James Liu',action:'Contract signed',account:'Nexus Financial',date:'2026-04-11',nextStep:'Onboarding kickoff'},
-    {rep:'Priya Patel',action:'Demo completed',account:'Cascade Systems',date:'2026-04-11',nextStep:'Send pricing proposal'},
-    {rep:'Aisha Johnson',action:'Meeting scheduled',account:'Orbit SaaS',date:'2026-04-11',nextStep:'Prepare deck'},
-    {rep:'Sarah Chen',action:'Negotiation update',account:'Quantum Dynamics',date:'2026-04-10',nextStep:'Legal review'},
-    {rep:'Marcus Webb',action:'Email outreach',account:'Northstar Data',date:'2026-04-10',nextStep:'Qualify budget'},
-    {rep:'James Liu',action:'Proposal sent',account:'Summit Retail',date:'2026-04-10',nextStep:'Schedule review call'},
-    {rep:'Priya Patel',action:'Cold call',account:'Elevate EdTech',date:'2026-04-09',nextStep:'Send intro email'},
-    {rep:'Aisha Johnson',action:'Contract review',account:'Redwood Finance',date:'2026-04-09',nextStep:'Finalize terms'},
-    {rep:'Sarah Chen',action:'Upsell discussion',account:'Horizon Pharma',date:'2026-04-09',nextStep:'Prepare expansion proposal'},
-    {rep:'James Liu',action:'QBR completed',account:'Titan Industries',date:'2026-04-08',nextStep:'Plan renewal strategy'},
-    {rep:'Marcus Webb',action:'Demo scheduled',account:'Helix Biotech',date:'2026-04-08',nextStep:'Customize demo env'},
-    {rep:'Priya Patel',action:'Intro meeting',account:'Meridian Health',date:'2026-04-08',nextStep:'Send case studies'},
-    {rep:'Aisha Johnson',action:'Pricing negotiation',account:'Clarity AI',date:'2026-04-07',nextStep:'Final discount approval'},
-    {rep:'Sarah Chen',action:'Renewal call',account:'BluePeak Logistics',date:'2026-04-07',nextStep:'Send renewal contract'},
-    {rep:'James Liu',action:'Technical review',account:'Atlas Robotics',date:'2026-04-07',nextStep:'Address integration concerns'},
-    {rep:'Marcus Webb',action:'Follow-up email',account:'Evergreen Energy',date:'2026-04-06',nextStep:'Book second call'},
-    {rep:'Priya Patel',action:'Champion identified',account:'Archway Hotels',date:'2026-04-06',nextStep:'Executive intro'},
-    {rep:'Aisha Johnson',action:'Deal won',account:'Stratos Cloud',date:'2026-04-05',nextStep:'Handoff to CS'}
+  activity: [
+    {rep:"Marcus Rivera",action:"Closed deal",account:"Zenith Corp",date:"2026-04-12",next_step:"Onboarding kickoff"},
+    {rep:"Elena Vasquez",action:"Sent proposal",account:"Sterling Pharma",date:"2026-04-12",next_step:"Follow up in 3 days"},
+    {rep:"Alex Thompson",action:"Discovery call",account:"Cobalt Industries",date:"2026-04-12",next_step:"Send custom demo"},
+    {rep:"Jordan Kim",action:"Demo completed",account:"Lighthouse Media",date:"2026-04-11",next_step:"Send pricing"},
+    {rep:"Sophia Martinez",action:"Meeting scheduled",account:"Summit Retail",date:"2026-04-11",next_step:"Prepare deck"},
+    {rep:"Marcus Rivera",action:"Contract sent",account:"Aether Biotech",date:"2026-04-11",next_step:"Legal review"},
+    {rep:"Elena Vasquez",action:"Negotiation update",account:"Sapphire Health",date:"2026-04-11",next_step:"Revised terms"},
+    {rep:"Alex Thompson",action:"Follow-up email",account:"Crestview Hotels",date:"2026-04-10",next_step:"Schedule call"},
+    {rep:"Jordan Kim",action:"Qualified lead",account:"Quantum Analytics",date:"2026-04-10",next_step:"Book discovery"},
+    {rep:"Tyler Brooks",action:"Cold outreach",account:"Pinnacle Group",date:"2026-04-10",next_step:"Await response"},
+    {rep:"Rachel Kim",action:"Renewal check-in",account:"Forge Dynamics",date:"2026-04-10",next_step:"Send renewal quote"},
+    {rep:"Marcus Rivera",action:"Upsell pitch",account:"Ironclad Security",date:"2026-04-09",next_step:"ROI analysis"},
+    {rep:"Elena Vasquez",action:"Technical review",account:"Vantage Energy",date:"2026-04-09",next_step:"Architecture call"},
+    {rep:"Sophia Martinez",action:"Initial contact",account:"BrightPath Ed",date:"2026-04-09",next_step:"Needs assessment"},
+    {rep:"Derek Olson",action:"Proposal revised",account:"Apex Consulting",date:"2026-04-09",next_step:"Stakeholder review"},
+    {rep:"Alex Thompson",action:"Deal won",account:"Ember Creative",date:"2026-04-08",next_step:"Implementation"},
+    {rep:"Jordan Kim",action:"Pricing discussion",account:"Cascade Software",date:"2026-04-08",next_step:"Custom quote"},
+    {rep:"Tyler Brooks",action:"Reference call",account:"Harbor Logistics",date:"2026-04-08",next_step:"Send case study"},
+    {rep:"Rachel Kim",action:"QBR prep",account:"CloudScale",date:"2026-04-07",next_step:"Schedule QBR"},
+    {rep:"Marcus Rivera",action:"Executive intro",account:"NovaTech Solutions",date:"2026-04-07",next_step:"VP meeting"}
   ],
-  stages:[
-    {name:'Prospecting',count:8,value:1446000,color:'#7B61FF'},
-    {name:'Qualified',count:9,value:3042000,color:'#00B4D8'},
-    {name:'Proposal',count:10,value:3020000,color:'#00E5A0'},
-    {name:'Negotiation',count:10,value:3523000,color:'#F59E0B'},
-    {name:'Closed Won',count:10,value:2683000,color:'#10B981'}
+  pipeline_stages: [
+    {stage:"Prospecting",count:8,value:700000,color:"#7B61FF"},
+    {stage:"Qualified",count:10,value:2070000,color:"#00B4D8"},
+    {stage:"Proposal",count:12,value:2733000,color:"#F59E0B"},
+    {stage:"Negotiation",count:10,value:4060000,color:"#00E5A0"},
+    {stage:"Closed",count:7,value:2383000,color:"#10B981"}
   ],
-  sources:[
-    {name:'Inbound',won:14,lost:8},
-    {name:'Outbound',won:10,lost:12},
-    {name:'Referral',won:9,lost:3},
-    {name:'Partner',won:5,lost:4}
+  sources: [
+    {source:"Inbound",won:14,lost:8},
+    {source:"Outbound",won:9,lost:12},
+    {source:"Referral",won:11,lost:4},
+    {source:"Partner",won:6,lost:5}
   ]
 };
-
-async function vibeLoadData(table,params){
-  if(!window.__SUPABASE_URL__||!window.__SUPABASE_ANON_KEY__)return[];
-  var url=window.__SUPABASE_URL__+'/rest/v1/'+table+'?team_id=eq.'+params.team_id;
-  var r=await fetch(url,{headers:{'apikey':window.__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+window.__SUPABASE_ANON_KEY__}});
-  if(!r.ok)return[];
-  return r.json();
-}
 </script>
 <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg-primary:#0A0E17;
-  --bg-secondary:#111827;
-  --bg-card:#1A1F2E;
-  --bg-card-hover:#222840;
-  --border-primary:#1E2A3A;
-  --border-glow:rgba(0,229,160,0.15);
-  --text-primary:#F1F5F9;
-  --text-secondary:#94A3B8;
-  --text-muted:#64748B;
-  --primary:#00E5A0;
-  --primary-dim:rgba(0,229,160,0.15);
-  --accent:#00B4D8;
-  --accent-dim:rgba(0,180,216,0.15);
-  --violet:#7B61FF;
-  --violet-dim:rgba(123,97,255,0.15);
-  --warning:#F59E0B;
-  --warning-dim:rgba(245,158,11,0.15);
-  --success:#10B981;
-  --success-dim:rgba(16,185,129,0.15);
-  --danger:#EF4444;
-  --danger-dim:rgba(239,68,68,0.15);
-  --gradient-vibe:linear-gradient(135deg,#00E5A0,#00B4D8,#7B61FF);
-  --shadow-card:0 4px 24px rgba(0,0,0,0.3);
-  --shadow-glow:0 0 20px rgba(0,229,160,0.08);
-  --radius:12px;
-  --radius-lg:16px;
-  --radius-sm:8px;
+  --bg-primary:#0A0E17;--bg-secondary:#111827;--bg-card:#151C2C;--bg-card-hover:#1A2236;
+  --border:#1E293B;--border-hover:#2D3A52;
+  --text-primary:#F1F5F9;--text-secondary:#94A3B8;--text-muted:#64748B;
+  --green:#00E5A0;--cyan:#00B4D8;--violet:#7B61FF;--amber:#F59E0B;--red:#EF4444;--emerald:#10B981;
+  --gradient-vibe:linear-gradient(135deg,#00E5A0 0%,#00B4D8 50%,#7B61FF 100%);
+  --shadow-card:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.2);
+  --shadow-card-hover:0 10px 25px rgba(0,0,0,.4),0 4px 10px rgba(0,0,0,.3);
+  --radius:12px;--radius-sm:8px;--radius-xs:6px;
+  --font-heading:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Inter',system-ui,sans-serif;
+  --sidebar-width:260px;
 }
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;overflow-x:hidden}
-h1,h2,h3,h4,h5{font-family:'Space Grotesk',sans-serif;font-weight:600}
+html{font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:var(--font-body);background:var(--bg-primary);color:var(--text-primary);min-height:100vh;display:flex;overflow-x:hidden}
 
-/* ── Navbar ── */
-.navbar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:64px;background:rgba(17,24,39,0.75);backdrop-filter:blur(20px);border-bottom:1px solid var(--border-primary)}
-.navbar-brand{display:flex;align-items:center;gap:12px}
-.navbar-logo{width:36px;height:36px;border-radius:10px;background:var(--gradient-vibe);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#0A0E17}
-.navbar-title{font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;color:var(--text-primary)}
-.navbar-subtitle{font-size:12px;color:var(--text-muted);margin-left:8px}
-.navbar-actions{display:flex;align-items:center;gap:12px}
-.navbar-btn{padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--border-primary);background:transparent;color:var(--text-secondary);font-size:13px;cursor:pointer;transition:all 0.2s}
-.navbar-btn:hover{border-color:var(--primary);color:var(--primary)}
-.navbar-btn-primary{background:var(--primary);color:#0A0E17;border-color:var(--primary);font-weight:600}
-.navbar-btn-primary:hover{filter:brightness(1.1);box-shadow:0 0 16px rgba(0,229,160,0.3)}
-.navbar-status{width:8px;height:8px;border-radius:50%;background:var(--primary);box-shadow:0 0 8px var(--primary)}
+/* ── Sidebar ── */
+.sidebar{width:var(--sidebar-width);background:var(--bg-primary);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:50}
+.sidebar-brand{padding:24px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+.sidebar-brand-icon{width:36px;height:36px;border-radius:10px;background:var(--gradient-vibe);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#0A0E17;font-family:var(--font-heading)}
+.sidebar-brand-text{font-family:var(--font-heading);font-size:18px;font-weight:700;background:var(--gradient-vibe);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sidebar-nav{flex:1;padding:16px 12px;overflow-y:auto}
+.nav-section{margin-bottom:24px}
+.nav-section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);padding:0 12px;margin-bottom:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);color:var(--text-secondary);cursor:pointer;transition:all .2s ease;font-size:13px;font-weight:500;position:relative;overflow:hidden}
+.nav-item:hover{background:var(--bg-card);color:var(--text-primary)}
+.nav-item.active{background:linear-gradient(135deg,rgba(0,229,160,.12) 0%,rgba(0,180,216,.08) 100%);color:var(--green);border:1px solid rgba(0,229,160,.2)}
+.nav-item.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gradient-vibe);border-radius:0 2px 2px 0}
+.nav-item svg{width:18px;height:18px;flex-shrink:0}
+.sidebar-footer{padding:16px;border-top:1px solid var(--border)}
+.sidebar-user{display:flex;align-items:center;gap:10px;padding:8px}
+.sidebar-avatar{width:32px;height:32px;border-radius:8px;background:var(--gradient-vibe);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#0A0E17}
+.sidebar-user-info{flex:1;min-width:0}
+.sidebar-user-name{font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-user-role{font-size:11px;color:var(--text-muted)}
 
-/* ── Tab Navigation ── */
-.tab-nav{display:flex;gap:4px;padding:16px 32px 0;background:var(--bg-primary);border-bottom:1px solid var(--border-primary)}
-.tab-btn{padding:12px 24px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:500;color:var(--text-muted);background:transparent;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;position:relative}
+/* ── Main ── */
+.main{margin-left:var(--sidebar-width);flex:1;min-height:100vh;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--border);background:rgba(10,14,23,.8);backdrop-filter:blur(12px);position:sticky;top:0;z-index:40}
+.topbar-left{display:flex;align-items:center;gap:16px}
+.topbar-title{font-family:var(--font-heading);font-size:22px;font-weight:700}
+.topbar-badge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(0,229,160,.12);color:var(--green);border:1px solid rgba(0,229,160,.2)}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.topbar-btn{padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;font-family:var(--font-body)}
+.topbar-btn:hover{background:var(--bg-card);color:var(--text-primary);border-color:var(--border-hover)}
+.topbar-btn-primary{background:var(--green);color:#0A0E17;border-color:var(--green);font-weight:600}
+.topbar-btn-primary:hover{background:#00CC8E;box-shadow:0 0 20px rgba(0,229,160,.3)}
+
+/* ── Tabs ── */
+.tabs-bar{display:flex;gap:4px;padding:0 32px;border-bottom:1px solid var(--border);background:var(--bg-primary)}
+.tab-btn{padding:12px 20px;font-size:13px;font-weight:500;color:var(--text-muted);background:transparent;border:none;cursor:pointer;position:relative;transition:color .2s;font-family:var(--font-body)}
 .tab-btn:hover{color:var(--text-secondary)}
-.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
-.tab-btn.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--primary);box-shadow:0 0 8px var(--primary)}
+.tab-btn.active{color:var(--green);font-weight:600}
+.tab-btn.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--gradient-vibe);border-radius:2px 2px 0 0}
 
-/* ── Layout ── */
-.dashboard-container{max-width:1440px;margin:0 auto;padding:24px 32px 48px}
-.tab-panel{display:none}
+/* ── Content ── */
+.content{flex:1;padding:24px 32px;overflow-y:auto}
+.tab-panel{display:none;animation:fadeIn .3s ease}
 .tab-panel.active{display:block}
-.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.section-title{font-size:16px;font-weight:600;color:var(--text-primary)}
-.section-badge{font-size:11px;padding:4px 10px;border-radius:20px;background:var(--primary-dim);color:var(--primary);font-weight:500}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
 /* ── KPI Cards ── */
-.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:32px}
-.kpi-card{background:var(--bg-card);border:1px solid var(--border-primary);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden;transition:all 0.3s}
-.kpi-card:hover{border-color:rgba(0,229,160,0.3);box-shadow:var(--shadow-glow);transform:translateY(-2px)}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--gradient-vibe);opacity:0;transition:opacity 0.3s}
-.kpi-card:hover::before{opacity:1}
-.kpi-label{font-size:12px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
-.kpi-value{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:var(--text-primary);margin-bottom:6px}
-.kpi-trend{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:20px}
-.kpi-trend.up{color:var(--success);background:var(--success-dim)}
-.kpi-trend.down{color:var(--danger);background:var(--danger-dim)}
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:28px}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden;transition:all .25s ease;cursor:default}
+.kpi-card:hover{background:var(--bg-card-hover);border-color:var(--border-hover);box-shadow:var(--shadow-card-hover);transform:translateY(-2px)}
+.kpi-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px}
+.kpi-card:nth-child(1)::before{background:var(--green)}
+.kpi-card:nth-child(2)::before{background:var(--cyan)}
+.kpi-card:nth-child(3)::before{background:var(--violet)}
+.kpi-card:nth-child(4)::before{background:var(--amber)}
+.kpi-card:nth-child(5)::before{background:var(--red)}
+.kpi-card:nth-child(6)::before{background:var(--emerald)}
+.kpi-label{font-size:12px;color:var(--text-muted);font-weight:500;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.kpi-value{font-family:var(--font-heading);font-size:26px;font-weight:700;color:var(--text-primary);margin-bottom:6px;line-height:1.1}
+.kpi-trend{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:20px}
+.kpi-trend.up{color:var(--green);background:rgba(0,229,160,.1)}
+.kpi-trend.down{color:var(--red);background:rgba(239,68,68,.1)}
+.kpi-trend svg{width:12px;height:12px}
 
 /* ── Charts ── */
-.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:32px}
-.chart-card{background:var(--bg-card);border:1px solid var(--border-primary);border-radius:var(--radius-lg);padding:24px;transition:all 0.3s}
-.chart-card:hover{border-color:rgba(0,229,160,0.2);box-shadow:var(--shadow-glow)}
-.chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.chart-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600}
-.chart-subtitle{font-size:12px;color:var(--text-muted)}
-.chart-wrapper{position:relative;height:280px}
-.chart-full{grid-column:1/-1}
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px}
+.chart-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;transition:all .25s}
+.chart-card:hover{border-color:var(--border-hover);box-shadow:var(--shadow-card-hover)}
+.chart-title{font-family:var(--font-heading);font-size:15px;font-weight:600;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
+.chart-title-badge{font-size:11px;font-weight:500;color:var(--text-muted);background:var(--bg-secondary);padding:4px 10px;border-radius:20px}
+
+/* Chart containers */
+.chart-canvas-container{position:relative;height:280px}
+.chart-canvas-container canvas{width:100%!important;height:100%!important}
 
 /* ── Tables ── */
-.table-card{background:var(--bg-card);border:1px solid var(--border-primary);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:32px}
-.table-card .chart-header{padding:20px 24px;margin-bottom:0;border-bottom:1px solid var(--border-primary)}
-.data-table{width:100%;border-collapse:collapse}
-.data-table thead th{padding:12px 20px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border-primary)}
-.data-table tbody td{padding:14px 20px;font-size:13px;color:var(--text-secondary);border-bottom:1px solid rgba(30,42,58,0.5)}
-.data-table tbody tr:hover{background:var(--bg-card-hover)}
-.data-table tbody tr:last-child td{border-bottom:none}
-.stage-badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500}
-.stage-prospecting{background:var(--violet-dim);color:var(--violet)}
-.stage-qualified{background:var(--accent-dim);color:var(--accent)}
-.stage-proposal{background:var(--primary-dim);color:var(--primary)}
-.stage-negotiation{background:var(--warning-dim);color:var(--warning)}
-.stage-closed{background:var(--success-dim);color:var(--success)}
-.owner-cell{display:flex;align-items:center;gap:8px}
-.owner-avatar{width:28px;height:28px;border-radius:50%;background:var(--gradient-vibe);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#0A0E17}
-.prob-bar{width:60px;height:6px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden;display:inline-block;vertical-align:middle;margin-right:8px}
-.prob-fill{height:100%;border-radius:3px;transition:width 0.5s}
+.table-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)}
+.table-title{font-family:var(--font-heading);font-size:15px;font-weight:600}
+.table-count{font-size:12px;color:var(--text-muted);background:var(--bg-secondary);padding:4px 10px;border-radius:20px}
+.table-search{display:flex;align-items:center;gap:8px}
+.table-search input{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 12px 7px 32px;color:var(--text-primary);font-size:12px;outline:none;width:200px;transition:border-color .2s;font-family:var(--font-body)}
+.table-search input:focus{border-color:var(--green)}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead{background:var(--bg-secondary)}
+th{padding:10px 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);text-align:left;white-space:nowrap;border-bottom:1px solid var(--border)}
+td{padding:12px 16px;font-size:13px;color:var(--text-secondary);border-bottom:1px solid var(--border);white-space:nowrap}
+tr:hover td{background:rgba(255,255,255,.02)}
+.stage-badge{display:inline-flex;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.stage-badge.Prospecting{background:rgba(123,97,255,.15);color:var(--violet)}
+.stage-badge.Qualified{background:rgba(0,180,216,.15);color:var(--cyan)}
+.stage-badge.Proposal{background:rgba(245,158,11,.15);color:var(--amber)}
+.stage-badge.Negotiation{background:rgba(0,229,160,.15);color:var(--green)}
+.stage-badge.Closed{background:rgba(16,185,129,.15);color:var(--emerald)}
+.prob-pill{display:inline-flex;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.prob-high{background:rgba(0,229,160,.12);color:var(--green)}
+.prob-med{background:rgba(245,158,11,.12);color:var(--amber)}
+.prob-low{background:rgba(239,68,68,.12);color:var(--red)}
+.value-cell{font-family:var(--font-heading);font-weight:600;color:var(--text-primary)}
 
 /* ── Forecast Tab ── */
-.forecast-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px}
-.forecast-card{background:var(--bg-card);border:1px solid var(--border-primary);border-radius:var(--radius);padding:24px;text-align:center}
-.forecast-label{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
-.forecast-value{font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:700}
-.forecast-sub{font-size:12px;color:var(--text-muted);margin-top:4px}
-
-/* ── Contact Cards ── */
-.contact-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px}
-.contact-card{background:var(--bg-card);border:1px solid var(--border-primary);border-radius:var(--radius);padding:20px;transition:all 0.3s}
-.contact-card:hover{border-color:rgba(0,229,160,0.3);transform:translateY(-2px)}
-.contact-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.contact-avatar{width:42px;height:42px;border-radius:50%;background:var(--gradient-vibe);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#0A0E17}
-.contact-name{font-weight:600;font-size:14px}
-.contact-role{font-size:12px;color:var(--text-muted)}
-.contact-meta{display:flex;gap:16px;font-size:12px;color:var(--text-secondary);margin-top:8px}
-.contact-tag{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:500;background:var(--primary-dim);color:var(--primary)}
+.forecast-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.forecast-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px}
+.forecast-card:hover{border-color:var(--border-hover);box-shadow:var(--shadow-card-hover)}
+.forecast-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.forecast-amount{font-family:var(--font-heading);font-size:32px;font-weight:700}
+.forecast-label{font-size:13px;color:var(--text-muted);margin-top:4px}
+.forecast-bar{height:8px;background:var(--bg-secondary);border-radius:4px;overflow:hidden;margin-top:16px}
+.forecast-bar-fill{height:100%;border-radius:4px;transition:width 1s ease}
 
 /* ── Responsive ── */
-@media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:768px){
+@media(max-width:1400px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:1024px){
+  .sidebar{display:none}.main{margin-left:0}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
-  .chart-grid{grid-template-columns:1fr}
-  .contact-grid{grid-template-columns:1fr}
-  .forecast-summary{grid-template-columns:1fr}
-  .tab-nav{overflow-x:auto;padding:12px 16px 0}
-  .dashboard-container{padding:16px}
-  .navbar{padding:0 16px}
+  .charts-grid,.forecast-grid{grid-template-columns:1fr}
+  .content{padding:16px}
 }
+@media(max-width:640px){.kpi-grid{grid-template-columns:1fr}.topbar{padding:12px 16px}}
 </style>
 </head>
 <body>
 
-<!-- Navbar -->
-<nav class="navbar">
-  <div class="navbar-brand">
-    <div class="navbar-logo">V</div>
-    <div>
-      <span class="navbar-title">Sales CRM</span>
-      <span class="navbar-subtitle">Dashboard</span>
-    </div>
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-icon">V</div>
+    <div class="sidebar-brand-text">VIBE CRM</div>
   </div>
-  <div class="navbar-actions">
-    <span class="navbar-status"></span>
-    <button class="navbar-btn">Export</button>
-    <button class="navbar-btn navbar-btn-primary">+ New Deal</button>
-  </div>
-</nav>
-
-<!-- Tab Navigation -->
-<div class="tab-nav">
-  <button class="tab-btn active" data-tab="overview">Overview</button>
-  <button class="tab-btn" data-tab="pipeline">Pipeline</button>
-  <button class="tab-btn" data-tab="contacts">Contacts</button>
-  <button class="tab-btn" data-tab="activity">Activity</button>
-  <button class="tab-btn" data-tab="forecast">Forecast</button>
-</div>
-
-<div class="dashboard-container">
-
-<!-- ====== OVERVIEW TAB ====== -->
-<div class="tab-panel active" id="panel-overview">
-
-  <!-- KPI Cards -->
-  <div class="kpi-grid" id="kpi-container">
-    <div class="kpi-card"><div class="kpi-label">Total Pipeline</div><div class="kpi-value" id="kpi-pipeline">--</div><div class="kpi-trend up" id="kpi-trend-pipeline"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Deals Active</div><div class="kpi-value" id="kpi-deals">--</div><div class="kpi-trend up" id="kpi-trend-deals"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Win Rate</div><div class="kpi-value" id="kpi-winrate">--</div><div class="kpi-trend up" id="kpi-trend-winrate"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Avg Deal Size</div><div class="kpi-value" id="kpi-avgdeal">--</div><div class="kpi-trend down" id="kpi-trend-avgdeal"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Sales Cycle</div><div class="kpi-value" id="kpi-cycle">--</div><div class="kpi-trend up" id="kpi-trend-cycle"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Quota Attainment</div><div class="kpi-value" id="kpi-quota">--</div><div class="kpi-trend up" id="kpi-trend-quota"></div></div>
-  </div>
-
-  <!-- Charts Row 1 -->
-  <div class="chart-grid">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div><div class="chart-title">Pipeline by Stage</div><div class="chart-subtitle">Value distribution across stages</div></div>
-        <div class="section-badge">Live</div>
+  <nav class="sidebar-nav">
+    <div class="nav-section">
+      <div class="nav-section-title">Main</div>
+      <div class="nav-item active" data-tab="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
       </div>
-      <div class="chart-wrapper"><canvas id="chart-pipeline"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <div class="chart-header">
-        <div><div class="chart-title">Revenue Trend</div><div class="chart-subtitle">Actual vs target (12 months)</div></div>
-        <div class="section-badge">Monthly</div>
+      <div class="nav-item" data-tab="pipeline">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Pipeline
       </div>
-      <div class="chart-wrapper"><canvas id="chart-revenue"></canvas></div>
-    </div>
-  </div>
-
-  <!-- Charts Row 2 -->
-  <div class="chart-grid">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div><div class="chart-title">Win/Loss by Source</div><div class="chart-subtitle">Conversion by lead origin</div></div>
+      <div class="nav-item" data-tab="contacts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Contacts
       </div>
-      <div class="chart-wrapper"><canvas id="chart-sources"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <div class="chart-header">
-        <div><div class="chart-title">Deal Velocity by Rep</div><div class="chart-subtitle">Top 8 reps by deals closed</div></div>
+      <div class="nav-item" data-tab="activity">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Activity
       </div>
-      <div class="chart-wrapper"><canvas id="chart-reps"></canvas></div>
-    </div>
-  </div>
-</div>
-
-<!-- ====== PIPELINE TAB ====== -->
-<div class="tab-panel" id="panel-pipeline">
-  <div class="section-header">
-    <h2 class="section-title">Active Pipeline</h2>
-    <div class="section-badge" id="pipeline-count">47 deals</div>
-  </div>
-  <div class="table-card">
-    <table class="data-table">
-      <thead>
-        <tr><th>Company</th><th>Stage</th><th>Value</th><th>Close Date</th><th>Owner</th><th>Probability</th></tr>
-      </thead>
-      <tbody id="pipeline-table-body"></tbody>
-    </table>
-  </div>
-</div>
-
-<!-- ====== CONTACTS TAB ====== -->
-<div class="tab-panel" id="panel-contacts">
-  <div class="section-header">
-    <h2 class="section-title">Key Contacts</h2>
-    <div class="section-badge">CRM Synced</div>
-  </div>
-  <div class="contact-grid" id="contacts-grid"></div>
-</div>
-
-<!-- ====== ACTIVITY TAB ====== -->
-<div class="tab-panel" id="panel-activity">
-  <div class="section-header">
-    <h2 class="section-title">Recent Activity</h2>
-    <div class="section-badge">Last 7 days</div>
-  </div>
-  <div class="table-card">
-    <table class="data-table">
-      <thead>
-        <tr><th>Rep</th><th>Action</th><th>Account</th><th>Date</th><th>Next Step</th></tr>
-      </thead>
-      <tbody id="activity-table-body"></tbody>
-    </table>
-  </div>
-</div>
-
-<!-- ====== FORECAST TAB ====== -->
-<div class="tab-panel" id="panel-forecast">
-  <div class="section-header">
-    <h2 class="section-title">Sales Forecast</h2>
-    <div class="section-badge">Q2 2026</div>
-  </div>
-  <div class="forecast-summary" id="forecast-summary"></div>
-  <div class="chart-grid">
-    <div class="chart-card chart-full">
-      <div class="chart-header">
-        <div><div class="chart-title">Weighted Forecast by Month</div><div class="chart-subtitle">Probability-weighted pipeline value</div></div>
+      <div class="nav-item" data-tab="forecast">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+        Forecast
       </div>
-      <div class="chart-wrapper"><canvas id="chart-forecast"></canvas></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-title">Settings</div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        Settings
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="sidebar-avatar">JD</div>
+      <div class="sidebar-user-info">
+        <div class="sidebar-user-name">Jane Doe</div>
+        <div class="sidebar-user-role">Sales Director</div>
+      </div>
     </div>
   </div>
-</div>
+</aside>
 
-</div><!-- /dashboard-container -->
+<!-- ── Main ── -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1 class="topbar-title">Sales CRM</h1>
+      <span class="topbar-badge">Live</span>
+    </div>
+    <div class="topbar-right">
+      <button class="topbar-btn">Export</button>
+      <button class="topbar-btn topbar-btn-primary">+ New Deal</button>
+    </div>
+  </div>
+
+  <div class="tabs-bar">
+    <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+    <button class="tab-btn" data-tab="contacts">Contacts</button>
+    <button class="tab-btn" data-tab="activity">Activity</button>
+    <button class="tab-btn" data-tab="forecast">Forecast</button>
+  </div>
+
+  <div class="content">
+
+    <!-- ═══ OVERVIEW TAB ═══ -->
+    <div class="tab-panel active" id="tab-overview">
+      <div class="kpi-grid" id="kpi-container"></div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Pipeline by Stage <span class="chart-title-badge">5 stages</span></div>
+          <div class="chart-canvas-container"><canvas id="pipelineChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Revenue Trend <span class="chart-title-badge">12 months</span></div>
+          <div class="chart-canvas-container"><canvas id="revenueChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Win/Loss by Source <span class="chart-title-badge">4 channels</span></div>
+          <div class="chart-canvas-container"><canvas id="sourceChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Deal Velocity by Rep <span class="chart-title-badge">Top 8</span></div>
+          <div class="chart-canvas-container"><canvas id="repChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PIPELINE TAB ═══ -->
+    <div class="tab-panel" id="tab-pipeline">
+      <div class="table-card">
+        <div class="table-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="table-title">Pipeline Deals</span>
+            <span class="table-count" id="pipeline-count">47 deals</span>
+          </div>
+          <div class="table-search" style="position:relative">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="pipeline-search" placeholder="Search deals..."/>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Company</th><th>Contact</th><th>Stage</th><th>Value</th><th>Close Date</th><th>Owner</th><th>Probability</th><th>Days in Stage</th></tr></thead>
+            <tbody id="pipeline-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CONTACTS TAB ═══ -->
+    <div class="tab-panel" id="tab-contacts">
+      <div class="table-card">
+        <div class="table-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="table-title">Contacts</span>
+            <span class="table-count" id="contacts-count">47 contacts</span>
+          </div>
+          <div class="table-search" style="position:relative">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="contacts-search" placeholder="Search contacts..."/>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Contact</th><th>Company</th><th>Deal Stage</th><th>Deal Value</th><th>Owner</th><th>Close Date</th></tr></thead>
+            <tbody id="contacts-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ACTIVITY TAB ═══ -->
+    <div class="tab-panel" id="tab-activity">
+      <div class="table-card">
+        <div class="table-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="table-title">Recent Activity</span>
+            <span class="table-count" id="activity-count">20 entries</span>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Rep</th><th>Action</th><th>Account</th><th>Date</th><th>Next Step</th></tr></thead>
+            <tbody id="activity-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ FORECAST TAB ═══ -->
+    <div class="tab-panel" id="tab-forecast">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px" id="forecast-kpis"></div>
+      <div class="forecast-grid" id="forecast-grid"></div>
+    </div>
+
+  </div>
+</div>
 
 <script>
-/* ── Tab Switching ── */
 (function(){
-  var tabs=document.querySelectorAll('.tab-btn');
-  var panels=document.querySelectorAll('.tab-panel');
-  tabs.forEach(function(t){
-    t.addEventListener('click',function(){
-      tabs.forEach(function(b){b.classList.remove('active')});
-      panels.forEach(function(p){p.classList.remove('active')});
-      t.classList.add('active');
-      document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+  // ── Chart.js global defaults for dark theme ──
+  Chart.defaults.color = '#94A3B8';
+  Chart.defaults.borderColor = '#1E293B';
+  Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+  Chart.defaults.plugins.legend.labels.usePointStyle = true;
+  Chart.defaults.plugins.legend.labels.pointStyleWidth = 10;
+  Chart.defaults.plugins.tooltip.backgroundColor = '#1A2236';
+  Chart.defaults.plugins.tooltip.borderColor = '#2D3A52';
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.titleFont = {family:"'Space Grotesk',system-ui,sans-serif",weight:'600'};
+  Chart.defaults.plugins.tooltip.bodyFont = {family:"'Inter',system-ui,sans-serif"};
+  Chart.defaults.plugins.tooltip.padding = 12;
+  Chart.defaults.plugins.tooltip.cornerRadius = 8;
+
+  // ── Data loader with try/catch ──
+  async function loadData(table, fallbackKey) {
+    var rows=[];
+    try{rows=await vibeLoadData(table,{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!rows.length) rows=(window.__VIBE_SAMPLE__||{})[fallbackKey]||[];
+    return rows;
+  }
+
+  // ── Helpers ──
+  function fmt$(v) {
+    if (v >= 1000000) return '$' + (v/1000000).toFixed(1) + 'M';
+    if (v >= 1000) return '$' + (v/1000).toFixed(0) + 'K';
+    return '$' + v;
+  }
+  function fmtDate(d) {
+    var p = d.split('-'); return p[1] + '/' + p[2] + '/' + p[0].slice(2);
+  }
+  function probClass(p) { return p >= 65 ? 'prob-high' : p >= 35 ? 'prob-med' : 'prob-low'; }
+
+  // ── Tab switching ──
+  var tabBtns = document.querySelectorAll('.tab-btn');
+  var navItems = document.querySelectorAll('.nav-item[data-tab]');
+  var panels = document.querySelectorAll('.tab-panel');
+
+  function switchTab(tabId) {
+    tabBtns.forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tabId); });
+    navItems.forEach(function(n) { n.classList.toggle('active', n.dataset.tab === tabId); });
+    panels.forEach(function(p) { p.classList.toggle('active', p.id === 'tab-' + tabId); });
+  }
+  tabBtns.forEach(function(b) { b.addEventListener('click', function() { switchTab(b.dataset.tab); }); });
+  navItems.forEach(function(n) { n.addEventListener('click', function() { switchTab(n.dataset.tab); }); });
+
+  // ── KPI Cards ──
+  async function renderKPIs() {
+    var kpis=[];
+    try{kpis=await vibeLoadData('kpis',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!kpis.length) kpis=(window.__VIBE_SAMPLE__||{}).kpis||[];
+    var container = document.getElementById('kpi-container');
+    container.innerHTML = '';
+    kpis.forEach(function(k) {
+      var dir = k.direction || 'up';
+      var arrow = dir === 'up'
+        ? '<svg viewBox="0 0 12 12"><path d="M6 2v8M6 2L2 6M6 2l4 4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>'
+        : '<svg viewBox="0 0 12 12"><path d="M6 10V2M6 10l-4-4M6 10l4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>';
+      var card = document.createElement('div');
+      card.className = 'kpi-card';
+      card.innerHTML = '<div class="kpi-label">' + (k.label || '--') + '</div>'
+        + '<div class="kpi-value">' + (k.value || '--') + '</div>'
+        + '<span class="kpi-trend ' + dir + '">' + arrow + ' ' + (k.trend || '') + '</span>';
+      container.appendChild(card);
     });
-  });
-})();
+  }
 
-/* ── KPI Rendering ── */
-(function(){
-  var kpis=(window.__VIBE_SAMPLE__||{}).kpis||[];
-  kpis.forEach(function(k){
-    var el=document.getElementById('kpi-'+k.id);
-    if(el) el.textContent=k.value;
-    var tr=document.getElementById('kpi-trend-'+k.id);
-    if(tr){
-      tr.textContent=(k.direction==='up'?'\u2191':'\u2193')+' '+k.trend;
-      tr.className='kpi-trend '+k.direction;
-    }
-  });
-})();
+  // ── Chart 1: Pipeline by Stage (Horizontal Bar) ──
+  async function renderPipelineChart() {
+    var stages=[];
+    try{stages=await vibeLoadData('pipeline_stages',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!stages.length) stages=(window.__VIBE_SAMPLE__||{}).pipeline_stages||[];
+    var ctx = document.getElementById('pipelineChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: stages.map(function(s){return s.stage}),
+        datasets: [{
+          label: 'Pipeline Value',
+          data: stages.map(function(s){return s.value}),
+          backgroundColor: stages.map(function(s){return s.color}),
+          borderRadius: 6,
+          borderSkipped: false,
+          barThickness: 28
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {display:false},
+          tooltip: {
+            callbacks: {
+              label: function(c){return fmt$(c.raw)}
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: {color:'#1E293B'},
+            ticks: {callback:function(v){return fmt$(v)},color:'#64748B',font:{size:11}}
+          },
+          y: {
+            grid: {display:false},
+            ticks: {color:'#94A3B8',font:{size:12,weight:'500'}}
+          }
+        }
+      }
+    });
+  }
 
-/* ── Chart 1: Pipeline by Stage (horizontal bar) ── */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('deals',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).stages||[];
-  var labels=rows.map(function(r){return r.name});
-  var values=rows.map(function(r){return r.value});
-  var colors=['#7B61FF','#00B4D8','#00E5A0','#F59E0B','#10B981'];
-  new Chart(document.getElementById('chart-pipeline'),{
-    type:'bar',
-    data:{labels:labels,datasets:[{label:'Pipeline Value',data:values,backgroundColor:colors,borderRadius:6,borderSkipped:false}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return '$'+(c.raw/1000).toFixed(0)+'K'}}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#64748B',callback:function(v){return '$'+(v/1000)+'K'}}},y:{grid:{display:false},ticks:{color:'#94A3B8',font:{family:'Space Grotesk'}}}}}
-  });
-})();
+  // ── Chart 2: Revenue Trend (Line) ──
+  async function renderRevenueChart() {
+    var data=[];
+    try{data=await vibeLoadData('revenue',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!data.length) data=(window.__VIBE_SAMPLE__||{}).revenue||[];
+    var ctx = document.getElementById('revenueChart').getContext('2d');
+    var gradient = ctx.createLinearGradient(0,0,0,280);
+    gradient.addColorStop(0,'rgba(0,229,160,0.25)');
+    gradient.addColorStop(1,'rgba(0,229,160,0)');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map(function(d){return d.month}),
+        datasets: [
+          {
+            label: 'Actual',
+            data: data.map(function(d){return d.actual}),
+            borderColor: '#00E5A0',
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: '#00E5A0',
+            pointBorderColor: '#0A0E17',
+            pointBorderWidth: 2,
+            borderWidth: 2.5
+          },
+          {
+            label: 'Target',
+            data: data.map(function(d){return d.target}),
+            borderColor: '#64748B',
+            borderDash: [6,4],
+            fill: false,
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: '#64748B',
+            pointBorderColor: '#0A0E17',
+            pointBorderWidth: 2,
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {mode:'index',intersect:false},
+        plugins: {
+          legend: {position:'top',align:'end',labels:{boxWidth:12,padding:16}},
+          tooltip: {
+            callbacks: {
+              label: function(c){return c.dataset.label+': '+fmt$(c.raw)}
+            }
+          }
+        },
+        scales: {
+          x: {grid:{display:false},ticks:{color:'#64748B',font:{size:11},maxRotation:45}},
+          y: {grid:{color:'#1E293B'},ticks:{callback:function(v){return fmt$(v)},color:'#64748B',font:{size:11}}}
+        }
+      }
+    });
+  }
 
-/* ── Chart 2: Revenue Trend (line) ── */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('revenue',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).revenue||[];
-  var labels=rows.map(function(r){return r.month});
-  var actual=rows.map(function(r){return r.actual});
-  var target=rows.map(function(r){return r.target});
-  new Chart(document.getElementById('chart-revenue'),{
-    type:'line',
-    data:{labels:labels,datasets:[
-      {label:'Actual',data:actual,borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.1)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#00E5A0',borderWidth:2},
-      {label:'Target',data:target,borderColor:'#64748B',borderDash:[6,4],tension:0.4,pointRadius:0,borderWidth:2,fill:false}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94A3B8',usePointStyle:true,padding:20}},tooltip:{callbacks:{label:function(c){return c.dataset.label+': $'+(c.raw/1000).toFixed(0)+'K'}}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#64748B'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#64748B',callback:function(v){return '$'+(v/1000)+'K'}}}}}
-  });
-})();
+  // ── Chart 3: Win/Loss by Source (Doughnut) ──
+  async function renderSourceChart() {
+    var sources=[];
+    try{sources=await vibeLoadData('sources',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!sources.length) sources=(window.__VIBE_SAMPLE__||{}).sources||[];
+    var colors = ['#00E5A0','#00B4D8','#7B61FF','#F59E0B'];
+    var ctx = document.getElementById('sourceChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: sources.map(function(s){return s.source}),
+        datasets: [{
+          data: sources.map(function(s){return s.won+s.lost}),
+          backgroundColor: colors,
+          borderColor: '#151C2C',
+          borderWidth: 3,
+          hoverBorderColor: '#2D3A52',
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: {position:'right',labels:{padding:16,font:{size:12}}},
+          tooltip: {
+            callbacks: {
+              label: function(c){
+                var s=sources[c.dataIndex];
+                var winPct=Math.round((s.won/(s.won+s.lost))*100);
+                return s.source+': '+s.won+'W / '+s.lost+'L ('+winPct+'% win)';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
 
-/* ── Chart 3: Win/Loss by Source (doughnut) ── */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('sources',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).sources||[];
-  var labels=rows.map(function(r){return r.name});
-  var won=rows.map(function(r){return r.won});
-  var lost=rows.map(function(r){return r.lost});
-  new Chart(document.getElementById('chart-sources'),{
-    type:'doughnut',
-    data:{labels:labels,datasets:[
-      {label:'Won',data:won,backgroundColor:['#00E5A0','#00B4D8','#7B61FF','#F59E0B'],borderWidth:0,spacing:2},
-      {label:'Lost',data:lost,backgroundColor:['rgba(0,229,160,0.3)','rgba(0,180,216,0.3)','rgba(123,97,255,0.3)','rgba(245,158,11,0.3)'],borderWidth:0,spacing:2}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'right',labels:{color:'#94A3B8',usePointStyle:true,padding:12,font:{size:12}}}}}
-  });
-})();
+  // ── Chart 4: Deal Velocity by Rep (Bar) ──
+  async function renderRepChart() {
+    var reps=[];
+    try{reps=await vibeLoadData('reps',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!reps.length) reps=(window.__VIBE_SAMPLE__||{}).reps||[];
+    var barColors = reps.map(function(r){
+      return r.attainment >= 80 ? '#00E5A0' : r.attainment >= 60 ? '#00B4D8' : '#F59E0B';
+    });
+    var ctx = document.getElementById('repChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: reps.map(function(r){return r.name}),
+        datasets: [{
+          label: 'Deals Closed',
+          data: reps.map(function(r){return r.deals_closed}),
+          backgroundColor: barColors,
+          borderRadius: 6,
+          borderSkipped: false,
+          barThickness: 24
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {display:false},
+          tooltip: {
+            callbacks: {
+              afterLabel: function(c){
+                var r=reps[c.dataIndex];
+                return 'Attainment: '+r.attainment+'%\nRevenue: '+fmt$(r.revenue);
+              }
+            }
+          }
+        },
+        scales: {
+          x: {grid:{display:false},ticks:{color:'#94A3B8',font:{size:11},maxRotation:45}},
+          y: {grid:{color:'#1E293B'},ticks:{color:'#64748B',font:{size:11},stepSize:2},beginAtZero:true}
+        }
+      }
+    });
+  }
 
-/* ── Chart 4: Deal Velocity by Rep (bar) ── */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('reps',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).reps||[];
-  var labels=rows.map(function(r){return r.name});
-  var closed=rows.map(function(r){return r.closed});
-  new Chart(document.getElementById('chart-reps'),{
-    type:'bar',
-    data:{labels:labels,datasets:[{label:'Deals Closed',data:closed,backgroundColor:function(ctx){var g=ctx.chart.ctx.createLinearGradient(0,0,0,280);g.addColorStop(0,'#00E5A0');g.addColorStop(1,'#00B4D8');return g},borderRadius:6,borderSkipped:false}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+' deals closed'}}}},scales:{x:{grid:{display:false},ticks:{color:'#94A3B8',maxRotation:45}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#64748B',stepSize:2}}}}
-  });
-})();
+  // ── Pipeline Table ──
+  async function renderPipelineTable(filter) {
+    var deals=[];
+    try{deals=await vibeLoadData('deals',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!deals.length) deals=(window.__VIBE_SAMPLE__||{}).deals||[];
+    var tbody = document.getElementById('pipeline-tbody');
+    tbody.innerHTML = '';
+    var f = (filter || '').toLowerCase();
+    var filtered = deals.filter(function(d) {
+      if (!f) return true;
+      return (d.company + d.contact + d.stage + d.owner).toLowerCase().indexOf(f) >= 0;
+    });
+    document.getElementById('pipeline-count').textContent = filtered.length + ' deals';
+    filtered.forEach(function(d) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="font-weight:600;color:var(--text-primary)">' + d.company + '</td>'
+        + '<td>' + d.contact + '</td>'
+        + '<td><span class="stage-badge ' + d.stage + '">' + d.stage + '</span></td>'
+        + '<td class="value-cell">' + fmt$(d.value) + '</td>'
+        + '<td>' + fmtDate(d.close_date) + '</td>'
+        + '<td>' + d.owner + '</td>'
+        + '<td><span class="prob-pill ' + probClass(d.probability) + '">' + d.probability + '%</span></td>'
+        + '<td>' + d.days_in_stage + 'd</td>';
+      tbody.appendChild(tr);
+    });
+  }
 
-/* ── Pipeline Table ── */
-(function(){
-  var deals=(window.__VIBE_SAMPLE__||{}).deals||[];
-  var tbody=document.getElementById('pipeline-table-body');
-  if(!tbody)return;
-  var stageMap={Prospecting:'prospecting',Qualified:'qualified',Proposal:'proposal',Negotiation:'negotiation','Closed Won':'closed'};
-  var sorted=deals.slice().sort(function(a,b){return b.value-a.value});
-  sorted.forEach(function(d){
-    var cls=stageMap[d.stage]||'proposal';
-    var initials=d.owner.split(' ').map(function(n){return n[0]}).join('');
-    var probColor=d.probability>=70?'#10B981':d.probability>=40?'#F59E0B':'#EF4444';
-    var row='<tr>'+
-      '<td style="font-weight:500;color:var(--text-primary)">'+d.company+'</td>'+
-      '<td><span class="stage-badge stage-'+cls+'">'+d.stage+'</span></td>'+
-      '<td style="font-family:Space Grotesk;font-weight:600">$'+(d.value/1000).toFixed(0)+'K</td>'+
-      '<td>'+d.closeDate+'</td>'+
-      '<td><div class="owner-cell"><span class="owner-avatar">'+initials+'</span>'+d.owner+'</div></td>'+
-      '<td><span class="prob-bar"><span class="prob-fill" style="width:'+d.probability+'%;background:'+probColor+'"></span></span>'+d.probability+'%</td>'+
-      '</tr>';
-    tbody.insertAdjacentHTML('beforeend',row);
-  });
-})();
+  // ── Contacts Table ──
+  async function renderContactsTable(filter) {
+    var deals=[];
+    try{deals=await vibeLoadData('deals',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!deals.length) deals=(window.__VIBE_SAMPLE__||{}).deals||[];
+    var tbody = document.getElementById('contacts-tbody');
+    tbody.innerHTML = '';
+    var f = (filter || '').toLowerCase();
+    var filtered = deals.filter(function(d) {
+      if (!f) return true;
+      return (d.contact + d.company + d.owner).toLowerCase().indexOf(f) >= 0;
+    });
+    document.getElementById('contacts-count').textContent = filtered.length + ' contacts';
+    filtered.forEach(function(d) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="font-weight:600;color:var(--text-primary)">' + d.contact + '</td>'
+        + '<td>' + d.company + '</td>'
+        + '<td><span class="stage-badge ' + d.stage + '">' + d.stage + '</span></td>'
+        + '<td class="value-cell">' + fmt$(d.value) + '</td>'
+        + '<td>' + d.owner + '</td>'
+        + '<td>' + fmtDate(d.close_date) + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
 
-/* ── Activity Table ── */
-(function(){
-  var acts=(window.__VIBE_SAMPLE__||{}).activity||[];
-  var tbody=document.getElementById('activity-table-body');
-  if(!tbody)return;
-  acts.forEach(function(a){
-    var row='<tr>'+
-      '<td style="font-weight:500;color:var(--text-primary)">'+a.rep+'</td>'+
-      '<td>'+a.action+'</td>'+
-      '<td>'+a.account+'</td>'+
-      '<td>'+a.date+'</td>'+
-      '<td style="color:var(--primary)">'+a.nextStep+'</td>'+
-      '</tr>';
-    tbody.insertAdjacentHTML('beforeend',row);
-  });
-})();
+  // ── Activity Table ──
+  async function renderActivityTable() {
+    var activity=[];
+    try{activity=await vibeLoadData('activity',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!activity.length) activity=(window.__VIBE_SAMPLE__||{}).activity||[];
+    var tbody = document.getElementById('activity-tbody');
+    tbody.innerHTML = '';
+    document.getElementById('activity-count').textContent = activity.length + ' entries';
+    activity.forEach(function(a) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="font-weight:600;color:var(--text-primary)">' + a.rep + '</td>'
+        + '<td>' + a.action + '</td>'
+        + '<td>' + a.account + '</td>'
+        + '<td>' + fmtDate(a.date) + '</td>'
+        + '<td style="color:var(--cyan)">' + a.next_step + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
 
-/* ── Contacts Grid ── */
-(function(){
-  var deals=(window.__VIBE_SAMPLE__||{}).deals||[];
-  var grid=document.getElementById('contacts-grid');
-  if(!grid)return;
-  var contacts={};
-  deals.forEach(function(d){
-    if(!contacts[d.company]){
-      contacts[d.company]={company:d.company,stage:d.stage,value:d.value,owner:d.owner,probability:d.probability};
-    }
-  });
-  var list=Object.values(contacts).sort(function(a,b){return b.value-a.value}).slice(0,12);
-  list.forEach(function(c){
-    var initials=c.company.split(' ').slice(0,2).map(function(w){return w[0]}).join('');
-    var card='<div class="contact-card">'+
-      '<div class="contact-header">'+
-        '<div class="contact-avatar">'+initials+'</div>'+
-        '<div><div class="contact-name">'+c.company+'</div><div class="contact-role">Owner: '+c.owner+'</div></div>'+
-      '</div>'+
-      '<div class="contact-meta"><span>$'+(c.value/1000).toFixed(0)+'K</span><span>'+c.stage+'</span><span class="contact-tag">'+c.probability+'% prob</span></div>'+
-      '</div>';
-    grid.insertAdjacentHTML('beforeend',card);
-  });
-})();
+  // ── Forecast Tab ──
+  async function renderForecast() {
+    var deals=[];
+    try{deals=await vibeLoadData('deals',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!deals.length) deals=(window.__VIBE_SAMPLE__||{}).deals||[];
+    var stages=[];
+    try{stages=await vibeLoadData('pipeline_stages',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!stages.length) stages=(window.__VIBE_SAMPLE__||{}).pipeline_stages||[];
+    var reps=[];
+    try{reps=await vibeLoadData('reps',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
+    if(!reps.length) reps=(window.__VIBE_SAMPLE__||{}).reps||[];
 
-/* ── Forecast Tab ── */
-(function(){
-  var deals=(window.__VIBE_SAMPLE__||{}).deals||[];
-  var summary=document.getElementById('forecast-summary');
-  if(!summary)return;
+    // Forecast KPIs
+    var totalPipeline = deals.reduce(function(a, d) { return a + d.value; }, 0);
+    var weightedPipeline = deals.reduce(function(a, d) { return a + d.value * (d.probability / 100); }, 0);
+    var closedValue = deals.filter(function(d) { return d.stage === 'Closed'; }).reduce(function(a, d) { return a + d.value; }, 0);
+    var quota = 8000000;
+    var attainment = Math.round((closedValue / quota) * 100);
 
-  var totalPipeline=0,weightedPipeline=0,closedWon=0;
-  deals.forEach(function(d){
-    totalPipeline+=d.value;
-    weightedPipeline+=d.value*(d.probability/100);
-    if(d.stage==='Closed Won')closedWon+=d.value;
+    var fKpis = document.getElementById('forecast-kpis');
+    fKpis.innerHTML = '';
+    var forecastCards = [
+      {label:'Total Pipeline',value:fmt$(totalPipeline),color:'var(--green)'},
+      {label:'Weighted Forecast',value:fmt$(weightedPipeline),color:'var(--cyan)'},
+      {label:'Closed Won',value:fmt$(closedValue),color:'var(--emerald)'},
+      {label:'Quota Attainment',value:attainment+'%',color:'var(--violet)'}
+    ];
+    forecastCards.forEach(function(c) {
+      var card = document.createElement('div');
+      card.className = 'kpi-card';
+      card.innerHTML = '<div class="kpi-label">' + c.label + '</div><div class="kpi-value" style="color:' + c.color + '">' + c.value + '</div>';
+      card.style.borderLeft = '3px solid ' + c.color;
+      fKpis.appendChild(card);
+    });
+
+    // Forecast by stage
+    var grid = document.getElementById('forecast-grid');
+    grid.innerHTML = '';
+    stages.forEach(function(s) {
+      var pct = Math.round((s.value / totalPipeline) * 100);
+      var card = document.createElement('div');
+      card.className = 'forecast-card';
+      card.innerHTML = '<div class="forecast-header"><div><div class="forecast-amount" style="color:' + s.color + '">' + fmt$(s.value) + '</div>'
+        + '<div class="forecast-label">' + s.stage + ' — ' + s.count + ' deals</div></div>'
+        + '<span style="font-size:24px;font-weight:700;color:var(--text-muted)">' + pct + '%</span></div>'
+        + '<div class="forecast-bar"><div class="forecast-bar-fill" style="width:' + pct + '%;background:' + s.color + '"></div></div>';
+      grid.appendChild(card);
+    });
+
+    // Rep forecast card
+    var repCard = document.createElement('div');
+    repCard.className = 'forecast-card';
+    repCard.style.gridColumn = '1/-1';
+    var repHTML = '<div class="chart-title" style="margin-bottom:16px">Rep Forecast <span class="chart-title-badge">' + reps.length + ' reps</span></div>';
+    repHTML += '<div style="display:flex;flex-direction:column;gap:10px">';
+    reps.forEach(function(r) {
+      var barColor = r.attainment >= 80 ? 'var(--green)' : r.attainment >= 60 ? 'var(--cyan)' : 'var(--amber)';
+      repHTML += '<div style="display:flex;align-items:center;gap:12px">'
+        + '<span style="width:120px;font-size:12px;font-weight:500;color:var(--text-secondary);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + r.name + '</span>'
+        + '<div style="flex:1;height:28px;background:var(--bg-secondary);border-radius:6px;overflow:hidden;position:relative">'
+        + '<div style="height:100%;width:' + r.attainment + '%;background:' + barColor + ';border-radius:6px;display:flex;align-items:center;padding:0 10px">'
+        + '<span style="font-size:11px;font-weight:600;color:#0A0E17;white-space:nowrap">' + fmt$(r.revenue) + '</span></div></div>'
+        + '<span style="width:60px;font-size:12px;font-weight:600;color:var(--text-primary);text-align:right">' + r.attainment + '%</span></div>';
+    });
+    repHTML += '</div>';
+    repCard.innerHTML = repHTML;
+    grid.appendChild(repCard);
+  }
+
+  // ── Search handlers ──
+  var pipelineSearchEl = document.getElementById('pipeline-search');
+  var contactsSearchEl = document.getElementById('contacts-search');
+  var pipelineTimer, contactsTimer;
+  pipelineSearchEl.addEventListener('input', function() {
+    clearTimeout(pipelineTimer);
+    pipelineTimer = setTimeout(function() { renderPipelineTable(pipelineSearchEl.value); }, 200);
+  });
+  contactsSearchEl.addEventListener('input', function() {
+    clearTimeout(contactsTimer);
+    contactsTimer = setTimeout(function() { renderContactsTable(contactsSearchEl.value); }, 200);
   });
 
-  var cards=[
-    {label:'Total Pipeline',value:'$'+(totalPipeline/1e6).toFixed(1)+'M',sub:'All active deals',color:'var(--primary)'},
-    {label:'Weighted Forecast',value:'$'+(weightedPipeline/1e6).toFixed(1)+'M',sub:'Probability-adjusted',color:'var(--accent)'},
-    {label:'Closed Won (QTD)',value:'$'+(closedWon/1e6).toFixed(1)+'M',sub:'This quarter',color:'var(--success)'}
-  ];
-  cards.forEach(function(c){
-    summary.insertAdjacentHTML('beforeend',
-      '<div class="forecast-card"><div class="forecast-label">'+c.label+'</div>'+
-      '<div class="forecast-value" style="color:'+c.color+'">'+c.value+'</div>'+
-      '<div class="forecast-sub">'+c.sub+'</div></div>'
-    );
-  });
-
-  /* Forecast chart reuses revenue data with weighted overlay */
-  var revenue=(window.__VIBE_SAMPLE__||{}).revenue||[];
-  var stages=(window.__VIBE_SAMPLE__||{}).stages||[];
-  var stageLabels=stages.map(function(s){return s.name});
-  var stageWeighted=[];
-  deals.forEach(function(d){
-    var idx=stageLabels.indexOf(d.stage);
-    if(idx===-1)return;
-    if(!stageWeighted[idx])stageWeighted[idx]=0;
-    stageWeighted[idx]+=d.value*(d.probability/100);
-  });
-
-  new Chart(document.getElementById('chart-forecast'),{
-    type:'bar',
-    data:{labels:stageLabels,datasets:[
-      {label:'Total Value',data:stages.map(function(s){return s.value}),backgroundColor:'rgba(0,229,160,0.2)',borderColor:'#00E5A0',borderWidth:1,borderRadius:6},
-      {label:'Weighted Value',data:stageWeighted,backgroundColor:'rgba(0,180,216,0.6)',borderColor:'#00B4D8',borderWidth:1,borderRadius:6}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94A3B8',usePointStyle:true,padding:20}},tooltip:{callbacks:{label:function(c){return c.dataset.label+': $'+(c.raw/1000).toFixed(0)+'K'}}}},scales:{x:{grid:{display:false},ticks:{color:'#94A3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#64748B',callback:function(v){return '$'+(v/1000)+'K'}}}}}
-  });
+  // ── Init ──
+  renderKPIs();
+  renderPipelineChart();
+  renderRevenueChart();
+  renderSourceChart();
+  renderRepChart();
+  renderPipelineTable();
+  renderContactsTable();
+  renderActivityTable();
+  renderForecast();
 })();
 </script>
 </body>
-</html>$$ WHERE skill_name = 'crm-dashboard';
+</html>$$
+WHERE skill_name = 'crm-dashboard';
