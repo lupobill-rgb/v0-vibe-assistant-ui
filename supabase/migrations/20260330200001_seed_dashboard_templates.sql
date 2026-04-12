@@ -1,17 +1,5 @@
 -- Migration: Seed 4 GTM dashboard templates into published_assets.
--- Adds name + organization_id columns if missing, then inserts seed rows.
--- Idempotent: columns use IF NOT EXISTS, inserts use NOT EXISTS guard.
-
--- ============================================================================
--- Ensure required columns exist
--- ============================================================================
-
-ALTER TABLE published_assets
-  ADD COLUMN IF NOT EXISTS name text,
-  ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id);
-
-CREATE INDEX IF NOT EXISTS idx_published_assets_org
-  ON published_assets(organization_id) WHERE organization_id IS NOT NULL;
+-- Idempotent: inserts use NOT EXISTS guard.
 
 -- ============================================================================
 -- Drop overly-restrictive unique constraint (1 asset per team+type) to allow
@@ -41,10 +29,10 @@ BEGIN
   -- Row 1: Phase 0 GTM Scorecard
   IF NOT EXISTS (
     SELECT 1 FROM published_assets
-    WHERE name = 'Phase 0 GTM Scorecard' AND organization_id = v_org_id
+    WHERE name = 'Phase 0 GTM Scorecard' AND org_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, org_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
       v_team_id,
@@ -62,10 +50,10 @@ BEGIN
   -- Row 2: Prospect Pipeline Tracker
   IF NOT EXISTS (
     SELECT 1 FROM published_assets
-    WHERE name = 'Prospect Pipeline Tracker' AND organization_id = v_org_id
+    WHERE name = 'Prospect Pipeline Tracker' AND org_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, org_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
       v_team_id,
@@ -83,10 +71,10 @@ BEGIN
   -- Row 3: Competitive Positioning Radar
   IF NOT EXISTS (
     SELECT 1 FROM published_assets
-    WHERE name = 'Competitive Positioning Radar' AND organization_id = v_org_id
+    WHERE name = 'Competitive Positioning Radar' AND org_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, org_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
       v_team_id,
@@ -104,10 +92,10 @@ BEGIN
   -- Row 4: Platform Health Monitor
   IF NOT EXISTS (
     SELECT 1 FROM published_assets
-    WHERE name = 'Platform Health Monitor' AND organization_id = v_org_id
+    WHERE name = 'Platform Health Monitor' AND org_id = v_org_id
   ) THEN
     INSERT INTO published_assets (
-      team_id, organization_id, name, asset_type, category, is_seed, is_featured,
+      team_id, org_id, name, asset_type, category, is_seed, is_featured,
       source_prompt, preview_html
     ) VALUES (
       v_team_id,
