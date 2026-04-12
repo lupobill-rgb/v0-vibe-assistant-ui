@@ -29,6 +29,14 @@ DECLARE
   v_org_id uuid := '3de82e57-4813-4ad6-83bd-2adb461604f0';
   v_team_id uuid := '2a68d841-a6f0-4abd-8cfa-947767378684'; -- Marketing team
 BEGIN
+  -- Ensure parent rows exist (defensive against silent foundation seed failures)
+  INSERT INTO organizations (id, name, slug)
+  VALUES (v_org_id, 'UbiGrowth', 'ubigrowth')
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO teams (id, org_id, name, slug)
+  VALUES (v_team_id, v_org_id, 'Marketing', 'marketing')
+  ON CONFLICT (id) DO NOTHING;
 
   -- Row 1: Phase 0 GTM Scorecard
   IF NOT EXISTS (
