@@ -8,15 +8,17 @@ import fs from 'fs';
 import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { resolveKernelContext, resolveDepartment, resolveGoldenTemplateMatch } from './kernel/context-injector';
-import { runDebugAgent, runSelfHealingScan } from './lib/debug-agent';
+import { resolveDepartment, resolveGoldenTemplateMatch } from './kernel/context-injector';
+import { runDebugAgent } from './lib/debug-agent';
 import { promisify } from 'util';
 import { resolveMode } from './edge-function';
-import { isBudgetRelated } from './lib/ingest-budget-csv';
-import { ingestTeamAsset, detectAssetType, hasPublishIntent } from './lib/ingest-team-asset';
 import teamsDomainRouter from './routes/teams-domain.route';
 import { extractTenantFromJwt } from './middleware/tenant';
 import { startExecutionRunner } from './kernel/execution-runner';
+import { handleDashboardJob } from './handlers/dashboard.handler';
+import { handlePlannerPipeline } from './handlers/planner.handler';
+import { handleDeterministicTemplate, handleAppFastPath } from './handlers/fast-paths.handler';
+import { enrichPrompt } from './handlers/enrich-prompt.handler';
 
 const execAsync = promisify(exec);
 import { NestFactory } from '@nestjs/core';
@@ -36,13 +38,6 @@ import {
   INITIAL_BUILD_BUDGETS,
   DASHBOARD_BUILD_BUDGETS,
   MAX_INITIAL_PAGES,
-  StarterSitePlan,
-  buildStarterSitePlan,
-  resolveColorScheme,
-  buildColorBlock,
-  mapWithConcurrency,
-  validateStarterSiteQuality,
-  writePagePlanArtifact,
 } from './starter-site';
 
 // Load .env from the repository root
@@ -732,128 +727,15 @@ async function bootstrap() {
         console.warn(`[GOLDEN] resolveGoldenTemplateMatch failed (non-blocking): ${gtmErr.message}`);
       }
 
-      // Kernel context injection: prepend team/role/brand identity to prompt
-      let enrichedPrompt = prompt;
-      let injectSupabaseHelpers = false;
-      if (user_id && org) {
-        try {
-          const kernel = await resolveKernelContext(user_id, org.id, project.team_id, prompt, mode);
-          if (kernel.context) {
-            enrichedPrompt = `${kernel.context}\n\nUSER REQUEST:\n${prompt}`;
-            injectSupabaseHelpers = kernel.injectSupabaseHelpers;
-          }
-        } catch (kernelErr: any) {
-          console.warn(`[KERNEL] resolveKernelContext failed (non-blocking): ${kernelErr.message}`);
-        }
-      }
-
-      // If a golden template matched (no skeleton), inject blueprint into prompt for LLM generation
-      if (goldenMatch.matched) {
-        enrichedPrompt += `\n\n--- GOLDEN TEMPLATE: ${goldenMatch.skillName} ---\nFollow this template exactly as the primary build blueprint. Do not ask clarifying questions — build directly from these instructions:\n\n${goldenMatch.content}\n--- END GOLDEN TEMPLATE ---`;
-        console.log(`[GOLDEN] Injected template "${goldenMatch.skillName}" — skipping clarifying questions`);
-      }
-
-      // Conversation context injection: if continuing a conversation, inject prior messages
-      let resolvedConversationId = conversation_id;
-      if (resolvedConversationId) {
-        try {
-          const conversationContext = await storage.getConversationContext(resolvedConversationId, 10);
-          if (conversationContext) {
-            enrichedPrompt = `CONVERSATION HISTORY (prior messages in this session):\n${conversationContext}\n\nNEW REQUEST:\n${enrichedPrompt}`;
-          }
-        } catch (ctxErr: any) {
-          console.warn(`[CONVERSATION] Failed to load context (non-blocking): ${ctxErr.message}`);
-        }
-      }
-
-      // Upload context injection: if user attached a file, inject table_name + schema + sample rows
-      if (upload_id) {
-        const { data: uploadRow, error: uploadErr } = await getPlatformSupabaseClient()
-          .from('user_uploads')
-          .select('original_filename, table_name, columns, column_schema, sample_data, row_count, aggregated_stats')
-          .eq('id', upload_id)
-          .single();
-
-        if (uploadErr) {
-          console.warn(`[UPLOAD] Failed to fetch upload ${upload_id}: ${uploadErr.message}`);
-        } else if (uploadRow) {
-          // Link the upload to this project if it wasn't set at upload time
-          if (project_id) {
-            await getPlatformSupabaseClient()
-              .from('user_uploads')
-              .update({ project_id })
-              .eq('id', upload_id);
-          }
-          const schema = uploadRow.column_schema as Record<string, string>;
-          const schemaStr = Object.entries(schema).map(([k, v]) => `${k} (${v})`).join(', ');
-          const stats = uploadRow.aggregated_stats as Record<string, unknown> | null;
-
-          let dataContext: string;
-          if (stats && Object.keys(stats).length > 0) {
-            // Use real aggregated stats — correct totals, distributions, min/max/mean
-            const statsJson = JSON.stringify(stats, null, 2);
-            const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
-            const sampleJson = JSON.stringify(sampleRows.slice(0, 5), null, 2);
-            dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}.
-
-AGGREGATED STATS (computed from ALL ${uploadRow.row_count} rows — use these for totals, charts, and summaries):
-${statsJson}
-
-SAMPLE ROWS (first 5, for format reference only — do NOT use these for totals or counts):
-${sampleJson}
-
-Build the dashboard using the AGGREGATED STATS above for all numbers, totals, charts, and breakdowns. Embed the aggregated data directly in the HTML as JavaScript variables. Do not use placeholder or mock data. Do not compute totals from sample rows.\n\n`;
-          } else {
-            // Fallback for uploads created before aggregated_stats existed
-            const sampleRows = uploadRow.sample_data as Record<string, unknown>[];
-            const sampleJson = JSON.stringify(sampleRows, null, 2);
-            dataContext = `The user has uploaded data. Table: ${uploadRow.table_name}. Columns: ${schemaStr}. Total rows: ${uploadRow.row_count}. Here are sample rows (first ${sampleRows.length} rows):\n${sampleJson}\nBuild the dashboard using this real data. Embed the data directly in the HTML as a JavaScript variable. Do not use placeholder or mock data.\n\n`;
-          }
-          enrichedPrompt = dataContext + enrichedPrompt;
-          console.log(`[UPLOAD] Injected context — table=${uploadRow.table_name}, ${uploadRow.row_count} rows, schema=${schemaStr}, hasAggregates=${!!stats}`);
-        }
-      }
-
-      // Prior-job context: inject existing pages so the LLM patches instead of rebuilding.
-      // Single injection point — the duplicate getPriorDiffForProject() call was removed
-      // to prevent the known double-injection bug (prior context appearing twice in prompt).
-      const promptLenBefore = enrichedPrompt.length;
-      const { data: priorJob } = await getPlatformSupabaseClient()
-        .from('jobs')
-        .select('last_diff')
-        .eq('project_id', project_id)
-        .eq('execution_state', 'completed')
-        .not('last_diff', 'is', null)
-        .order('initiated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (priorJob?.last_diff) {
-        try {
-          const pages = JSON.parse(priorJob.last_diff) as Array<{ name?: string; html?: string }>;
-          if (Array.isArray(pages) && pages.length > 0) {
-            const existingPages = pages
-              .filter((p) => {
-                if (typeof p?.name !== 'string' || typeof p?.html !== 'string') return false;
-                const h = p.html.trimStart();
-                // Skip truncated/broken pages (< 2KB is likely incomplete for a dashboard)
-                if (p.html.length < 2000) return false;
-                return h.startsWith('<!DOCTYPE') || h.startsWith('<html');
-              })
-              .map((p) => `PAGE: ${p.name}\n${p.html}`)
-              .join('\n---\n');
-            // Deduplication guard: only inject if not already present in prompt
-            if (existingPages && !enrichedPrompt.includes('EXISTING PAGES (patch these')) {
-              enrichedPrompt =
-                `CRITICAL OUTPUT RULE: Your response must start with <!DOCTYPE html> — no explanation, no commentary, no markdown fences before or after the HTML.\n\nEXISTING PAGES (patch these, do not rebuild from scratch):\n${existingPages}\n\nThe user wants to make this change to the existing output above. Modify it to incorporate the change. Do NOT regenerate from scratch. Return the COMPLETE updated file with the change applied. Preserve everything that was not mentioned in the change request.\n\n${enrichedPrompt}`;
-              console.log(`[ITERATE] Prior context injected for project ${project_id} — prompt grew from ${promptLenBefore} to ${enrichedPrompt.length} chars (+${enrichedPrompt.length - promptLenBefore})`);
-            }
-          }
-        } catch {
-          // Ignore malformed historical last_diff payloads and continue as first build.
-        }
-      } else {
-        console.log(`[ITERATE] No prior output found for project ${project_id} — treating as new build`);
-      }
+      // Prompt enrichment: kernel context, golden template, conversation, upload, prior-job
+      // Extracted to handlers/enrich-prompt.handler.ts
+      const enrichResult = await enrichPrompt({
+        prompt, user_id, org, project_id, project, mode,
+        goldenMatch, upload_id, conversation_id,
+      });
+      let enrichedPrompt = enrichResult.enrichedPrompt;
+      const injectSupabaseHelpers = enrichResult.injectSupabaseHelpers;
+      let resolvedConversationId = enrichResult.resolvedConversationId;
 
       if (org) {
         try {
@@ -1106,8 +988,6 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
             return attempt(fallbackModel);
           };
 
-          // ── Step 1: Plan call — ask the LLM for a page plan ──
-          let plan: StarterSitePlan | null = null;
           let totalTokens = 0;
           let modelCalls = 0;
           let pageNames: string[] = [];
@@ -1148,590 +1028,67 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
           // All output must live in one HTML file; nav links show/hide sections via JS.
           enrichedPrompt += `\n\nNAVIGATION RULE (MANDATORY): Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files. All content must exist in a single HTML file with sections toggled by JS.`;
 
-          // ── Deterministic template path ── zero LLM calls when skeleton exists ──
-          if (goldenMatch.matched && goldenMatch.htmlSkeleton) {
-            console.log(`[GOLDEN-DETERMINISTIC] Template "${goldenMatch.skillName}" has HTML skeleton — bypassing LLM pipeline`);
-            await storage.logEvent(taskId, `Deterministic template path: ${goldenMatch.skillName} (zero LLM calls)`, 'info');
-            await storage.updateTaskState(taskId, 'building');
+          // ── Deterministic template path ── extracted to handlers/fast-paths.handler.ts
+          if (await handleDeterministicTemplate({
+            taskId, goldenMatch, org, orgName, teamName, prompt, project,
+            user_id: user_id!, auditDepartment, startedAtMs, timeline,
+            injectSupabaseCredentials, signPreviewToken, writeAuditLog,
+            PREVIEWS_DIR, FRONTEND_BASE_URL,
+          })) return;
 
-            // Resolve brand tokens
-            let brandCompany = orgName || 'Company';
-            const brandTeamName = teamName || 'Team';
-            if (org?.id) {
-              const { data: brand } = await getPlatformSupabaseClient()
-                .from('brand_tokens').select('company_name').eq('org_id', org.id).limit(1).single();
-              if (brand?.company_name) brandCompany = brand.company_name;
-            }
-            const skelColorScheme = resolveColorScheme(prompt);
-
-            // Inject brand tokens into skeleton
-            const html = goldenMatch.htmlSkeleton
-              .replace(/\{\{BRAND_COMPANY\}\}/g, brandCompany)
-              .replace(/\{\{BRAND_TEAM\}\}/g, brandTeamName)
-              .replace(/\{\{BRAND_PRIMARY\}\}/g, skelColorScheme.primary)
-              .replace(/\{\{BRAND_BG\}\}/g, skelColorScheme.bg)
-              .replace(/\{\{BRAND_TEXT\}\}/g, skelColorScheme.text)
-              .replace(/\{\{BRAND_SURFACE\}\}/g, skelColorScheme.surface)
-              .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border);
-
-            // Write to preview directory — same flow as dashboard fast path but no LLM
-            const previewDir = path.join(PREVIEWS_DIR, taskId);
-            fs.mkdirSync(previewDir, { recursive: true });
-            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(html));
-            fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
-            const previewToken = signPreviewToken(taskId);
-            await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
-            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html }]));
-            timeline.push({ step: 'deterministic-template', startedAt: new Date(startedAtMs).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - startedAtMs, status: 'completed' });
-            fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
-            await storage.logEvent(taskId, 'Preview generated (deterministic template — zero LLM tokens)', 'info');
-            await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: 'deterministic', modelCalls: 0, retries: 0, fallbacks: 0 }, totalTokens: 0, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
-            await storage.updateTaskUsageMetrics(taskId, { llm_model: 'deterministic', llm_prompt_tokens: 0, llm_completion_tokens: 0, llm_total_tokens: 0 });
-            await storage.updateTaskState(taskId, 'completed');
-            // Deterministic template builds do NOT consume credits — zero LLM cost.
-            // Credits are only consumed on LLM-generated (custom) builds.
-            // This keeps template builds free for all tiers, enabling the "wow moment."
-            if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: html, department: auditDepartment });
-            await storage.logEvent(taskId, `Dashboard completed (deterministic template: ${goldenMatch.skillName} — zero credits consumed)`, 'success');
-            return;
-          }
-
-          // ── App fast path ── full-stack CRUD via APP_SYSTEM ──
-          if (!upload_id && resolvedMode === 'app') {
-            try {
-              await storage.updateTaskState(taskId, 'building');
-              await storage.logEvent(taskId, `App fast path activated (team: ${teamName}) — routing to APP_SYSTEM`, 'info');
-              const appResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'app' });
-              modelCalls += 1;
-              if (!appResult.ok) throw new Error(appResult.text || `App edge call returned ${appResult.status}`);
-              let appData: { diff: string; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
-              try {
-                appData = JSON.parse(appResult.text);
-              } catch {
-                throw new Error(`App edge returned invalid JSON (${appResult.text.length} chars)`);
-              }
-              if (appData.usage?.total_tokens) totalTokens += appData.usage.total_tokens;
-              const previewDir = path.join(PREVIEWS_DIR, taskId);
-              fs.mkdirSync(previewDir, { recursive: true });
-              fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(appData.diff));
-              pageNames = ['index'];
-              await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'App', filename: 'index.html', route: '/', html: appData.diff }]));
-              fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
-              fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
-              const previewToken = signPreviewToken(taskId);
-              await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
-              await storage.logEvent(taskId, 'Preview generated', 'info');
-              await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
-              await storage.updateTaskUsageMetrics(taskId, {
-                llm_model: appData.model ?? resolvedModel,
-                llm_prompt_tokens: appData.usage?.input_tokens ?? 0,
-                llm_completion_tokens: appData.usage?.output_tokens ?? 0,
-                llm_total_tokens: appData.usage?.total_tokens ?? 0,
-              });
-              await storage.updateTaskState(taskId, 'completed');
-              if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
-              if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'app', generated_output: appData.diff, department: auditDepartment });
-              await storage.logEvent(taskId, 'App job completed successfully (fast path)', 'info');
+          // ── App fast path ── extracted to handlers/fast-paths.handler.ts
+          {
+            const appParams = {
+              taskId, upload_id, resolvedMode, teamName, enrichedPrompt, resolvedModel,
+              org, project, user_id: user_id!, auditDepartment,
+              modelCalls, totalTokens, pageNames, timeline,
+              edgeCall, injectSupabaseCredentials, signPreviewToken, writeAuditLog,
+              PREVIEWS_DIR, FRONTEND_BASE_URL,
+            };
+            if (await handleAppFastPath(appParams)) {
+              modelCalls = appParams.modelCalls;
+              totalTokens = appParams.totalTokens;
+              pageNames = appParams.pageNames;
               return;
-            } catch (appErr: any) {
-              await storage.logEvent(taskId, `App fast path failed (${appErr.message}), falling back to planner pipeline`, 'warning');
             }
           }
 
           // ── Dashboard fast path ── bypass planner, single Edge call ──
-          // Activated for dashboard mode (keyword/team match) or file uploads
-          if (resolvedMode === 'dashboard' || upload_id) {
-            try {
-              await storage.updateTaskState(taskId, 'building');
-              await storage.logEvent(taskId, `Dashboard fast path activated (${upload_id ? 'file upload' : 'keyword match'}) — skipping planner`, 'info');
-
-              // ── Auto-publish team asset before LLM call ──
-              // If user attached a file, detect asset type from prompt + filename and publish.
-              // CSV uploads always ingest (fallback to 'general' type).
-              let preIngestPublishTeamId: string | undefined;
-              let preIngestAssetType: string | undefined;
-              if (upload_id && org) {
-                try {
-                  const { data: uploadForIngest } = await getPlatformSupabaseClient()
-                    .from('user_uploads')
-                    .select('raw_content, original_filename')
-                    .eq('id', upload_id)
-                    .single();
-                  const uploadFilename = uploadForIngest?.original_filename || '';
-                  const assetType = detectAssetType(prompt, uploadFilename);
-                  const isCSV = uploadFilename.endsWith('.csv') || uploadFilename.endsWith('.CSV');
-                  if (assetType || hasPublishIntent(prompt) || isBudgetRelated(prompt) || isCSV) {
-                    if (uploadForIngest?.raw_content) {
-                      // Resolve publishing team — use project's team or first org team
-                      const publishTeamId = project.team_id || (org as any).default_team_id;
-                      if (publishTeamId) {
-                        const resolvedType = assetType || (isBudgetRelated(prompt) ? 'budget_plan' : 'general');
-                        preIngestPublishTeamId = publishTeamId;
-                        preIngestAssetType = resolvedType;
-                        console.log(`[AUTO-INGEST] Calling ingestTeamAsset: upload_id=${upload_id} type=${resolvedType} team=${publishTeamId} file=${uploadFilename}`);
-                        const publishResult = await ingestTeamAsset({
-                          teamId: publishTeamId,
-                          assetType: resolvedType,
-                          rawContent: uploadForIngest.raw_content,
-                          originalFilename: uploadForIngest.original_filename || 'upload.csv',
-                          orgId: org.id,
-                          publishedBy: user_id,
-                          metadata: { source: 'auto_ingest', job_id: taskId },
-                        });
-                        await storage.logEvent(taskId, `Published team asset: type=${resolvedType}, ${publishResult.row_count} rows${publishResult.replaced ? ' (replaced previous)' : ''}`, 'info');
-                        if (publishResult.budget_ingest) {
-                          await storage.logEvent(taskId, `Budget allocations synced (raw): ${publishResult.budget_ingest.rows_processed} rows written`, 'info');
-                        }
-                        if (publishResult.errors.length > 0) {
-                          await storage.logEvent(taskId, `Asset publish warnings: ${publishResult.errors.slice(0, 3).join('; ')}`, 'warning');
-                        }
-                      }
-                    } else {
-                      console.warn(`[AUTO-INGEST] No raw_content for upload ${upload_id} — skipping asset publish`);
-                    }
-                  } else {
-                    console.log(`[AUTO-INGEST] Skipped: no matching asset type, publish intent, or CSV for upload ${upload_id} (file=${uploadFilename})`);
-                  }
-                } catch (ingestErr: any) {
-                  console.error(`[AUTO-INGEST] Team asset publish failed (non-blocking): ${ingestErr.message}`);
-                  await storage.logEvent(taskId, `Team asset auto-publish failed: ${ingestErr.message}`, 'warning');
-                }
-              }
-
-              // ── Inject budget-data extraction instruction for LLM ──
-              // When the user uploads budget data with modification instructions,
-              // tell the LLM to embed the ADJUSTED/CALCULATED numbers as structured JSON
-              // so we can re-ingest them into budget_allocations after the LLM call.
-              if (preIngestAssetType === 'budget_plan') {
-                enrichedPrompt += `\n\nCRITICAL — BUDGET DATA OUTPUT REQUIREMENT:
-After applying any requested changes (reductions, increases, reallocations, etc.) to the uploaded budget data, you MUST include a hidden script tag in your HTML output containing the FINAL ADJUSTED budget numbers as a JSON array.
-Format — place this EXACTLY before </body>:
-<script id="vibe-budget-data" type="application/json">
-[{"team":"TeamName","category":"CategoryName","q1":1234,"q2":1234,"q3":1234,"q4":1234}, ...]
-</script>
-Each object must have: team (string), category (string), q1/q2/q3/q4 (numbers — the ADJUSTED values after applying the user's requested changes).
-Include ALL rows from the original data with their final calculated values. This is how the adjusted numbers get saved to the database.`;
-              }
-
-              const dashColorBlock = buildColorBlock(resolveColorScheme(prompt));
-              const dashResult = await Promise.race([
-                edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'dashboard', color_block: dashColorBlock }),
-                new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Dashboard edge call timed out after ${budgets.stepDeadlinesMs.building / 1000}s`)), budgets.stepDeadlinesMs.building)),
-              ]);
-              modelCalls += 1;
-              if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
-              let dashData: { diff: string; truncated?: boolean; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
-              try {
-                dashData = JSON.parse(dashResult.text);
-              } catch {
-                throw new Error(`Dashboard edge returned invalid JSON (${dashResult.text.length} chars)`);
-              }
-              if (dashData.truncated) {
-                console.warn(`[DASHBOARD-TRUNCATED] LLM output was truncated — HTML may be incomplete (${dashData.diff?.length ?? 0} chars)`);
-                await storage.logEvent(taskId, 'Warning: LLM output was truncated. Dashboard HTML may be incomplete — closing tags were auto-repaired.', 'warning');
-              }
-              if (dashData.usage?.total_tokens) totalTokens += dashData.usage.total_tokens;
-
-              // ── Post-LLM budget re-ingest: extract calculated numbers from HTML ──
-              // The LLM embeds adjusted budget data as JSON in a <script id="vibe-budget-data"> tag.
-              // Extract it and re-ingest into budget_allocations so dashboards see the calculated values.
-              if (preIngestAssetType === 'budget_plan' && preIngestPublishTeamId && org) {
-                try {
-                  const budgetDataMatch = dashData.diff.match(
-                    /<script\s+id="vibe-budget-data"\s+type="application\/json">\s*([\s\S]*?)\s*<\/script>/i,
-                  );
-                  if (budgetDataMatch?.[1]) {
-                    const adjustedRows: { team: string; category: string; q1: number; q2: number; q3: number; q4: number }[] = JSON.parse(budgetDataMatch[1]);
-                    if (Array.isArray(adjustedRows) && adjustedRows.length > 0) {
-                      // Convert the adjusted JSON rows back to CSV format for ingestBudgetCSV
-                      const csvHeader = 'team,category,q1,q2,q3,q4';
-                      const csvLines = adjustedRows.map(r =>
-                        `${r.team},${r.category},${r.q1},${r.q2},${r.q3},${r.q4}`,
-                      );
-                      const adjustedCSV = [csvHeader, ...csvLines].join('\n');
-
-                      console.log(`[POST-LLM-INGEST] Extracted ${adjustedRows.length} adjusted budget rows from LLM output`);
-
-                      const { ingestBudgetCSV: reIngestBudgetCSV } = await import('./lib/ingest-budget-csv');
-                      const reIngestResult = await reIngestBudgetCSV(adjustedCSV, org.id);
-
-                      console.log(`[POST-LLM-INGEST] budget_allocations re-ingested: wrote ${reIngestResult.rows_processed} rows, failed ${reIngestResult.rows_failed} rows`);
-                      await storage.logEvent(
-                        taskId,
-                        `Budget allocations updated with LLM-calculated values: ${reIngestResult.rows_processed} rows written to budget_allocations`,
-                        'info',
-                      );
-                      if (reIngestResult.errors.length > 0) {
-                        await storage.logEvent(taskId, `Budget re-ingest warnings: ${reIngestResult.errors.slice(0, 3).join('; ')}`, 'warning');
-                      }
-                    } else {
-                      console.warn('[POST-LLM-INGEST] vibe-budget-data tag found but contained no valid rows');
-                    }
-                  } else {
-                    console.log('[POST-LLM-INGEST] No vibe-budget-data tag found in LLM output — budget_allocations retains raw upload values');
-                  }
-                } catch (reIngestErr: any) {
-                  console.error(`[POST-LLM-INGEST] Failed to extract/re-ingest budget data: ${reIngestErr.message}`);
-                  await storage.logEvent(taskId, `Budget re-ingest from LLM output failed (non-blocking): ${reIngestErr.message}`, 'warning');
-                }
-              }
-
-              // ── Dashboard quality validation gate ──────────────────────
-              // Ensures model-agnostic quality: same checks regardless of GPT, Claude, etc.
-              const dashQuality = validateStarterSiteQuality(
-                [{ route: '/', html: dashData.diff }],
-                /placeholder|sample data/i.test(prompt),
-                true, // isDashboard
-              );
-              if (!dashQuality.ok) {
-                await storage.logEvent(taskId, `Dashboard quality gate failed: ${dashQuality.reasons.join(' | ')}`, 'warning');
-                // Attempt a single repair call with dashboard-specific prompt
-                const elapsedMs = Date.now() - startedAtMs;
-                const remainingMs = budgets.stepDeadlinesMs.building - elapsedMs;
-                if (remainingMs > 30_000) { // Only repair if >30s budget remains
-                  await storage.logEvent(taskId, 'Attempting dashboard quality repair pass', 'info');
-                  const repairPrompt = `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.
-Repair this dashboard HTML so it includes ALL of the following:
-- <nav> element with navigation links
-- At least 4 KPI/stat cards with metric values
-- At least 2 Chart.js charts with <canvas> elements AND corresponding new Chart() initialization scripts immediately after each canvas
-- A data table with <table> element
-- <title> tag with descriptive dashboard name
-- Sidebar + main content CSS grid layout: grid-cols-[256px_1fr]
-- Every <canvas> must have: height="200" style="height:200px !important; max-height:200px;"
-Keep all existing Tailwind classes, CSS variables (var(--bg), var(--primary), etc.), fonts, and vibeLoadData() calls intact.
-Fix ONLY what is missing — preserve everything that already works.
-${dashData.diff}`;
-                  try {
-                    const repairResult = await Promise.race([
-                      edgeCall({ prompt: repairPrompt, model: resolvedModel, mode: 'edit', color_block: dashColorBlock }),
-                      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Repair timed out')), remainingMs - 5_000)),
-                    ]);
-                    modelCalls += 1;
-                    if (repairResult.ok) {
-                      const repairData = JSON.parse(repairResult.text);
-                      if (repairData.diff && repairData.diff.trim().length > dashData.diff.trim().length * 0.5) {
-                        // Only accept repair if it passes MORE quality checks than the original
-                        const repairQuality = validateStarterSiteQuality(
-                          [{ route: '/', html: repairData.diff }],
-                          /placeholder|sample data/i.test(prompt),
-                          true,
-                        );
-                        const originalFailCount = dashQuality.reasons.length;
-                        const repairFailCount = repairQuality.reasons.length;
-                        if (repairFailCount < originalFailCount) {
-                          dashData.diff = repairData.diff;
-                          if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
-                          await storage.logEvent(taskId, `Dashboard repair accepted: ${originalFailCount} → ${repairFailCount} failures (${repairData.usage?.total_tokens ?? 0} tokens)`, 'info');
-                        } else {
-                          await storage.logEvent(taskId, `Repair rejected — did not improve quality (${originalFailCount} → ${repairFailCount} failures). Keeping original.`, 'warning');
-                        }
-                      } else {
-                        await storage.logEvent(taskId, 'Repair output too short — keeping original', 'warning');
-                      }
-                    }
-                  } catch (repairErr: any) {
-                    await storage.logEvent(taskId, `Dashboard repair failed (non-blocking): ${repairErr.message}`, 'warning');
-                  }
-                } else {
-                  await storage.logEvent(taskId, `Skipping repair — insufficient time budget (${Math.round(remainingMs / 1000)}s remaining)`, 'warning');
-                }
-              }
-
-              const previewDir = path.join(PREVIEWS_DIR, taskId);
-              fs.mkdirSync(previewDir, { recursive: true });
-              fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(dashData.diff));
-              pageNames = ['index'];
-              timeline.push({ step: 'dashboard-fast-path', startedAt: new Date(startedAtMs).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - startedAtMs, status: 'completed' });
-              await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: dashData.diff }]));
-              fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
-              fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
-              const previewToken = signPreviewToken(taskId);
-              await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
-              await storage.logEvent(taskId, 'Preview generated', 'info');
-              await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
-              await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
-              await storage.updateTaskUsageMetrics(taskId, {
-                llm_model: dashData.model ?? resolvedModel,
-                llm_prompt_tokens: dashData.usage?.input_tokens ?? 0,
-                llm_completion_tokens: dashData.usage?.output_tokens ?? 0,
-                llm_total_tokens: dashData.usage?.total_tokens ?? 0,
-              });
-              await storage.updateTaskState(taskId, 'completed');
-              if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
-              if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: dashData.diff, department: auditDepartment });
-              await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
-
-              // ── Auto-cache skeleton: backfill html_skeleton for golden templates ──
-              // After first successful LLM build, cache the output so future builds use the deterministic path.
-              if (goldenMatch.matched && !goldenMatch.htmlSkeleton
-                  && dashData.diff.length > 20000 && dashData.diff.includes('new Chart(')) {
-                try {
-                  const { error: cacheErr } = await getPlatformSupabaseClient()
-                    .from('skill_registry')
-                    .update({ html_skeleton: dashData.diff })
-                    .eq('skill_name', goldenMatch.skillName);
-                  if (cacheErr) {
-                    console.error(`[GOLDEN-CACHE] Failed to cache skeleton for "${goldenMatch.skillName}": ${cacheErr.message}`);
-                  } else {
-                    console.log(`[GOLDEN-CACHE] Cached html_skeleton for "${goldenMatch.skillName}" (${dashData.diff.length} chars)`);
-                    await storage.logEvent(taskId, `Cached golden template skeleton: ${goldenMatch.skillName} (${dashData.diff.length} chars — future builds will be deterministic)`, 'info');
-                  }
-                } catch (cacheWriteErr: any) {
-                  console.error(`[GOLDEN-CACHE] Exception caching skeleton: ${cacheWriteErr.message}`);
-                }
-              }
-
+          // Extracted to handlers/dashboard.handler.ts
+          {
+            const dashParams = {
+              taskId, resolvedMode, upload_id, org, prompt, enrichedPrompt,
+              project, user_id: user_id!, resolvedModel, budgets, goldenMatch,
+              startedAtMs, modelCalls, totalTokens, timeline, pageNames,
+              auditDepartment, edgeCall, injectSupabaseCredentials,
+              signPreviewToken, writeAuditLog, PREVIEWS_DIR, FRONTEND_BASE_URL,
+              MAX_INITIAL_PAGES,
+            };
+            const handled = await handleDashboardJob(dashParams);
+            if (handled) {
+              // Sync back mutable counters
+              modelCalls = dashParams.modelCalls;
+              totalTokens = dashParams.totalTokens;
+              pageNames = dashParams.pageNames;
               return;
-            } catch (dashErr: any) {
-              await storage.logEvent(taskId, `Dashboard fast path failed (${dashErr.message}), falling back to planner pipeline`, 'warning');
-              // Fall through to normal planner pipeline
             }
           }
 
-          // ── Golden Template Resolution (planner fallback) ──────────
-          // Skip if the early resolveGoldenTemplateMatch() at line ~730 already matched.
-          // Uses the same function for consistent bidirectional keyword matching.
-          if (!goldenMatch.matched) {
-            try {
-              const plannerGolden = await resolveGoldenTemplateMatch(prompt);
-              if (plannerGolden.matched) {
-                goldenMatch = plannerGolden;
-                enrichedPrompt += `\n\n--- GOLDEN TEMPLATE: ${plannerGolden.skillName} ---\nFollow this template exactly as the primary build blueprint. Do not ask clarifying questions — build directly from these instructions:\n\n${plannerGolden.content}\n--- END GOLDEN TEMPLATE ---`;
-                await storage.logEvent(taskId, `Matched golden template: ${plannerGolden.skillName}`, 'info');
-              }
-            } catch (gtErr: any) {
-              console.warn('[KERNEL] golden template lookup failed:', gtErr.message);
-            }
-          }
-
-          // ── Planning step ──────────────────────────────────────────
-          try {
-            plan = await runStep('planning', async () => {
-            await storage.logEvent(taskId, 'Generating plan...', 'info');
-            console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
-            const planResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: 'plan' });
-            modelCalls += 1;
-            if (!planResult.ok) throw new Error(planResult.text || `Plan call returned ${planResult.status}`);
-            const planData = JSON.parse(planResult.text);
-            if (planData.usage?.total_tokens) totalTokens += planData.usage.total_tokens;
-            // Edge Function returns { diff: "<JSON string with pages + color_scheme>", mode: "plan", usage }
-            let planPages: any;
-            if (typeof planData.diff === 'string') {
-              let raw = planData.diff.trim();
-              // Strip markdown code fences if LLM wrapped the response
-              const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-              if (fenceMatch) raw = fenceMatch[1].trim();
-              // Strip trailing commas before } or ] (common LLM mistake)
-              raw = raw.replace(/,\s*([\]}])/g, '$1');
-              // Try parsing as-is first; if it fails, extract the first valid JSON object/array
-              try {
-                planPages = JSON.parse(raw);
-              } catch {
-                // LLM may have appended text after the JSON — find the outermost {} or []
-                const jsonStart = raw.search(/[{[]/);
-                if (jsonStart >= 0) {
-                  const opener = raw[jsonStart];
-                  const closer = opener === '{' ? '}' : ']';
-                  let depth = 0;
-                  let jsonEnd = -1;
-                  for (let ci = jsonStart; ci < raw.length; ci++) {
-                    if (raw[ci] === opener) depth++;
-                    else if (raw[ci] === closer) depth--;
-                    if (depth === 0) { jsonEnd = ci; break; }
-                  }
-                  if (jsonEnd > jsonStart) {
-                    const extracted = raw.slice(jsonStart, jsonEnd + 1).replace(/,\s*([\]}])/g, '$1');
-                    planPages = JSON.parse(extracted);
-                    console.log(`[PLAN] Extracted JSON from position ${jsonStart}-${jsonEnd} (stripped ${raw.length - jsonEnd - 1} trailing chars)`);
-                  } else {
-                    throw new Error(`Could not extract JSON from plan response (${raw.length} chars)`);
-                  }
-                } else {
-                  throw new Error(`No JSON found in plan response (${raw.length} chars)`);
-                }
-              }
-            } else {
-              planPages = planData.diff;
-            }
-            // planPages may be { pages: [...], color_scheme: {...} } or a raw array
-            const pagesArray = Array.isArray(planPages) ? planPages : planPages?.pages ?? null;
-            const llmColorScheme = Array.isArray(planPages) ? null : planPages?.color_scheme ?? null;
-            const result = buildStarterSitePlan(Array.isArray(pagesArray) ? pagesArray : null, prompt, llmColorScheme);
-            if (result.notes.length > 0) await storage.logEvent(taskId, result.notes.join(' '), 'info');
-            await storage.logEvent(taskId, `Plan received: ${result.pages.length} page(s) — ${result.pages.map((p) => p.name).join(', ')}`, 'info');
-            return result;
-            });
-          } catch (planErr: any) {
-            // Plan call failed — fall back to single-page build
-            await storage.logEvent(taskId, `Plan call failed (${planErr.message}), falling back to single-page build...`, 'warning');
-            plan = null;
-          }
-
-          const previewDir = path.join(PREVIEWS_DIR, taskId);
-          try {
-            fs.mkdirSync(previewDir, { recursive: true });
-            if (plan) writePagePlanArtifact(previewDir, plan);
-          } catch (mkErr: any) {
-            console.warn(`Could not create preview directory: ${mkErr.message}`);
-          }
-
-
-          // Resolve color scheme: from the plan if available, otherwise from the prompt
-          const colorScheme = plan?.colorScheme ?? resolveColorScheme(prompt);
-          const colorBlock = buildColorBlock(colorScheme);
-          console.log('[KERNEL] resolved color scheme:', JSON.stringify(colorScheme));
-
-          if (plan) {
-            const currentPlan = plan;
-            await runStep('building', async () => {
-              const builtPages = await mapWithConcurrency(currentPlan.pages, 1, async (page, i) => {
-                const safeName = page.route === '/' ? 'index' : page.route.slice(1);
-                await storage.logEvent(taskId, 'Building page ' + (i + 1) + ' of ' + currentPlan.pages.length + ': ' + page.name + '...', 'info');
-                console.log('[KERNEL] page prompt prefix:', page.description.slice(0, 300));
-                // Fast path removed — LLM + department skills determine output format
-                const pageBuildMode = resolvedMode === 'site' ? 'site' : 'page';
-                const pageContext = `PagePlan JSON: ${JSON.stringify(currentPlan)}. File: app${page.route === '/' ? '' : page.route}/page.tsx. Include navbar, metadata title/description, 2+ sections, and CTA button.`;
-                const pageResult = await edgeCall({
-                  prompt: enrichedPrompt + '\n\nPage to build: ' + page.description,
-                  model: resolvedModel,
-                  mode: pageBuildMode,
-                  context: pageContext,
-                  color_block: colorBlock,
-                });
-                modelCalls += 1;
-                if (!pageResult.ok) throw new Error('Page ' + page.name + ' returned ' + pageResult.status);
-                const pageData = JSON.parse(pageResult.text);
-                if (pageData.usage?.total_tokens) totalTokens += pageData.usage.total_tokens;
-                fs.writeFileSync(path.join(previewDir, safeName + '.html'), injectSupabaseCredentials(pageData.diff));
-                return page;
-              });
-              pageNames = builtPages.map((p) => (p.route === '/' ? 'index' : p.route.slice(1)));
-            });
-
-            if (pageNames.length < Math.min(2, currentPlan.pages.length)) {
-              throw new Error(`pages generated check failed (${pageNames.length}/${currentPlan.pages.length})`);
-            }
-
-            await runStep('validating', async () => {
-              const MAX_REPAIR_ATTEMPTS = 2;
-              let repairAttempts = 0;
-              const htmlFiles = pageNames.map((name) => ({
-                route: name === 'index' ? '/' : `/${name}`,
-                html: fs.readFileSync(path.join(previewDir, `${name}.html`), 'utf8'),
-              }));
-              const quality = validateStarterSiteQuality(htmlFiles, /placeholder/i.test(prompt), mode === 'dashboard');
-              if (!quality.ok) {
-                await storage.logEvent(taskId, `Quality gate failed, repairing ${quality.failingRoutes.join(', ')}`, 'warning');
-                await storage.logEvent(taskId, `[QA REASONS] ${quality.reasons.join(' | ')}`, 'warn');
-                for (const failingRoute of quality.failingRoutes.slice(0, 1)) {
-                  if (repairAttempts >= MAX_REPAIR_ATTEMPTS) {
-                    await storage.logEvent(taskId, `Max repair attempts (${MAX_REPAIR_ATTEMPTS}) reached — accepting current output`, 'warning');
-                    break;
-                  }
-                  repairAttempts += 1;
-                  const fileName = failingRoute === '/' ? 'index' : failingRoute.slice(1);
-                  const existing = fs.readFileSync(path.join(previewDir, `${fileName}.html`), 'utf8');
-                  // Fast path removed — LLM + department skills determine output format
-                  const repairMode = 'page';
-                  const repairPrompt = `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.\nRepair this HTML page so it includes: <nav>, <h1>, at least 2 <section> elements, <title>, <meta name="description">, a CTA button containing Start/Get/Contact/Book/Learn, and zero lorem ipsum.\nKeep all existing Tailwind classes, fonts, and design tokens intact.\n${existing}`;
-                  const repairResult = await edgeCall({ prompt: repairPrompt, model: resolvedModel, mode: repairMode, color_block: colorBlock });
-                  modelCalls += 1;
-                  if (repairResult.ok) {
-                    const repairData = JSON.parse(repairResult.text);
-                    fs.writeFileSync(path.join(previewDir, `${fileName}.html`), injectSupabaseCredentials(repairData.diff));
-                    if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
-                  }
-                }
-              }
-            });
-
-            await runStep('security', async () => new Promise((r) => setTimeout(r, 5)));
-
-            const uxResult = await runStep('ux', async () => {
-              // UX check is handled in the executor pipeline
-              // This step records timing only — executor drives actual UX agent
-              await new Promise(r => setTimeout(r, 0));
-            });
-
-            const selfHealResult = await runStep('self-healing', async () => {
-              return await runSelfHealingScan(taskId, previewDir);
-            });
-
-            // Save generated pages to jobs table so the frontend can read last_diff
-            const pagesArray = currentPlan.pages.filter((p) => pageNames.includes(p.route === '/' ? 'index' : p.route.slice(1))).map((p) => {
-              const safeName = p.route === '/' ? 'index' : p.route.slice(1);
-              const html = fs.readFileSync(path.join(previewDir, `${safeName}.html`), 'utf-8');
-              return { name: p.name, filename: `${safeName}.html`, route: p.route, html };
-            });
-            await storage.setTaskDiff(taskId, JSON.stringify(pagesArray));
-          } else {
-            // ── Fallback: single-page build ──
-            const fallbackMode = resolvedMode === 'dashboard' ? 'dashboard' : 'html';
-            await storage.logEvent(taskId, `Calling Edge Function (single-page ${fallbackMode} mode)...`, 'info');
-            console.log('[KERNEL] enrichedPrompt prefix:', enrichedPrompt.slice(0, 300));
-            const fallbackResult = await edgeCall({ prompt: enrichedPrompt, model: resolvedModel, mode: fallbackMode, color_block: colorBlock });
-            modelCalls += 1;
-            if (!fallbackResult.ok) throw new Error(fallbackResult.text || `Edge Function returned ${fallbackResult.status}`);
-
-            let data: { diff: string; model?: string; usage: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
-            try {
-              data = JSON.parse(fallbackResult.text);
-            } catch {
-              console.error(`Job ${taskId} — raw response (${fallbackResult.text.length} chars):`, fallbackResult.text.slice(0, 500));
-              throw new Error(`Edge Function returned invalid JSON (${fallbackResult.text.length} chars)`);
-            }
-
-            if (data.usage?.total_tokens) totalTokens += data.usage.total_tokens;
-            fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(data.diff));
-            pageNames = ['index'];
-
-            // Save single-page HTML to jobs table so the frontend can read last_diff
-            await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
-          }
-
-          // ── Step 3: Write manifest and finalize ──
-          fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
-          fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
-          const firstPage = pageNames[0].replace(/[^a-zA-Z0-9_-]/g, '_');
-          const previewToken = signPreviewToken(taskId);
-          await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/${firstPage}.html?token=${previewToken}`);
-          await storage.logEvent(taskId, 'Preview generated', 'info');
-          await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
-          await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries, fallbacks }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
-          if (modelCalls > budgets.maxModelCalls || totalTokens > budgets.maxTokensOut || (Date.now() - startedAtMs) > budgets.maxWallTimeMs) {
-            await storage.logEvent(taskId, 'Starter build budget exceeded', 'warning');
-          }
-          await storage.updateTaskUsageMetrics(taskId, {
-            llm_model: resolvedModel,
-            llm_prompt_tokens: 0,
-            llm_completion_tokens: 0,
-            llm_total_tokens: totalTokens,
-          });
-          await storage.updateTaskState(taskId, 'completed');
-          if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
-          if (org) {
-            const outputForAudit = pageNames.map((p: string) => { try { return fs.readFileSync(path.join(previewDir, `${p}.html`), 'utf-8'); } catch { return ''; } }).join('\n');
-            writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: resolvedMode || 'site', generated_output: outputForAudit, department: auditDepartment });
-          }
-          await storage.logEvent(taskId, 'Job completed successfully', 'info');
-          // Store assistant response in conversation after successful build (best-effort)
-          if (resolvedConversationId) {
-            try {
-              const task = await storage.getTask(taskId);
-              const summary = task?.preview_url
-                ? `Built successfully. Preview: ${task.preview_url}`
-                : 'Build completed.';
-              await storage.addMessage({
-                conversation_id: resolvedConversationId,
-                role: 'assistant',
-                content: summary,
-                job_id: taskId,
-                metadata: { execution_state: task?.execution_state, total_tokens: totalTokens },
-              });
-            } catch (msgErr: any) {
-              console.warn(`[CONVERSATION] Failed to store assistant message: ${msgErr.message}`);
-            }
+          // ── Planner pipeline — plan → build → validate → finalize ──
+          // Extracted to handlers/planner.handler.ts
+          {
+            const plannerParams = {
+              taskId, prompt, enrichedPrompt, resolvedMode, resolvedModel, mode,
+              budgets, goldenMatch, org, project, user_id: user_id!,
+              startedAtMs, modelCalls, totalTokens, retries, fallbacks,
+              timeline, pageNames, auditDepartment, resolvedConversationId,
+              edgeCall, injectSupabaseCredentials, signPreviewToken, writeAuditLog,
+              runStep, PREVIEWS_DIR, FRONTEND_BASE_URL, MAX_INITIAL_PAGES,
+            };
+            await handlePlannerPipeline(plannerParams);
+            modelCalls = plannerParams.modelCalls;
+            totalTokens = plannerParams.totalTokens;
+            pageNames = plannerParams.pageNames;
           }
         } catch (err: any) {
           console.error(`Job ${taskId} failed:`, err.message);
