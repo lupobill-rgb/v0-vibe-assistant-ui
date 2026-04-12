@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { OrchestratorController } from './orchestrator.controller';
-import { PlannerService } from './planner.service';
-import { WorkerService } from './worker.service';
+import { ClaudePlanner } from '../planner/claude-planner.service';
+import { ClaudeWorker } from '../worker/claude-worker.service';
+import { OrchestratorService } from './orchestrator.service';
 
 @Module({
-  controllers: [OrchestratorController],
-  providers: [PlannerService, WorkerService],
+  providers: [ClaudePlanner, ClaudeWorker, OrchestratorService],
+  exports: [OrchestratorService],
 })
 export class OrchestratorModule {}
