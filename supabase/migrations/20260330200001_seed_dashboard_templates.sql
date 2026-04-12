@@ -1,5 +1,12 @@
 -- Migration: Seed 4 GTM dashboard templates into published_assets.
--- Idempotent: inserts use NOT EXISTS guard.
+-- Idempotent: columns use IF NOT EXISTS, inserts use NOT EXISTS guard.
+
+-- ============================================================================
+-- Ensure required columns exist (may not be in earlier CREATE TABLE)
+-- ============================================================================
+ALTER TABLE published_assets
+  ADD COLUMN IF NOT EXISTS name text,
+  ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
 
 -- ============================================================================
 -- Drop overly-restrictive unique constraint (1 asset per team+type) to allow
