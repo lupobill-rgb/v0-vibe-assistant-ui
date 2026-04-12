@@ -122,6 +122,69 @@ Only proceed to main once every box is checked.
 Add a "Smoke Test Results" section to the PR description listing what was tested
 and confirming all checks passed. Include the test job ID for traceability.
 
+## SKELETON BUILD SESSIONS
+
+Skeleton builds are a separate session type from code change sessions.
+Different rules apply. Do not apply code change rules to skeleton sessions.
+
+### What is a skeleton session?
+A session that creates or updates an html_skeleton in skill_registry.
+No code files are changed. No git commits are required unless a migration
+file is created for audit purposes.
+
+### Rules for skeleton sessions
+
+| Rule | Requirement |
+|------|-------------|
+| APPLY METHOD | Always via Supabase MCP apply_migration — never CLI |
+| VERIFY IMMEDIATELY | Run execute_sql length check after every apply |
+| QUALITY GATE | length > 20000 AND contains 'new Chart(' |
+| DYNAMIC KPIs | KPI values must be JavaScript-rendered from __VIBE_SAMPLE__ — never hardcoded in HTML |
+| TRY/CATCH | Every vibeLoadData() call must be wrapped in try/catch with __VIBE_SAMPLE__ fallback |
+| TOKEN PLACEHOLDERS | Must contain __SUPABASE_URL__, __SUPABASE_ANON_KEY__, __VIBE_TEAM_ID__ |
+| NO HARDCODED DATA | Sample data lives in window.__VIBE_SAMPLE__ in <head> only |
+| ISO 27001 | All regulated industry skeletons (pharma, finserv, healthcare) must include ISO 27001 panel |
+| DESIGN STANDARD | Dark theme #0A0E17, Space Grotesk headings, Inter body, #00E5A0 primary |
+| ONE SKELETON PER SESSION | One skill_name per Claude Code session. No batching. |
+
+### Verification query (run after every skeleton apply)
+```sql
+SELECT skill_name,
+  length(html_skeleton) as length,
+  (LENGTH(html_skeleton) - LENGTH(REPLACE(html_skeleton, 'new Chart(', ''))) 
+    / LENGTH('new Chart(') as charts,
+  html_skeleton LIKE '%__VIBE_TEAM_ID__%' as has_team_token,
+  html_skeleton LIKE '%window.__VIBE_SAMPLE__%' as has_sample_data,
+  html_skeleton LIKE '%try{%vibeLoadData%' as has_try_catch
+FROM skill_registry
+WHERE skill_name = '[skill_name]';
+```
+
+### DONE WHEN for skeleton sessions
+DONE WHEN: length > 20000 AND charts >= 4 AND has_team_token = true 
+AND has_sample_data = true AND has_try_catch = true
+
+### Pre-session checklist for skeleton sessions
+1. Confirm skill_name exists in skill_registry (execute_sql SELECT)
+2. Confirm html_skeleton IS NULL (don't overwrite existing)
+3. Confirm plugin_name and team_function for the skill
+4. Define the 5 nav tabs and 6 KPI cards before writing any HTML
+5. Run verification query immediately after apply
+
+### Priority skeleton build order
+Tier 1 (demo-critical):
+- crm-dashboard (Sales)
+- marketing-dashboard (Marketing)
+- sales-forecast (Sales)
+- finance-dashboard (Finance)
+- youth-sports-league-manager (PlayKout demo)
+
+Tier 2 (platform completeness):
+- pipeline-review, win-loss-analysis, commission-tracker (Sales)
+- abm-dashboard, email-analytics, social-media (Marketing)
+- pnl-dashboard, finance-dashboard (Finance)
+- patient-outcomes, hipaa-compliance (Healthcare)
+
 ## Never
 
 - Silent failures. Always return plain-English explanation + next action.
