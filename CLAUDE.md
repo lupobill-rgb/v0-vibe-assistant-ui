@@ -153,7 +153,12 @@ Current Position: SPRINT 1B ✅ → next: SPRINT 2
 
 STRIPE_SECRET_KEY → Railway env only (never Vercel, never frontend)
 STRIPE_WEBHOOK_SECRET → Railway env only
-Pricing: Starter(free) / Pro($49) / Growth($99) / Team($199) / Enterprise(custom)
+Pricing model: Seat fee ($17/user/month) + token consumption (750K included/user/month)
+Free trial: 30 days full access, no credit card required
+Volume discounts: 500+ users $15, 2500+ $12, 10000+ $10
+Builder persona tiers (Starter/Pro/Growth/Team/Portfolio/Enterprise) retained for feature gating
+Cost rates: read from DB cost_rates table, never hardcoded
+Customer-facing copy: no mention of markup, tokens, or LLM
 
 ### Design System
 

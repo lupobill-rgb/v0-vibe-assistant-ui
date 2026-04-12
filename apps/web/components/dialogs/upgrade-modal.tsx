@@ -12,10 +12,11 @@ import {
 import { Button } from "@/components/ui/button"
 
 const TIER_INFO: Record<string, { label: string; price: string; projects: string; credits: string }> = {
-  starter: { label: "Starter", price: "Free", projects: "3", credits: "50" },
-  pro: { label: "Pro", price: "$49/mo", projects: "15", credits: "500" },
-  growth: { label: "Growth", price: "$99/mo", projects: "50", credits: "2,000" },
-  team: { label: "Team", price: "$199/mo", projects: "200", credits: "10,000" },
+  starter: { label: "Starter", price: "Free for 30 days", projects: "3", credits: "Full access" },
+  pro: { label: "Pro", price: "$17/user/mo", projects: "15", credits: "Full access" },
+  growth: { label: "Growth", price: "$17/user/mo", projects: "50", credits: "Full access" },
+  team: { label: "Team", price: "$17/user/mo", projects: "Unlimited", credits: "Full access" },
+  portfolio: { label: "Portfolio", price: "$17/user/mo", projects: "Unlimited", credits: "Full access" },
   enterprise: { label: "Enterprise", price: "Custom", projects: "Unlimited", credits: "Unlimited" },
 }
 

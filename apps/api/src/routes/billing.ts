@@ -62,6 +62,8 @@ router.post('/budget/:orgId', async (req: express.Request, res: Response) => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+// Fallback rates used only when DB cost_rates table is unreachable.
+// Prefer getCostRates() from stripe.service.ts for runtime cost lookups.
 const MODEL_RATES: Record<string, { input: number; output: number }> = {
   claude: { input: 3.0,  output: 15.0 },
   gpt:    { input: 10.0, output: 30.0 },

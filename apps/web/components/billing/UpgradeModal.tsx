@@ -12,15 +12,16 @@ import {
 } from "@/components/ui/dialog"
 import { createCheckoutSession } from "@/lib/api"
 
-const TIER_INFO: Record<string, { name: string; price: string; highlight: string }> = {
-  pro: { name: "Pro", price: "$49/mo", highlight: "15 projects, 500 credits, 5 connectors" },
-  growth: { name: "Growth", price: "$99/mo", highlight: "50 projects, 1,200 credits, 15 connectors" },
-  team: { name: "Team", price: "$199/mo", highlight: "Unlimited projects, 2,500 credits, unlimited connectors" },
+const TIER_INFO: Record<string, { name: string; highlight: string }> = {
+  pro: { name: "Pro", highlight: "15 projects, 5 builder seats, 5 connectors" },
+  growth: { name: "Growth", highlight: "50 projects, 15 builder seats, 15 connectors" },
+  team: { name: "Team", highlight: "Unlimited projects, 50 builder seats, unlimited connectors" },
+  portfolio: { name: "Portfolio", highlight: "Multi-entity management, cross-portfolio analytics" },
 }
 
 const LIMIT_HEADINGS: Record<string, string> = {
   projects: "Upgrade for more projects",
-  credits: "Upgrade for more build credits",
+  credits: "Upgrade for more capacity",
   workspaces: "You need more workspaces",
   builders: "You need more builder seats",
   connectors: "Upgrade to connect your CRM",
@@ -89,8 +90,8 @@ export function UpgradeModal({
         {tier && (
           <div className="rounded-lg border border-border bg-card p-4 text-center">
             <p className="text-lg font-semibold text-foreground">{tier.name}</p>
-            <p className="text-2xl font-bold bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] bg-clip-text text-transparent">
-              {tier.price}
+            <p className="text-sm font-bold bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] bg-clip-text text-transparent">
+              $17/user/month
             </p>
             <p className="text-xs text-muted-foreground mt-1">{tier.highlight}</p>
           </div>
