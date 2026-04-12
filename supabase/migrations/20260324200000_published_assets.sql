@@ -41,15 +41,7 @@ CREATE POLICY "team_manage_own_assets" ON published_assets
   WITH CHECK (team_id IN (SELECT public.user_team_ids()));
 
 -- Subscriber teams can read assets they have visibility to (via team_visibility)
-DROP POLICY IF EXISTS "visible_teams_read_assets" ON published_assets;
-CREATE POLICY "visible_teams_read_assets" ON published_assets
-  FOR SELECT
-  USING (
-    team_id IN (
-      SELECT target_team_id FROM team_visibility
-      WHERE source_team_id IN (SELECT public.user_team_ids())
-    )
-  );
+-- Policy moved to 20260411730000_create_team_visibility.sql to avoid forward reference
 
 -- Service role bypasses RLS (platform API calls)
 DROP POLICY IF EXISTS "service_role_full_access" ON published_assets;
