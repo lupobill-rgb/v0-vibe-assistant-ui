@@ -5,9 +5,10 @@ import { ConnectorsModule } from './connectors/connectors.module';
 import { OnboardingModule } from './onboarding';
 import { AssetsModule } from './assets/assets.module';
 import { ReactiveKernelModule } from './reactive-kernel/reactive-kernel.module';
+import { OrchestratorModule } from './orchestrator/orchestrator.module';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), JobsModule, ConnectorsModule, OnboardingModule, AssetsModule, ReactiveKernelModule],
+  imports: [ScheduleModule.forRoot(), JobsModule, ConnectorsModule, OnboardingModule, AssetsModule, ReactiveKernelModule, OrchestratorModule],
 })
 export class AppModule {}
 
