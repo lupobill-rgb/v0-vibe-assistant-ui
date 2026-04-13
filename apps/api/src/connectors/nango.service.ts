@@ -175,6 +175,31 @@ export class NangoService {
     }));
   }
 
+  async fetchRecords(teamId: string, provider: string, model: string, limit = 100): Promise<unknown[]> {
+    this.ensureConfigured();
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data: integration } = await sb
+      .from('team_integrations')
+      .select('nango_connection_id')
+      .eq('team_id', teamId)
+      .eq('provider', provider)
+      .single();
+    if (!integration?.nango_connection_id) throw new Error(`No ${provider} connection for team ${teamId}`);
+    const secretKey = process.env.NANGO_SECRET_KEY;
+    if (!secretKey) throw new Error('NANGO_SECRET_KEY not configured');
+    const res = await fetch(`https://api.nango.dev/records?model=${model}&limit=${limit}`, {
+      headers: {
+        'Authorization': `Bearer ${secretKey}`,
+        'Connection-Id': integration.nango_connection_id,
+        'Provider-Config-Key': provider,
+      },
+    });
+    if (!res.ok) throw new Error(`Nango records fetch failed: ${res.status}`);
+    const data: any = await res.json();
+    return data.records ?? [];
+  }
+
   async fetchHubSpotContacts(teamId: string): Promise<HubSpotContact[]> {
     this.ensureConfigured();
     const connectionId = `${teamId}__${ConnectorType.HUBSPOT}`;
