@@ -68,14 +68,29 @@ export class WebhookController {
   }
 
   private async resolveOrgAndTeam(connectionId: string): Promise<{ orgId: string; teamId: string } | null> {
+    // Primary lookup: direct nango_connection_id match
     const { data, error } = await this.sb
       .from('team_integrations')
       .select('team_id, teams!inner(org_id)')
       .eq('nango_connection_id', connectionId)
       .limit(1)
       .single();
-    if (error || !data) return null;
-    return { orgId: (data as any).teams.org_id, teamId: data.team_id };
+    if (!error && data) {
+      return { orgId: (data as any).teams.org_id, teamId: data.team_id };
+    }
+
+    // Fallback: check config->additional_connection_ids for pre-backfill connections
+    const { data: fallback, error: fbError } = await this.sb
+      .from('team_integrations')
+      .select('team_id, teams!inner(org_id), config')
+      .contains('config', { additional_connection_ids: [connectionId] })
+      .limit(1)
+      .single();
+    if (fbError || !fallback) {
+      return null;
+    }
+    this.logger.log(`Resolved connection ${connectionId} via config fallback`);
+    return { orgId: (fallback as any).teams.org_id, teamId: fallback.team_id };
   }
 
   private async resolveMatchingSkills(
