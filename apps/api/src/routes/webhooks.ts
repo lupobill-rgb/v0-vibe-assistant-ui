@@ -162,7 +162,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
         trigger_source: model ? `${provider}:${model}` : provider,
         trigger_event: typeof payload.event === 'string' ? payload.event : (model ? `${provider}:${model}` : provider),
         trigger_payload: payload,
-        status: 'pending',
+        status: 'queued',
       });
     }
 
