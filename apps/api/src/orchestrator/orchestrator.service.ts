@@ -64,7 +64,7 @@ export class OrchestratorService implements IOrchestrator {
         const step: PlanStep = {
           id: `step-${i}`,
           skill_id: planStep.skill_slug,
-          mode: 'build' as StepMode,
+          mode: (planStep.mode as StepMode) ?? 'build',
           prompt: planStep.rationale ?? input.prompt,
           context: planStep.inputs,
           team_id,
