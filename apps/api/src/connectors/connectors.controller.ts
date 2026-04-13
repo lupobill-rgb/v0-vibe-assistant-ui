@@ -107,37 +107,19 @@ export class ConnectorsController {
    * Initiates OAuth flow — returns a connect URL the frontend opens.
    */
   @Post('connect')
-  async connect(@Body() body: ConnectDto): Promise<{ sessionToken: string; connectionId: string }> {
+  async connect(@Body() body: ConnectDto): Promise<{ sessionToken: string }> {
     if (!body?.teamId || !body?.connectorType) {
       throw new BadRequestException('Missing required fields: teamId, connectorType');
     }
     this.logger.log(
       `Connect request — team=${body.teamId} connector=${body.connectorType}`,
     );
-    const { sessionToken, connectionId } = await this.nangoService.getConnectUrl(
+    const { sessionToken } = await this.nangoService.getConnectSession(
       body.teamId,
       body.connectorType,
       body.redirectUri,
     );
-
-    // Upsert team_integrations so webhook handler can resolve org/team from connectionId
-    try {
-      const sb = getPlatformSupabaseClient();
-      await sb
-        .from('team_integrations')
-        .upsert(
-          {
-            team_id: body.teamId,
-            provider: body.connectorType,
-            nango_connection_id: connectionId,
-          },
-          { onConflict: 'team_id,provider' },
-        );
-    } catch (err) {
-      this.logger.warn(`Failed to upsert team_integrations: ${(err as Error).message}`);
-    }
-
-    return { sessionToken, connectionId };
+    return { sessionToken };
   }
 
   /**
