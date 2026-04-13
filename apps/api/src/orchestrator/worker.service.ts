@@ -8,7 +8,7 @@
 import { Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getPlatformSupabaseClient } from '../supabase/client';
-import { NangoService, ConnectorType } from '../connectors/nango.service';
+import { NangoService } from '../connectors/nango.service';
 
 export type StepMode = 'build' | 'runtime' | 'hybrid';
 
@@ -163,15 +163,10 @@ export class ClaudeWorker implements IWorker {
 
   private async runRuntime(step: PlanStep): Promise<unknown> {
     if (!step.team_id) throw new Error('runtime step requires team_id');
-    const connector = (step.context?.connector as string) ?? ConnectorType.HUBSPOT;
-    switch (connector) {
-      case ConnectorType.HUBSPOT: {
-        const deals = await this.nango.fetchHubSpotDeals(step.team_id);
-        return { connector: ConnectorType.HUBSPOT, deals };
-      }
-      default:
-        throw new Error(`runtime connector not supported: ${connector}`);
-    }
+    const provider = (step.context?.connector as string) ?? 'hubspot';
+    const model = (step.context?.model as string) ?? 'Deal';
+    const records = await this.nango.fetchRecords(step.team_id, provider, model);
+    return { provider, model, records };
   }
 
   private async runHybrid(
