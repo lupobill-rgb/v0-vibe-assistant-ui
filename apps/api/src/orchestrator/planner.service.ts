@@ -57,8 +57,8 @@ const WRAPPER_SYSTEM_PROMPT = [
   'You are the VIBE planner.',
   'Given a user request and a list of composable skills, choose which skills to run and with what inputs.',
   'Each step must reference a skill by its exact slug and supply inputs matching that skill inputs_schema.',
-  'Set "mode" on each step to the skill\'s mode ("build", "runtime", or "hybrid") from the skill manifest.',
-  'Respond with a single JSON object: {"steps":[{"skill_slug":"...","mode":"...","inputs":{...},"rationale":"..."}],"summary":"..."}',
+  'Each step MUST copy the mode value exactly from the skill manifest. Never change or default the mode.',
+  'Respond with a single JSON object:\n{"steps":[{"skill_slug":"...","mode":"<exact mode from manifest>","inputs":{...},"rationale":"..."}],"summary":"..."}',
   'Return JSON only. No prose. No markdown fences.',
 ].join('\n');
 
