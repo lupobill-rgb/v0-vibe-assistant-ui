@@ -92,7 +92,7 @@ export class ConnectorsController {
           {
             team_id: body.teamId,
             provider: body.connectorType,
-            connection_id: body.connectionId,
+            nango_connection_id: body.connectionId,
           },
           { onConflict: 'team_id,provider' },
         );
