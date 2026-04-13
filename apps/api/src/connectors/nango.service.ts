@@ -137,7 +137,21 @@ export class NangoService {
 
   async fetchHubSpotDeals(teamId: string): Promise<HubSpotDeal[]> {
     this.ensureConfigured();
-    const connectionId = `${teamId}__${ConnectorType.HUBSPOT}`;
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(
+      process.env.SUPABASE_URL ?? '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    );
+    const { data: integration } = await sb
+      .from('team_integrations')
+      .select('nango_connection_id')
+      .eq('team_id', teamId)
+      .eq('provider', 'hubspot')
+      .single();
+    if (!integration?.nango_connection_id) {
+      throw new Error(`No HubSpot connection for team ${teamId}`);
+    }
+    const connectionId = integration.nango_connection_id as string;
     this.logger.log(`Fetching HubSpot deals connection=${connectionId}`);
     const resp = await this.nango.proxy({
       method: 'GET',
