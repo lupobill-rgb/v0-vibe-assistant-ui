@@ -8,6 +8,7 @@
 import { Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import { NangoService, ConnectorType } from '../connectors/nango.service';
 
 export type StepMode = 'build' | 'runtime' | 'hybrid';
 
@@ -68,7 +69,7 @@ export class ClaudeWorker implements IWorker {
     return getPlatformSupabaseClient();
   }
 
-  constructor() {
+  constructor(private readonly nango: NangoService) {
     this.model = 'vibe-builder';
     this.apiKey = process.env.ANTHROPIC_API_KEY || '';
   }
@@ -102,7 +103,7 @@ export class ClaudeWorker implements IWorker {
           output = await this.runBuild(step, systemPrompt);
           break;
         case 'runtime':
-          output = this.runRuntime(step);
+          output = await this.runRuntime(step);
           break;
         case 'hybrid':
           output = await this.runHybrid(step, systemPrompt);
@@ -160,17 +161,17 @@ export class ClaudeWorker implements IWorker {
     return { content: text, tokens_in, tokens_out };
   }
 
-  private runRuntime(step: PlanStep): { stub: true; reason: string; step_id: string } {
-    // TODO(sprint-runtime): Wire provider-agnostic runtime dispatch.
-    // Runtime tools (Nango-backed connectors, internal skills, etc.) arrive in
-    // a later sprint. Until then this path is an intentional no-op so the
-    // orchestrator can flow through hybrid plans without blocking on live
-    // connectors. Do NOT hardcode provider names here when implementing.
-    return {
-      stub: true,
-      reason: 'runtime dispatch not yet implemented — see worker.service.ts TODO',
-      step_id: step.id,
-    };
+  private async runRuntime(step: PlanStep): Promise<unknown> {
+    if (!step.team_id) throw new Error('runtime step requires team_id');
+    const connector = (step.context?.connector as string) ?? ConnectorType.HUBSPOT;
+    switch (connector) {
+      case ConnectorType.HUBSPOT: {
+        const deals = await this.nango.fetchHubSpotDeals(step.team_id);
+        return { connector: ConnectorType.HUBSPOT, deals };
+      }
+      default:
+        throw new Error(`runtime connector not supported: ${connector}`);
+    }
   }
 
   private async runHybrid(
@@ -179,7 +180,7 @@ export class ClaudeWorker implements IWorker {
   ): Promise<{ build: unknown; runtime: unknown }> {
     const build = await this.runBuild(step, systemPrompt);
     // TODO(sprint-runtime): attach real runtime hooks produced by build output.
-    const runtime = this.runRuntime(step);
+    const runtime = await this.runRuntime(step);
     return { build, runtime };
   }
 
