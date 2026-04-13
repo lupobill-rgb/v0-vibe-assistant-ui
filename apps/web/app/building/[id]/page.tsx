@@ -620,7 +620,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           edit: true,
           context: currentHtml,
           messages: [{ role: 'user', content: input }],
-          preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'deepseek'),
+          preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'claude'),
         }),
       })
       let json: any = {}
@@ -691,7 +691,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           edit: true,
           context: currentHtml,
           messages: [{ role: 'user', content: prompt }],
-          preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'deepseek'),
+          preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'claude'),
         }),
       })
       let json: any = {}
