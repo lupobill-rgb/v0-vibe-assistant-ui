@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { ClaudePlanner } from '../planner/claude-planner.service';
-import { ClaudeWorker } from '../worker/claude-worker.service';
+import { ClaudePlanner } from './planner.service';
+import { ClaudeWorker, PlanStep as WorkerPlanStep } from './worker.service';
 
 export interface PlanStep {
   id: string;
@@ -54,10 +54,13 @@ export class OrchestratorService implements IOrchestrator {
     }
     this._isExecuting.set(team_id, true);
     try {
-      const plan = (await this.planner.plan({
-        team_id,
-        prompt: input.prompt,
-        context: input.context,
+      const execPlan = await this.planner.plan(
+        input.prompt,
+        { team_id, ...input.context },
+      );
+      const plan = execPlan.steps.map((s, i) => ({
+        id: String(i),
+        ...s,
       })) as PlanStep[];
 
       const ordered = topoSort(plan);
@@ -77,7 +80,16 @@ export class OrchestratorService implements IOrchestrator {
           continue;
         }
         try {
-          const output = await this.worker.execute(step, { team_id });
+          const workerStep: WorkerPlanStep = {
+            id: step.id,
+            skill_id: String(step.skill_slug ?? step.id),
+            mode: 'build',
+            prompt: typeof step.inputs === 'object' ? JSON.stringify(step.inputs) : String(step.inputs ?? ''),
+            team_id,
+          };
+          const result = await this.worker.executeStep(workerStep);
+          if (!result.ok) throw new Error(result.error ?? 'step failed');
+          const output = result.output;
           results.push({ step_id: step.id, ok: true, output });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
