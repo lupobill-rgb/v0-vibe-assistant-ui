@@ -77,9 +77,8 @@ export class NangoService {
     }
   }
 
-  async getConnectUrl(teamId: string, connectorType: ConnectorType, redirectUri: string): Promise<{ sessionToken: string; connectionId: string }> {
+  async getConnectSession(teamId: string, connectorType: ConnectorType, redirectUri?: string): Promise<{ sessionToken: string }> {
     this.ensureConfigured();
-    const connectionId = `${teamId}__${connectorType}`;
     this.logger.log(`Initiating connect session team=${teamId} connector=${connectorType}`);
     const session = await this.nango.createConnectSession({
       tags: { end_user_id: teamId },
@@ -87,7 +86,7 @@ export class NangoService {
       ...(redirectUri ? { redirect_url: redirectUri } : {}),
     });
     const token = (session as { data: { token: string } }).data.token;
-    return { sessionToken: token, connectionId };
+    return { sessionToken: token };
   }
 
   async getConnection(teamId: string, connectorType: ConnectorType): Promise<NangoConnection | null> {
