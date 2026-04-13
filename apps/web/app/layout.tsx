@@ -5,6 +5,7 @@ import { CommandPalette } from '@/components/command-palette'
 import { AuthGuard } from '@/components/auth-guard'
 import { TeamProvider } from '@/contexts/TeamContext'
 import { Toaster } from '@/components/ui/sonner'
+import { NotificationListener } from '@/components/notification-listener'
 
 export const metadata: Metadata = {
   title: 'UbiVibe - AI Coding Assistant',
@@ -41,6 +42,7 @@ export default function RootLayout({
           <AuthGuard>
             <TeamProvider>
               {children}
+              <NotificationListener />
             </TeamProvider>
           </AuthGuard>
           <CommandPalette />
