@@ -82,7 +82,7 @@ export class ClaudeWorker implements IWorker {
       const step: PlanStep = {
         id: String(i),
         skill_id: s.skill_slug,
-        mode: 'build',
+        mode: (s as any).mode ?? 'build',
         prompt: JSON.stringify(s.inputs),
         team_id: teamId,
       };
