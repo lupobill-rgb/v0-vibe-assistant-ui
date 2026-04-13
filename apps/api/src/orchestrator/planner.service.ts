@@ -62,6 +62,15 @@ const WRAPPER_SYSTEM_PROMPT = [
   'Return JSON only. No prose. No markdown fences.',
 ].join('\n');
 
+/** Aliases consumed by OrchestratorController — keep in sync with controller imports. */
+export interface Plan {
+  steps: ExecutionStep[];
+  summary?: string;
+  usedFallback: boolean;
+}
+
+export { ClaudePlanner as PlannerService };
+
 @Injectable()
 export class ClaudePlanner implements IPlanner {
   private readonly logger = new Logger(ClaudePlanner.name);
@@ -71,14 +80,16 @@ export class ClaudePlanner implements IPlanner {
 
   async plan(
     userPrompt: string,
-    context: Record<string, unknown> = {},
-  ): Promise<ExecutionPlan> {
+    context: string | Record<string, unknown> = {},
+  ): Promise<ExecutionPlan & { usedFallback: boolean }> {
+    // When called from controller with team_id string, normalize to context object.
+    const ctx = typeof context === 'string' ? { team_id: context } : context;
     const skills = await this.fetchComposableSkills();
     const systemPrompt = this.buildSystemPrompt(skills);
-    const userMessage = this.buildUserMessage(userPrompt, context);
+    const userMessage = this.buildUserMessage(userPrompt, ctx);
     const raw = await this.callClaude(systemPrompt, userMessage);
     const parsed = this.parseStrictJson(raw);
-    return this.validatePlan(parsed, raw);
+    return { ...this.validatePlan(parsed, raw), usedFallback: false };
   }
 
   private async fetchComposableSkills(): Promise<ComposableSkillRow[]> {

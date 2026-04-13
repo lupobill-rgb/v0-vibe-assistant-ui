@@ -5,7 +5,9 @@
  * Not yet registered in app.module.ts.
  */
 
+import { Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { getPlatformSupabaseClient } from '../supabase/client';
 
 export type StepMode = 'build' | 'runtime' | 'hybrid';
 
@@ -49,16 +51,43 @@ const THIN_WRAPPER = [
   'Silent failure is forbidden. Return plain-English reason if you cannot proceed.',
 ].join('\n');
 
+/** Aliases consumed by OrchestratorController — keep in sync with controller imports. */
+export interface WorkerOutput {
+  results: WorkerResult[];
+  usedFallback: boolean;
+}
+
+export { ClaudeWorker as WorkerService };
+
+@Injectable()
 export class ClaudeWorker implements IWorker {
   private readonly model: string;
   private readonly apiKey: string;
 
-  constructor(
-    private readonly supabase: SupabaseClient,
-    opts: { model?: string; apiKey?: string } = {},
-  ) {
-    this.model = opts.model || 'claude-sonnet-4-6';
-    this.apiKey = opts.apiKey || process.env.ANTHROPIC_API_KEY || '';
+  private get supabase(): SupabaseClient {
+    return getPlatformSupabaseClient();
+  }
+
+  constructor() {
+    this.model = process.env.CLAUDE_WORKER_MODEL || 'claude-sonnet-4-6';
+    this.apiKey = process.env.ANTHROPIC_API_KEY || '';
+  }
+
+  /** Called by OrchestratorController — runs all plan steps sequentially. */
+  async run(plan: { steps: Array<{ skill_slug: string; inputs: Record<string, unknown> }> }, teamId: string): Promise<WorkerOutput> {
+    const results: WorkerResult[] = [];
+    for (let i = 0; i < plan.steps.length; i++) {
+      const s = plan.steps[i];
+      const step: PlanStep = {
+        id: String(i),
+        skill_id: s.skill_slug,
+        mode: 'build',
+        prompt: JSON.stringify(s.inputs),
+        team_id: teamId,
+      };
+      results.push(await this.executeStep(step));
+    }
+    return { results, usedFallback: false };
   }
 
   async executeStep(step: PlanStep): Promise<WorkerResult> {
