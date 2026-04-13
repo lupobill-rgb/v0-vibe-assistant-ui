@@ -46,7 +46,7 @@ interface ComposableSkillRow {
   inputs_schema: unknown;
 }
 
-const PLANNER_MODEL = 'claude-haiku-4-5-20251001';
+const PLANNER_MODEL = 'vibe-editor';
 
 /**
  * 5-line wrapper. No prescriptive rules, no examples, no chain-of-thought
