@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException, InternalServerErrorException, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, Query, Logger, BadRequestException, InternalServerErrorException, HttpCode, OnModuleInit } from '@nestjs/common';
 import { NangoService, ConnectorType } from './nango.service';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { WebhookService } from './webhook.service';
@@ -10,13 +10,30 @@ interface ConnectDto {
 }
 
 @Controller('connectors')
-export class ConnectorsController {
+export class ConnectorsController implements OnModuleInit {
   private readonly logger = new Logger(ConnectorsController.name);
 
   constructor(
     private readonly nangoService: NangoService,
     private readonly webhookService: WebhookService,
   ) {}
+
+  async onModuleInit() {
+    try {
+      const sb = getPlatformSupabaseClient();
+      const { data: integrations } = await sb
+        .from('team_integrations')
+        .select('provider')
+        .not('nango_connection_id', 'is', null);
+      const providers = [...new Set((integrations ?? []).map((r: any) => r.provider))];
+      for (const provider of providers) {
+        await this.seedRuntimeSkill(provider);
+      }
+      this.logger.log(`Runtime skill backfill complete — ${providers.length} providers checked`);
+    } catch (err) {
+      this.logger.warn(`Runtime skill backfill failed (non-blocking): ${(err as Error).message}`);
+    }
+  }
 
   /**
    * GET /connectors/catalog
