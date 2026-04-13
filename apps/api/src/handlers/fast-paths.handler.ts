@@ -4,6 +4,46 @@ import { storage } from '../storage';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { resolveColorScheme } from '../starter-site';
 
+/**
+ * VIBE deterministic-template layout shim.
+ *
+ * Defends rendered skeletons against three recurring CSS regressions found across
+ * the Apr 11–12 skill_registry skeletons (sales-crm, exec-dashboard, marketing,
+ * pipeline-review, win-loss, finance, youth-sports, pharma):
+ *
+ *   1. Horizontal tab nav clipping — `.tabs/.tabs-bar/.nav-tabs` declared
+ *      `display:flex` without `overflow-x:auto`. Combined with `body{overflow-x:hidden}`,
+ *      tabs that exceed viewport width get silently cropped.
+ *   2. Sidebar/header z-index inversion — sidebars at z-index:50 vs translucent
+ *      sticky topbars at z-index:40, causing the sidebar to bleed through the
+ *      backdrop-blurred topbar at the seam.
+ *   3. Tab buttons collapsing under flex-shrink — children of a flex tab bar
+ *      need `flex-shrink:0` to keep their width when the bar overflows.
+ *
+ * Injected into <head> AFTER brand-token replacement and BEFORE Supabase credential
+ * injection. Uses !important to override per-skeleton rules without editing each row.
+ * Marked with data-vibe-layout-shim so it's auditable in DevTools.
+ */
+const VIBE_LAYOUT_SHIM = `<style data-vibe-layout-shim="1">
+.tabs,.tabs-bar,.nav-tabs{overflow-x:auto!important;flex-wrap:nowrap!important;scrollbar-width:thin}
+.tabs>*,.tabs-bar>*,.nav-tabs>*{flex-shrink:0!important}
+.tabs::-webkit-scrollbar,.tabs-bar::-webkit-scrollbar,.nav-tabs::-webkit-scrollbar{height:4px}
+.tabs::-webkit-scrollbar-thumb,.tabs-bar::-webkit-scrollbar-thumb,.nav-tabs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
+.sidebar{z-index:40!important}
+.topbar{z-index:60!important}
+</style>`;
+
+/** Inject the layout shim into <head>. Falls back to prepending if no <head> tag exists. */
+function injectLayoutShim(html: string): string {
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/(<head[^>]*>)/i, `$1\n${VIBE_LAYOUT_SHIM}`);
+  }
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(/(<html[^>]*>)/i, `$1\n<head>${VIBE_LAYOUT_SHIM}</head>`);
+  }
+  return `${VIBE_LAYOUT_SHIM}\n${html}`;
+}
+
 export interface DeterministicTemplateParams {
   taskId: string;
   goldenMatch: { matched: boolean; skillName: string; content: string; htmlSkeleton: string | null };
@@ -51,14 +91,16 @@ export async function handleDeterministicTemplate(params: DeterministicTemplateP
   }
   const skelColorScheme = resolveColorScheme(prompt);
 
-  const html = goldenMatch.htmlSkeleton
-    .replace(/\{\{BRAND_COMPANY\}\}/g, brandCompany)
-    .replace(/\{\{BRAND_TEAM\}\}/g, brandTeamName)
-    .replace(/\{\{BRAND_PRIMARY\}\}/g, skelColorScheme.primary)
-    .replace(/\{\{BRAND_BG\}\}/g, skelColorScheme.bg)
-    .replace(/\{\{BRAND_TEXT\}\}/g, skelColorScheme.text)
-    .replace(/\{\{BRAND_SURFACE\}\}/g, skelColorScheme.surface)
-    .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border);
+  const html = injectLayoutShim(
+    goldenMatch.htmlSkeleton
+      .replace(/\{\{BRAND_COMPANY\}\}/g, brandCompany)
+      .replace(/\{\{BRAND_TEAM\}\}/g, brandTeamName)
+      .replace(/\{\{BRAND_PRIMARY\}\}/g, skelColorScheme.primary)
+      .replace(/\{\{BRAND_BG\}\}/g, skelColorScheme.bg)
+      .replace(/\{\{BRAND_TEXT\}\}/g, skelColorScheme.text)
+      .replace(/\{\{BRAND_SURFACE\}\}/g, skelColorScheme.surface)
+      .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border),
+  );
 
   const previewDir = path.join(PREVIEWS_DIR, taskId);
   fs.mkdirSync(previewDir, { recursive: true });
