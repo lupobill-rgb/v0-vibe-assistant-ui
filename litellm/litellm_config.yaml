@@ -33,7 +33,7 @@ model_list:
 
   - model_name: vibe-builder
     litellm_params:
-      model: fireworks_ai/accounts/fireworks/models/deepseek-v3
+      model: fireworks_ai/accounts/fireworks/models/deepseek-v3-0324
       api_key: os.environ/FIREWORKS_API_KEY
       max_tokens: 16384
       timeout: 30
