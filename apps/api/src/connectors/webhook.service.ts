@@ -45,6 +45,36 @@ export class WebhookService {
       this.logger.log(`Autonomous kill switch active for org ${team.org_id} — data synced, skipping recommendations`);
       return { queued: 0 };
     }
+
+    // GATE 1: Dedup — skip if same triggerSource fired for this team in last 15 min
+    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { data: recentCall } = await this.sb
+      .from('metering_calls')
+      .select('call_id')
+      .eq('team_id', team.id)
+      .eq('model', payload.model)
+      .gte('timestamp', fifteenMinsAgo)
+      .limit(1)
+      .maybeSingle();
+    if (recentCall) {
+      this.logger.log(`Cooldown active for team ${team.id} / ${payload.model} — skipping`);
+      return { queued: 0 };
+    }
+
+    // GATE 2: Daily spend cap — skip if team has spent >= $5 today
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const { data: todaySpend } = await this.sb
+      .from('metering_calls')
+      .select('cost_estimate')
+      .eq('team_id', team.id)
+      .gte('timestamp', startOfDay.toISOString());
+    const totalToday = (todaySpend ?? []).reduce((sum, r) => sum + (r.cost_estimate ?? 0), 0);
+    if (totalToday >= 5.0) {
+      this.logger.warn(`Daily spend cap hit for team ${team.id} ($${totalToday.toFixed(2)}) — skipping`);
+      return { queued: 0 };
+    }
+
     this.generateRecommendations(team.org_id, team.id, payload.providerConfigKey, payload.model)
       .then(async (count) => {
         await this.sb.from('team_integrations').update({
