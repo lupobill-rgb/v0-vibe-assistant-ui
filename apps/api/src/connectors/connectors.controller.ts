@@ -99,7 +99,37 @@ export class ConnectorsController {
     } catch (err) {
       this.logger.warn(`Failed to store connection_id: ${(err as Error).message}`);
     }
+    this.seedRuntimeSkill(body.connectorType).catch((err) =>
+      this.logger.warn(`Runtime skill seed failed (non-blocking): ${(err as Error).message}`),
+    );
     return { ok: true };
+  }
+
+  private async seedRuntimeSkill(provider: string): Promise<void> {
+    const sb = getPlatformSupabaseClient();
+    const skillName = `${provider}-records`;
+    const { data: existing } = await sb
+      .from('skill_registry')
+      .select('id')
+      .eq('skill_name', skillName)
+      .maybeSingle();
+    if (existing) return;
+    await sb.from('skill_registry').insert({
+      skill_name: skillName,
+      plugin_name: provider,
+      mode: 'runtime',
+      composable: true,
+      is_active: true,
+      autonomous_enabled: false,
+      description: `Fetch live records from ${provider} via Nango connector`,
+      team_function: 'operations',
+      content: `# ${provider} Records\nFetches live records from ${provider} via Nango connector.`,
+      tool_grants: '{}',
+      inputs_schema: { connector: { type: 'string', default: provider }, model: { type: 'string', default: 'Record' } },
+      outputs_schema: { records: { type: 'array' } },
+      version: 1,
+    });
+    this.logger.log(`Runtime skill seeded: ${skillName}`);
   }
 
   /**
