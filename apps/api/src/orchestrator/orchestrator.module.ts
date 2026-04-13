@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ClaudePlanner } from '../planner/claude-planner.service';
-import { ClaudeWorker } from '../worker/claude-worker.service';
+import { ClaudePlanner } from './planner.service';
+import { ClaudeWorker } from './worker.service';
 import { OrchestratorService } from './orchestrator.service';
 
 @Module({
