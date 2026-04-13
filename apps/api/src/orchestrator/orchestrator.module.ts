@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ClaudePlanner } from './planner.service';
 import { ClaudeWorker } from './worker.service';
 import { OrchestratorService } from './orchestrator.service';
+import { OrchestratorController } from './orchestrator.controller';
 
 @Module({
   controllers: [OrchestratorController],
