@@ -40,7 +40,7 @@ export class PlannerMalformedResponseError extends Error {
 }
 
 interface ComposableSkillRow {
-  slug: string;
+  skill_name: string;
   name: string;
   mode: string;
   inputs_schema: unknown;
@@ -95,7 +95,7 @@ export class ClaudePlanner implements IPlanner {
   private async fetchComposableSkills(): Promise<ComposableSkillRow[]> {
     const { data, error } = await this.sb
       .from('skill_registry')
-      .select('slug, name, mode, inputs_schema')
+      .select('skill_name, mode, inputs_schema')
       .eq('composable', true);
     if (error) {
       this.logger.error(`Failed to load composable skills: ${error.message}`);
@@ -106,8 +106,8 @@ export class ClaudePlanner implements IPlanner {
 
   private buildSystemPrompt(skills: ComposableSkillRow[]): string {
     const manifest = skills.map((s) => ({
-      slug: s.slug,
-      name: s.name,
+      slug: s.skill_name,
+      name: s.skill_name,
       mode: s.mode,
       inputs_schema: s.inputs_schema ?? {},
     }));
