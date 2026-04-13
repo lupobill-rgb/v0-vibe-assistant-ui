@@ -3,10 +3,11 @@ import { ClaudePlanner } from './planner.service';
 import { ClaudeWorker } from './worker.service';
 import { OrchestratorService } from './orchestrator.service';
 import { OrchestratorController } from './orchestrator.controller';
+import { NangoService } from '../connectors/nango.service';
 
 @Module({
   controllers: [OrchestratorController],
-  providers: [ClaudePlanner, ClaudeWorker, OrchestratorService],
+  providers: [ClaudePlanner, ClaudeWorker, OrchestratorService, NangoService],
   exports: [OrchestratorService],
 })
 export class OrchestratorModule {}
