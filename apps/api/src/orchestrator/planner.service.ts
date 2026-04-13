@@ -7,6 +7,7 @@ import { getPlatformSupabaseClient } from '../supabase/client';
  */
 export interface ExecutionStep {
   skill_slug: string;
+  mode?: string;
   inputs: Record<string, unknown>;
   rationale?: string;
 }
@@ -56,7 +57,8 @@ const WRAPPER_SYSTEM_PROMPT = [
   'You are the VIBE planner.',
   'Given a user request and a list of composable skills, choose which skills to run and with what inputs.',
   'Each step must reference a skill by its exact slug and supply inputs matching that skill inputs_schema.',
-  'Respond with a single JSON object: {"steps":[{"skill_slug":"...","inputs":{...},"rationale":"..."}],"summary":"..."}',
+  'Set "mode" on each step to the skill\'s mode ("build", "runtime", or "hybrid") from the skill manifest.',
+  'Respond with a single JSON object: {"steps":[{"skill_slug":"...","mode":"...","inputs":{...},"rationale":"..."}],"summary":"..."}',
   'Return JSON only. No prose. No markdown fences.',
 ].join('\n');
 
@@ -188,6 +190,7 @@ export class ClaudePlanner implements IPlanner {
       }
       return {
         skill_slug: s.skill_slug,
+        mode: typeof s.mode === 'string' ? s.mode : undefined,
         inputs: s.inputs as Record<string, unknown>,
         rationale: typeof s.rationale === 'string' ? s.rationale : undefined,
       };
