@@ -69,7 +69,7 @@ export class ClaudeWorker implements IWorker {
   }
 
   constructor() {
-    this.model = process.env.CLAUDE_WORKER_MODEL || 'claude-sonnet-4-6';
+    this.model = 'vibe-builder';
     this.apiKey = process.env.ANTHROPIC_API_KEY || '';
   }
 
@@ -137,11 +137,11 @@ export class ClaudeWorker implements IWorker {
     const { data, error } = await this.supabase
       .from('skill_registry')
       .select('id, skill_name, content, team_function')
-      .eq('id', skillId)
+      .eq('skill_name', skillId)
       .maybeSingle();
 
     if (error) throw new Error(`skill_registry lookup failed: ${error.message}`);
-    if (!data) throw new Error(`skill_registry: no row for id ${skillId}`);
+    if (!data) throw new Error(`skill_registry: no row for skill_name ${skillId}`);
     return data as SkillRow;
   }
 
@@ -187,14 +187,13 @@ export class ClaudeWorker implements IWorker {
     systemPrompt: string,
     userPrompt: string,
   ): Promise<{ text: string; tokens_in: number; tokens_out: number }> {
-    if (!this.apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+    const proxyUrl = process.env.LITELLM_PROXY_URL;
+    if (!proxyUrl) throw new Error('LITELLM_PROXY_URL not configured');
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(`${proxyUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: this.model,
