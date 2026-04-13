@@ -46,8 +46,6 @@ interface ComposableSkillRow {
   inputs_schema: unknown;
 }
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
 const PLANNER_MODEL = 'claude-haiku-4-5-20251001';
 
 /**
@@ -120,14 +118,13 @@ export class ClaudePlanner implements IPlanner {
   }
 
   private async callClaude(systemPrompt: string, userMessage: string): Promise<string> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured');
-    const res = await fetch(ANTHROPIC_URL, {
+    const proxyUrl = process.env.LITELLM_PROXY_URL;
+    if (!proxyUrl) throw new Error('LITELLM_PROXY_URL is not configured');
+    const url = `${proxyUrl}/v1/messages`;
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
       },
       body: JSON.stringify({
         model: PLANNER_MODEL,
