@@ -146,6 +146,9 @@ file is created for audit purposes.
 | ISO 27001 | All regulated industry skeletons (pharma, finserv, healthcare) must include ISO 27001 panel |
 | DESIGN STANDARD | Dark theme #0A0E17, Space Grotesk headings, Inter body, #00E5A0 primary |
 | ONE SKELETON PER SESSION | One skill_name per Claude Code session. No batching. |
+| TAB OVERFLOW | Every `.tabs`, `.tabs-bar`, `.nav-tabs` declaration must include `overflow-x:auto` and the tab children must have `flex-shrink:0`. Required to prevent horizontal nav clipping under `body{overflow-x:hidden}`. |
+| Z-INDEX ORDER | Sticky `.topbar` z-index must be GREATER than fixed `.sidebar` z-index. Standard: sidebar `z-index:40`, topbar `z-index:60`. Inverted z-index lets the sidebar bleed through any backdrop-blurred translucent topbar at the seam. |
+| NO NESTED VERTICAL SCROLL | If `.topbar` is `position:sticky`, its sibling `.content` must NOT have `overflow-y:auto` — nested scroll containers break sticky positioning and the topbar will appear to detach from the viewport. |
 
 ### Verification query (run after every skeleton apply)
 ```sql
@@ -155,13 +158,18 @@ SELECT skill_name,
     / LENGTH('new Chart(') as charts,
   html_skeleton LIKE '%__VIBE_TEAM_ID__%' as has_team_token,
   html_skeleton LIKE '%window.__VIBE_SAMPLE__%' as has_sample_data,
-  html_skeleton LIKE '%try{%vibeLoadData%' as has_try_catch
+  html_skeleton LIKE '%try{%vibeLoadData%' as has_try_catch,
+  -- Layout regression guards (added Apr 13 after skeleton tab/sidebar bug):
+  (html_skeleton !~ '\.tabs[^}]*\{' OR html_skeleton ~ '\.tabs[^}]*overflow-x\s*:\s*auto') as tabs_overflow_ok,
+  (html_skeleton !~ '\.tabs-bar[^}]*\{' OR html_skeleton ~ '\.tabs-bar[^}]*overflow-x\s*:\s*auto') as tabs_bar_overflow_ok,
+  (html_skeleton !~ '\.sidebar[^}]*\{' OR html_skeleton !~ '\.sidebar[^}]*z-index:\s*5\d') as sidebar_z_ok
 FROM skill_registry
 WHERE skill_name = '[skill_name]';
 ```
 
 ### DONE WHEN for skeleton sessions
 DONE WHEN: length > 20000 AND charts >= 4 AND has_team_token = true 
+AND tabs_overflow_ok = true AND tabs_bar_overflow_ok = true AND sidebar_z_ok = true 
 AND has_sample_data = true AND has_try_catch = true
 
 ### Pre-session checklist for skeleton sessions
