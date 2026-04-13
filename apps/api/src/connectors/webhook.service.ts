@@ -61,7 +61,7 @@ export class WebhookService {
       return { queued: 0 };
     }
 
-    // GATE 2: Daily spend cap — skip if team has spent >= $5 today
+    // GATE 2: Daily spend cap — skip if team has spent >= $1 today
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const { data: todaySpend } = await this.sb
@@ -70,8 +70,17 @@ export class WebhookService {
       .eq('team_id', team.id)
       .gte('timestamp', startOfDay.toISOString());
     const totalToday = (todaySpend ?? []).reduce((sum, r) => sum + (r.cost_estimate ?? 0), 0);
-    if (totalToday >= 5.0) {
+    if (totalToday >= 1.0) {
       this.logger.warn(`Daily spend cap hit for team ${team.id} ($${totalToday.toFixed(2)}) — skipping`);
+      await this.sb.from('notifications').insert({
+        org_id: team.org_id,
+        user_id: null,
+        type: 'upgrade_required',
+        title: 'Automation limit reached',
+        body: 'Your team has reached its daily automation limit. Upgrade your plan to continue.',
+        link: '/settings/billing',
+        is_read: false,
+      });
       return { queued: 0 };
     }
 
@@ -137,14 +146,14 @@ export class WebhookService {
       .eq('team_id', teamId).order('spend_date', { ascending: false }).limit(20);
     const ago30d = new Date(Date.now() - 30 * 86400000).toISOString();
     const { data: usage } = await this.sb.from('metering_calls').select('model, cost_estimate')
-      .eq('team_id', teamId).gte('created_at', ago30d);
+      .eq('team_id', teamId).gte('timestamp', ago30d);
 
     const prompt = `You are an AI business advisor. Based on this org data, generate 1-3 actionable recommendations for the ${model} team. Be specific and quantitative. Return ONLY a JSON array, no markdown:\n[{"title":string,"rationale":string,"proposed_action":string,"estimated_impact":string,"priority":"high"|"medium"|"low","team_function":string}]\n\nData: ${JSON.stringify({ deals, spend, usage })}`;
 
     // Read org's preferred background LLM
     const { data: orgRow } = await this.sb
       .from('organizations').select('preferred_llm_background').eq('id', orgId).single();
-    const bgModel = orgRow?.preferred_llm_background || 'deepseek';
+    const bgModel = orgRow?.preferred_llm_background || 'vibe-automation';
 
     let recs: any[];
     const text = await this.callBackground(bgModel, prompt);
