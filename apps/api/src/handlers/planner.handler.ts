@@ -237,9 +237,11 @@ export async function handlePlannerPipeline(params: PlannerHandlerParams): Promi
     }
 
     if (data.usage?.total_tokens) totalTokens += data.usage.total_tokens;
-    fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(data.diff));
+    // Credentials replacement — one pass, used for both disk and task diff.
+    const finalSingleHtml = injectSupabaseCredentials(data.diff);
+    fs.writeFileSync(path.join(previewDir, 'index.html'), finalSingleHtml);
     pageNames = ['index'];
-    await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: data.diff }]));
+    await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Home', filename: 'index.html', route: '/', html: finalSingleHtml }]));
   }
 
   // ── Finalize ──

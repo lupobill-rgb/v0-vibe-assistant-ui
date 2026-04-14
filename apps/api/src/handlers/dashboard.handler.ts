@@ -241,10 +241,12 @@ ${dashData.diff}`;
 
     const previewDir = path.join(PREVIEWS_DIR, taskId);
     fs.mkdirSync(previewDir, { recursive: true });
-    fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(dashData.diff));
+    // Credentials replacement — one pass, used for both disk and task diff.
+    const finalDashHtml = injectSupabaseCredentials(dashData.diff);
+    fs.writeFileSync(path.join(previewDir, 'index.html'), finalDashHtml);
     pageNames = ['index'];
     timeline.push({ step: 'dashboard-fast-path', startedAt: new Date(startedAtMs).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - startedAtMs, status: 'completed' });
-    await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: dashData.diff }]));
+    await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: finalDashHtml }]));
     fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
     fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
     const previewToken = signPreviewToken(taskId);
