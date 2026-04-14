@@ -435,11 +435,13 @@ const VIBE_TEAM_ID='__VIBE_TEAM_ID__';
 </div>
 
 <script>
-Chart.defaults.color='#9CA3AF';
-Chart.defaults.borderColor='#1F2937';
-Chart.defaults.font.family="'Inter',system-ui,sans-serif";
-Chart.defaults.plugins.legend.labels.usePointStyle=true;
-Chart.defaults.plugins.legend.labels.padding=12;
+function __vibeApplyChartDefaults(){
+  Chart.defaults.color='#9CA3AF';
+  Chart.defaults.borderColor='#1F2937';
+  Chart.defaults.font.family="'Inter',system-ui,sans-serif";
+  Chart.defaults.plugins.legend.labels.usePointStyle=true;
+  Chart.defaults.plugins.legend.labels.padding=12;
+}
 
 async function vibeLoadData(){
   if(!VIBE_SB_URL||VIBE_SB_URL.indexOf('__')===0) throw new Error('no supabase');
@@ -528,7 +530,26 @@ async function boot(){
   wireTabs();
   document.getElementById('lastUpdated').textContent='Updated '+new Date().toLocaleTimeString();
 }
-boot();
+// Wait for Chart.js to finish loading before running boot(). In some
+// iframe contexts (srcdoc especially) the CDN script is not fully
+// evaluated by the time the body script runs, so Chart is undefined.
+// Poll every 50ms with a 10s cap, then apply defaults and call boot.
+(function __vibeStart(){
+  var t0=Date.now();
+  (function tick(){
+    if(typeof Chart!=='undefined'){
+      try{__vibeApplyChartDefaults();}catch(e){console.warn('[vibe] defaults failed',e);}
+      boot();
+      return;
+    }
+    if(Date.now()-t0>10000){
+      console.error('[vibe] Chart.js failed to load after 10s — rendering without charts');
+      boot();
+      return;
+    }
+    setTimeout(tick,50);
+  })();
+})();
 </script>
 </body>
 </html>
