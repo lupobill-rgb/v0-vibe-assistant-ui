@@ -106,28 +106,30 @@ export async function handleDeterministicTemplate(params: DeterministicTemplateP
   if (goldenMatch.sampleData) {
     const sampleJson = JSON.stringify(goldenMatch.sampleData);
     // Brace-balanced replace: find window.__VIBE_SAMPLE__ = { ... };
-    // The greedy regex breaks on nested objects so we scan manually.
-    const sampleVarIdx = htmlWithTokens.indexOf('window.__VIBE_SAMPLE__');
-    if (sampleVarIdx !== -1) {
-      const openBrace = htmlWithTokens.indexOf('{', sampleVarIdx);
-      if (openBrace !== -1) {
-        let depth = 0;
-        let closeIdx = -1;
-        for (let i = openBrace; i < htmlWithTokens.length; i++) {
-          if (htmlWithTokens[i] === '{') depth++;
-          else if (htmlWithTokens[i] === '}') {
-            depth--;
-            if (depth === 0) { closeIdx = i; break; }
-          }
+    // Match the assignment form specifically (not catch-clause reads),
+    // with optional whitespace around `=` so both `__VIBE_SAMPLE__={`
+    // (generator output) and `__VIBE_SAMPLE__ = {` (hand-written) match.
+    const assignMatch = htmlWithTokens.match(/window\.__VIBE_SAMPLE__\s*=\s*\{/);
+    const sampleVarIdx = assignMatch?.index ?? -1;
+    if (sampleVarIdx !== -1 && assignMatch) {
+      // openBrace is the `{` captured at the end of the match
+      const openBrace = sampleVarIdx + assignMatch[0].length - 1;
+      let depth = 0;
+      let closeIdx = -1;
+      for (let i = openBrace; i < htmlWithTokens.length; i++) {
+        if (htmlWithTokens[i] === '{') depth++;
+        else if (htmlWithTokens[i] === '}') {
+          depth--;
+          if (depth === 0) { closeIdx = i; break; }
         }
-        if (closeIdx !== -1) {
-          // Consume the trailing semicolon if present
-          const endIdx = htmlWithTokens[closeIdx + 1] === ';' ? closeIdx + 2 : closeIdx + 1;
-          htmlWithTokens =
-            htmlWithTokens.slice(0, sampleVarIdx) +
-            `window.__VIBE_SAMPLE__ = ${sampleJson};` +
-            htmlWithTokens.slice(endIdx);
-        }
+      }
+      if (closeIdx !== -1) {
+        // Consume the trailing semicolon if present
+        const endIdx = htmlWithTokens[closeIdx + 1] === ';' ? closeIdx + 2 : closeIdx + 1;
+        htmlWithTokens =
+          htmlWithTokens.slice(0, sampleVarIdx) +
+          `window.__VIBE_SAMPLE__ = ${sampleJson};` +
+          htmlWithTokens.slice(endIdx);
       }
     } else {
       // No existing block — inject before </head>
