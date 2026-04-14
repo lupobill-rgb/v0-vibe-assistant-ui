@@ -56,10 +56,11 @@ const PLANNER_MODEL = 'vibe-editor';
 const WRAPPER_SYSTEM_PROMPT = [
   'You are the VIBE planner.',
   'Given a user request and a list of composable skills, choose which skills to run and with what inputs.',
-  'Each step must reference a skill by its exact slug and supply inputs matching that skill inputs_schema.',
+  'Each step MUST reference a skill_slug that exists VERBATIM in the Available skills list. Never invent or guess a slug.',
   'Each step MUST copy the mode value exactly from the skill manifest. Never change or default the mode.',
   'Respond with a single JSON object:\n{"steps":[{"skill_slug":"...","mode":"<exact mode from manifest>","inputs":{...},"rationale":"..."}],"summary":"..."}',
   'Return JSON only. No prose. No markdown fences.',
+  'If no skill matches the request, return {"steps":[],"summary":"No matching skill found."}',
 ].join('\n');
 
 /** Aliases consumed by OrchestratorController — keep in sync with controller imports. */
@@ -89,7 +90,7 @@ export class ClaudePlanner implements IPlanner {
     const userMessage = this.buildUserMessage(userPrompt, ctx);
     const raw = await this.callClaude(systemPrompt, userMessage);
     const parsed = this.parseStrictJson(raw);
-    return { ...this.validatePlan(parsed, raw), usedFallback: false };
+    return { ...this.validatePlan(parsed, raw, skills), usedFallback: false };
   }
 
   private async fetchComposableSkills(): Promise<ComposableSkillRow[]> {
@@ -169,7 +170,8 @@ export class ClaudePlanner implements IPlanner {
     return s;
   }
 
-  private validatePlan(parsed: unknown, raw: string): ExecutionPlan {
+  private validatePlan(parsed: unknown, raw: string, skills: ComposableSkillRow[]): ExecutionPlan {
+    const validSlugs = new Set(skills.map(s => s.skill_name));
     if (!parsed || typeof parsed !== 'object') {
       throw new PlannerMalformedResponseError('Plan must be an object', raw);
     }
@@ -184,6 +186,12 @@ export class ClaudePlanner implements IPlanner {
       const s = step as Record<string, unknown>;
       if (typeof s.skill_slug !== 'string' || s.skill_slug.length === 0) {
         throw new PlannerMalformedResponseError(`steps[${i}].skill_slug must be a non-empty string`, raw);
+      }
+      if (!validSlugs.has(s.skill_slug)) {
+        throw new PlannerMalformedResponseError(
+          `steps[${i}].skill_slug "${s.skill_slug}" is not a known skill. Valid slugs: ${[...validSlugs].join(', ')}`,
+          raw,
+        );
       }
       if (!s.inputs || typeof s.inputs !== 'object' || Array.isArray(s.inputs)) {
         throw new PlannerMalformedResponseError(`steps[${i}].inputs must be an object`, raw);
