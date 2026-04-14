@@ -77,16 +77,39 @@ export class NangoService {
     }
   }
 
+  /**
+   * Create a Nango connect session bound to the caller's team via end_user.
+   * The end_user.id is what Nango echoes back in the auth webhook — it is
+   * how the backend re-binds a connection to a team without trusting the
+   * browser. Do not change this to `tags`; tags are not surfaced in webhooks.
+   */
   async getConnectSession(teamId: string, connectorType: ConnectorType, redirectUri?: string): Promise<{ sessionToken: string }> {
     this.ensureConfigured();
     this.logger.log(`Initiating connect session team=${teamId} connector=${connectorType}`);
     const session = await this.nango.createConnectSession({
-      tags: { end_user_id: teamId },
+      end_user: { id: teamId },
       allowed_integrations: [connectorType],
       ...(redirectUri ? { redirect_url: redirectUri } : {}),
     });
     const token = (session as { data: { token: string } }).data.token;
     return { sessionToken: token };
+  }
+
+  /**
+   * Resolve the Nango-generated connectionId for a (team, provider) pair.
+   * The id is random — it is assigned by Nango during OAuth and stored by
+   * the auth webhook handler. Never compute it deterministically.
+   */
+  private async resolveConnectionId(teamId: string, connectorType: ConnectorType): Promise<string | null> {
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL ?? '', process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
+    const { data } = await sb
+      .from('team_integrations')
+      .select('nango_connection_id')
+      .eq('team_id', teamId)
+      .eq('provider', connectorType)
+      .maybeSingle();
+    return (data?.nango_connection_id as string | undefined) ?? null;
   }
 
   async getConnection(teamId: string, connectorType: ConnectorType): Promise<NangoConnection | null> {
@@ -97,7 +120,11 @@ export class NangoService {
       return cached.result;
     }
 
-    const connectionId = `${teamId}__${connectorType}`;
+    const connectionId = await this.resolveConnectionId(teamId, connectorType);
+    if (!connectionId) {
+      this.connectionCache.set(cacheKey, { result: null, timestamp: Date.now() });
+      return null;
+    }
     try {
       const connection = await this.nango.getConnection(connectorType, connectionId);
       const result: NangoConnection = {
@@ -116,8 +143,10 @@ export class NangoService {
 
   async deleteConnection(teamId: string, connectorType: ConnectorType): Promise<void> {
     this.ensureConfigured();
-    const connectionId = `${teamId}__${connectorType}`;
-    await this.nango.deleteConnection(connectorType, connectionId);
+    const connectionId = await this.resolveConnectionId(teamId, connectorType);
+    if (connectionId) {
+      await this.nango.deleteConnection(connectorType, connectionId);
+    }
     this.connectionCache.delete(`${teamId}:${connectorType}`);
     this.logger.log(`Connection deleted team=${teamId} connector=${connectorType}`);
   }
@@ -202,7 +231,8 @@ export class NangoService {
 
   async fetchHubSpotContacts(teamId: string): Promise<HubSpotContact[]> {
     this.ensureConfigured();
-    const connectionId = `${teamId}__${ConnectorType.HUBSPOT}`;
+    const connectionId = await this.resolveConnectionId(teamId, ConnectorType.HUBSPOT);
+    if (!connectionId) throw new Error(`No HubSpot connection for team ${teamId}`);
     this.logger.log(`Fetching HubSpot contacts connection=${connectionId}`);
     const resp = await this.nango.proxy({
       method: 'GET',

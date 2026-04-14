@@ -77,48 +77,46 @@ export class ConnectorsController implements OnModuleInit {
 
   /**
    * POST /connectors/webhook/nango
-   * Receives Nango sync events and queues autonomous skill executions.
-   * No auth — Nango calls this directly. Validate via trigger_on matching.
+   * Receives Nango webhooks — the authoritative source for connection and
+   * sync lifecycle. Branches on body.type:
+   *
+   *   auth  → connection created/refreshed/deleted.
+   *           Writes team_integrations and promotes onboarding_connectors.
+   *           Replaces the old frontend-driven store-connection endpoint.
+   *   sync  → record sync event. Fans out to autonomous processing.
+   *
+   * Nango retries on non-2xx, so we always return 200 and log drops.
+   * TODO(sprint-2 trust layer): verify x-nango-signature HMAC against
+   *   NANGO_WEBHOOK_SECRET before acting on payloads.
    */
   @Post('webhook/nango')
   @HttpCode(200)
-  async nangoWebhook(@Body() body: any): Promise<{ queued: number }> {
-    if (!body?.connectionId || !body?.providerConfigKey || !body?.model) {
-      // Return 200 always — Nango retries on non-2xx
-      this.logger.warn('Nango webhook missing required fields', body);
-      return { queued: 0 };
-    }
-    return this.webhookService.handleNangoEvent(body);
-  }
+  async nangoWebhook(@Body() body: any): Promise<{ ok: true }> {
+    const type = body?.type;
+    const op = body?.operation;
 
-  @Post('store-connection')
-  async storeConnection(
-    @Body() body: { teamId: string; connectorType: string; connectionId: string },
-  ): Promise<{ ok: boolean }> {
-    if (!body?.teamId || !body?.connectorType || !body?.connectionId) {
-      throw new BadRequestException('Missing required fields: teamId, connectorType, connectionId');
+    if (type === 'auth' && (op === 'creation' || op === 'override')) {
+      if (!body?.connectionId || !body?.providerConfigKey) {
+        this.logger.warn('Nango auth webhook missing required fields', body);
+        return { ok: true };
+      }
+      await this.webhookService.handleAuthCreation(body);
+      this.seedRuntimeSkill(body.providerConfigKey).catch((err) =>
+        this.logger.warn(`Runtime skill seed failed (non-blocking): ${(err as Error).message}`),
+      );
+      return { ok: true };
     }
-    this.logger.log(
-      `Store connection — team=${body.teamId} connector=${body.connectorType} connectionId=${body.connectionId}`,
-    );
-    try {
-      const sb = getPlatformSupabaseClient();
-      await sb
-        .from('team_integrations')
-        .upsert(
-          {
-            team_id: body.teamId,
-            provider: body.connectorType,
-            nango_connection_id: body.connectionId,
-          },
-          { onConflict: 'team_id,provider' },
-        );
-    } catch (err) {
-      this.logger.warn(`Failed to store connection_id: ${(err as Error).message}`);
+
+    if (type === 'sync' || body?.model) {
+      if (!body?.connectionId || !body?.providerConfigKey || !body?.model) {
+        this.logger.warn('Nango sync webhook missing required fields', body);
+        return { ok: true };
+      }
+      await this.webhookService.handleNangoEvent(body);
+      return { ok: true };
     }
-    this.seedRuntimeSkill(body.connectorType).catch((err) =>
-      this.logger.warn(`Runtime skill seed failed (non-blocking): ${(err as Error).message}`),
-    );
+
+    this.logger.log(`Nango webhook ignored — type=${type ?? 'unknown'} op=${op ?? 'unknown'}`);
     return { ok: true };
   }
 
