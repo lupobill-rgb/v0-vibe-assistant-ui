@@ -4,7 +4,10 @@ Read this entire file before every session. Non-negotiable.
 
 ## Mission
 
-Prompt → deployed product. Org-aware. Governed. Beautiful.
+Prompt → deployed product, through a closed runtime loop:
+authenticated, planned, executed, and bounded — without a human in the middle.
+
+Org-aware. Governed. Beautiful.
 
 ## Stack
 
@@ -47,6 +50,55 @@ Prompt → deployed product. Org-aware. Governed. Beautiful.
 8. **Scan before planning.** Query live schema and git log before proposing any sprint.
 9. **Verify constraint values** before writing any execution_state or severity value.
 10. **Branch naming:** Claude Code branches follow `claude/*` pattern with random suffix — check `git branch -r` for exact names before merging.
+
+## CLOSED RUNTIME LOOP — Definition and Standard
+
+As of 2026-04-13, VIBE operates on a closed runtime loop. This is the
+structural threshold that Sprint 1 + Sprint 3 crossed: authenticated
+integrations are no longer stored artifacts — they are operational assets,
+queryable at runtime, through a real planner/worker path, with live data,
+failover protection, and spend controls in place.
+
+A loop is only "closed" if ALL of the following are true on every execution path:
+
+1. **Authenticated identity resolves correctly** — no cross-tenant ambiguity
+2. **Connection is selected deterministically** — no fallback guesswork
+3. **Planner emits correct mode** — runtime vs build is not inferred later
+4. **Worker executes without human intervention** — no manual retries
+5. **Data is fetched from live system** — no mocked or cached stand-ins
+6. **Output renders in-product** — no logs-only success
+7. **Spend is bounded** — no silent overages
+8. **User is notified on constraint** — no hidden failures
+
+If any one of these breaks, the loop is OPEN. An open loop is a regression,
+regardless of what feature it enabled.
+
+### Enforcement
+
+- **No demos on non-runtime paths.** Every demo between now and revenue runs
+  through the closed loop — not the old build-everything-fresh path.
+- **No features that bypass planner/worker.** If a change skips the
+  orchestrator, it is reintroducing an asterisk. Don't ship it.
+- **No connector work that doesn't hit `NangoService.fetchRecords`.** The
+  universal dispatch is the only supported runtime path. Bespoke connector
+  adapters are forbidden.
+- **No UI work that assumes data without runtime fetch.** If a page renders
+  `__VIBE_SAMPLE__` in production, the loop is open there.
+
+### Regression check before any merge
+
+The PR description must state which of the 8 conditions the change touches,
+and confirm none are weakened. Silence is not acceptance. The closed loop
+is the product now — protecting it is more important than any individual
+feature PR.
+
+### Why this matters
+
+Before the closed loop, VIBE was a builder with connected apps. After it,
+VIBE is an operating system with inputs → decisions → actions → outputs →
+constraints all happening inside one continuous, machine-driven loop.
+Everything downstream — autonomous execution (Sprint 7), usage-based
+billing, enterprise demos — depends on this loop staying closed.
 
 ## Deployment Flow
 
@@ -260,7 +312,12 @@ Sprint Sequence — Execute in order. Do NOT skip or reorder.
 
 1A. Thin wrapper (replace VIBE_SYSTEM_RULES) → Edge Function
 1B. resolveDepartmentSkills() → context-injector.ts
-2. Auth identity fix → frontend call sites
+2. **Auth identity fix → TRUST LAYER.** Converts the closed runtime loop from
+   non-deterministic to deterministic. Blocks revenue. Blocks enterprise
+   demos. Blocks Sprint 4+. This is not plumbing; it is the multiplier on
+   everything shipped in Sprint 1 and Sprint 3. `team_id` must become a
+   **derived value** from a verified identity claim at the edge — never a
+   **passed value** the worker can be tricked into overriding.
 3. Nango HubSpot live → apps/api/src/connectors/
 4. Design system + dashboard quality → context-injector.ts + skill_registry
 5. Edit/iterate flow → API + Edge Function
@@ -269,7 +326,7 @@ Sprint Sequence — Execute in order. Do NOT skip or reorder.
 7B. Stripe frontend → UpgradeModal + PricingPage
 8. Smoke test gate → manual verification
 
-Current Position: SPRINT 1B ✅ → next: SPRINT 2
+Current Position: SPRINT 1B ✅, SPRINT 3 ✅ (closed runtime loop shipped 2026-04-13) → next: SPRINT 2 (TRUST LAYER — blocking all downstream work)
 
 ### Billing
 
