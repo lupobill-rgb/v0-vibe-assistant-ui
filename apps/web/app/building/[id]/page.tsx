@@ -134,7 +134,7 @@ function parseDiff(raw: string): PageData[] {
   return [{ name: 'Preview', filename: 'index.html', html }]
 }
 
-function buildBlobUrl(pages: PageData[], activeFile: string, teamId?: string): string | null {
+function buildPreviewHtml(pages: PageData[], activeFile: string, teamId?: string): string | null {
   const page = pages.find((p) => p.filename === activeFile) || pages[0]
   if (!page) return null
 
@@ -207,8 +207,7 @@ function buildBlobUrl(pages: PageData[], activeFile: string, teamId?: string): s
     '}});' +
     '</script>' : ''
   html = html.replace('</body>', routerScript + '</body>')
-  const blob = new Blob([html], { type: 'text/html' })
-  return URL.createObjectURL(blob)
+  return html
 }
 
 interface BuildingPageProps { params: Promise<{ id: string }> }
@@ -457,14 +456,25 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     return raw ? parseDiff(raw) : []
   }, [diff, task?.last_diff])
   const prevBlobRef = useRef<string | null>(null)
-  const previewUrl = useMemo(() => {
-    // Revoke previous blob URL before creating a new one
-    if (prevBlobRef.current) { URL.revokeObjectURL(prevBlobRef.current); prevBlobRef.current = null }
+  // previewHtml is the processed HTML string — used as iframe srcDoc so
+  // external scripts (Chart.js CDN etc.) load under the parent document's
+  // origin. Previously we used blob: URLs, but blob-origin iframes block
+  // CDN script loads under the default CSP, leaving charts empty.
+  const previewHtml = useMemo(() => {
     if (pages.length === 0) return null
-    const url = buildBlobUrl(pages, activeFile, projectTeamId)
+    return buildPreviewHtml(pages, activeFile, projectTeamId)
+  }, [pages, activeFile, projectTeamId])
+
+  // previewUrl is a blob URL derived from previewHtml — only used as the
+  // href for "Open in new tab" anchors, where srcDoc is not applicable.
+  const previewUrl = useMemo(() => {
+    if (prevBlobRef.current) { URL.revokeObjectURL(prevBlobRef.current); prevBlobRef.current = null }
+    if (!previewHtml) return null
+    const blob = new Blob([previewHtml], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
     prevBlobRef.current = url
     return url
-  }, [pages, activeFile, projectTeamId])
+  }, [previewHtml])
 
   // Revoke on final unmount
   useEffect(() => {
@@ -802,7 +812,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
                 <ExternalLink className="w-3 h-3" /> Open
               </a>
             </div>
-            <iframe key={previewUrl} src={previewUrl} sandbox="allow-scripts"
+            <iframe key={activeFile} srcDoc={previewHtml ?? ''} sandbox="allow-scripts allow-same-origin"
               className="flex-1 w-full border-0 bg-white" title="Generated website preview" />
             {task?.execution_state === 'completed' && guidedNextSteps.length > 0 && !nudgeDismissed && (
               <div style={{
