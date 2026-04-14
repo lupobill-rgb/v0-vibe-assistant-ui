@@ -354,9 +354,9 @@ window.__VIBE_SAMPLE__={
     }
   ]
 };
-const __SUPABASE_URL__='__SUPABASE_URL__';
-const __SUPABASE_ANON_KEY__='__SUPABASE_ANON_KEY__';
-const __VIBE_TEAM_ID__='__VIBE_TEAM_ID__';
+const VIBE_SB_URL='__SUPABASE_URL__';
+const VIBE_SB_KEY='__SUPABASE_ANON_KEY__';
+const VIBE_TEAM_ID='__VIBE_TEAM_ID__';
 </script>
 </head>
 <body>
@@ -468,11 +468,11 @@ Chart.defaults.plugins.legend.labels.usePointStyle=true;
 Chart.defaults.plugins.legend.labels.padding=12;
 
 async function vibeLoadData(){
-  if(!__SUPABASE_URL__||__SUPABASE_URL__.indexOf('__')===0) throw new Error('no supabase');
-  const res=await fetch(__SUPABASE_URL__+'/rest/v1/rpc/get_executive_dashboard_data',{
+  if(!VIBE_SB_URL||VIBE_SB_URL.indexOf('__')===0) throw new Error('no supabase');
+  const res=await fetch(VIBE_SB_URL+'/rest/v1/rpc/get_executive_dashboard_data',{
     method:'POST',
-    headers:{'Content-Type':'application/json','apikey':__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+__SUPABASE_ANON_KEY__},
-    body:JSON.stringify({team_id:__VIBE_TEAM_ID__})
+    headers:{'Content-Type':'application/json','apikey':VIBE_SB_KEY,'Authorization':'Bearer '+VIBE_SB_KEY},
+    body:JSON.stringify({team_id:VIBE_TEAM_ID})
   });
   if(!res.ok) throw new Error('rpc failed '+res.status);
   return await res.json();
