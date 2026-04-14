@@ -99,19 +99,41 @@ export async function handleDeterministicTemplate(params: DeterministicTemplateP
     .replace(/\{\{BRAND_BG\}\}/g, skelColorScheme.bg)
     .replace(/\{\{BRAND_TEXT\}\}/g, skelColorScheme.text)
     .replace(/\{\{BRAND_SURFACE\}\}/g, skelColorScheme.surface)
-    .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border);
+    .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border)
+    .replace(/__VIBE_TEAM_ID__/g, project.team_id ?? '');
 
   // Inject sample_data as window.__VIBE_SAMPLE__ if present
   if (goldenMatch.sampleData) {
-    htmlWithTokens = htmlWithTokens.replace(
-      /window\.__VIBE_SAMPLE__\s*=\s*\{[\s\S]*?\};/,
-      `window.__VIBE_SAMPLE__ = ${JSON.stringify(goldenMatch.sampleData)};`
-    );
-    // If no existing __VIBE_SAMPLE__ block, inject before </head>
-    if (!htmlWithTokens.includes('window.__VIBE_SAMPLE__')) {
+    const sampleJson = JSON.stringify(goldenMatch.sampleData);
+    // Brace-balanced replace: find window.__VIBE_SAMPLE__ = { ... };
+    // The greedy regex breaks on nested objects so we scan manually.
+    const sampleVarIdx = htmlWithTokens.indexOf('window.__VIBE_SAMPLE__');
+    if (sampleVarIdx !== -1) {
+      const openBrace = htmlWithTokens.indexOf('{', sampleVarIdx);
+      if (openBrace !== -1) {
+        let depth = 0;
+        let closeIdx = -1;
+        for (let i = openBrace; i < htmlWithTokens.length; i++) {
+          if (htmlWithTokens[i] === '{') depth++;
+          else if (htmlWithTokens[i] === '}') {
+            depth--;
+            if (depth === 0) { closeIdx = i; break; }
+          }
+        }
+        if (closeIdx !== -1) {
+          // Consume the trailing semicolon if present
+          const endIdx = htmlWithTokens[closeIdx + 1] === ';' ? closeIdx + 2 : closeIdx + 1;
+          htmlWithTokens =
+            htmlWithTokens.slice(0, sampleVarIdx) +
+            `window.__VIBE_SAMPLE__ = ${sampleJson};` +
+            htmlWithTokens.slice(endIdx);
+        }
+      }
+    } else {
+      // No existing block — inject before </head>
       htmlWithTokens = htmlWithTokens.replace(
         '</head>',
-        `<script>window.__VIBE_SAMPLE__ = ${JSON.stringify(goldenMatch.sampleData)};</script>\n</head>`
+        `<script>window.__VIBE_SAMPLE__ = ${sampleJson};</script>\n</head>`
       );
     }
   }
