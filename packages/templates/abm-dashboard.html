@@ -3,647 +3,545 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Marketing Performance Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<title>ABM Dashboard — {{BRAND_COMPANY}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF;--warn:#F59E0B;--danger:#EF4444;--ok:#10B981}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;overflow-x:hidden}
+h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;color:#fff;letter-spacing:-0.01em}
+a{color:inherit;text-decoration:none}
+.app{display:flex;min-height:100vh}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:var(--surface-2);border-right:1px solid var(--border);padding:24px 16px;z-index:40;display:flex;flex-direction:column;gap:8px}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:8px 12px 20px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.sidebar .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--signal));display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;color:#0A0E17}
+.sidebar .brand .name{font-family:'Space Grotesk';font-weight:600;color:#fff;font-size:15px;line-height:1.2}
+.sidebar .brand .name span{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}
+.sidebar nav{display:flex;flex-direction:column;gap:2px}
+.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13px;cursor:pointer;transition:all .15s}
+.sidebar nav a:hover{background:var(--surface);color:var(--text)}
+.sidebar nav a.active{background:rgba(0,229,160,.08);color:var(--primary)}
+.sidebar nav a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
+.main{flex:1;margin-left:240px;display:flex;flex-direction:column;min-height:100vh}
+.topbar{position:sticky;top:0;background:rgba(15,22,36,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;z-index:60}
+.topbar h1{font-size:18px}
+.topbar .meta{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--muted)}
+.topbar .meta .team{padding:4px 10px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:6px;color:var(--primary)}
+.topbar .meta .live{display:inline-flex;align-items:center;gap:6px}
+.topbar .meta .live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.content{padding:24px 28px 48px;display:flex;flex-direction:column;gap:24px;max-width:1600px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s}
+.kpi:hover{border-color:rgba(0,229,160,.3)}
+.kpi::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,229,160,.04),transparent 60%);pointer-events:none}
+.kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:8px}
+.kpi .value{font-family:'Space Grotesk';font-size:26px;font-weight:700;color:#fff;line-height:1.1}
+.kpi .trend{margin-top:8px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.kpi .trend.up{color:var(--primary)}
+.kpi .trend.down{color:var(--warn)}
+.tabs-bar{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
+.tabs-bar>*{flex-shrink:0}
+.tabs-bar button{flex-shrink:0;background:transparent;color:var(--muted);border:none;padding:10px 18px;border-radius:7px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tabs-bar button:hover{color:var(--text)}
+.tabs-bar button.active{background:rgba(0,229,160,.1);color:var(--primary)}
+.tab-panel{display:none;flex-direction:column;gap:20px}
+.tab-panel.active{display:flex}
+.grid-2{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+.grid-2-eq{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:980px){.grid-2,.grid-2-eq{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.card .sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+.card .chart-wrap{position:relative;height:260px}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border)}
+.table td{padding:12px;border-bottom:1px solid rgba(31,41,55,.5);color:var(--text);vertical-align:middle}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:rgba(255,255,255,.02)}
+.table .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.02em}
+.pill.ok{background:rgba(16,185,129,.12);color:var(--ok)}
+.pill.warn{background:rgba(245,158,11,.12);color:var(--warn)}
+.pill.danger{background:rgba(239,68,68,.12);color:var(--danger)}
+.pill.info{background:rgba(0,180,216,.12);color:var(--signal)}
+.pill.neutral{background:rgba(156,163,175,.12);color:var(--muted)}
+.progress{width:100px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
+.progress .bar{height:100%;background:linear-gradient(90deg,var(--primary),var(--signal));border-radius:3px}
+canvas{max-width:100%}
+/* ─── Utility classes ────────────────────────────────────────────────── */
+.row{display:flex;align-items:center;gap:12px}
+.row-wrap{display:flex;flex-wrap:wrap;gap:12px}
+.col{display:flex;flex-direction:column;gap:8px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.gap-8{gap:8px}
+.gap-12{gap:12px}
+.gap-16{gap:16px}
+.gap-20{gap:20px}
+.gap-24{gap:24px}
+.mt-4{margin-top:4px}
+.mt-8{margin-top:8px}
+.mt-12{margin-top:12px}
+.mt-16{margin-top:16px}
+.mt-20{margin-top:20px}
+.mb-4{margin-bottom:4px}
+.mb-8{margin-bottom:8px}
+.mb-12{margin-bottom:12px}
+.mb-16{margin-bottom:16px}
+.p-16{padding:16px}
+.p-20{padding:20px}
+.p-24{padding:24px}
+.text-xs{font-size:11px}
+.text-sm{font-size:12px}
+.text-md{font-size:13px}
+.text-lg{font-size:14px}
+.text-xl{font-size:16px}
+.text-2xl{font-size:20px}
+.text-3xl{font-size:24px}
+.font-heading{font-family:'Space Grotesk',sans-serif}
+.font-body{font-family:'Inter',sans-serif}
+.font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.font-semibold{font-weight:600}
+.font-bold{font-weight:700}
+.text-muted{color:var(--muted)}
+.text-primary{color:var(--primary)}
+.text-signal{color:var(--signal)}
+.text-violet{color:var(--violet)}
+.text-warn{color:var(--warn)}
+.text-danger{color:var(--danger)}
+.text-ok{color:var(--ok)}
+.text-white{color:#fff}
+.text-center{text-align:center}
+.text-right{text-align:right}
+.w-full{width:100%}
+.h-full{height:100%}
+.flex-1{flex:1}
+.flex-center{display:flex;align-items:center;justify-content:center}
+.flex-between{display:flex;align-items:center;justify-content:space-between}
+.border-r{border-right:1px solid var(--border)}
+.border-l{border-left:1px solid var(--border)}
+.border-t{border-top:1px solid var(--border)}
+.border-b{border-bottom:1px solid var(--border)}
+.bg-surface{background:var(--surface)}
+.bg-surface-2{background:var(--surface-2)}
+.bg-primary-alpha{background:rgba(0,229,160,.08)}
+.bg-signal-alpha{background:rgba(0,180,216,.08)}
+.bg-violet-alpha{background:rgba(123,97,255,.08)}
+.bg-warn-alpha{background:rgba(245,158,11,.08)}
+.bg-danger-alpha{background:rgba(239,68,68,.08)}
+.rounded-sm{border-radius:6px}
+.rounded-md{border-radius:8px}
+.rounded-lg{border-radius:12px}
+.rounded-full{border-radius:999px}
+.shadow-sm{box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.shadow-md{box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.shadow-lg{box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.hover-lift{transition:transform .2s}
+.hover-lift:hover{transform:translateY(-2px)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:uppercase}
+.badge.primary{background:rgba(0,229,160,.12);color:var(--primary);border:1px solid rgba(0,229,160,.2)}
+.badge.signal{background:rgba(0,180,216,.12);color:var(--signal);border:1px solid rgba(0,180,216,.2)}
+.badge.violet{background:rgba(123,97,255,.12);color:var(--violet);border:1px solid rgba(123,97,255,.2)}
+.divider{height:1px;background:var(--border);margin:12px 0}
+.loading{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.loading::before{content:"";width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text)}
+.chip .dot{width:6px;height:6px;border-radius:50%}
+.chip .dot.ok{background:var(--ok)}
+.chip .dot.warn{background:var(--warn)}
+.chip .dot.danger{background:var(--danger)}
+.sparkline{width:100%;height:40px;display:block}
+.skeleton{background:linear-gradient(90deg,var(--surface),var(--surface-2),var(--surface));background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite;border-radius:8px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(max-width:768px){.content{padding:16px}.sidebar{width:72px}.sidebar .brand .name{display:none}.sidebar nav a{justify-content:center}.main{margin-left:72px}.topbar{padding:12px 16px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.kpi-grid{grid-template-columns:1fr}.topbar .meta{gap:8px}.topbar .meta .live{display:none}}
+</style>
 <script>
-window.__VIBE_SUPABASE_URL__="__SUPABASE_URL__";
-window.__VIBE_SUPABASE_ANON_KEY__="__SUPABASE_ANON_KEY__";
-window.__VIBE_TEAM_ID__="__VIBE_TEAM_ID__";
-window.__VIBE_SAMPLE__ = {
-  kpis: [
-    {id:"pipeline",label:"Pipeline Value",value:"$2.8M",trend:"+18.4%",direction:"up"},
-    {id:"mqls",label:"MQLs",value:"342",trend:"+24",direction:"up"},
-    {id:"cac",label:"CAC",value:"$1,240",trend:"-$86",direction:"up"},
-    {id:"roi",label:"Marketing ROI",value:"312%",trend:"+28%",direction:"up"},
-    {id:"cvr",label:"Conversion Rate",value:"3.8%",trend:"+0.4%",direction:"up"},
-    {id:"email_ctr",label:"Email CTR",value:"4.2%",trend:"+0.6%",direction:"up"}
+window.__VIBE_SAMPLE__={
+  kpis:[
+    {
+      id:'target-accounts',
+      label:'Target Accounts',
+      value:'420',
+      trend:'+18',
+      direction:'up'
+    },
+    {
+      id:'engaged',
+      label:'Engaged Accounts',
+      value:'184',
+      trend:'+24',
+      direction:'up'
+    },
+    {
+      id:'opps',
+      label:'Open Opps',
+      value:'62',
+      trend:'+9',
+      direction:'up'
+    },
+    {
+      id:'pipeline',
+      label:'Pipeline Value',
+      value:'$18.4M',
+      trend:'+22%',
+      direction:'up'
+    },
+    {
+      id:'avg-deal',
+      label:'Avg Deal Size',
+      value:'$142K',
+      trend:'+8%',
+      direction:'up'
+    },
+    {
+      id:'cycle',
+      label:'Avg Cycle',
+      value:'68 days',
+      trend:'-6 days',
+      direction:'down'
+    }
   ],
-  campaigns: [
-    {id:1,name:"Spring Product Launch",channel:"Email",budget:45000,spend:38200,leads:186,cpl:205,roi:342,status:"Active"},
-    {id:2,name:"Enterprise ABM Q2",channel:"Paid",budget:82000,spend:64500,leads:94,cpl:686,roi:478,status:"Active"},
-    {id:3,name:"SEO Content Blitz",channel:"Organic",budget:28000,spend:22400,leads:312,cpl:72,roi:520,status:"Active"},
-    {id:4,name:"LinkedIn Thought Leadership",channel:"Social",budget:35000,spend:31200,leads:128,cpl:244,roi:195,status:"Active"},
-    {id:5,name:"Webinar Series - AI Ops",channel:"Events",budget:18000,spend:16800,leads:76,cpl:221,roi:267,status:"Active"},
-    {id:6,name:"Google Ads - Brand",channel:"Paid",budget:52000,spend:48900,leads:205,cpl:239,roi:285,status:"Active"},
-    {id:7,name:"Customer Referral Program",channel:"Referral",budget:12000,spend:9600,leads:64,cpl:150,roi:680,status:"Active"},
-    {id:8,name:"Partner Co-Marketing",channel:"Events",budget:22000,spend:18400,leads:92,cpl:200,roi:310,status:"Active"}
+  accountEngagement:{
+    labels:['Tier 1','Tier 2','Tier 3'],
+    datasets:[
+      {
+        label:'Engaged',
+        data:[48,62,74],
+        backgroundColor:'#00E5A0',
+        borderRadius:4
+      },
+      {
+        label:'Dormant',
+        data:[12,38,186],
+        backgroundColor:'#6B7280',
+        borderRadius:4
+      }
+    ]
+  },
+  campaignPerformance:{
+    labels:['Direct Mail','Targeted Ads','Exec Dinners','Webinars','Cold Outbound'],
+    datasets:[
+      {
+        label:'Engagement %',
+        data:[32,18,62,28,12],
+        backgroundColor:'#00B4D8',
+        borderRadius:4
+      }
+    ]
+  },
+  pipelineBySource:{
+    labels:['Inbound','Outbound','Events','Partners','Referral'],
+    counts:[42,28,15,10,5]
+  },
+  engagementTrend:{
+    labels:['W1','W2','W3','W4','W5','W6','W7','W8','W9','W10','W11','W12'],
+    datasets:[
+      {
+        label:'Engaged Accounts',
+        data:[120,128,132,140,146,152,158,164,170,175,180,184],
+        borderColor:'#7B61FF',
+        backgroundColor:'rgba(123,97,255,.12)',
+        tension:0.35,
+        fill:true
+      }
+    ]
+  },
+  targetAccounts:[
+    {
+      name:'Acme Corp',
+      tier:'Tier 1',
+      intent:'92',
+      owner:'S. Chen',
+      stage:'On Track'
+    },
+    {
+      name:'Globex',
+      tier:'Tier 1',
+      intent:'88',
+      owner:'M. Patel',
+      stage:'On Track'
+    },
+    {
+      name:'Initech',
+      tier:'Tier 2',
+      intent:'76',
+      owner:'R. Martinez',
+      stage:'At Risk'
+    },
+    {
+      name:'Umbrella',
+      tier:'Tier 1',
+      intent:'84',
+      owner:'J. Park',
+      stage:'On Track'
+    },
+    {
+      name:'Stark Industries',
+      tier:'Tier 1',
+      intent:'90',
+      owner:'A. Nguyen',
+      stage:'On Track'
+    },
+    {
+      name:'Tyrell Corp',
+      tier:'Tier 2',
+      intent:'72',
+      owner:'T. Ross',
+      stage:'At Risk'
+    },
+    {
+      name:'Wayne Enterprises',
+      tier:'Tier 1',
+      intent:'86',
+      owner:'K. Liu',
+      stage:'On Track'
+    },
+    {
+      name:'Cyberdyne',
+      tier:'Tier 2',
+      intent:'68',
+      owner:'V. Gupta',
+      stage:'At Risk'
+    }
   ],
-  funnel: [
-    {stage:"Visitors",count:45000,color:"#7B61FF"},
-    {stage:"Leads",count:1800,color:"#6366f1"},
-    {stage:"MQLs",count:342,color:"#00B4D8"},
-    {stage:"SQLs",count:156,color:"#0ea5e9"},
-    {stage:"Opportunities",count:89,color:"#00E5A0"},
-    {stage:"Customers",count:34,color:"#10b981"}
-  ],
-  channels: [
-    {name:"Paid",value:32,color:"#7B61FF",spend:113400,leads:299,roi:340},
-    {name:"Organic",value:28,color:"#00E5A0",spend:22400,leads:312,roi:520},
-    {name:"Email",value:22,color:"#00B4D8",spend:38200,leads:186,roi:342},
-    {name:"Social",value:12,color:"#f59e0b",spend:31200,leads:128,roi:195},
-    {name:"Referral",value:6,color:"#ef4444",spend:9600,leads:64,roi:680}
-  ],
-  cac: [
-    {month:"May 25",cac:1480,ltv:4200},
-    {month:"Jun 25",cac:1420,ltv:4350},
-    {month:"Jul 25",cac:1510,ltv:4280},
-    {month:"Aug 25",cac:1390,ltv:4400},
-    {month:"Sep 25",cac:1350,ltv:4520},
-    {month:"Oct 25",cac:1410,ltv:4480},
-    {month:"Nov 25",cac:1320,ltv:4600},
-    {month:"Dec 25",cac:1280,ltv:4750},
-    {month:"Jan 26",cac:1360,ltv:4680},
-    {month:"Feb 26",cac:1300,ltv:4820},
-    {month:"Mar 26",cac:1260,ltv:4900},
-    {month:"Apr 26",cac:1240,ltv:4960}
-  ],
-  content: [
-    {id:1,asset:"Ultimate Guide to AI Marketing",type:"Blog",views:12400,conversions:186,cvr:1.5,pipeline:124000},
-    {id:2,asset:"ROI Calculator Tool",type:"Interactive",views:8200,conversions:328,cvr:4.0,pipeline:210000},
-    {id:3,asset:"State of Marketing 2026",type:"Report",views:6800,conversions:204,cvr:3.0,pipeline:156000},
-    {id:4,asset:"Product Demo Video",type:"Video",views:15600,conversions:312,cvr:2.0,pipeline:198000},
-    {id:5,asset:"Marketing Automation Webinar",type:"Webinar",views:3200,conversions:192,cvr:6.0,pipeline:144000},
-    {id:6,asset:"Customer Success Stories",type:"Case Study",views:4800,conversions:144,cvr:3.0,pipeline:108000},
-    {id:7,asset:"Email Templates Library",type:"Resource",views:9400,conversions:282,cvr:3.0,pipeline:96000},
-    {id:8,asset:"Competitive Analysis Framework",type:"Guide",views:5600,conversions:168,cvr:3.0,pipeline:134000},
-    {id:9,asset:"LinkedIn Ad Playbook",type:"Guide",views:7200,conversions:216,cvr:3.0,pipeline:118000},
-    {id:10,asset:"Marketing Metrics Dashboard",type:"Template",views:4200,conversions:126,cvr:3.0,pipeline:82000}
+  activeCampaigns:[
+    {
+      name:'Q2 Enterprise Push',
+      type:'Multi-Touch',
+      targets:'80',
+      engaged:'42',
+      pipeline:'$4.2M'
+    },
+    {
+      name:'CFO Direct Mail',
+      type:'Direct Mail',
+      targets:'120',
+      engaged:'38',
+      pipeline:'$2.8M'
+    },
+    {
+      name:'Exec Dinner Series',
+      type:'Event',
+      targets:'45',
+      engaged:'28',
+      pipeline:'$5.1M'
+    },
+    {
+      name:'Platform Webinar',
+      type:'Webinar',
+      targets:'200',
+      engaged:'56',
+      pipeline:'$3.2M'
+    },
+    {
+      name:'Compliance Play',
+      type:'Content',
+      targets:'150',
+      engaged:'32',
+      pipeline:'$2.1M'
+    }
   ]
 };
+const __SUPABASE_URL__='__SUPABASE_URL__';
+const __SUPABASE_ANON_KEY__='__SUPABASE_ANON_KEY__';
+const __VIBE_TEAM_ID__='__VIBE_TEAM_ID__';
 </script>
-<style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#0A0E17;--surface:#111827;--surface2:#1a2236;--border:#1e293b;
-  --text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;
-  --primary:#00E5A0;--accent:#00B4D8;--violet:#7B61FF;
-  --amber:#f59e0b;--red:#ef4444;--emerald:#10b981;
-  --font-heading:'Space Grotesk',sans-serif;
-  --font-body:'Inter',sans-serif;
-  --radius:12px;--radius-sm:8px;--radius-xs:6px;
-}
-html{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.5}
-body{display:flex;min-height:100vh;overflow-x:hidden}
-
-/* Sidebar */
-.sidebar{width:260px;background:linear-gradient(180deg,#0A0E17 0%,#0d1424 100%);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:40}
-.sidebar-brand{padding:24px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
-.sidebar-brand .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#0A0E17;font-family:var(--font-heading)}
-.sidebar-brand span{font-family:var(--font-heading);font-weight:600;font-size:16px;color:var(--text)}
-.sidebar-nav{flex:1;padding:16px 12px;overflow-y:auto}
-.nav-section{margin-bottom:24px}
-.nav-section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);padding:0 12px;margin-bottom:8px}
-.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);color:var(--text2);cursor:pointer;transition:all .2s;font-size:13px;font-weight:500;margin-bottom:2px;position:relative}
-.nav-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
-.nav-item.active{color:var(--primary);background:linear-gradient(135deg,rgba(0,229,160,.08),rgba(0,180,216,.04));border:1px solid rgba(0,229,160,.15)}
-.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:20px;background:var(--primary);border-radius:0 4px 4px 0}
-.nav-item svg{width:18px;height:18px;flex-shrink:0}
-
-/* Main content */
-.main{margin-left:260px;flex:1;min-height:100vh;display:flex;flex-direction:column}
-.topbar{height:64px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:rgba(10,14,23,.8);backdrop-filter:blur(12px);position:sticky;top:0;z-index:60}
-.topbar-title{font-family:var(--font-heading);font-size:20px;font-weight:600}
-.topbar-actions{display:flex;align-items:center;gap:12px}
-.btn{padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;border:none;font-family:var(--font-body)}
-.btn-primary{background:linear-gradient(135deg,var(--primary),var(--accent));color:#0A0E17;font-weight:600}
-.btn-primary:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,229,160,.25)}
-.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
-.btn-ghost:hover{color:var(--text);border-color:var(--text3)}
-.date-badge{font-size:12px;color:var(--text2);background:var(--surface);border:1px solid var(--border);padding:6px 14px;border-radius:var(--radius-xs);display:flex;align-items:center;gap:6px}
-
-.content{flex:1;padding:28px 32px}
-
-/* Tab navigation */
-.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px;margin-bottom:28px;width:fit-content;overflow-x:auto;flex-wrap:nowrap}
-.tab{padding:8px 20px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;transition:all .2s;border:none;background:transparent;font-family:var(--font-body)}
-.tab:hover{color:var(--text)}
-.tab.active{background:linear-gradient(135deg,rgba(0,229,160,.12),rgba(0,180,216,.08));color:var(--primary);font-weight:600;border:1px solid rgba(0,229,160,.2)}
-
-/* KPI Cards */
-.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:28px}
-.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden;transition:all .25s}
-.kpi-card:hover{border-color:var(--text3);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
-.kpi-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
-.kpi-card:nth-child(1)::before{background:var(--violet)}
-.kpi-card:nth-child(2)::before{background:var(--accent)}
-.kpi-card:nth-child(3)::before{background:var(--primary)}
-.kpi-card:nth-child(4)::before{background:var(--amber)}
-.kpi-card:nth-child(5)::before{background:var(--red)}
-.kpi-card:nth-child(6)::before{background:var(--emerald)}
-.kpi-label{font-size:12px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-.kpi-value{font-family:var(--font-heading);font-size:24px;font-weight:700;margin-bottom:6px}
-.kpi-trend{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500}
-.kpi-trend.up{color:var(--primary)}
-.kpi-trend.down{color:var(--red)}
-.kpi-trend svg{width:14px;height:14px}
-
-/* Chart containers */
-.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px}
-.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;transition:border-color .2s}
-.chart-card:hover{border-color:var(--text3)}
-.chart-card-title{font-family:var(--font-heading);font-size:15px;font-weight:600;margin-bottom:4px}
-.chart-card-subtitle{font-size:12px;color:var(--text3);margin-bottom:20px}
-.chart-full{grid-column:1/-1}
-.chart-wrap{position:relative;height:260px}
-.chart-wrap canvas{width:100%!important;height:100%!important}
-
-/* Tables */
-.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:28px;transition:border-color .2s}
-.table-card:hover{border-color:var(--text3)}
-.table-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border)}
-.table-title{font-family:var(--font-heading);font-size:15px;font-weight:600}
-.table-subtitle{font-size:12px;color:var(--text3)}
-table{width:100%;border-collapse:collapse}
-thead th{text-align:left;padding:12px 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
-tbody td{padding:14px 16px;font-size:13px;border-bottom:1px solid rgba(30,41,59,.5)}
-tbody tr{transition:background .15s}
-tbody tr:hover{background:rgba(255,255,255,.02)}
-tbody tr:last-child td{border-bottom:none}
-.status-badge{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
-.status-active{background:rgba(0,229,160,.1);color:var(--primary)}
-.status-paused{background:rgba(245,158,11,.1);color:var(--amber)}
-.budget-bar{width:80px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:6px}
-.budget-bar-fill{height:100%;border-radius:3px}
-.roi-badge{padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600}
-.type-badge{padding:3px 8px;border-radius:4px;font-size:11px;font-weight:500;background:var(--surface2);color:var(--text2)}
-
-/* Tab panels */
-.tab-panel{display:none}
-.tab-panel.active{display:block}
-
-/* Responsive */
-@media(max-width:1400px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:1024px){
-  .sidebar{display:none}
-  .main{margin-left:0}
-  .chart-grid{grid-template-columns:1fr}
-  .kpi-grid{grid-template-columns:repeat(2,1fr)}
-}
-@media(max-width:640px){.kpi-grid{grid-template-columns:1fr}}
-
-/* Animations */
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.kpi-card{animation:fadeIn .4s ease forwards}
-.kpi-card:nth-child(2){animation-delay:.05s}
-.kpi-card:nth-child(3){animation-delay:.1s}
-.kpi-card:nth-child(4){animation-delay:.15s}
-.kpi-card:nth-child(5){animation-delay:.2s}
-.kpi-card:nth-child(6){animation-delay:.25s}
-
-/* Scrollbar */
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--text3)}
-
-.tabs>*,.tabs-bar>*,.nav-tabs>*{flex-shrink:0}/*vibe-layout-shim-v1*/
-
-<style>
-/* Global chart sizing fix — injected */
-canvas { max-height: 280px !important; height: 280px !important; width: 100% !important; }
-.chart-container, [class*="chart"] { position: relative; height: 280px; max-height: 280px; overflow: hidden; width: 100%; }
-.chart-wrapper { position: relative; height: 280px; max-height: 280px; overflow: hidden; }
-/* Prevent any single element from overflowing the viewport */
-* { box-sizing: border-box; }
-body { overflow-x: hidden; }
-/* Tab content max height with scroll */
-.tab-content, [id*="section"], [id*="view"], [id*="tab"] { max-height: calc(100vh - 120px); overflow-y: auto; }
-/* Table responsiveness */
-table { width: 100%; table-layout: fixed; }
-td, th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-</style>
 </head>
 <body>
-<!-- Sidebar -->
-<aside class="sidebar">
-  <div class="sidebar-brand">
-    <div class="logo">V</div>
-    <span>VIBE</span>
-  </div>
-  <nav class="sidebar-nav">
-    <div class="nav-section">
-      <div class="nav-section-title">Marketing</div>
-      <div class="nav-item active" data-tab="overview">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Overview
-      </div>
-      <div class="nav-item" data-tab="campaigns">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        Campaigns
-      </div>
-      <div class="nav-item" data-tab="channels">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        Channels
-      </div>
-      <div class="nav-item" data-tab="funnel">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-        Lead Funnel
-      </div>
-      <div class="nav-item" data-tab="attribution">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-        Attribution
-      </div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div class="name">{{BRAND_COMPANY}}<span>ABM</span></div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-title">Analyze</div>
-      <div class="nav-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Reports
+    <nav>
+      <a class="active"><span class="dot"></span>Dashboard</a>
+      <a><span class="dot"></span>Accounts</a>
+      <a><span class="dot"></span>Campaigns</a>
+      <a><span class="dot"></span>Engagement</a>
+      <a><span class="dot"></span>Pipeline</a>
+      <a><span class="dot"></span>Reports</a>
+      <a><span class="dot"></span>Settings</a>
+    </nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <h1>ABM Dashboard</h1>
+      <div class="meta">
+        <span class="live" id="lastUpdated">Live</span>
+        <span class="team">{{BRAND_TEAM}}</span>
       </div>
-      <div class="nav-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        Insights
+    </header>
+    <div class="content">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="tabs-bar" id="tabsBar">
+        <button class="active" data-tab="overview">Overview</button>
+        <button data-tab="accounts">Target Accounts</button>
+        <button data-tab="campaigns">Campaigns</button>
+        <button data-tab="engagement">Engagement</button>
+        <button data-tab="pipeline">Pipeline</button>
       </div>
-    </div>
-  </nav>
-</aside>
 
-<!-- Main Content -->
-<div class="main">
-  <header class="topbar">
-    <div class="topbar-title">Marketing Performance</div>
-    <div class="topbar-actions">
-      <div class="date-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Last 30 days
-      </div>
-      <button class="btn btn-ghost">Export</button>
-      <button class="btn btn-primary">+ New Campaign</button>
-    </div>
-  </header>
+      <section class="tab-panel active" data-panel="overview">
 
-  <div class="content">
-    <!-- Tabs -->
-    <div class="tabs">
-      <button class="tab active" data-tab="overview">Overview</button>
-      <button class="tab" data-tab="campaigns">Campaigns</button>
-      <button class="tab" data-tab="channels">Channels</button>
-      <button class="tab" data-tab="funnel">Lead Funnel</button>
-      <button class="tab" data-tab="attribution">Attribution</button>
-    </div>
-
-    <!-- === OVERVIEW TAB === -->
-    <div class="tab-panel active" id="panel-overview">
-      <div class="kpi-grid" id="kpi-container"></div>
-      <div class="chart-grid">
-        <div class="chart-card">
-          <div class="chart-card-title">Channel Attribution</div>
-          <div class="chart-card-subtitle">Revenue contribution by marketing channel</div>
-          <div class="chart-wrap"><canvas id="chart-channel-doughnut"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Lead Funnel</div>
-          <div class="chart-card-subtitle">Conversion rates across pipeline stages</div>
-          <div class="chart-wrap"><canvas id="chart-lead-funnel"></canvas></div>
-        </div>
-      </div>
-      <div class="chart-grid">
-        <div class="chart-card">
-          <div class="chart-card-title">Campaign ROI Comparison</div>
-          <div class="chart-card-subtitle">Top 8 campaigns by return on investment</div>
-          <div class="chart-wrap"><canvas id="chart-campaign-roi"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">CAC vs LTV Trend</div>
-          <div class="chart-card-subtitle">Customer acquisition cost vs. lifetime value — 12 months</div>
-          <div class="chart-wrap"><canvas id="chart-cac-trend"></canvas></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- === CAMPAIGNS TAB === -->
-    <div class="tab-panel" id="panel-campaigns">
-      <div class="kpi-grid" id="kpi-container-campaigns"></div>
-      <div class="table-card">
-        <div class="table-header">
-          <div>
-            <div class="table-title">Active Campaigns</div>
-            <div class="table-subtitle">Performance metrics for all running campaigns</div>
+          <div class="card">
+            <h3>Engagement by Tier</h3>
+            <div class="sub">Target account engagement level</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="accountEngagement"></canvas></div>
           </div>
-        </div>
-        <table>
-          <thead><tr><th>Campaign</th><th>Channel</th><th>Budget</th><th>Spend</th><th>Leads</th><th>CPL</th><th>ROI</th><th>Status</th></tr></thead>
-          <tbody id="campaigns-table"></tbody>
-        </table>
-      </div>
-    </div>
+      </section>
 
-    <!-- === CHANNELS TAB === -->
-    <div class="tab-panel" id="panel-channels">
-      <div class="kpi-grid" id="kpi-container-channels"></div>
-      <div class="chart-grid">
-        <div class="chart-card">
-          <div class="chart-card-title">Channel Attribution</div>
-          <div class="chart-card-subtitle">Revenue contribution breakdown</div>
-          <div class="chart-wrap"><canvas id="chart-channel-doughnut-2"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Channel ROI Comparison</div>
-          <div class="chart-card-subtitle">Return on investment by channel</div>
-          <div class="chart-wrap"><canvas id="chart-channel-roi"></canvas></div>
-        </div>
-      </div>
-      <div class="table-card">
-        <div class="table-header">
-          <div>
-            <div class="table-title">Channel Performance</div>
-            <div class="table-subtitle">Detailed metrics per channel</div>
+      <section class="tab-panel" data-panel="accounts">
+
+          <div class="card">
+            <h3>Top Target Accounts</h3>
+            <div class="sub">Highest intent scores</div>
+            <table class="table" id="targetAccounts">
+              <thead><tr><th>Account</th><th>Tier</th><th>Intent</th><th>Owner</th><th>Stage</th></tr></thead>
+              <tbody></tbody>
+            </table>
           </div>
-        </div>
-        <table>
-          <thead><tr><th>Channel</th><th>Attribution %</th><th>Spend</th><th>Leads</th><th>CPL</th><th>ROI</th></tr></thead>
-          <tbody id="channel-table"></tbody>
-        </table>
-      </div>
-    </div>
+      </section>
 
-    <!-- === FUNNEL TAB === -->
-    <div class="tab-panel" id="panel-funnel">
-      <div class="kpi-grid" id="kpi-container-funnel"></div>
-      <div class="chart-grid">
-        <div class="chart-card chart-full">
-          <div class="chart-card-title">Full Lead Funnel</div>
-          <div class="chart-card-subtitle">Stage-by-stage conversion with drop-off analysis</div>
-          <div class="chart-wrap"><canvas id="chart-funnel-full"></canvas></div>
-        </div>
-      </div>
-    </div>
+      <section class="tab-panel" data-panel="campaigns">
 
-    <!-- === ATTRIBUTION TAB === -->
-    <div class="tab-panel" id="panel-attribution">
-      <div class="kpi-grid" id="kpi-container-attribution"></div>
-      <div class="chart-grid">
-        <div class="chart-card">
-          <div class="chart-card-title">CAC vs LTV — 12 Month Trend</div>
-          <div class="chart-card-subtitle">Customer acquisition cost vs. lifetime value</div>
-          <div class="chart-wrap"><canvas id="chart-cac-attr"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Campaign ROI Rankings</div>
-          <div class="chart-card-subtitle">All campaigns sorted by ROI</div>
-          <div class="chart-wrap"><canvas id="chart-roi-attr"></canvas></div>
-        </div>
-      </div>
-      <div class="table-card">
-        <div class="table-header">
-          <div>
-            <div class="table-title">Top Content Assets</div>
-            <div class="table-subtitle">Content performance by pipeline attribution</div>
+          <div class="card">
+            <h3>Campaign Performance</h3>
+            <div class="sub">Engagement rate by campaign</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="campaignPerformance"></canvas></div>
           </div>
-        </div>
-        <table>
-          <thead><tr><th>Asset</th><th>Type</th><th>Views</th><th>Conversions</th><th>CVR</th><th>Pipeline Attribution</th></tr></thead>
-          <tbody id="content-table"></tbody>
-        </table>
-      </div>
+
+          <div class="card">
+            <h3>Active Campaigns</h3>
+            <div class="sub">In-flight ABM plays</div>
+            <table class="table" id="activeCampaigns">
+              <thead><tr><th>Campaign</th><th>Type</th><th>Targets</th><th>Engaged</th><th>Pipeline</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="engagement">
+
+          <div class="card">
+            <h3>Engagement Trend</h3>
+            <div class="sub">Weekly engaged accounts</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="engagementTrend"></canvas></div>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="pipeline">
+
+          <div class="card">
+            <h3>Pipeline by Source</h3>
+            <div class="sub">Open opps by generation channel</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="pipelineBySource"></canvas></div>
+          </div>
+      </section>
     </div>
   </div>
 </div>
 
 <script>
-/* === Chart.js global config for dark theme === */
-Chart.defaults.color='rgba(226,232,240,0.4)';
-Chart.defaults.borderColor='rgba(255,255,255,0.04)';
-Chart.defaults.font.family="'Inter',sans-serif";
+Chart.defaults.color='#9CA3AF';
+Chart.defaults.borderColor='#1F2937';
+Chart.defaults.font.family="'Inter',system-ui,sans-serif";
+Chart.defaults.plugins.legend.labels.usePointStyle=true;
+Chart.defaults.plugins.legend.labels.padding=12;
 
-/* === KPI rendering === */
-function renderKPIs(containerId,kpis){
-  var c=document.getElementById(containerId);if(!c)return;c.innerHTML='';
-  kpis.forEach(function(k){
-    var arrow=k.direction==='up'
-      ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>'
-      :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
-    c.innerHTML+='<div class="kpi-card"><div class="kpi-label">'+k.label+'</div><div class="kpi-value">'+k.value+'</div><div class="kpi-trend '+k.direction+'">'+arrow+k.trend+'</div></div>';
+async function vibeLoadData(){
+  if(!__SUPABASE_URL__||__SUPABASE_URL__.indexOf('__')===0) throw new Error('no supabase');
+  const res=await fetch(__SUPABASE_URL__+'/rest/v1/rpc/get_abm_dashboard_data',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+__SUPABASE_ANON_KEY__},
+    body:JSON.stringify({team_id:__VIBE_TEAM_ID__})
   });
+  if(!res.ok) throw new Error('rpc failed '+res.status);
+  return await res.json();
 }
 
-/* === Campaign table === */
-function renderCampaignTable(campaigns){
-  var tb=document.getElementById('campaigns-table');if(!tb)return;tb.innerHTML='';
-  var cc={'Paid':'#7B61FF','Organic':'#00E5A0','Email':'#00B4D8','Social':'#f59e0b','Events':'#ef4444','Referral':'#10b981'};
-  campaigns.forEach(function(c){
-    var u=Math.round((c.spend/c.budget)*100);
-    var uc=u>90?'#ef4444':u>70?'#f59e0b':'#00E5A0';
-    var rc=c.roi>=400?'#00E5A0':c.roi>=250?'#00B4D8':'#f59e0b';
-    tb.innerHTML+='<tr><td style="font-weight:500;color:var(--text)">'+c.name+'</td><td><span style="color:'+(cc[c.channel]||'#7B61FF')+'">'+c.channel+'</span></td><td>$'+c.budget.toLocaleString()+'</td><td>$'+c.spend.toLocaleString()+'<div class="budget-bar"><div class="budget-bar-fill" style="width:'+u+'%;background:'+uc+'"></div></div></td><td>'+c.leads+'</td><td>$'+c.cpl+'</td><td><span class="roi-badge" style="background:'+rc+'20;color:'+rc+'">'+c.roi+'%</span></td><td><span class="status-badge status-'+c.status.toLowerCase()+'"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span> '+c.status+'</span></td></tr>';
-  });
+function renderKpis(data){
+  const grid=document.getElementById('kpiGrid');
+  grid.innerHTML=(data.kpis||[]).map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value">'+k.value+'</div><div class="trend '+k.direction+'">'+(k.direction==='up'?'\u25B2':'\u25BC')+' '+k.trend+'</div></div>').join('');
 }
 
-/* === Channel table === */
-function renderChannelTable(channels){
-  var tb=document.getElementById('channel-table');if(!tb)return;tb.innerHTML='';
-  channels.forEach(function(ch){
-    var cpl=ch.leads>0?Math.round(ch.spend/ch.leads):0;
-    tb.innerHTML+='<tr><td style="font-weight:500;color:var(--text)">'+ch.name+'</td><td>'+ch.value+'%</td><td>$'+ch.spend.toLocaleString()+'</td><td>'+ch.leads+'</td><td>$'+cpl+'</td><td><span class="roi-badge" style="background:'+ch.color+'20;color:'+ch.color+'">'+ch.roi+'%</span></td></tr>';
-  });
-}
-
-/* === Content table === */
-function renderContentTable(content){
-  var tb=document.getElementById('content-table');if(!tb)return;tb.innerHTML='';
-  content.forEach(function(c){
-    tb.innerHTML+='<tr><td style="font-weight:500;color:var(--text)">'+c.asset+'</td><td><span class="type-badge">'+c.type+'</span></td><td>'+c.views.toLocaleString()+'</td><td>'+c.conversions+'</td><td>'+c.cvr+'%</td><td style="font-weight:500;color:var(--primary)">$'+c.pipeline.toLocaleString()+'</td></tr>';
-  });
-}
-
-/* === Tab switching === */
-function initTabs(){
-  var tabs=document.querySelectorAll('.tab');
-  var navItems=document.querySelectorAll('.nav-item[data-tab]');
-  function activate(n){
-    tabs.forEach(function(t){t.classList.toggle('active',t.getAttribute('data-tab')===n)});
-    navItems.forEach(function(v){v.classList.toggle('active',v.getAttribute('data-tab')===n)});
-    document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.toggle('active',p.id==='panel-'+n)});
+let charts={};
+function renderCharts(data){
+  Object.values(charts).forEach(c=>c&&c.destroy());
+  charts={};
+  { const src=data.accountEngagement||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart0=new Chart(document.getElementById('accountEngagement'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
   }
-  tabs.forEach(function(t){t.addEventListener('click',function(){activate(t.getAttribute('data-tab'))})});
-  navItems.forEach(function(n){n.addEventListener('click',function(){activate(n.getAttribute('data-tab'))})});
+  { const src=data.campaignPerformance||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart1=new Chart(document.getElementById('campaignPerformance'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
+  }
+  { const src=data.pipelineBySource||{};
+    const opts={responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'right'}}};
+    charts.chart2=new Chart(document.getElementById('pipelineBySource'),{type:'doughnut',data:{labels:src.labels||[],datasets:[{data:src.data||src.counts||[],backgroundColor:['#00E5A0','#F59E0B','#EF4444','#00B4D8','#6B7280','#7B61FF','#10B981','#9CA3AF'],borderWidth:0}]},options:opts});
+  }
+  { const src=data.engagementTrend||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart3=new Chart(document.getElementById('engagementTrend'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
+  }
 }
 
-/* ================================================================
-   CHART 1 — Channel Attribution (Doughnut)
-   ================================================================ */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('marketing_channels',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).channels||[];
-  new Chart(document.getElementById('chart-channel-doughnut'),{
-    type:'doughnut',
-    data:{labels:rows.map(function(r){return r.name}),
-          datasets:[{data:rows.map(function(r){return r.value}),
-                    backgroundColor:rows.map(function(r){return r.color||primary}),
-                    borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'65%',
-      plugins:{legend:{position:'right',labels:{color:'rgba(226,232,240,0.6)',padding:14,font:{size:11},usePointStyle:true}}}}
+function renderTables(data){
+  function pillClassOkWarnDanger(v){
+    const s=String(v||'').toLowerCase();
+    if(/(healthy|on track|active|resolved|pass|ok|complete|won|green)/i.test(s))return 'ok';
+    if(/(at risk|warn|pending|review|amber|medium|yellow)/i.test(s))return 'warn';
+    if(/(delayed|blocked|fail|critical|red|high|lost|overdue)/i.test(s))return 'danger';
+    return 'neutral';
+  }
+  function pillClassSeverity(v){
+    const s=String(v||'').toUpperCase();
+    if(s==='P0'||s==='P1'||s==='CRITICAL'||s==='HIGH')return 'danger';
+    if(s==='P2'||s==='MEDIUM')return 'warn';
+    return 'info';
+  }
+  { const tbody=document.querySelector('#targetAccounts tbody');
+    const rows=data.targetAccounts||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td style="color:#fff;font-weight:500">'+(row['name']==null?'':row['name'])+'</td>'+'<td>'+(row['tier']==null?'':row['tier'])+'</td>'+'<td>'+(row['intent']==null?'':row['intent'])+'</td>'+'<td>'+(row['owner']==null?'':row['owner'])+'</td>'+'<td><span class="pill '+(pillClassOkWarnDanger(row['stage']))+'">'+(row['stage']==null?'':row['stage'])+'</span></td>'+'</tr>').join('');
+  }
+  { const tbody=document.querySelector('#activeCampaigns tbody');
+    const rows=data.activeCampaigns||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td style="color:#fff;font-weight:500">'+(row['name']==null?'':row['name'])+'</td>'+'<td>'+(row['type']==null?'':row['type'])+'</td>'+'<td>'+(row['targets']==null?'':row['targets'])+'</td>'+'<td>'+(row['engaged']==null?'':row['engaged'])+'</td>'+'<td>'+(row['pipeline']==null?'':row['pipeline'])+'</td>'+'</tr>').join('');
+  }
+}
+
+function wireTabs(){
+  document.querySelectorAll('#tabsBar button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const tabId=btn.dataset.tab;
+      document.querySelectorAll('#tabsBar button').forEach(b=>b.classList.toggle('active',b===btn));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tabId));
+    });
   });
-})();
+}
 
-/* ================================================================
-   CHART 2 — Lead Funnel (Horizontal Bar)
-   ================================================================ */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('marketing_funnel',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).funnel||[];
-  new Chart(document.getElementById('chart-lead-funnel'),{
-    type:'bar',
-    data:{labels:rows.map(function(r){return r.stage}),
-          datasets:[{data:rows.map(function(r){return r.count}),
-                    backgroundColor:rows.map(function(r){return r.color||primary}),
-                    borderRadius:6,borderWidth:0}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{x:{ticks:{callback:function(v){return v>=1000?(v/1000)+'k':v}},grid:{color:'rgba(255,255,255,0.04)'}},
-              y:{grid:{display:false}}}}
-  });
-})();
-
-/* ================================================================
-   CHART 3 — Campaign ROI (Horizontal Bar)
-   ================================================================ */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('marketing_campaigns',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).campaigns||[];
-  var sorted=rows.slice().sort(function(a,b){return b.roi-a.roi});
-  var cc={'Paid':'#7B61FF','Organic':'#00E5A0','Email':'#00B4D8','Social':'#f59e0b','Events':'#ef4444','Referral':'#10b981'};
-  new Chart(document.getElementById('chart-campaign-roi'),{
-    type:'bar',
-    data:{labels:sorted.map(function(r){return r.name}),
-          datasets:[{data:sorted.map(function(r){return r.roi}),
-                    backgroundColor:sorted.map(function(r){return cc[r.channel]||primary}),
-                    borderRadius:6,borderWidth:0}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.raw+'% ROI'}}}},
-      scales:{x:{title:{display:true,text:'ROI %',color:'rgba(226,232,240,0.4)'},grid:{color:'rgba(255,255,255,0.04)'}},
-              y:{grid:{display:false},ticks:{font:{size:11}}}}}
-  });
-})();
-
-/* ================================================================
-   CHART 4 — CAC vs LTV Trend (Line)
-   ================================================================ */
-(async function(){
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  var rows=[];
-  try{rows=await vibeLoadData('marketing_cac',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!rows.length) rows=(window.__VIBE_SAMPLE__||{}).cac||[];
-  new Chart(document.getElementById('chart-cac-trend'),{
-    type:'line',
-    data:{labels:rows.map(function(r){return r.month}),
-          datasets:[
-            {label:'LTV',data:rows.map(function(r){return r.ltv}),
-             borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.06)',fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:'#00E5A0',borderWidth:2},
-            {label:'CAC',data:rows.map(function(r){return r.cac}),
-             borderColor:'#7B61FF',backgroundColor:'rgba(123,97,255,0.06)',fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:'#7B61FF',borderWidth:2}
-          ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{labels:{color:'rgba(226,232,240,0.6)',font:{size:11},usePointStyle:true,padding:20}}},
-      scales:{x:{ticks:{maxTicksLimit:6},grid:{color:'rgba(255,255,255,0.04)'}},
-              y:{ticks:{callback:function(v){return '$'+v.toLocaleString()}},grid:{color:'rgba(255,255,255,0.04)'}}}}
-  });
-})();
-
-/* ================================================================
-   INIT — KPIs, tables, and secondary tab charts
-   ================================================================ */
-(async function(){
-  var kpis=[];
-  try{kpis=await vibeLoadData('marketing_kpis',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!kpis.length) kpis=(window.__VIBE_SAMPLE__||{}).kpis||[];
-  renderKPIs('kpi-container',kpis);
-  renderKPIs('kpi-container-campaigns',kpis);
-  renderKPIs('kpi-container-channels',kpis);
-  renderKPIs('kpi-container-funnel',kpis);
-  renderKPIs('kpi-container-attribution',kpis);
-
-  var campaigns=[];
-  try{campaigns=await vibeLoadData('marketing_campaigns',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!campaigns.length) campaigns=(window.__VIBE_SAMPLE__||{}).campaigns||[];
-  renderCampaignTable(campaigns);
-
-  var channels=[];
-  try{channels=await vibeLoadData('marketing_channels',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!channels.length) channels=(window.__VIBE_SAMPLE__||{}).channels||[];
-  renderChannelTable(channels);
-
-  var content=[];
-  try{content=await vibeLoadData('marketing_content',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!content.length) content=(window.__VIBE_SAMPLE__||{}).content||[];
-  renderContentTable(content);
-
-  /* Secondary tab charts — Channel doughnut #2 */
-  var primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  new Chart(document.getElementById('chart-channel-doughnut-2'),{
-    type:'doughnut',
-    data:{labels:channels.map(function(r){return r.name}),
-          datasets:[{data:channels.map(function(r){return r.value}),
-                    backgroundColor:channels.map(function(r){return r.color||primary}),borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'65%',
-      plugins:{legend:{position:'right',labels:{color:'rgba(226,232,240,0.6)',padding:14,font:{size:11},usePointStyle:true}}}}
-  });
-
-  /* Channel ROI bar */
-  var chSorted=channels.slice().sort(function(a,b){return b.roi-a.roi});
-  new Chart(document.getElementById('chart-channel-roi'),{
-    type:'bar',
-    data:{labels:chSorted.map(function(r){return r.name}),
-          datasets:[{data:chSorted.map(function(r){return r.roi}),
-                    backgroundColor:chSorted.map(function(r){return r.color||primary}),borderRadius:6,borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{x:{grid:{display:false}},y:{title:{display:true,text:'ROI %'},grid:{color:'rgba(255,255,255,0.04)'}}}}
-  });
-
-  /* Funnel full (tab) */
-  var funnel=[];
-  try{funnel=await vibeLoadData('marketing_funnel',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!funnel.length) funnel=(window.__VIBE_SAMPLE__||{}).funnel||[];
-  new Chart(document.getElementById('chart-funnel-full'),{
-    type:'bar',
-    data:{labels:funnel.map(function(r){return r.stage}),
-          datasets:[{data:funnel.map(function(r){return r.count}),
-                    backgroundColor:funnel.map(function(r){return r.color||primary}),borderRadius:6,borderWidth:0}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{x:{ticks:{callback:function(v){return v>=1000?(v/1000)+'k':v}},grid:{color:'rgba(255,255,255,0.04)'}},y:{grid:{display:false}}}}
-  });
-
-  /* CAC attribution tab */
-  var cac=[];
-  try{cac=await vibeLoadData('marketing_cac',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  if(!cac.length) cac=(window.__VIBE_SAMPLE__||{}).cac||[];
-  new Chart(document.getElementById('chart-cac-attr'),{
-    type:'line',
-    data:{labels:cac.map(function(r){return r.month}),
-          datasets:[
-            {label:'LTV',data:cac.map(function(r){return r.ltv}),borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.06)',fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:'#00E5A0',borderWidth:2},
-            {label:'CAC',data:cac.map(function(r){return r.cac}),borderColor:'#7B61FF',backgroundColor:'rgba(123,97,255,0.06)',fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:'#7B61FF',borderWidth:2}
-          ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{labels:{color:'rgba(226,232,240,0.6)',font:{size:11},usePointStyle:true,padding:20}}},
-      scales:{x:{ticks:{maxTicksLimit:6},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{callback:function(v){return '$'+v.toLocaleString()}},grid:{color:'rgba(255,255,255,0.04)'}}}
-    }
-  });
-
-  /* ROI attribution tab */
-  var sorted2=campaigns.slice().sort(function(a,b){return b.roi-a.roi});
-  var cc={'Paid':'#7B61FF','Organic':'#00E5A0','Email':'#00B4D8','Social':'#f59e0b','Events':'#ef4444','Referral':'#10b981'};
-  new Chart(document.getElementById('chart-roi-attr'),{
-    type:'bar',
-    data:{labels:sorted2.map(function(r){return r.name}),
-          datasets:[{data:sorted2.map(function(r){return r.roi}),
-                    backgroundColor:sorted2.map(function(r){return cc[r.channel]||primary}),borderRadius:6,borderWidth:0}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{x:{title:{display:true,text:'ROI %'},grid:{color:'rgba(255,255,255,0.04)'}},y:{grid:{display:false},ticks:{font:{size:11}}}}}
-  });
-
-  initTabs();
-})();
+async function boot(){
+  let data;
+  try{
+    data=await vibeLoadData();
+    if(!data||!data.kpis) throw new Error('empty payload');
+  }catch(err){
+    console.warn('[abm-dashboard] sample fallback:',err.message);
+    data=window.__VIBE_SAMPLE__;
+  }
+  renderKpis(data);
+  renderCharts(data);
+  renderTables(data);
+  wireTabs();
+  document.getElementById('lastUpdated').textContent='Updated '+new Date().toLocaleTimeString();
+}
+boot();
 </script>
 </body>
 </html>

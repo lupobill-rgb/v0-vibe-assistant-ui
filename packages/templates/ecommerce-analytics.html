@@ -9,44 +9,329 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF}
+:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF;--warn:#F59E0B;--danger:#EF4444;--ok:#10B981}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;overflow-x:hidden}
-h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;color:#fff}
+h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;color:#fff;letter-spacing:-0.01em}
+a{color:inherit;text-decoration:none}
 .app{display:flex;min-height:100vh}
-.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:var(--surface-2);border-right:1px solid var(--border);padding:24px 16px;z-index:40}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:var(--surface-2);border-right:1px solid var(--border);padding:24px 16px;z-index:40;display:flex;flex-direction:column;gap:8px}
 .sidebar .brand{display:flex;align-items:center;gap:10px;padding:8px 12px 20px;border-bottom:1px solid var(--border);margin-bottom:12px}
 .sidebar .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--signal));display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;color:#0A0E17}
 .sidebar .brand .name{font-family:'Space Grotesk';font-weight:600;color:#fff;font-size:15px;line-height:1.2}
 .sidebar .brand .name span{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}
+.sidebar nav{display:flex;flex-direction:column;gap:2px}
+.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13px;cursor:pointer;transition:all .15s}
+.sidebar nav a:hover{background:var(--surface);color:var(--text)}
+.sidebar nav a.active{background:rgba(0,229,160,.08);color:var(--primary)}
+.sidebar nav a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
 .main{flex:1;margin-left:240px;display:flex;flex-direction:column;min-height:100vh}
 .topbar{position:sticky;top:0;background:rgba(15,22,36,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;z-index:60}
 .topbar h1{font-size:18px}
-.topbar .team{padding:4px 10px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:6px;color:var(--primary);font-size:12px}
-.content{padding:24px 28px 48px;display:flex;flex-direction:column;gap:24px}
-.tabs-bar{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;overflow-x:auto;flex-wrap:nowrap}
+.topbar .meta{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--muted)}
+.topbar .meta .team{padding:4px 10px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:6px;color:var(--primary)}
+.topbar .meta .live{display:inline-flex;align-items:center;gap:6px}
+.topbar .meta .live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.content{padding:24px 28px 48px;display:flex;flex-direction:column;gap:24px;max-width:1600px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s}
+.kpi:hover{border-color:rgba(0,229,160,.3)}
+.kpi::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,229,160,.04),transparent 60%);pointer-events:none}
+.kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:8px}
+.kpi .value{font-family:'Space Grotesk';font-size:26px;font-weight:700;color:#fff;line-height:1.1}
+.kpi .trend{margin-top:8px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.kpi .trend.up{color:var(--primary)}
+.kpi .trend.down{color:var(--warn)}
+.tabs-bar{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
 .tabs-bar>*{flex-shrink:0}
-.tabs-bar button{flex-shrink:0;background:transparent;color:var(--muted);border:none;padding:10px 18px;border-radius:7px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tabs-bar button{flex-shrink:0;background:transparent;color:var(--muted);border:none;padding:10px 18px;border-radius:7px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tabs-bar button:hover{color:var(--text)}
 .tabs-bar button.active{background:rgba(0,229,160,.1);color:var(--primary)}
-.hero{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 40px;text-align:center}
-.hero .icon{width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,rgba(0,229,160,.15),rgba(0,180,216,.15));border:1px solid rgba(0,229,160,.3);display:inline-flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-size:32px;font-weight:700;color:var(--primary);margin-bottom:20px}
-.hero h2{font-size:22px;margin-bottom:8px}
-.hero p{color:var(--muted);font-size:14px;max-width:480px;margin:0 auto 24px}
-.hero .cta{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,var(--primary),var(--signal));color:#0A0E17;border:none;border-radius:10px;font-family:inherit;font-weight:600;font-size:14px;cursor:pointer;text-decoration:none}
-.sidebar nav{display:flex;flex-direction:column;gap:2px}
-.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13px;cursor:pointer}
-.sidebar nav a.active{background:rgba(0,229,160,.08);color:var(--primary)}
-.sidebar nav a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
+.tab-panel{display:none;flex-direction:column;gap:20px}
+.tab-panel.active{display:flex}
+.grid-2{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+.grid-2-eq{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:980px){.grid-2,.grid-2-eq{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.card .sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+.card .chart-wrap{position:relative;height:260px}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border)}
+.table td{padding:12px;border-bottom:1px solid rgba(31,41,55,.5);color:var(--text);vertical-align:middle}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:rgba(255,255,255,.02)}
+.table .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.02em}
+.pill.ok{background:rgba(16,185,129,.12);color:var(--ok)}
+.pill.warn{background:rgba(245,158,11,.12);color:var(--warn)}
+.pill.danger{background:rgba(239,68,68,.12);color:var(--danger)}
+.pill.info{background:rgba(0,180,216,.12);color:var(--signal)}
+.pill.neutral{background:rgba(156,163,175,.12);color:var(--muted)}
+.progress{width:100px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
+.progress .bar{height:100%;background:linear-gradient(90deg,var(--primary),var(--signal));border-radius:3px}
+canvas{max-width:100%}
+/* ─── Utility classes ────────────────────────────────────────────────── */
+.row{display:flex;align-items:center;gap:12px}
+.row-wrap{display:flex;flex-wrap:wrap;gap:12px}
+.col{display:flex;flex-direction:column;gap:8px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.gap-8{gap:8px}
+.gap-12{gap:12px}
+.gap-16{gap:16px}
+.gap-20{gap:20px}
+.gap-24{gap:24px}
+.mt-4{margin-top:4px}
+.mt-8{margin-top:8px}
+.mt-12{margin-top:12px}
+.mt-16{margin-top:16px}
+.mt-20{margin-top:20px}
+.mb-4{margin-bottom:4px}
+.mb-8{margin-bottom:8px}
+.mb-12{margin-bottom:12px}
+.mb-16{margin-bottom:16px}
+.p-16{padding:16px}
+.p-20{padding:20px}
+.p-24{padding:24px}
+.text-xs{font-size:11px}
+.text-sm{font-size:12px}
+.text-md{font-size:13px}
+.text-lg{font-size:14px}
+.text-xl{font-size:16px}
+.text-2xl{font-size:20px}
+.text-3xl{font-size:24px}
+.font-heading{font-family:'Space Grotesk',sans-serif}
+.font-body{font-family:'Inter',sans-serif}
+.font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.font-semibold{font-weight:600}
+.font-bold{font-weight:700}
+.text-muted{color:var(--muted)}
+.text-primary{color:var(--primary)}
+.text-signal{color:var(--signal)}
+.text-violet{color:var(--violet)}
+.text-warn{color:var(--warn)}
+.text-danger{color:var(--danger)}
+.text-ok{color:var(--ok)}
+.text-white{color:#fff}
+.text-center{text-align:center}
+.text-right{text-align:right}
+.w-full{width:100%}
+.h-full{height:100%}
+.flex-1{flex:1}
+.flex-center{display:flex;align-items:center;justify-content:center}
+.flex-between{display:flex;align-items:center;justify-content:space-between}
+.border-r{border-right:1px solid var(--border)}
+.border-l{border-left:1px solid var(--border)}
+.border-t{border-top:1px solid var(--border)}
+.border-b{border-bottom:1px solid var(--border)}
+.bg-surface{background:var(--surface)}
+.bg-surface-2{background:var(--surface-2)}
+.bg-primary-alpha{background:rgba(0,229,160,.08)}
+.bg-signal-alpha{background:rgba(0,180,216,.08)}
+.bg-violet-alpha{background:rgba(123,97,255,.08)}
+.bg-warn-alpha{background:rgba(245,158,11,.08)}
+.bg-danger-alpha{background:rgba(239,68,68,.08)}
+.rounded-sm{border-radius:6px}
+.rounded-md{border-radius:8px}
+.rounded-lg{border-radius:12px}
+.rounded-full{border-radius:999px}
+.shadow-sm{box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.shadow-md{box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.shadow-lg{box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.hover-lift{transition:transform .2s}
+.hover-lift:hover{transform:translateY(-2px)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:uppercase}
+.badge.primary{background:rgba(0,229,160,.12);color:var(--primary);border:1px solid rgba(0,229,160,.2)}
+.badge.signal{background:rgba(0,180,216,.12);color:var(--signal);border:1px solid rgba(0,180,216,.2)}
+.badge.violet{background:rgba(123,97,255,.12);color:var(--violet);border:1px solid rgba(123,97,255,.2)}
+.divider{height:1px;background:var(--border);margin:12px 0}
+.loading{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.loading::before{content:"";width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text)}
+.chip .dot{width:6px;height:6px;border-radius:50%}
+.chip .dot.ok{background:var(--ok)}
+.chip .dot.warn{background:var(--warn)}
+.chip .dot.danger{background:var(--danger)}
+.sparkline{width:100%;height:40px;display:block}
+.skeleton{background:linear-gradient(90deg,var(--surface),var(--surface-2),var(--surface));background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite;border-radius:8px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(max-width:768px){.content{padding:16px}.sidebar{width:72px}.sidebar .brand .name{display:none}.sidebar nav a{justify-content:center}.main{margin-left:72px}.topbar{padding:12px 16px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.kpi-grid{grid-template-columns:1fr}.topbar .meta{gap:8px}.topbar .meta .live{display:none}}
 </style>
 <script>
-window.__VIBE_SAMPLE__ = {
-  kpis:[],
-  metrics:{labels:[],values:[]},
-  rows:[]
+window.__VIBE_SAMPLE__={
+  kpis:[
+    {
+      id:'gmv',
+      label:'GMV',
+      value:'$4.2M',
+      trend:'+18%',
+      direction:'up'
+    },
+    {
+      id:'orders',
+      label:'Orders',
+      value:'18,420',
+      trend:'+12%',
+      direction:'up'
+    },
+    {
+      id:'aov',
+      label:'AOV',
+      value:'$228',
+      trend:'+5%',
+      direction:'up'
+    },
+    {
+      id:'conversion',
+      label:'Conversion',
+      value:'3.8%',
+      trend:'+0.4pp',
+      direction:'up'
+    },
+    {
+      id:'return-rate',
+      label:'Return Rate',
+      value:'6.2%',
+      trend:'-0.8pp',
+      direction:'down'
+    },
+    {
+      id:'repeat',
+      label:'Repeat Customers',
+      value:'42%',
+      trend:'+3pp',
+      direction:'up'
+    }
+  ],
+  gmvTrend:{
+    labels:['D1','D5','D10','D15','D20','D25','D30'],
+    datasets:[
+      {
+        label:'GMV ($K)',
+        data:[120,135,148,162,158,172,180],
+        borderColor:'#00E5A0',
+        backgroundColor:'rgba(0,229,160,.12)',
+        tension:0.35,
+        fill:true
+      }
+    ]
+  },
+  categoryMix:{
+    labels:['Apparel','Electronics','Home','Beauty','Food','Accessories'],
+    counts:[28,22,18,14,10,8]
+  },
+  funnelStages:{
+    labels:['Visit','Product View','Add to Cart','Checkout','Purchase'],
+    datasets:[
+      {
+        label:'Users',
+        data:[480000,128000,42000,18000,14800],
+        backgroundColor:'#00B4D8',
+        borderRadius:4
+      }
+    ]
+  },
+  cohortRetention:{
+    labels:['M0','M1','M2','M3','M4','M5','M6'],
+    datasets:[
+      {
+        label:'Retention %',
+        data:[100,48,36,30,26,24,22],
+        borderColor:'#7B61FF',
+        backgroundColor:'rgba(123,97,255,.12)',
+        tension:0.35,
+        fill:true
+      }
+    ]
+  },
+  topProducts:[
+    {
+      sku:'APP-001',
+      name:'Classic T-Shirt',
+      category:'Apparel',
+      units:2480,
+      revenue:'$49,600'
+    },
+    {
+      sku:'ELE-042',
+      name:'Wireless Earbuds',
+      category:'Electronics',
+      units:820,
+      revenue:'$98,400'
+    },
+    {
+      sku:'HOM-018',
+      name:'Ceramic Planter Set',
+      category:'Home',
+      units:640,
+      revenue:'$32,000'
+    },
+    {
+      sku:'APP-112',
+      name:'Denim Jacket',
+      category:'Apparel',
+      units:540,
+      revenue:'$64,800'
+    },
+    {
+      sku:'BEA-024',
+      name:'Skincare Bundle',
+      category:'Beauty',
+      units:460,
+      revenue:'$46,000'
+    },
+    {
+      sku:'ELE-087',
+      name:'Smart Speaker',
+      category:'Electronics',
+      units:380,
+      revenue:'$68,400'
+    }
+  ],
+  recentOrders:[
+    {
+      id:'#4421',
+      customer:'alice@example.com',
+      items:3,
+      total:'$184.00',
+      status:'On Track'
+    },
+    {
+      id:'#4420',
+      customer:'bob@example.com',
+      items:1,
+      total:'$89.99',
+      status:'On Track'
+    },
+    {
+      id:'#4419',
+      customer:'carol@example.com',
+      items:5,
+      total:'$342.50',
+      status:'On Track'
+    },
+    {
+      id:'#4418',
+      customer:'dave@example.com',
+      items:2,
+      total:'$124.00',
+      status:'On Track'
+    },
+    {
+      id:'#4417',
+      customer:'eve@example.com',
+      items:4,
+      total:'$218.75',
+      status:'At Risk'
+    }
+  ]
 };
-const __SUPABASE_URL__ = '__SUPABASE_URL__';
-const __SUPABASE_ANON_KEY__ = '__SUPABASE_ANON_KEY__';
-const __VIBE_TEAM_ID__ = '__VIBE_TEAM_ID__';
+const __SUPABASE_URL__='__SUPABASE_URL__';
+const __SUPABASE_ANON_KEY__='__SUPABASE_ANON_KEY__';
+const __VIBE_TEAM_ID__='__VIBE_TEAM_ID__';
 </script>
 </head>
 <body>
@@ -54,10 +339,14 @@ const __VIBE_TEAM_ID__ = '__VIBE_TEAM_ID__';
   <aside class="sidebar">
     <div class="brand">
       <div class="logo">V</div>
-      <div class="name">{{BRAND_COMPANY}}<span>Ecommerce Analytics</span></div>
+      <div class="name">{{BRAND_COMPANY}}<span>Commerce</span></div>
     </div>
     <nav>
-      <a class="active"><span class="dot"></span>Overview</a>
+      <a class="active"><span class="dot"></span>Dashboard</a>
+      <a><span class="dot"></span>Sales</a>
+      <a><span class="dot"></span>Products</a>
+      <a><span class="dot"></span>Customers</a>
+      <a><span class="dot"></span>Funnel</a>
       <a><span class="dot"></span>Reports</a>
       <a><span class="dot"></span>Settings</a>
     </nav>
@@ -65,28 +354,176 @@ const __VIBE_TEAM_ID__ = '__VIBE_TEAM_ID__';
   <div class="main">
     <header class="topbar">
       <h1>Ecommerce Analytics</h1>
-      <div class="team">{{BRAND_TEAM}}</div>
+      <div class="meta">
+        <span class="live" id="lastUpdated">Live</span>
+        <span class="team">{{BRAND_TEAM}}</span>
+      </div>
     </header>
     <div class="content">
-      <div class="tabs-bar">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="tabs-bar" id="tabsBar">
         <button class="active" data-tab="overview">Overview</button>
+        <button data-tab="products">Products</button>
+        <button data-tab="customers">Customers</button>
+        <button data-tab="funnel">Funnel</button>
+        <button data-tab="orders">Orders</button>
       </div>
-      <section class="hero">
-        <div class="icon">EA</div>
-        <h2>Connect your data to get started</h2>
-        <p>This dashboard is ready — connect a data source and {{BRAND_COMPANY}} will populate it with live metrics.</p>
-        <a class="cta" href="/settings/connectors">Connect a data source →</a>
+
+      <section class="tab-panel active" data-panel="overview">
+
+          <div class="card">
+            <h3>GMV Trend</h3>
+            <div class="sub">Daily gross merchandise value</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="gmvTrend"></canvas></div>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="products">
+
+          <div class="card">
+            <h3>Revenue by Category</h3>
+            <div class="sub">Last 30 days</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="categoryMix"></canvas></div>
+          </div>
+
+          <div class="card">
+            <h3>Top Products</h3>
+            <div class="sub">Best sellers last 30 days</div>
+            <table class="table" id="topProducts">
+              <thead><tr><th>SKU</th><th>Product</th><th>Category</th><th>Units</th><th>Revenue</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="customers">
+
+          <div class="card">
+            <h3>Customer Cohort Retention</h3>
+            <div class="sub">Repeat purchase rate by month</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="cohortRetention"></canvas></div>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="funnel">
+
+          <div class="card">
+            <h3>Purchase Funnel</h3>
+            <div class="sub">Conversion by stage</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="funnelStages"></canvas></div>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="orders">
+
+          <div class="card">
+            <h3>Recent Orders</h3>
+            <div class="sub">Last 15 minutes</div>
+            <table class="table" id="recentOrders">
+              <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
       </section>
     </div>
   </div>
 </div>
+
 <script>
-try {
-  const data = window.__VIBE_SAMPLE__;
-  console.log('[ecommerce-analytics] placeholder loaded, sample keys:', Object.keys(data));
-} catch (err) {
-  console.warn('[ecommerce-analytics] placeholder error:', err);
+Chart.defaults.color='#9CA3AF';
+Chart.defaults.borderColor='#1F2937';
+Chart.defaults.font.family="'Inter',system-ui,sans-serif";
+Chart.defaults.plugins.legend.labels.usePointStyle=true;
+Chart.defaults.plugins.legend.labels.padding=12;
+
+async function vibeLoadData(){
+  if(!__SUPABASE_URL__||__SUPABASE_URL__.indexOf('__')===0) throw new Error('no supabase');
+  const res=await fetch(__SUPABASE_URL__+'/rest/v1/rpc/get_ecommerce_analytics_data',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+__SUPABASE_ANON_KEY__},
+    body:JSON.stringify({team_id:__VIBE_TEAM_ID__})
+  });
+  if(!res.ok) throw new Error('rpc failed '+res.status);
+  return await res.json();
 }
+
+function renderKpis(data){
+  const grid=document.getElementById('kpiGrid');
+  grid.innerHTML=(data.kpis||[]).map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value">'+k.value+'</div><div class="trend '+k.direction+'">'+(k.direction==='up'?'\u25B2':'\u25BC')+' '+k.trend+'</div></div>').join('');
+}
+
+let charts={};
+function renderCharts(data){
+  Object.values(charts).forEach(c=>c&&c.destroy());
+  charts={};
+  { const src=data.gmvTrend||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart0=new Chart(document.getElementById('gmvTrend'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
+  }
+  { const src=data.categoryMix||{};
+    const opts={responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'right'}}};
+    charts.chart1=new Chart(document.getElementById('categoryMix'),{type:'doughnut',data:{labels:src.labels||[],datasets:[{data:src.data||src.counts||[],backgroundColor:['#00E5A0','#F59E0B','#EF4444','#00B4D8','#6B7280','#7B61FF','#10B981','#9CA3AF'],borderWidth:0}]},options:opts});
+  }
+  { const src=data.funnelStages||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart2=new Chart(document.getElementById('funnelStages'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
+  }
+  { const src=data.cohortRetention||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart3=new Chart(document.getElementById('cohortRetention'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
+  }
+}
+
+function renderTables(data){
+  function pillClassOkWarnDanger(v){
+    const s=String(v||'').toLowerCase();
+    if(/(healthy|on track|active|resolved|pass|ok|complete|won|green)/i.test(s))return 'ok';
+    if(/(at risk|warn|pending|review|amber|medium|yellow)/i.test(s))return 'warn';
+    if(/(delayed|blocked|fail|critical|red|high|lost|overdue)/i.test(s))return 'danger';
+    return 'neutral';
+  }
+  function pillClassSeverity(v){
+    const s=String(v||'').toUpperCase();
+    if(s==='P0'||s==='P1'||s==='CRITICAL'||s==='HIGH')return 'danger';
+    if(s==='P2'||s==='MEDIUM')return 'warn';
+    return 'info';
+  }
+  { const tbody=document.querySelector('#topProducts tbody');
+    const rows=data.topProducts||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td class="mono">'+(row['sku']==null?'':row['sku'])+'</td>'+'<td style="color:#fff;font-weight:500">'+(row['name']==null?'':row['name'])+'</td>'+'<td>'+(row['category']==null?'':row['category'])+'</td>'+'<td>'+(row['units']==null?'':row['units'])+'</td>'+'<td>'+(row['revenue']==null?'':row['revenue'])+'</td>'+'</tr>').join('');
+  }
+  { const tbody=document.querySelector('#recentOrders tbody');
+    const rows=data.recentOrders||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td class="mono">'+(row['id']==null?'':row['id'])+'</td>'+'<td>'+(row['customer']==null?'':row['customer'])+'</td>'+'<td>'+(row['items']==null?'':row['items'])+'</td>'+'<td>'+(row['total']==null?'':row['total'])+'</td>'+'<td><span class="pill '+(pillClassOkWarnDanger(row['status']))+'">'+(row['status']==null?'':row['status'])+'</span></td>'+'</tr>').join('');
+  }
+}
+
+function wireTabs(){
+  document.querySelectorAll('#tabsBar button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const tabId=btn.dataset.tab;
+      document.querySelectorAll('#tabsBar button').forEach(b=>b.classList.toggle('active',b===btn));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tabId));
+    });
+  });
+}
+
+async function boot(){
+  let data;
+  try{
+    data=await vibeLoadData();
+    if(!data||!data.kpis) throw new Error('empty payload');
+  }catch(err){
+    console.warn('[ecommerce-analytics] sample fallback:',err.message);
+    data=window.__VIBE_SAMPLE__;
+  }
+  renderKpis(data);
+  renderCharts(data);
+  renderTables(data);
+  wireTabs();
+  document.getElementById('lastUpdated').textContent='Updated '+new Date().toLocaleTimeString();
+}
+boot();
 </script>
 </body>
 </html>

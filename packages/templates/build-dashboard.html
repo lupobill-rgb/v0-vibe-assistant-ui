@@ -9,44 +9,324 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF}
+:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF;--warn:#F59E0B;--danger:#EF4444;--ok:#10B981}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;overflow-x:hidden}
-h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;color:#fff}
+h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;color:#fff;letter-spacing:-0.01em}
+a{color:inherit;text-decoration:none}
 .app{display:flex;min-height:100vh}
-.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:var(--surface-2);border-right:1px solid var(--border);padding:24px 16px;z-index:40}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:var(--surface-2);border-right:1px solid var(--border);padding:24px 16px;z-index:40;display:flex;flex-direction:column;gap:8px}
 .sidebar .brand{display:flex;align-items:center;gap:10px;padding:8px 12px 20px;border-bottom:1px solid var(--border);margin-bottom:12px}
 .sidebar .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--signal));display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;color:#0A0E17}
 .sidebar .brand .name{font-family:'Space Grotesk';font-weight:600;color:#fff;font-size:15px;line-height:1.2}
 .sidebar .brand .name span{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}
+.sidebar nav{display:flex;flex-direction:column;gap:2px}
+.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13px;cursor:pointer;transition:all .15s}
+.sidebar nav a:hover{background:var(--surface);color:var(--text)}
+.sidebar nav a.active{background:rgba(0,229,160,.08);color:var(--primary)}
+.sidebar nav a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
 .main{flex:1;margin-left:240px;display:flex;flex-direction:column;min-height:100vh}
 .topbar{position:sticky;top:0;background:rgba(15,22,36,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;z-index:60}
 .topbar h1{font-size:18px}
-.topbar .team{padding:4px 10px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:6px;color:var(--primary);font-size:12px}
-.content{padding:24px 28px 48px;display:flex;flex-direction:column;gap:24px}
-.tabs-bar{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;overflow-x:auto;flex-wrap:nowrap}
+.topbar .meta{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--muted)}
+.topbar .meta .team{padding:4px 10px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:6px;color:var(--primary)}
+.topbar .meta .live{display:inline-flex;align-items:center;gap:6px}
+.topbar .meta .live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.content{padding:24px 28px 48px;display:flex;flex-direction:column;gap:24px;max-width:1600px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s}
+.kpi:hover{border-color:rgba(0,229,160,.3)}
+.kpi::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,229,160,.04),transparent 60%);pointer-events:none}
+.kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:8px}
+.kpi .value{font-family:'Space Grotesk';font-size:26px;font-weight:700;color:#fff;line-height:1.1}
+.kpi .trend{margin-top:8px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.kpi .trend.up{color:var(--primary)}
+.kpi .trend.down{color:var(--warn)}
+.tabs-bar{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
 .tabs-bar>*{flex-shrink:0}
-.tabs-bar button{flex-shrink:0;background:transparent;color:var(--muted);border:none;padding:10px 18px;border-radius:7px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tabs-bar button{flex-shrink:0;background:transparent;color:var(--muted);border:none;padding:10px 18px;border-radius:7px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tabs-bar button:hover{color:var(--text)}
 .tabs-bar button.active{background:rgba(0,229,160,.1);color:var(--primary)}
-.hero{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 40px;text-align:center}
-.hero .icon{width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,rgba(0,229,160,.15),rgba(0,180,216,.15));border:1px solid rgba(0,229,160,.3);display:inline-flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-size:32px;font-weight:700;color:var(--primary);margin-bottom:20px}
-.hero h2{font-size:22px;margin-bottom:8px}
-.hero p{color:var(--muted);font-size:14px;max-width:480px;margin:0 auto 24px}
-.hero .cta{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,var(--primary),var(--signal));color:#0A0E17;border:none;border-radius:10px;font-family:inherit;font-weight:600;font-size:14px;cursor:pointer;text-decoration:none}
-.sidebar nav{display:flex;flex-direction:column;gap:2px}
-.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13px;cursor:pointer}
-.sidebar nav a.active{background:rgba(0,229,160,.08);color:var(--primary)}
-.sidebar nav a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
+.tab-panel{display:none;flex-direction:column;gap:20px}
+.tab-panel.active{display:flex}
+.grid-2{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+.grid-2-eq{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:980px){.grid-2,.grid-2-eq{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.card .sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+.card .chart-wrap{position:relative;height:260px}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border)}
+.table td{padding:12px;border-bottom:1px solid rgba(31,41,55,.5);color:var(--text);vertical-align:middle}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:rgba(255,255,255,.02)}
+.table .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.02em}
+.pill.ok{background:rgba(16,185,129,.12);color:var(--ok)}
+.pill.warn{background:rgba(245,158,11,.12);color:var(--warn)}
+.pill.danger{background:rgba(239,68,68,.12);color:var(--danger)}
+.pill.info{background:rgba(0,180,216,.12);color:var(--signal)}
+.pill.neutral{background:rgba(156,163,175,.12);color:var(--muted)}
+.progress{width:100px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
+.progress .bar{height:100%;background:linear-gradient(90deg,var(--primary),var(--signal));border-radius:3px}
+canvas{max-width:100%}
+/* ─── Utility classes ────────────────────────────────────────────────── */
+.row{display:flex;align-items:center;gap:12px}
+.row-wrap{display:flex;flex-wrap:wrap;gap:12px}
+.col{display:flex;flex-direction:column;gap:8px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.gap-8{gap:8px}
+.gap-12{gap:12px}
+.gap-16{gap:16px}
+.gap-20{gap:20px}
+.gap-24{gap:24px}
+.mt-4{margin-top:4px}
+.mt-8{margin-top:8px}
+.mt-12{margin-top:12px}
+.mt-16{margin-top:16px}
+.mt-20{margin-top:20px}
+.mb-4{margin-bottom:4px}
+.mb-8{margin-bottom:8px}
+.mb-12{margin-bottom:12px}
+.mb-16{margin-bottom:16px}
+.p-16{padding:16px}
+.p-20{padding:20px}
+.p-24{padding:24px}
+.text-xs{font-size:11px}
+.text-sm{font-size:12px}
+.text-md{font-size:13px}
+.text-lg{font-size:14px}
+.text-xl{font-size:16px}
+.text-2xl{font-size:20px}
+.text-3xl{font-size:24px}
+.font-heading{font-family:'Space Grotesk',sans-serif}
+.font-body{font-family:'Inter',sans-serif}
+.font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.font-semibold{font-weight:600}
+.font-bold{font-weight:700}
+.text-muted{color:var(--muted)}
+.text-primary{color:var(--primary)}
+.text-signal{color:var(--signal)}
+.text-violet{color:var(--violet)}
+.text-warn{color:var(--warn)}
+.text-danger{color:var(--danger)}
+.text-ok{color:var(--ok)}
+.text-white{color:#fff}
+.text-center{text-align:center}
+.text-right{text-align:right}
+.w-full{width:100%}
+.h-full{height:100%}
+.flex-1{flex:1}
+.flex-center{display:flex;align-items:center;justify-content:center}
+.flex-between{display:flex;align-items:center;justify-content:space-between}
+.border-r{border-right:1px solid var(--border)}
+.border-l{border-left:1px solid var(--border)}
+.border-t{border-top:1px solid var(--border)}
+.border-b{border-bottom:1px solid var(--border)}
+.bg-surface{background:var(--surface)}
+.bg-surface-2{background:var(--surface-2)}
+.bg-primary-alpha{background:rgba(0,229,160,.08)}
+.bg-signal-alpha{background:rgba(0,180,216,.08)}
+.bg-violet-alpha{background:rgba(123,97,255,.08)}
+.bg-warn-alpha{background:rgba(245,158,11,.08)}
+.bg-danger-alpha{background:rgba(239,68,68,.08)}
+.rounded-sm{border-radius:6px}
+.rounded-md{border-radius:8px}
+.rounded-lg{border-radius:12px}
+.rounded-full{border-radius:999px}
+.shadow-sm{box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.shadow-md{box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.shadow-lg{box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.hover-lift{transition:transform .2s}
+.hover-lift:hover{transform:translateY(-2px)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:uppercase}
+.badge.primary{background:rgba(0,229,160,.12);color:var(--primary);border:1px solid rgba(0,229,160,.2)}
+.badge.signal{background:rgba(0,180,216,.12);color:var(--signal);border:1px solid rgba(0,180,216,.2)}
+.badge.violet{background:rgba(123,97,255,.12);color:var(--violet);border:1px solid rgba(123,97,255,.2)}
+.divider{height:1px;background:var(--border);margin:12px 0}
+.loading{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.loading::before{content:"";width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text)}
+.chip .dot{width:6px;height:6px;border-radius:50%}
+.chip .dot.ok{background:var(--ok)}
+.chip .dot.warn{background:var(--warn)}
+.chip .dot.danger{background:var(--danger)}
+.sparkline{width:100%;height:40px;display:block}
+.skeleton{background:linear-gradient(90deg,var(--surface),var(--surface-2),var(--surface));background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite;border-radius:8px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(max-width:768px){.content{padding:16px}.sidebar{width:72px}.sidebar .brand .name{display:none}.sidebar nav a{justify-content:center}.main{margin-left:72px}.topbar{padding:12px 16px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.kpi-grid{grid-template-columns:1fr}.topbar .meta{gap:8px}.topbar .meta .live{display:none}}
 </style>
 <script>
-window.__VIBE_SAMPLE__ = {
-  kpis:[],
-  metrics:{labels:[],values:[]},
-  rows:[]
+window.__VIBE_SAMPLE__={
+  kpis:[
+    {
+      id:'jobs-today',
+      label:'Jobs Today',
+      value:'1,284',
+      trend:'+18%',
+      direction:'up'
+    },
+    {
+      id:'success-rate',
+      label:'Success Rate',
+      value:'94.2%',
+      trend:'+1.2pp',
+      direction:'up'
+    },
+    {
+      id:'avg-duration',
+      label:'Avg Duration',
+      value:'42s',
+      trend:'-4s',
+      direction:'down'
+    },
+    {
+      id:'tokens',
+      label:'Tokens Used',
+      value:'48.2M',
+      trend:'+12%',
+      direction:'up'
+    },
+    {
+      id:'queue',
+      label:'Queue Depth',
+      value:'18',
+      trend:'-6',
+      direction:'down'
+    },
+    {
+      id:'error-rate',
+      label:'Error Rate',
+      value:'5.8%',
+      trend:'-1.2pp',
+      direction:'down'
+    }
+  ],
+  jobTrend:{
+    labels:['00','03','06','09','12','15','18','21'],
+    datasets:[
+      {
+        label:'Jobs',
+        data:[32,28,38,62,84,92,88,72],
+        borderColor:'#00E5A0',
+        backgroundColor:'rgba(0,229,160,.12)',
+        tension:0.35,
+        fill:true
+      }
+    ]
+  },
+  jobsByType:{
+    labels:['Dashboard','App','Edit','Skeleton','Debug','Export'],
+    counts:[420,180,240,120,98,226]
+  },
+  modelUsage:{
+    labels:['claude-sonnet','claude-opus','gpt-4o','haiku'],
+    datasets:[
+      {
+        label:'Tokens (M)',
+        data:[28.4,12.2,4.8,2.8],
+        backgroundColor:'#00B4D8',
+        borderRadius:4
+      }
+    ]
+  },
+  errorTrend:{
+    labels:['-12h','-10h','-8h','-6h','-4h','-2h','Now'],
+    datasets:[
+      {
+        label:'Error %',
+        data:[7.2,6.8,6.4,5.9,5.6,5.4,5.2],
+        borderColor:'#EF4444',
+        backgroundColor:'rgba(239,68,68,.12)',
+        tension:0.35,
+        fill:true
+      }
+    ]
+  },
+  recentJobs:[
+    {
+      id:'job_8f2a',
+      prompt:'Show me sales pipeline',
+      type:'Dashboard',
+      duration:'38s',
+      tokens:'12.4K',
+      status:'On Track'
+    },
+    {
+      id:'job_8f29',
+      prompt:'Build customer support app',
+      type:'App',
+      duration:'2m 18s',
+      tokens:'48.2K',
+      status:'On Track'
+    },
+    {
+      id:'job_8f28',
+      prompt:'Add KPI to finance dashboard',
+      type:'Edit',
+      duration:'22s',
+      tokens:'4.8K',
+      status:'On Track'
+    },
+    {
+      id:'job_8f27',
+      prompt:'Generate ops report',
+      type:'Dashboard',
+      duration:'41s',
+      tokens:'14.2K',
+      status:'On Track'
+    },
+    {
+      id:'job_8f26',
+      prompt:'Fix chart layout',
+      type:'Debug',
+      duration:'18s',
+      tokens:'3.2K',
+      status:'At Risk'
+    },
+    {
+      id:'job_8f25',
+      prompt:'Ecommerce funnel',
+      type:'Dashboard',
+      duration:'45s',
+      tokens:'16.8K',
+      status:'On Track'
+    }
+  ],
+  topErrors:[
+    {
+      name:'Edge function timeout',
+      count:42,
+      first:'2026-04-14 02:18',
+      severity:'P1'
+    },
+    {
+      name:'LLM rate limit exceeded',
+      count:28,
+      first:'2026-04-14 04:32',
+      severity:'P2'
+    },
+    {
+      name:'Malformed diff response',
+      count:18,
+      first:'2026-04-14 06:15',
+      severity:'P2'
+    },
+    {
+      name:'Preview asset 404',
+      count:14,
+      first:'2026-04-13 22:40',
+      severity:'P3'
+    }
+  ]
 };
-const __SUPABASE_URL__ = '__SUPABASE_URL__';
-const __SUPABASE_ANON_KEY__ = '__SUPABASE_ANON_KEY__';
-const __VIBE_TEAM_ID__ = '__VIBE_TEAM_ID__';
+const __SUPABASE_URL__='__SUPABASE_URL__';
+const __SUPABASE_ANON_KEY__='__SUPABASE_ANON_KEY__';
+const __VIBE_TEAM_ID__='__VIBE_TEAM_ID__';
 </script>
 </head>
 <body>
@@ -54,10 +334,14 @@ const __VIBE_TEAM_ID__ = '__VIBE_TEAM_ID__';
   <aside class="sidebar">
     <div class="brand">
       <div class="logo">V</div>
-      <div class="name">{{BRAND_COMPANY}}<span>Build Dashboard</span></div>
+      <div class="name">{{BRAND_COMPANY}}<span>Builds</span></div>
     </div>
     <nav>
-      <a class="active"><span class="dot"></span>Overview</a>
+      <a class="active"><span class="dot"></span>Dashboard</a>
+      <a><span class="dot"></span>Jobs</a>
+      <a><span class="dot"></span>Queue</a>
+      <a><span class="dot"></span>Models</a>
+      <a><span class="dot"></span>Errors</a>
       <a><span class="dot"></span>Reports</a>
       <a><span class="dot"></span>Settings</a>
     </nav>
@@ -65,28 +349,177 @@ const __VIBE_TEAM_ID__ = '__VIBE_TEAM_ID__';
   <div class="main">
     <header class="topbar">
       <h1>Build Dashboard</h1>
-      <div class="team">{{BRAND_TEAM}}</div>
+      <div class="meta">
+        <span class="live" id="lastUpdated">Live</span>
+        <span class="team">{{BRAND_TEAM}}</span>
+      </div>
     </header>
     <div class="content">
-      <div class="tabs-bar">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="tabs-bar" id="tabsBar">
         <button class="active" data-tab="overview">Overview</button>
+        <button data-tab="jobs">Jobs</button>
+        <button data-tab="queue">Queue</button>
+        <button data-tab="models">Models</button>
+        <button data-tab="errors">Errors</button>
       </div>
-      <section class="hero">
-        <div class="icon">BD</div>
-        <h2>Connect your data to get started</h2>
-        <p>This dashboard is ready — connect a data source and {{BRAND_COMPANY}} will populate it with live metrics.</p>
-        <a class="cta" href="/settings/connectors">Connect a data source →</a>
+
+      <section class="tab-panel active" data-panel="overview">
+
+          <div class="card">
+            <h3>Job Volume</h3>
+            <div class="sub">Jobs per hour, last 24 hours</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="jobTrend"></canvas></div>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="jobs">
+
+          <div class="card">
+            <h3>Jobs by Type</h3>
+            <div class="sub">Last 24 hours</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="jobsByType"></canvas></div>
+          </div>
+
+          <div class="card">
+            <h3>Recent Jobs</h3>
+            <div class="sub">Last 15 builds</div>
+            <table class="table" id="recentJobs">
+              <thead><tr><th>Job ID</th><th>Prompt</th><th>Type</th><th>Duration</th><th>Tokens</th><th>Status</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="queue">
+
+      </section>
+
+      <section class="tab-panel" data-panel="models">
+
+          <div class="card">
+            <h3>Model Usage</h3>
+            <div class="sub">Token count by model</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="modelUsage"></canvas></div>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="errors">
+
+          <div class="card">
+            <h3>Error Rate</h3>
+            <div class="sub">Trailing 12 hours</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="errorTrend"></canvas></div>
+          </div>
+
+          <div class="card">
+            <h3>Top Errors</h3>
+            <div class="sub">Most frequent failures</div>
+            <table class="table" id="topErrors">
+              <thead><tr><th>Error</th><th>Count</th><th>First Seen</th><th>Severity</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
       </section>
     </div>
   </div>
 </div>
+
 <script>
-try {
-  const data = window.__VIBE_SAMPLE__;
-  console.log('[build-dashboard] placeholder loaded, sample keys:', Object.keys(data));
-} catch (err) {
-  console.warn('[build-dashboard] placeholder error:', err);
+Chart.defaults.color='#9CA3AF';
+Chart.defaults.borderColor='#1F2937';
+Chart.defaults.font.family="'Inter',system-ui,sans-serif";
+Chart.defaults.plugins.legend.labels.usePointStyle=true;
+Chart.defaults.plugins.legend.labels.padding=12;
+
+async function vibeLoadData(){
+  if(!__SUPABASE_URL__||__SUPABASE_URL__.indexOf('__')===0) throw new Error('no supabase');
+  const res=await fetch(__SUPABASE_URL__+'/rest/v1/rpc/get_build_dashboard_data',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+__SUPABASE_ANON_KEY__},
+    body:JSON.stringify({team_id:__VIBE_TEAM_ID__})
+  });
+  if(!res.ok) throw new Error('rpc failed '+res.status);
+  return await res.json();
 }
+
+function renderKpis(data){
+  const grid=document.getElementById('kpiGrid');
+  grid.innerHTML=(data.kpis||[]).map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value">'+k.value+'</div><div class="trend '+k.direction+'">'+(k.direction==='up'?'\u25B2':'\u25BC')+' '+k.trend+'</div></div>').join('');
+}
+
+let charts={};
+function renderCharts(data){
+  Object.values(charts).forEach(c=>c&&c.destroy());
+  charts={};
+  { const src=data.jobTrend||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart0=new Chart(document.getElementById('jobTrend'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
+  }
+  { const src=data.jobsByType||{};
+    const opts={responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'right'}}};
+    charts.chart1=new Chart(document.getElementById('jobsByType'),{type:'doughnut',data:{labels:src.labels||[],datasets:[{data:src.data||src.counts||[],backgroundColor:['#00E5A0','#F59E0B','#EF4444','#00B4D8','#6B7280','#7B61FF','#10B981','#9CA3AF'],borderWidth:0}]},options:opts});
+  }
+  { const src=data.modelUsage||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart2=new Chart(document.getElementById('modelUsage'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
+  }
+  { const src=data.errorTrend||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart3=new Chart(document.getElementById('errorTrend'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
+  }
+}
+
+function renderTables(data){
+  function pillClassOkWarnDanger(v){
+    const s=String(v||'').toLowerCase();
+    if(/(healthy|on track|active|resolved|pass|ok|complete|won|green)/i.test(s))return 'ok';
+    if(/(at risk|warn|pending|review|amber|medium|yellow)/i.test(s))return 'warn';
+    if(/(delayed|blocked|fail|critical|red|high|lost|overdue)/i.test(s))return 'danger';
+    return 'neutral';
+  }
+  function pillClassSeverity(v){
+    const s=String(v||'').toUpperCase();
+    if(s==='P0'||s==='P1'||s==='CRITICAL'||s==='HIGH')return 'danger';
+    if(s==='P2'||s==='MEDIUM')return 'warn';
+    return 'info';
+  }
+  { const tbody=document.querySelector('#recentJobs tbody');
+    const rows=data.recentJobs||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td class="mono">'+(row['id']==null?'':row['id'])+'</td>'+'<td style="color:#fff;font-weight:500">'+(row['prompt']==null?'':row['prompt'])+'</td>'+'<td>'+(row['type']==null?'':row['type'])+'</td>'+'<td>'+(row['duration']==null?'':row['duration'])+'</td>'+'<td>'+(row['tokens']==null?'':row['tokens'])+'</td>'+'<td><span class="pill '+(pillClassOkWarnDanger(row['status']))+'">'+(row['status']==null?'':row['status'])+'</span></td>'+'</tr>').join('');
+  }
+  { const tbody=document.querySelector('#topErrors tbody');
+    const rows=data.topErrors||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td style="color:#fff;font-weight:500">'+(row['name']==null?'':row['name'])+'</td>'+'<td>'+(row['count']==null?'':row['count'])+'</td>'+'<td class="mono">'+(row['first']==null?'':row['first'])+'</td>'+'<td><span class="pill '+(pillClassSeverity(row['severity']))+'">'+(row['severity']==null?'':row['severity'])+'</span></td>'+'</tr>').join('');
+  }
+}
+
+function wireTabs(){
+  document.querySelectorAll('#tabsBar button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const tabId=btn.dataset.tab;
+      document.querySelectorAll('#tabsBar button').forEach(b=>b.classList.toggle('active',b===btn));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tabId));
+    });
+  });
+}
+
+async function boot(){
+  let data;
+  try{
+    data=await vibeLoadData();
+    if(!data||!data.kpis) throw new Error('empty payload');
+  }catch(err){
+    console.warn('[build-dashboard] sample fallback:',err.message);
+    data=window.__VIBE_SAMPLE__;
+  }
+  renderKpis(data);
+  renderCharts(data);
+  renderTables(data);
+  wireTabs();
+  document.getElementById('lastUpdated').textContent='Updated '+new Date().toLocaleTimeString();
+}
+boot();
 </script>
 </body>
 </html>
