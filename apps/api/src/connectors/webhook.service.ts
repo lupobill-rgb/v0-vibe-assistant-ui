@@ -6,6 +6,100 @@ export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
   private get sb() { return getPlatformSupabaseClient(); }
 
+  /**
+   * Handle a Nango `auth` webhook with operation=creation|override.
+   * This is the authoritative signal that a new connection exists — it
+   * replaces the old frontend-driven `store-connection` endpoint.
+   *
+   * endUserId is the value passed to createConnectSession({ end_user: { id } }).
+   * Today the frontend passes the org id as "teamId" — we resolve against both
+   * the teams table and the organization id until Sprint 2 TRUST LAYER lands.
+   */
+  async handleAuthCreation(payload: {
+    connectionId: string;
+    providerConfigKey: string;
+    endUser?: { endUserId?: string } | null;
+    operation?: string;
+  }): Promise<{ stored: boolean }> {
+    const endUserId = payload.endUser?.endUserId;
+    if (!endUserId) {
+      this.logger.warn(`Auth webhook missing endUser.endUserId conn=${payload.connectionId}`);
+      return { stored: false };
+    }
+
+    // Resolve endUserId to a concrete (team_id, org_id). Prefer a direct team
+    // match; otherwise fall back to treating it as an org id.
+    let teamId: string | null = null;
+    let orgId: string | null = null;
+    const { data: teamRow } = await this.sb
+      .from('teams')
+      .select('id, org_id')
+      .eq('id', endUserId)
+      .maybeSingle();
+    if (teamRow) {
+      teamId = teamRow.id as string;
+      orgId = teamRow.org_id as string;
+    } else {
+      const { data: firstTeamInOrg } = await this.sb
+        .from('teams')
+        .select('id, org_id')
+        .eq('org_id', endUserId)
+        .limit(1)
+        .maybeSingle();
+      if (firstTeamInOrg) {
+        teamId = firstTeamInOrg.id as string;
+        orgId = firstTeamInOrg.org_id as string;
+      }
+    }
+
+    if (!teamId) {
+      this.logger.warn(`Auth webhook: could not resolve endUserId=${endUserId} to a team`);
+      return { stored: false };
+    }
+
+    this.logger.log(
+      `Auth webhook — team=${teamId} provider=${payload.providerConfigKey} conn=${payload.connectionId}`,
+    );
+
+    const { error: upsertErr } = await this.sb.from('team_integrations').upsert(
+      {
+        team_id: teamId,
+        provider: payload.providerConfigKey,
+        nango_connection_id: payload.connectionId,
+      },
+      { onConflict: 'team_id,provider' },
+    );
+    if (upsertErr) {
+      this.logger.error(`team_integrations upsert failed: ${upsertErr.message}`);
+      return { stored: false };
+    }
+
+    // Best-effort: reflect the new connection in the active onboarding session
+    // so the onboarding UI (polling every 3s) promotes status → connected.
+    if (orgId) {
+      const { data: session } = await this.sb
+        .from('onboarding_sessions')
+        .select('id')
+        .eq('organization_id', orgId)
+        .neq('status', 'completed')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (session) {
+        await this.sb
+          .from('onboarding_connectors')
+          .update({
+            status: 'connected',
+            connected_at: new Date().toISOString(),
+          })
+          .eq('session_id', session.id)
+          .eq('provider', payload.providerConfigKey);
+      }
+    }
+
+    return { stored: true };
+  }
+
   async handleNangoEvent(payload: {
     connectionId: string; providerConfigKey: string; syncName: string;
     model: string; responseResults: { added: number; updated: number; deleted: number };
@@ -17,7 +111,7 @@ export class WebhookService {
     const { data: integration, error: intErr } = await this.sb
       .from('team_integrations')
       .select('team_id, teams!inner(id, org_id)')
-      .eq('connection_id', payload.connectionId)
+      .eq('nango_connection_id', payload.connectionId)
       .limit(1)
       .single();
     if (intErr || !integration) {
@@ -92,7 +186,7 @@ export class WebhookService {
             last_recommendation_count: count,
             last_sync_model: payload.model,
           },
-        }).eq('connection_id', payload.connectionId);
+        }).eq('nango_connection_id', payload.connectionId);
       })
       .catch(err => this.logger.error('Recommendations failed (non-blocking):', err.message));
     return { queued: 0 };
