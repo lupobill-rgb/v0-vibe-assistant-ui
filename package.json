@@ -17,6 +17,7 @@
     "build:web": "npm run build --workspace=apps/web",
     "verify:vercel": "node scripts/verify-vercel-setup.mjs",
     "sync-templates": "node scripts/sync-templates.mjs",
+    "sync-sample-data": "node scripts/sync-sample-data.mjs",
     "dump-templates": "node scripts/dump-skeletons.mjs",
     "verify:starter-site": "tsx tests/verify-starter-site.ts",
     "test:e2e:api": "cd tests && npm run test:e2e",

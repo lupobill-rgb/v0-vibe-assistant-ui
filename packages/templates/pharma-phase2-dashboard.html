@@ -128,7 +128,7 @@
       {ts:'2026-04-08 15:42:37',user:'J. Martinez (CRA)',action:'Site-04 monitoring visit complete — 2 minor findings, CAPAs issued',type:'monitoring',sig:'e-sig verified: SHA-256 hash f6d5c...'},
       {ts:'2026-04-08 10:18:05',user:'System',action:'EDC data reconciliation — 0 open queries, 4 newly resolved',type:'data',sig:'System certificate: EDC-REC-20260408'},
       {ts:'2026-04-07 14:33:51',user:'Dr. Patel (Sub-I)',action:'Protocol amendment v3.2 implemented — expanded biomarker panel approved by IRB',type:'regulatory',sig:'e-sig verified: SHA-256 hash g7e6d...'},
-      {ts:'2026-04-07 08:45:10',user:'L. Park (Biostatistics)',action:'Interim analysis SAP finalized — O''Brien-Fleming spending function confirmed',type:'statistical',sig:'e-sig verified: SHA-256 hash h8f7e...'},
+      {ts:'2026-04-07 08:45:10',user:'L. Park (Biostatistics)',action:'Interim analysis SAP finalized — O’Brien-Fleming spending function confirmed',type:'statistical',sig:'e-sig verified: SHA-256 hash h8f7e...'},
       {ts:'2026-04-06 16:20:33',user:'System (TMF)',action:'Trial Master File index updated — 247 documents, 100% completeness score',type:'system',sig:'System certificate: TMF-IDX-20260406'},
       {ts:'2026-04-06 09:10:17',user:'Dr. Rivera (PI)',action:'SAE review: 3 SAEs total across all arms — none drug-related per adjudication committee',type:'safety',sig:'e-sig verified: SHA-256 hash i9g8f...'}
     ],
@@ -359,7 +359,7 @@ td, th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
       <div class="grid grid-cols-2 gap-6 mb-8">
         <div class="chart-card">
-          <h3 class="font-display text-base font-semibold mb-4">O''Brien-Fleming Spending Function</h3>
+          <h3 class="font-display text-base font-semibold mb-4">O’Brien-Fleming Spending Function</h3>
           <canvas id="chart-obf" height="300"></canvas>
         </div>
         <div class="chart-card">
@@ -571,7 +571,7 @@ td, th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       ]
     },options:Object.assign({},baseOpts,{scales:{x:{stacked:true,grid:{display:false},ticks:{color:tickColor}},y:{stacked:true,grid:{color:gridColor},ticks:{color:tickColor}}}})});
 
-    /* ===== INTERIM: O''Brien-Fleming Chart ===== */
+    /* ===== INTERIM: O’Brien-Fleming Chart ===== */
     var obf=S.interimAnalysis.obrienFleming||[];
     new Chart(document.getElementById('chart-obf'),{type:'line',data:{
       labels:obf.map(function(o){return 'Look '+o.look+' (IF='+o.info+')'}),

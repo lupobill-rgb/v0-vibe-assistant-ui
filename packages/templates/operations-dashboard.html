@@ -13,64 +13,62 @@ window.__SUPABASE_ANON_KEY__='';
 window.__VIBE_TEAM_ID__='';
 window.__VIBE_SAMPLE__={
   kpis:[
-    {id:'revenue',label:'Revenue',value:'$4.8M',trend:'+12.3%',direction:'up'},
-    {id:'gross-margin',label:'Gross Margin',value:'68.2%',trend:'+2.1%',direction:'up'},
-    {id:'burn-rate',label:'Burn Rate',value:'$460K/mo',trend:'-8.4%',direction:'down'},
-    {id:'runway',label:'Runway',value:'32 months',trend:'+4 mo',direction:'up'},
-    {id:'budget-util',label:'Budget Utilization',value:'74%',trend:'+3.2%',direction:'up'},
-    {id:'ebitda',label:'EBITDA',value:'$1.2M',trend:'+18.6%',direction:'up'}
+    {id:'on-time',label:'On-Time Delivery',value:'91.4%',trend:'+2.8%',direction:'up'},
+    {id:'utilization',label:'Avg Utilization',value:'78%',trend:'+4.1%',direction:'up'},
+    {id:'open-tickets',label:'Open Tickets',value:'147',trend:'-12',direction:'down'},
+    {id:'mttr',label:'MTTR',value:'4.2 hrs',trend:'-0.6 hrs',direction:'down'},
+    {id:'sla-compliance',label:'SLA Compliance',value:'96.8%',trend:'+1.4%',direction:'up'},
+    {id:'backlog',label:'Backlog',value:'312',trend:'-24',direction:'down'}
   ],
-  revenue:{
+  projects:[
+    {id:'PRJ-412',name:'Payments Rewrite',owner:'S. Chen',status:'On Track',progress:72,due:'2026-05-18',team:'Platform',priority:'P0'},
+    {id:'PRJ-418',name:'Mobile SDK v3',owner:'M. Patel',status:'At Risk',progress:45,due:'2026-04-30',team:'Frontend',priority:'P0'},
+    {id:'PRJ-421',name:'Data Lake Migration',owner:'R. Martinez',status:'On Track',progress:61,due:'2026-06-10',team:'Data',priority:'P1'},
+    {id:'PRJ-425',name:'SOC2 Audit Prep',owner:'J. Park',status:'Delayed',progress:30,due:'2026-04-20',team:'Ops',priority:'P0'},
+    {id:'PRJ-429',name:'Customer Portal Redesign',owner:'A. Nguyen',status:'On Track',progress:58,due:'2026-05-05',team:'Design',priority:'P2'},
+    {id:'PRJ-433',name:'Kafka Cluster Upgrade',owner:'T. Ross',status:'Blocked',progress:15,due:'2026-04-25',team:'DevOps',priority:'P1'},
+    {id:'PRJ-437',name:'Analytics v2 API',owner:'K. Liu',status:'On Track',progress:83,due:'2026-04-28',team:'Backend',priority:'P1'},
+    {id:'PRJ-441',name:'Security Hardening Q2',owner:'V. Gupta',status:'On Track',progress:52,due:'2026-06-15',team:'Platform',priority:'P0'}
+  ],
+  resources:[
+    {team:'Platform',headcount:12,allocated:11,utilization:92,status:'over'},
+    {team:'Frontend',headcount:8,allocated:7,utilization:88,status:'high'},
+    {team:'Backend',headcount:10,allocated:8,utilization:80,status:'healthy'},
+    {team:'Data',headcount:6,allocated:5,utilization:83,status:'healthy'},
+    {team:'QA',headcount:5,allocated:4,utilization:80,status:'healthy'},
+    {team:'DevOps',headcount:4,allocated:4,utilization:100,status:'over'},
+    {team:'Design',headcount:5,allocated:4,utilization:75,status:'healthy'},
+    {team:'Support',headcount:7,allocated:6,utilization:86,status:'high'}
+  ],
+  incidents:[
+    {id:'INC-2047',title:'Payment gateway intermittent 500s',severity:'P1',team:'Platform',opened:'2026-04-13 09:42',status:'Investigating',mttr:null},
+    {id:'INC-2046',title:'Mobile app crash on iOS 18',severity:'P2',team:'Frontend',opened:'2026-04-13 07:15',status:'Resolved',mttr:'3.2h'},
+    {id:'INC-2045',title:'ETL pipeline backlog',severity:'P3',team:'Data',opened:'2026-04-12 22:10',status:'Resolved',mttr:'5.8h'},
+    {id:'INC-2044',title:'CDN cache invalidation latency',severity:'P2',team:'DevOps',opened:'2026-04-12 14:30',status:'Resolved',mttr:'2.1h'},
+    {id:'INC-2043',title:'Auth service latency spike',severity:'P1',team:'Backend',opened:'2026-04-12 10:05',status:'Resolved',mttr:'1.8h'},
+    {id:'INC-2042',title:'Dashboard widget load error',severity:'P3',team:'Frontend',opened:'2026-04-11 16:45',status:'Resolved',mttr:'4.5h'}
+  ],
+  ticketVolume:{
+    labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    opened:[42,48,51,45,38,18,12],
+    closed:[38,44,52,48,42,22,15]
+  },
+  utilizationTrend:{
+    labels:['W1','W2','W3','W4','W5','W6','W7','W8','W9','W10','W11','W12'],
+    engineering:[72,74,76,78,80,82,81,79,78,80,82,83],
+    design:[65,68,70,72,74,75,76,74,72,73,75,77],
+    qa:[80,82,84,85,84,82,80,78,76,78,80,82],
+    ops:[70,72,74,76,78,80,82,84,82,80,78,76]
+  },
+  slaTrend:{
     labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-    actual:[320,345,380,410,395,420,440,465,490,510,480,520],
-    budget:[300,320,340,360,380,400,420,440,460,480,500,520]
+    actual:[94.2,94.8,95.4,96.1,95.8,96.3,96.7,97.1,96.8,97.2,96.9,96.8],
+    target:[95,95,95,95,95,95,95,95,95,95,95,95]
   },
-  expenses:[
-    {category:'Headcount',amount:1920000,pct:40,color:'#00E5A0'},
-    {category:'R&D',amount:960000,pct:20,color:'#00B4D8'},
-    {category:'Sales & Marketing',amount:720000,pct:15,color:'#7B61FF'},
-    {category:'Operations',amount:480000,pct:10,color:'#F59E0B'},
-    {category:'G&A',amount:720000,pct:15,color:'#EF4444'}
-  ],
-  cashflow:{
-    labels:['Jul','Aug','Sep','Oct','Nov','Dec'],
-    operating:[280,310,295,340,320,360],
-    investing:[-120,-95,-140,-110,-130,-100],
-    financing:[-50,-60,-45,-70,-55,-65]
-  },
-  departments:[
-    {name:'Engineering',budget:1800,actual:1420,pct:78.9},
-    {name:'Sales',budget:1200,actual:980,pct:81.7},
-    {name:'Marketing',budget:800,actual:540,pct:67.5},
-    {name:'Operations',budget:600,actual:430,pct:71.7},
-    {name:'HR & Admin',budget:400,actual:280,pct:70.0},
-    {name:'Finance',budget:300,actual:210,pct:70.0}
-  ],
-  budgetVsActual:[
-    {department:'Engineering',budget:1800,actual:1420,variance:-380,pctUsed:78.9,status:'On Track'},
-    {department:'Sales',budget:1200,actual:980,variance:-220,pctUsed:81.7,status:'On Track'},
-    {department:'Marketing',budget:800,actual:540,variance:-260,pctUsed:67.5,status:'Under'},
-    {department:'Operations',budget:600,actual:430,variance:-170,pctUsed:71.7,status:'On Track'},
-    {department:'HR & Admin',budget:400,actual:280,variance:-120,pctUsed:70.0,status:'Under'},
-    {department:'Finance',budget:300,actual:210,variance:-90,pctUsed:70.0,status:'Under'}
-  ],
-  transactions:[
-    {date:'2026-04-12',description:'AWS Infrastructure',category:'R&D',amount:-28450,balance:2841550,status:'Cleared'},
-    {date:'2026-04-11',description:'Payroll - Engineering',category:'Headcount',amount:-186000,balance:2870000,status:'Cleared'},
-    {date:'2026-04-11',description:'Client Payment - Acme Corp',category:'Revenue',amount:145000,balance:3056000,status:'Cleared'},
-    {date:'2026-04-10',description:'Google Ads',category:'Marketing',amount:-12800,balance:2911000,status:'Cleared'},
-    {date:'2026-04-10',description:'Office Lease Q2',category:'G&A',amount:-45000,balance:2923800,status:'Cleared'},
-    {date:'2026-04-09',description:'Salesforce License',category:'Sales',amount:-8400,balance:2968800,status:'Cleared'},
-    {date:'2026-04-09',description:'Client Payment - Beta Inc',category:'Revenue',amount:92000,balance:2977200,status:'Cleared'},
-    {date:'2026-04-08',description:'Payroll - Sales',category:'Headcount',amount:-124000,balance:2885200,status:'Cleared'},
-    {date:'2026-04-08',description:'Legal Retainer',category:'G&A',amount:-15000,balance:3009200,status:'Cleared'},
-    {date:'2026-04-07',description:'Client Payment - Gamma Ltd',category:'Revenue',amount:68000,balance:3024200,status:'Pending'},
-    {date:'2026-04-07',description:'Datadog Monitoring',category:'R&D',amount:-6200,balance:2956200,status:'Cleared'},
-    {date:'2026-04-06',description:'Travel - Sales Offsite',category:'Sales',amount:-18500,balance:2962400,status:'Cleared'},
-    {date:'2026-04-05',description:'Benefits & Insurance',category:'Headcount',amount:-42000,balance:2980900,status:'Cleared'},
-    {date:'2026-04-05',description:'Client Payment - Delta Co',category:'Revenue',amount:115000,balance:3022900,status:'Pending'},
-    {date:'2026-04-04',description:'HubSpot CRM',category:'Marketing',amount:-4200,balance:2907900,status:'Cleared'}
-  ]
+  projectsByStatus:{
+    labels:['On Track','At Risk','Delayed','Completed','Blocked'],
+    counts:[24,6,3,42,2]
+  }
 };
 </script>
 <style>
