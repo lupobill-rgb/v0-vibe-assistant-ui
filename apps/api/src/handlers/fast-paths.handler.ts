@@ -144,11 +144,17 @@ export async function handleDeterministicTemplate(params: DeterministicTemplateP
 
   const previewDir = path.join(PREVIEWS_DIR, taskId);
   fs.mkdirSync(previewDir, { recursive: true });
-  fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(html));
+  // Credentials replacement is authoritative — both the on-disk preview
+  // file and the setTaskDiff payload (which the frontend iframe reads)
+  // must see the same replaced version. Storing the raw `html` in the
+  // task diff leaves placeholders (__SUPABASE_URL__, __TEAM_ID__,
+  // __VIBE_TEAM_ID__) literal in the browser.
+  const finalHtml = injectSupabaseCredentials(html);
+  fs.writeFileSync(path.join(previewDir, 'index.html'), finalHtml);
   fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(['index']));
   const previewToken = signPreviewToken(taskId);
   await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
-  await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html }]));
+  await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: finalHtml }]));
   timeline.push({ step: 'deterministic-template', startedAt: new Date(startedAtMs).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - startedAtMs, status: 'completed' });
   fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
   await storage.logEvent(taskId, 'Preview generated (deterministic template — zero LLM tokens)', 'info');
@@ -213,9 +219,11 @@ export async function handleAppFastPath(params: AppFastPathParams): Promise<bool
     if (appData.usage?.total_tokens) totalTokens += appData.usage.total_tokens;
     const previewDir = path.join(PREVIEWS_DIR, taskId);
     fs.mkdirSync(previewDir, { recursive: true });
-    fs.writeFileSync(path.join(previewDir, 'index.html'), injectSupabaseCredentials(appData.diff));
+    // Credentials replacement — one pass, used for both disk and task diff.
+    const finalAppHtml = injectSupabaseCredentials(appData.diff);
+    fs.writeFileSync(path.join(previewDir, 'index.html'), finalAppHtml);
     pageNames = ['index'];
-    await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'App', filename: 'index.html', route: '/', html: appData.diff }]));
+    await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'App', filename: 'index.html', route: '/', html: finalAppHtml }]));
     fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
     fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
     const previewToken = signPreviewToken(taskId);
