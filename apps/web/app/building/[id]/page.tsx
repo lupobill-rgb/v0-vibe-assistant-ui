@@ -144,10 +144,15 @@ function buildBlobUrl(pages: PageData[], activeFile: string, teamId?: string): s
     .replace(/\n?```\s*$/, '')
     .trim()
 
-  // Substitute template placeholders with real values
+  // Substitute template placeholders with real values.
+  // __VIBE_TEAM_ID__ is the form emitted by scripts/generate-templates.mjs
+  // for the 29 rewritten dashboard skeletons; __TEAM_ID__ is the legacy
+  // form used by older LLM-generated output. Both must be replaced so
+  // embedded RPC URLs resolve correctly at runtime.
   html = html
     .replace(/__SUPABASE_URL__/g, SUPABASE_URL)
     .replace(/__SUPABASE_ANON_KEY__/g, SUPABASE_ANON_KEY)
+    .replace(/__VIBE_TEAM_ID__/g, teamId || '')
     .replace(/__TEAM_ID__/g, teamId || '')
 
   // Inject credentials fallback script for HTML that doesn't use placeholders
