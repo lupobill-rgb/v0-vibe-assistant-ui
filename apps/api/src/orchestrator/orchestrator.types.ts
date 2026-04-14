@@ -10,6 +10,20 @@
 export type SkillMode = 'build' | 'runtime' | 'hybrid';
 
 /**
+ * Golden template match result returned by kernel/context-injector
+ * resolveGoldenTemplateMatch() and consumed by the orchestrator and
+ * dashboard/planner/fast-path handlers. When matched is false, all
+ * other fields are empty/null.
+ */
+export interface GoldenMatch {
+  matched: boolean;
+  skillName: string;
+  content: string;
+  htmlSkeleton: string | null;
+  sampleData: Record<string, unknown> | null;
+}
+
+/**
  * Row shape from the skill_registry table used by the orchestrator.
  * Columns beyond orchestration concerns are omitted.
  */

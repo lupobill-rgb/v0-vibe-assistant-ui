@@ -1,5 +1,6 @@
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { getNangoService, ConnectorType, type HubSpotDeal } from '../connectors/nango.service';
+import type { GoldenMatch } from '../orchestrator/orchestrator.types';
 
 // --- Design system rules injected AFTER department skills, BEFORE user prompt ---
 const DESIGN_SYSTEM_RULES = `
@@ -647,14 +648,14 @@ function scoreSkill(skill: { skill_name: string; description: string | null }, p
  */
 export async function resolveGoldenTemplateMatch(
   prompt: string,
-): Promise<{ matched: boolean; skillName: string; content: string; htmlSkeleton: string | null }> {
-  const NO_MATCH = { matched: false, skillName: '', content: '', htmlSkeleton: null };
+): Promise<GoldenMatch> {
+  const NO_MATCH: GoldenMatch = { matched: false, skillName: '', content: '', htmlSkeleton: null, sampleData: null };
   if (!prompt || prompt.trim().length < 5) return NO_MATCH;
 
   const sb = getPlatformSupabaseClient();
   const { data: skills, error } = await sb
     .from('skill_registry')
-    .select('skill_name, description, content, html_skeleton')
+    .select('skill_name, description, content, html_skeleton, sample_data')
     .eq('is_active', true);
 
   if (error || !skills || skills.length === 0) {
@@ -710,6 +711,7 @@ export async function resolveGoldenTemplateMatch(
       skillName: bestSkill.skill_name,
       content: bestSkill.content ?? '',
       htmlSkeleton: (bestSkill as any).html_skeleton ?? null,
+      sampleData: (bestSkill as any).sample_data ?? null,
     };
   }
 

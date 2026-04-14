@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { storage } from '../storage';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import type { GoldenMatch } from '../orchestrator/orchestrator.types';
 import { isBudgetRelated } from '../lib/ingest-budget-csv';
 import { ingestTeamAsset, detectAssetType, hasPublishIntent } from '../lib/ingest-team-asset';
 import {
@@ -21,7 +22,7 @@ export interface DashboardHandlerParams {
   user_id: string;
   resolvedModel: string;
   budgets: { stepDeadlinesMs: { building: number; [key: string]: number }; [key: string]: any };
-  goldenMatch: { matched: boolean; skillName: string; content: string; htmlSkeleton: string | null };
+  goldenMatch: GoldenMatch;
   startedAtMs: number;
   modelCalls: number;
   totalTokens: number;

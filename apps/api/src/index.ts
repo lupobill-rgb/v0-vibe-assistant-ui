@@ -9,6 +9,7 @@ import { exec, execSync, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { resolveDepartment, resolveGoldenTemplateMatch } from './kernel/context-injector';
+import type { GoldenMatch } from './orchestrator/orchestrator.types';
 import { runDebugAgent } from './lib/debug-agent';
 import { promisify } from 'util';
 import { resolveMode } from './edge-function';
@@ -720,7 +721,7 @@ async function bootstrap() {
       }
 
       // Golden template matching: if prompt matches a template, inject its content directly
-      let goldenMatch: { matched: boolean; skillName: string; content: string; htmlSkeleton: string | null } = { matched: false, skillName: '', content: '', htmlSkeleton: null };
+      let goldenMatch: GoldenMatch = { matched: false, skillName: '', content: '', htmlSkeleton: null, sampleData: null };
       try {
         goldenMatch = await resolveGoldenTemplateMatch(prompt);
       } catch (gtmErr: any) {

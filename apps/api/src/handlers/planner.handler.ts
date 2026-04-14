@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { storage } from '../storage';
 import { resolveGoldenTemplateMatch } from '../kernel/context-injector';
+import type { GoldenMatch } from '../orchestrator/orchestrator.types';
 import { runSelfHealingScan } from '../lib/debug-agent';
 import {
   StarterSitePlan,
@@ -21,7 +22,7 @@ export interface PlannerHandlerParams {
   resolvedModel: string;
   mode: string;
   budgets: any;
-  goldenMatch: { matched: boolean; skillName: string; content: string; htmlSkeleton: string | null };
+  goldenMatch: GoldenMatch;
   org: { id: string; name?: string; [key: string]: any } | null | undefined;
   project: { team_id: string; [key: string]: any };
   user_id: string;

@@ -3,6 +3,7 @@ import fs from 'fs';
 import { storage } from '../storage';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { resolveColorScheme } from '../starter-site';
+import type { GoldenMatch } from '../orchestrator/orchestrator.types';
 
 /**
  * VIBE deterministic-template layout shim.
@@ -46,7 +47,7 @@ function injectLayoutShim(html: string): string {
 
 export interface DeterministicTemplateParams {
   taskId: string;
-  goldenMatch: { matched: boolean; skillName: string; content: string; htmlSkeleton: string | null };
+  goldenMatch: GoldenMatch;
   org: { id: string; name?: string; [key: string]: any } | null | undefined;
   orgName: string;
   teamName: string;
@@ -91,16 +92,31 @@ export async function handleDeterministicTemplate(params: DeterministicTemplateP
   }
   const skelColorScheme = resolveColorScheme(prompt);
 
-  const html = injectLayoutShim(
-    goldenMatch.htmlSkeleton
-      .replace(/\{\{BRAND_COMPANY\}\}/g, brandCompany)
-      .replace(/\{\{BRAND_TEAM\}\}/g, brandTeamName)
-      .replace(/\{\{BRAND_PRIMARY\}\}/g, skelColorScheme.primary)
-      .replace(/\{\{BRAND_BG\}\}/g, skelColorScheme.bg)
-      .replace(/\{\{BRAND_TEXT\}\}/g, skelColorScheme.text)
-      .replace(/\{\{BRAND_SURFACE\}\}/g, skelColorScheme.surface)
-      .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border),
-  );
+  let htmlWithTokens = goldenMatch.htmlSkeleton
+    .replace(/\{\{BRAND_COMPANY\}\}/g, brandCompany)
+    .replace(/\{\{BRAND_TEAM\}\}/g, brandTeamName)
+    .replace(/\{\{BRAND_PRIMARY\}\}/g, skelColorScheme.primary)
+    .replace(/\{\{BRAND_BG\}\}/g, skelColorScheme.bg)
+    .replace(/\{\{BRAND_TEXT\}\}/g, skelColorScheme.text)
+    .replace(/\{\{BRAND_SURFACE\}\}/g, skelColorScheme.surface)
+    .replace(/\{\{BRAND_BORDER\}\}/g, skelColorScheme.border);
+
+  // Inject sample_data as window.__VIBE_SAMPLE__ if present
+  if (goldenMatch.sampleData) {
+    htmlWithTokens = htmlWithTokens.replace(
+      /window\.__VIBE_SAMPLE__\s*=\s*\{[\s\S]*?\};/,
+      `window.__VIBE_SAMPLE__ = ${JSON.stringify(goldenMatch.sampleData)};`
+    );
+    // If no existing __VIBE_SAMPLE__ block, inject before </head>
+    if (!htmlWithTokens.includes('window.__VIBE_SAMPLE__')) {
+      htmlWithTokens = htmlWithTokens.replace(
+        '</head>',
+        `<script>window.__VIBE_SAMPLE__ = ${JSON.stringify(goldenMatch.sampleData)};</script>\n</head>`
+      );
+    }
+  }
+
+  const html = injectLayoutShim(htmlWithTokens);
 
   const previewDir = path.join(PREVIEWS_DIR, taskId);
   fs.mkdirSync(previewDir, { recursive: true });

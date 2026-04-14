@@ -1,6 +1,7 @@
 import { storage } from '../storage';
 import { resolveKernelContext } from '../kernel/context-injector';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import type { GoldenMatch } from '../orchestrator/orchestrator.types';
 
 export interface EnrichPromptParams {
   prompt: string;
@@ -9,7 +10,7 @@ export interface EnrichPromptParams {
   project_id: string;
   project: { team_id: string; [key: string]: any };
   mode: string;
-  goldenMatch: { matched: boolean; skillName: string; content: string; htmlSkeleton: string | null };
+  goldenMatch: GoldenMatch;
   upload_id: string | undefined;
   conversation_id: string | undefined;
 }
