@@ -2,875 +2,535 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Finance Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Operations Command Center — {{BRAND_COMPANY}}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF;--warn:#F59E0B;--danger:#EF4444;--ok:#10B981}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;overflow-x:hidden}
+h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;color:#fff;letter-spacing:-0.01em}
+a{color:inherit;text-decoration:none}
+.app{display:flex;min-height:100vh}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:var(--surface-2);border-right:1px solid var(--border);padding:24px 16px;z-index:40;display:flex;flex-direction:column;gap:8px}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:8px 12px 20px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.sidebar .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--signal));display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;color:#0A0E17}
+.sidebar .brand .name{font-family:'Space Grotesk';font-weight:600;color:#fff;font-size:15px;line-height:1.2}
+.sidebar .brand .name span{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}
+.sidebar nav{display:flex;flex-direction:column;gap:2px}
+.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13px;cursor:pointer;transition:all .15s}
+.sidebar nav a:hover{background:var(--surface);color:var(--text)}
+.sidebar nav a.active{background:rgba(0,229,160,.08);color:var(--primary)}
+.sidebar nav a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
+.main{flex:1;margin-left:240px;display:flex;flex-direction:column;min-height:100vh}
+.topbar{position:sticky;top:0;background:rgba(15,22,36,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;z-index:60}
+.topbar h1{font-size:18px}
+.topbar .meta{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--muted)}
+.topbar .meta .team{padding:4px 10px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:6px;color:var(--primary)}
+.topbar .meta .live{display:inline-flex;align-items:center;gap:6px}
+.topbar .meta .live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--primary);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.content{padding:24px 28px 48px;display:flex;flex-direction:column;gap:24px;max-width:1600px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s}
+.kpi:hover{border-color:rgba(0,229,160,.3)}
+.kpi::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,229,160,.04),transparent 60%);pointer-events:none}
+.kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:8px}
+.kpi .value{font-family:'Space Grotesk';font-size:26px;font-weight:700;color:#fff;line-height:1.1}
+.kpi .trend{margin-top:8px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.kpi .trend.up{color:var(--primary)}
+.kpi .trend.down{color:var(--warn)}
+.tabs-bar{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
+.tabs-bar>*{flex-shrink:0}
+.tabs-bar button{flex-shrink:0;background:transparent;color:var(--muted);border:none;padding:10px 18px;border-radius:7px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tabs-bar button:hover{color:var(--text)}
+.tabs-bar button.active{background:rgba(0,229,160,.1);color:var(--primary)}
+.tab-panel{display:none;flex-direction:column;gap:20px}
+.tab-panel.active{display:flex}
+.grid-2{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+.grid-2-eq{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:980px){.grid-2,.grid-2-eq{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.card .sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+.card .chart-wrap{position:relative;height:260px}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border)}
+.table td{padding:12px;border-bottom:1px solid rgba(31,41,55,.5);color:var(--text);vertical-align:middle}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:rgba(255,255,255,.02)}
+.table .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.02em}
+.pill.ok{background:rgba(16,185,129,.12);color:var(--ok)}
+.pill.warn{background:rgba(245,158,11,.12);color:var(--warn)}
+.pill.danger{background:rgba(239,68,68,.12);color:var(--danger)}
+.pill.info{background:rgba(0,180,216,.12);color:var(--signal)}
+.pill.neutral{background:rgba(156,163,175,.12);color:var(--muted)}
+.progress{width:100px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
+.progress .bar{height:100%;background:linear-gradient(90deg,var(--primary),var(--signal));border-radius:3px}
+canvas{max-width:100%}
+/* ─── Utility classes ────────────────────────────────────────────────── */
+.row{display:flex;align-items:center;gap:12px}
+.row-wrap{display:flex;flex-wrap:wrap;gap:12px}
+.col{display:flex;flex-direction:column;gap:8px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.gap-8{gap:8px}
+.gap-12{gap:12px}
+.gap-16{gap:16px}
+.gap-20{gap:20px}
+.gap-24{gap:24px}
+.mt-4{margin-top:4px}
+.mt-8{margin-top:8px}
+.mt-12{margin-top:12px}
+.mt-16{margin-top:16px}
+.mt-20{margin-top:20px}
+.mb-4{margin-bottom:4px}
+.mb-8{margin-bottom:8px}
+.mb-12{margin-bottom:12px}
+.mb-16{margin-bottom:16px}
+.p-16{padding:16px}
+.p-20{padding:20px}
+.p-24{padding:24px}
+.text-xs{font-size:11px}
+.text-sm{font-size:12px}
+.text-md{font-size:13px}
+.text-lg{font-size:14px}
+.text-xl{font-size:16px}
+.text-2xl{font-size:20px}
+.text-3xl{font-size:24px}
+.font-heading{font-family:'Space Grotesk',sans-serif}
+.font-body{font-family:'Inter',sans-serif}
+.font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.font-semibold{font-weight:600}
+.font-bold{font-weight:700}
+.text-muted{color:var(--muted)}
+.text-primary{color:var(--primary)}
+.text-signal{color:var(--signal)}
+.text-violet{color:var(--violet)}
+.text-warn{color:var(--warn)}
+.text-danger{color:var(--danger)}
+.text-ok{color:var(--ok)}
+.text-white{color:#fff}
+.text-center{text-align:center}
+.text-right{text-align:right}
+.w-full{width:100%}
+.h-full{height:100%}
+.flex-1{flex:1}
+.flex-center{display:flex;align-items:center;justify-content:center}
+.flex-between{display:flex;align-items:center;justify-content:space-between}
+.border-r{border-right:1px solid var(--border)}
+.border-l{border-left:1px solid var(--border)}
+.border-t{border-top:1px solid var(--border)}
+.border-b{border-bottom:1px solid var(--border)}
+.bg-surface{background:var(--surface)}
+.bg-surface-2{background:var(--surface-2)}
+.bg-primary-alpha{background:rgba(0,229,160,.08)}
+.bg-signal-alpha{background:rgba(0,180,216,.08)}
+.bg-violet-alpha{background:rgba(123,97,255,.08)}
+.bg-warn-alpha{background:rgba(245,158,11,.08)}
+.bg-danger-alpha{background:rgba(239,68,68,.08)}
+.rounded-sm{border-radius:6px}
+.rounded-md{border-radius:8px}
+.rounded-lg{border-radius:12px}
+.rounded-full{border-radius:999px}
+.shadow-sm{box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.shadow-md{box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.shadow-lg{box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.hover-lift{transition:transform .2s}
+.hover-lift:hover{transform:translateY(-2px)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:uppercase}
+.badge.primary{background:rgba(0,229,160,.12);color:var(--primary);border:1px solid rgba(0,229,160,.2)}
+.badge.signal{background:rgba(0,180,216,.12);color:var(--signal);border:1px solid rgba(0,180,216,.2)}
+.badge.violet{background:rgba(123,97,255,.12);color:var(--violet);border:1px solid rgba(123,97,255,.2)}
+.divider{height:1px;background:var(--border);margin:12px 0}
+.loading{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.loading::before{content:"";width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text)}
+.chip .dot{width:6px;height:6px;border-radius:50%}
+.chip .dot.ok{background:var(--ok)}
+.chip .dot.warn{background:var(--warn)}
+.chip .dot.danger{background:var(--danger)}
+.sparkline{width:100%;height:40px;display:block}
+.skeleton{background:linear-gradient(90deg,var(--surface),var(--surface-2),var(--surface));background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite;border-radius:8px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(max-width:768px){.content{padding:16px}.sidebar{width:72px}.sidebar .brand .name{display:none}.sidebar nav a{justify-content:center}.main{margin-left:72px}.topbar{padding:12px 16px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.kpi-grid{grid-template-columns:1fr}.topbar .meta{gap:8px}.topbar .meta .live{display:none}}
+</style>
 <script>
-window.__SUPABASE_URL__='';
-window.__SUPABASE_ANON_KEY__='';
-window.__VIBE_TEAM_ID__='';
 window.__VIBE_SAMPLE__={
   kpis:[
-    {id:'revenue',label:'Revenue',value:'$4.8M',trend:'+12.3%',direction:'up'},
-    {id:'gross-margin',label:'Gross Margin',value:'68.2%',trend:'+2.1%',direction:'up'},
-    {id:'burn-rate',label:'Burn Rate',value:'$460K/mo',trend:'-8.4%',direction:'down'},
-    {id:'runway',label:'Runway',value:'32 months',trend:'+4 mo',direction:'up'},
-    {id:'budget-util',label:'Budget Utilization',value:'74%',trend:'+3.2%',direction:'up'},
-    {id:'ebitda',label:'EBITDA',value:'$1.2M',trend:'+18.6%',direction:'up'}
+    {
+      id:'uptime',
+      label:'Uptime (30d)',
+      value:'99.97%',
+      trend:'+0.02pp',
+      direction:'up'
+    },
+    {
+      id:'open-incidents',
+      label:'Open Incidents',
+      value:'4',
+      trend:'-2',
+      direction:'down'
+    },
+    {
+      id:'mttr',
+      label:'MTTR',
+      value:'42 min',
+      trend:'-8 min',
+      direction:'down'
+    },
+    {
+      id:'deployments',
+      label:'Deployments MTD',
+      value:'142',
+      trend:'+18',
+      direction:'up'
+    },
+    {
+      id:'error-budget',
+      label:'Error Budget',
+      value:'82%',
+      trend:'+4pp',
+      direction:'up'
+    },
+    {
+      id:'oncall-load',
+      label:'On-Call Load',
+      value:'Low',
+      trend:'Improving',
+      direction:'up'
+    }
   ],
-  revenue:{
-    labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-    actual:[320,345,380,410,395,420,440,465,490,510,480,520],
-    budget:[300,320,340,360,380,400,420,440,460,480,500,520]
+  serviceHealth:{
+    labels:['API','Web','Auth','DB','Queue','Cache','Search','CDN'],
+    datasets:[
+      {
+        label:'Availability %',
+        data:[99.98,99.99,99.96,99.95,99.92,99.99,99.94,99.99],
+        backgroundColor:'#00E5A0',
+        borderRadius:4
+      }
+    ]
   },
-  expenses:[
-    {category:'Headcount',amount:1920000,pct:40,color:'#00E5A0'},
-    {category:'R&D',amount:960000,pct:20,color:'#00B4D8'},
-    {category:'Sales & Marketing',amount:720000,pct:15,color:'#7B61FF'},
-    {category:'Operations',amount:480000,pct:10,color:'#F59E0B'},
-    {category:'G&A',amount:720000,pct:15,color:'#EF4444'}
-  ],
-  cashflow:{
-    labels:['Jul','Aug','Sep','Oct','Nov','Dec'],
-    operating:[280,310,295,340,320,360],
-    investing:[-120,-95,-140,-110,-130,-100],
-    financing:[-50,-60,-45,-70,-55,-65]
+  incidentTrend:{
+    labels:['W1','W2','W3','W4','W5','W6','W7','W8','W9','W10','W11','W12'],
+    datasets:[
+      {
+        label:'P1',
+        data:[2,1,3,2,1,0,2,1,0,1,2,1],
+        borderColor:'#EF4444',
+        tension:0.3,
+        fill:false
+      },
+      {
+        label:'P2',
+        data:[4,6,5,7,4,3,5,4,3,5,4,4],
+        borderColor:'#F59E0B',
+        tension:0.3,
+        fill:false
+      }
+    ]
   },
-  departments:[
-    {name:'Engineering',budget:1800,actual:1420,pct:78.9},
-    {name:'Sales',budget:1200,actual:980,pct:81.7},
-    {name:'Marketing',budget:800,actual:540,pct:67.5},
-    {name:'Operations',budget:600,actual:430,pct:71.7},
-    {name:'HR & Admin',budget:400,actual:280,pct:70.0},
-    {name:'Finance',budget:300,actual:210,pct:70.0}
+  sloBurn:{
+    labels:['API Availability','API Latency p99','Write Success','Read Freshness','Login Success'],
+    datasets:[
+      {
+        label:'Remaining %',
+        data:[82,64,92,58,88],
+        backgroundColor:'#00B4D8',
+        borderRadius:4
+      }
+    ]
+  },
+  deployVolume:{
+    labels:['D1','D3','D5','D7','D9','D11','D13','D14'],
+    datasets:[
+      {
+        label:'Deployments',
+        data:[8,10,12,14,10,12,14,12],
+        borderColor:'#7B61FF',
+        backgroundColor:'rgba(123,97,255,.12)',
+        tension:0.35,
+        fill:true
+      }
+    ]
+  },
+  activeIncidents:[
+    {
+      id:'INC-9842',
+      summary:'Elevated API latency in eu-west-1',
+      service:'API',
+      severity:'P1',
+      age:'18m'
+    },
+    {
+      id:'INC-9841',
+      summary:'Search index staleness',
+      service:'Search',
+      severity:'P2',
+      age:'42m'
+    },
+    {
+      id:'INC-9840',
+      summary:'Webhook delivery retry queue growing',
+      service:'Queue',
+      severity:'P2',
+      age:'1h 12m'
+    },
+    {
+      id:'INC-9839',
+      summary:'CDN cache hit rate dip',
+      service:'CDN',
+      severity:'P3',
+      age:'2h 08m'
+    }
   ],
-  budgetVsActual:[
-    {department:'Engineering',budget:1800,actual:1420,variance:-380,pctUsed:78.9,status:'On Track'},
-    {department:'Sales',budget:1200,actual:980,variance:-220,pctUsed:81.7,status:'On Track'},
-    {department:'Marketing',budget:800,actual:540,variance:-260,pctUsed:67.5,status:'Under'},
-    {department:'Operations',budget:600,actual:430,variance:-170,pctUsed:71.7,status:'On Track'},
-    {department:'HR & Admin',budget:400,actual:280,variance:-120,pctUsed:70.0,status:'Under'},
-    {department:'Finance',budget:300,actual:210,variance:-90,pctUsed:70.0,status:'Under'}
-  ],
-  transactions:[
-    {date:'2026-04-12',description:'AWS Infrastructure',category:'R&D',amount:-28450,balance:2841550,status:'Cleared'},
-    {date:'2026-04-11',description:'Payroll - Engineering',category:'Headcount',amount:-186000,balance:2870000,status:'Cleared'},
-    {date:'2026-04-11',description:'Client Payment - Acme Corp',category:'Revenue',amount:145000,balance:3056000,status:'Cleared'},
-    {date:'2026-04-10',description:'Google Ads',category:'Marketing',amount:-12800,balance:2911000,status:'Cleared'},
-    {date:'2026-04-10',description:'Office Lease Q2',category:'G&A',amount:-45000,balance:2923800,status:'Cleared'},
-    {date:'2026-04-09',description:'Salesforce License',category:'Sales',amount:-8400,balance:2968800,status:'Cleared'},
-    {date:'2026-04-09',description:'Client Payment - Beta Inc',category:'Revenue',amount:92000,balance:2977200,status:'Cleared'},
-    {date:'2026-04-08',description:'Payroll - Sales',category:'Headcount',amount:-124000,balance:2885200,status:'Cleared'},
-    {date:'2026-04-08',description:'Legal Retainer',category:'G&A',amount:-15000,balance:3009200,status:'Cleared'},
-    {date:'2026-04-07',description:'Client Payment - Gamma Ltd',category:'Revenue',amount:68000,balance:3024200,status:'Pending'},
-    {date:'2026-04-07',description:'Datadog Monitoring',category:'R&D',amount:-6200,balance:2956200,status:'Cleared'},
-    {date:'2026-04-06',description:'Travel - Sales Offsite',category:'Sales',amount:-18500,balance:2962400,status:'Cleared'},
-    {date:'2026-04-05',description:'Benefits & Insurance',category:'Headcount',amount:-42000,balance:2980900,status:'Cleared'},
-    {date:'2026-04-05',description:'Client Payment - Delta Co',category:'Revenue',amount:115000,balance:3022900,status:'Pending'},
-    {date:'2026-04-04',description:'HubSpot CRM',category:'Marketing',amount:-4200,balance:2907900,status:'Cleared'}
+  recentDeploys:[
+    {
+      service:'api',
+      version:'v2.42.1',
+      engineer:'S. Chen',
+      time:'2026-04-14 08:18',
+      status:'On Track'
+    },
+    {
+      service:'web',
+      version:'v1.184.0',
+      engineer:'M. Patel',
+      time:'2026-04-14 07:42',
+      status:'On Track'
+    },
+    {
+      service:'executor',
+      version:'v0.38.2',
+      engineer:'R. Martinez',
+      time:'2026-04-14 05:20',
+      status:'On Track'
+    },
+    {
+      service:'api',
+      version:'v2.42.0',
+      engineer:'J. Park',
+      time:'2026-04-13 22:05',
+      status:'On Track'
+    },
+    {
+      service:'edge-fn',
+      version:'v14',
+      engineer:'K. Liu',
+      time:'2026-04-13 18:32',
+      status:'At Risk'
+    },
+    {
+      service:'web',
+      version:'v1.183.0',
+      engineer:'A. Nguyen',
+      time:'2026-04-13 14:18',
+      status:'On Track'
+    }
   ]
 };
+const __SUPABASE_URL__='__SUPABASE_URL__';
+const __SUPABASE_ANON_KEY__='__SUPABASE_ANON_KEY__';
+const __VIBE_TEAM_ID__='__VIBE_TEAM_ID__';
 </script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg-primary:#0A0E17;--bg-card:#111827;--bg-card-hover:#1a2332;
-  --border:#1F2937;--border-accent:#2D3748;
-  --text-primary:#F9FAFB;--text-secondary:#9CA3AF;--text-muted:#6B7280;
-  --vibe-green:#00E5A0;--vibe-cyan:#00B4D8;--vibe-violet:#7B61FF;
-  --warning:#F59E0B;--danger:#EF4444;--success:#10B981;
-  --font-heading:'Space Grotesk',sans-serif;--font-body:'Inter',sans-serif;
-  --radius:12px;--radius-sm:8px;--radius-lg:16px;
-}
-html{font-size:14px}
-body{font-family:var(--font-body);background:var(--bg-primary);color:var(--text-primary);min-height:100vh;overflow-x:hidden}
-h1,h2,h3,h4{font-family:var(--font-heading);font-weight:600;letter-spacing:-0.02em}
-
-/* Navigation */
-.nav-header{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--border);backdrop-filter:blur(20px);background:rgba(10,14,23,0.85);position:sticky;top:0;z-index:100}
-.nav-brand{display:flex;align-items:center;gap:12px}
-.nav-logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--vibe-green),var(--vibe-cyan));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:var(--bg-primary)}
-.nav-title{font-family:var(--font-heading);font-size:18px;font-weight:600;color:var(--text-primary)}
-.nav-subtitle{font-size:12px;color:var(--text-muted);margin-top:1px}
-.nav-actions{display:flex;align-items:center;gap:8px}
-.nav-btn{padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:var(--font-body);font-size:13px;cursor:pointer;transition:all 0.2s}
-.nav-btn:hover{border-color:var(--vibe-green);color:var(--vibe-green)}
-.nav-btn-primary{background:var(--vibe-green);color:var(--bg-primary);border-color:var(--vibe-green);font-weight:500}
-.nav-btn-primary:hover{background:#00cc8e;box-shadow:0 0 20px rgba(0,229,160,0.3)}
-
-/* Tabs */
-.tabs-container{display:flex;gap:4px;padding:12px 32px;border-bottom:1px solid var(--border);background:var(--bg-primary);overflow-x:auto}
-.tab{padding:10px 20px;border-radius:var(--radius-sm);font-family:var(--font-body);font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;border:none;background:transparent;white-space:nowrap;transition:all 0.2s}
-.tab:hover{color:var(--text-secondary);background:var(--bg-card)}
-.tab.active{color:var(--vibe-green);background:rgba(0,229,160,0.08);border:1px solid rgba(0,229,160,0.2)}
-
-/* Main layout */
-.main-content{padding:24px 32px;max-width:1440px;margin:0 auto}
-.section-title{font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.section-title .badge{font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(0,229,160,0.1);color:var(--vibe-green);font-weight:500}
-
-/* KPI Grid */
-.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:32px}
-.kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;transition:all 0.3s;position:relative;overflow:hidden}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--vibe-green),var(--vibe-cyan));opacity:0;transition:opacity 0.3s}
-.kpi-card:hover{border-color:var(--border-accent);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.3)}
-.kpi-card:hover::before{opacity:1}
-.kpi-label{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
-.kpi-value{font-family:var(--font-heading);font-size:24px;font-weight:700;color:var(--text-primary);margin-bottom:6px}
-.kpi-trend{font-size:12px;font-weight:500;display:flex;align-items:center;gap:4px}
-.kpi-trend.up{color:var(--success)}
-.kpi-trend.down{color:var(--danger)}
-.kpi-trend.down.good{color:var(--success)}
-
-/* Chart grid */
-.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:32px}
-.chart-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;transition:all 0.3s}
-.chart-card:hover{border-color:var(--border-accent)}
-.chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.chart-title{font-family:var(--font-heading);font-size:15px;font-weight:600;color:var(--text-primary)}
-.chart-subtitle{font-size:12px;color:var(--text-muted);margin-top:2px}
-.chart-actions{display:flex;gap:4px}
-.chart-action-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all 0.2s}
-.chart-action-btn:hover{border-color:var(--vibe-green);color:var(--vibe-green)}
-.chart-wrap{position:relative;height:280px}
-
-/* Tables */
-.table-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px}
-.table-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border)}
-.table-title{font-family:var(--font-heading);font-size:15px;font-weight:600}
-.table-count{font-size:12px;color:var(--text-muted)}
-.table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
-thead{background:rgba(17,24,39,0.8)}
-th{padding:12px 20px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:14px 20px;font-size:13px;color:var(--text-secondary);border-bottom:1px solid var(--border);white-space:nowrap}
-tr:hover td{background:var(--bg-card-hover);color:var(--text-primary)}
-.status-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500}
-.status-on-track{background:rgba(16,185,129,0.1);color:var(--success)}
-.status-under{background:rgba(0,180,216,0.1);color:var(--vibe-cyan)}
-.status-over{background:rgba(239,68,68,0.1);color:var(--danger)}
-.status-cleared{background:rgba(16,185,129,0.1);color:var(--success)}
-.status-pending{background:rgba(245,158,11,0.1);color:var(--warning)}
-.amount-positive{color:var(--success)}
-.amount-negative{color:var(--danger)}
-.variance-positive{color:var(--success)}
-.variance-negative{color:var(--danger)}
-
-/* Tab content */
-.tab-content{display:none}
-.tab-content.active{display:block}
-
-/* Responsive */
-@media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:768px){
-  .kpi-grid{grid-template-columns:repeat(2,1fr)}
-  .charts-grid{grid-template-columns:1fr}
-  .nav-header{padding:12px 16px}
-  .main-content{padding:16px}
-  .tabs-container{padding:8px 16px}
-}
-
-/* Scrollbar */
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:var(--bg-primary)}
-::-webkit-scrollbar-thumb{background:var(--border-accent);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
-
-/* Pulse animation for live indicator */
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-.live-dot{width:6px;height:6px;border-radius:50%;background:var(--vibe-green);animation:pulse 2s ease-in-out infinite;display:inline-block}
-</style>
-<style>
-/* Global chart sizing fix — injected */
-canvas { max-height: 280px !important; height: 280px !important; width: 100% !important; }
-.chart-container, [class*="chart"] { position: relative; height: 280px; max-height: 280px; overflow: hidden; width: 100%; }
-.chart-wrapper { position: relative; height: 280px; max-height: 280px; overflow: hidden; }
-/* Prevent any single element from overflowing the viewport */
-* { box-sizing: border-box; }
-body { overflow-x: hidden; }
-/* Tab content max height with scroll */
-.tab-content, [id*="section"], [id*="view"], [id*="tab"] { max-height: calc(100vh - 120px); overflow-y: auto; }
-/* Table responsiveness */
-table { width: 100%; table-layout: fixed; }
-td, th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-</style>
 </head>
 <body>
-
-<!-- Navigation -->
-<header class="nav-header">
-  <div class="nav-brand">
-    <div class="nav-logo">V</div>
-    <div>
-      <div class="nav-title">Finance Dashboard</div>
-      <div class="nav-subtitle">Real-time financial overview</div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div class="name">{{BRAND_COMPANY}}<span>Command</span></div>
     </div>
-  </div>
-  <div class="nav-actions">
-    <span class="live-dot"></span>
-    <button class="nav-btn">Export PDF</button>
-    <button class="nav-btn">Settings</button>
-    <button class="nav-btn nav-btn-primary">+ New Report</button>
-  </div>
-</header>
-
-<!-- Tabs -->
-<nav class="tabs-container">
-  <button class="tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
-  <button class="tab" data-tab="budget" onclick="switchTab('budget')">Budget vs Actual</button>
-  <button class="tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash Flow</button>
-  <button class="tab" data-tab="pnl" onclick="switchTab('pnl')">P&amp;L</button>
-  <button class="tab" data-tab="compliance" onclick="switchTab('compliance')">Compliance</button>
-</nav>
-
-<!-- Main Content -->
-<main class="main-content">
-
-<!-- === OVERVIEW TAB === -->
-<div class="tab-content active" id="tab-overview">
-
-  <!-- KPI Cards -->
-  <div class="section-title">Key Metrics <span class="badge">Q2 2026</span></div>
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-label">Revenue</div>
-      <div class="kpi-value" id="kpi-revenue">--</div>
-      <div class="kpi-trend up" id="kpi-revenue-trend"></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Gross Margin</div>
-      <div class="kpi-value" id="kpi-gross-margin">--</div>
-      <div class="kpi-trend up" id="kpi-gross-margin-trend"></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Burn Rate</div>
-      <div class="kpi-value" id="kpi-burn-rate">--</div>
-      <div class="kpi-trend down good" id="kpi-burn-rate-trend"></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Runway</div>
-      <div class="kpi-value" id="kpi-runway">--</div>
-      <div class="kpi-trend up" id="kpi-runway-trend"></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Budget Utilization</div>
-      <div class="kpi-value" id="kpi-budget-util">--</div>
-      <div class="kpi-trend up" id="kpi-budget-util-trend"></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">EBITDA</div>
-      <div class="kpi-value" id="kpi-ebitda">--</div>
-      <div class="kpi-trend up" id="kpi-ebitda-trend"></div>
-    </div>
-  </div>
-
-  <!-- Charts Row 1 -->
-  <div class="section-title">Financial Performance</div>
-  <div class="charts-grid">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Revenue vs Budget</div>
-          <div class="chart-subtitle">Monthly comparison, FY 2026</div>
-        </div>
-        <div class="chart-actions">
-          <button class="chart-action-btn" title="Expand">&#x26F6;</button>
-        </div>
+    <nav>
+      <a class="active"><span class="dot"></span>Dashboard</a>
+      <a><span class="dot"></span>Health</a>
+      <a><span class="dot"></span>Incidents</a>
+      <a><span class="dot"></span>SLOs</a>
+      <a><span class="dot"></span>Deployments</a>
+      <a><span class="dot"></span>Reports</a>
+      <a><span class="dot"></span>Settings</a>
+    </nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <h1>Operations Command Center</h1>
+      <div class="meta">
+        <span class="live" id="lastUpdated">Live</span>
+        <span class="team">{{BRAND_TEAM}}</span>
       </div>
-      <div class="chart-wrap"><canvas id="chart-revenue"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Expense Breakdown</div>
-          <div class="chart-subtitle">Current quarter allocation</div>
-        </div>
-        <div class="chart-actions">
-          <button class="chart-action-btn" title="Expand">&#x26F6;</button>
-        </div>
+    </header>
+    <div class="content">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="tabs-bar" id="tabsBar">
+        <button class="active" data-tab="overview">Overview</button>
+        <button data-tab="health">Service Health</button>
+        <button data-tab="incidents">Incidents</button>
+        <button data-tab="slos">SLOs</button>
+        <button data-tab="deployments">Deployments</button>
       </div>
-      <div class="chart-wrap"><canvas id="chart-expenses"></canvas></div>
-    </div>
-  </div>
 
-  <!-- Charts Row 2 -->
-  <div class="charts-grid">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Cash Flow Analysis</div>
-          <div class="chart-subtitle">Operating, investing &amp; financing activities</div>
-        </div>
-        <div class="chart-actions">
-          <button class="chart-action-btn" title="Expand">&#x26F6;</button>
-        </div>
-      </div>
-      <div class="chart-wrap"><canvas id="chart-cashflow"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Department Budget Utilization</div>
-          <div class="chart-subtitle">Percentage of allocated budget consumed</div>
-        </div>
-        <div class="chart-actions">
-          <button class="chart-action-btn" title="Expand">&#x26F6;</button>
-        </div>
-      </div>
-      <div class="chart-wrap"><canvas id="chart-departments"></canvas></div>
-    </div>
-  </div>
+      <section class="tab-panel active" data-panel="overview">
 
-  <!-- Budget vs Actual Table -->
-  <div class="table-card">
-    <div class="table-header">
-      <div class="table-title">Budget vs Actual by Department</div>
-      <div class="table-count" id="budget-table-count"></div>
-    </div>
-    <div class="table-wrap">
-      <table id="budget-table">
-        <thead>
-          <tr>
-            <th>Department</th>
-            <th>Budget ($K)</th>
-            <th>Actual ($K)</th>
-            <th>Variance ($K)</th>
-            <th>% Used</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="budget-table-body"></tbody>
-      </table>
-    </div>
-  </div>
+      </section>
 
-  <!-- Transactions Table -->
-  <div class="table-card">
-    <div class="table-header">
-      <div class="table-title">Recent Transactions</div>
-      <div class="table-count" id="txn-table-count"></div>
-    </div>
-    <div class="table-wrap">
-      <table id="txn-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Description</th>
-            <th>Category</th>
-            <th>Amount</th>
-            <th>Balance</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="txn-table-body"></tbody>
-      </table>
-    </div>
-  </div>
+      <section class="tab-panel" data-panel="health">
 
-</div><!-- end overview tab -->
+          <div class="card">
+            <h3>Service Health</h3>
+            <div class="sub">Availability by service</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="serviceHealth"></canvas></div>
+          </div>
+      </section>
 
-<!-- === BUDGET VS ACTUAL TAB === -->
-<div class="tab-content" id="tab-budget">
-  <div class="section-title">Budget vs Actual <span class="badge">Detailed View</span></div>
-  <div class="charts-grid">
-    <div class="chart-card" style="grid-column:span 2">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Budget Variance by Department</div>
-          <div class="chart-subtitle">Budget allocated vs actual spend — positive variance = under budget</div>
-        </div>
-      </div>
-      <div class="chart-wrap" style="height:340px"><canvas id="chart-budget-detail"></canvas></div>
-    </div>
-  </div>
-  <div class="table-card">
-    <div class="table-header">
-      <div class="table-title">Monthly Budget Tracking</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Department</th><th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>Q1 Total</th><th>Full Year Budget</th><th>Remaining</th></tr>
-        </thead>
-        <tbody id="monthly-budget-body"></tbody>
-      </table>
+      <section class="tab-panel" data-panel="incidents">
+
+          <div class="card">
+            <h3>Incident Trend</h3>
+            <div class="sub">P1/P2 incidents per week</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="incidentTrend"></canvas></div>
+          </div>
+
+          <div class="card">
+            <h3>Active Incidents</h3>
+            <div class="sub">Open P1/P2/P3</div>
+            <table class="table" id="activeIncidents">
+              <thead><tr><th>ID</th><th>Summary</th><th>Service</th><th>Severity</th><th>Age</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="slos">
+
+          <div class="card">
+            <h3>SLO Error Budget</h3>
+            <div class="sub">Budget remaining by SLO</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="sloBurn"></canvas></div>
+          </div>
+      </section>
+
+      <section class="tab-panel" data-panel="deployments">
+
+          <div class="card">
+            <h3>Deployment Volume</h3>
+            <div class="sub">Daily deployments, 2 weeks</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="deployVolume"></canvas></div>
+          </div>
+
+          <div class="card">
+            <h3>Recent Deployments</h3>
+            <div class="sub">Last 8 deploys</div>
+            <table class="table" id="recentDeploys">
+              <thead><tr><th>Service</th><th>Version</th><th>Engineer</th><th>Time</th><th>Status</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+      </section>
     </div>
   </div>
 </div>
-
-<!-- === CASH FLOW TAB === -->
-<div class="tab-content" id="tab-cashflow">
-  <div class="section-title">Cash Flow <span class="badge">6-Month View</span></div>
-  <div class="charts-grid">
-    <div class="chart-card" style="grid-column:span 2">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Net Cash Flow Trend</div>
-          <div class="chart-subtitle">Net cash position after all activities</div>
-        </div>
-      </div>
-      <div class="chart-wrap" style="height:340px"><canvas id="chart-netcash"></canvas></div>
-    </div>
-  </div>
-  <div class="table-card">
-    <div class="table-header">
-      <div class="table-title">Cash Flow Summary</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Activity</th><th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th><th>Total</th></tr>
-        </thead>
-        <tbody id="cashflow-summary-body"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- === P&L TAB === -->
-<div class="tab-content" id="tab-pnl">
-  <div class="section-title">Profit &amp; Loss <span class="badge">FY 2026</span></div>
-  <div class="charts-grid">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Revenue vs Expenses</div>
-          <div class="chart-subtitle">Monthly P&amp;L trend</div>
-        </div>
-      </div>
-      <div class="chart-wrap"><canvas id="chart-pnl-trend"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <div class="chart-header">
-        <div>
-          <div class="chart-title">Margin Trend</div>
-          <div class="chart-subtitle">Gross and net margin %</div>
-        </div>
-      </div>
-      <div class="chart-wrap"><canvas id="chart-margin-trend"></canvas></div>
-    </div>
-  </div>
-  <div class="table-card">
-    <div class="table-header">
-      <div class="table-title">P&amp;L Statement</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Line Item</th><th>Q1 Actual</th><th>Q2 Forecast</th><th>YTD</th><th>Full Year Budget</th><th>Variance</th></tr>
-        </thead>
-        <tbody id="pnl-body"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- === COMPLIANCE TAB === -->
-<div class="tab-content" id="tab-compliance">
-  <div class="section-title">Compliance &amp; Controls <span class="badge">ISO 27001</span></div>
-  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
-    <div class="kpi-card">
-      <div class="kpi-label">Controls Passed</div>
-      <div class="kpi-value" style="color:var(--success)">94%</div>
-      <div class="kpi-trend up">+2% from last audit</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Open Findings</div>
-      <div class="kpi-value" style="color:var(--warning)">3</div>
-      <div class="kpi-trend down good">-2 from last quarter</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Next Audit</div>
-      <div class="kpi-value" style="font-size:20px">Jun 15</div>
-      <div class="kpi-trend" style="color:var(--text-muted)">64 days remaining</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">SOX Readiness</div>
-      <div class="kpi-value" style="color:var(--vibe-green)">87%</div>
-      <div class="kpi-trend up">+5% this quarter</div>
-    </div>
-  </div>
-  <div class="table-card">
-    <div class="table-header">
-      <div class="table-title">Open Audit Findings</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Finding</th><th>Severity</th><th>Category</th><th>Owner</th><th>Due Date</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Segregation of duties gap in AP workflow</td><td><span class="status-badge status-over">High</span></td><td>Internal Controls</td><td>J. Martinez</td><td>2026-05-01</td><td><span class="status-badge status-pending">In Progress</span></td></tr>
-          <tr><td>Missing documentation for manual JEs > $50K</td><td><span class="status-badge" style="background:rgba(245,158,11,0.1);color:var(--warning)">Medium</span></td><td>Documentation</td><td>S. Chen</td><td>2026-05-15</td><td><span class="status-badge status-pending">In Progress</span></td></tr>
-          <tr><td>Vendor master data review overdue</td><td><span class="status-badge status-under">Low</span></td><td>Data Integrity</td><td>A. Patel</td><td>2026-06-01</td><td><span class="status-badge" style="background:rgba(107,114,128,0.1);color:var(--text-muted)">Not Started</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <div class="table-card">
-    <div class="table-header">
-      <div class="table-title">ISO 27001 Control Summary</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Domain</th><th>Total Controls</th><th>Passed</th><th>Failed</th><th>N/A</th><th>Compliance %</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>A.5 Information Security Policies</td><td>7</td><td>7</td><td>0</td><td>0</td><td><span style="color:var(--success)">100%</span></td></tr>
-          <tr><td>A.6 Organization of InfoSec</td><td>5</td><td>5</td><td>0</td><td>0</td><td><span style="color:var(--success)">100%</span></td></tr>
-          <tr><td>A.8 Asset Management</td><td>10</td><td>9</td><td>1</td><td>0</td><td><span style="color:var(--warning)">90%</span></td></tr>
-          <tr><td>A.9 Access Control</td><td>14</td><td>13</td><td>1</td><td>0</td><td><span style="color:var(--warning)">93%</span></td></tr>
-          <tr><td>A.12 Operations Security</td><td>7</td><td>6</td><td>1</td><td>0</td><td><span style="color:var(--warning)">86%</span></td></tr>
-          <tr><td>A.14 System Acquisition</td><td>6</td><td>6</td><td>0</td><td>0</td><td><span style="color:var(--success)">100%</span></td></tr>
-          <tr><td>A.18 Compliance</td><td>8</td><td>8</td><td>0</td><td>0</td><td><span style="color:var(--success)">100%</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-</main>
 
 <script>
-/* === Tab Switching === */
-function switchTab(tabId){
-  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
-  document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active')});
-  document.querySelector('[data-tab="'+tabId+'"]').classList.add('active');
-  document.getElementById('tab-'+tabId).classList.add('active');
-}
-
-/* === vibeLoadData helper === */
-async function vibeLoadData(table,params){
-  var url=window.__SUPABASE_URL__+'/rest/v1/'+table+'?team_id=eq.'+params.team_id;
-  var resp=await fetch(url,{headers:{'apikey':window.__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+window.__SUPABASE_ANON_KEY__}});
-  if(!resp.ok) throw new Error('Failed to load');
-  return resp.json();
-}
-
-/* === Format helpers === */
-function formatCurrency(val){
-  if(Math.abs(val)>=1000000) return (val<0?'-':'')+'$'+(Math.abs(val)/1000000).toFixed(1)+'M';
-  if(Math.abs(val)>=1000) return (val<0?'-':'')+'$'+(Math.abs(val)/1000).toFixed(0)+'K';
-  return (val<0?'-':'')+'$'+Math.abs(val).toLocaleString();
-}
-
-/* === Chart.js defaults === */
 Chart.defaults.color='#9CA3AF';
 Chart.defaults.borderColor='#1F2937';
-Chart.defaults.font.family='Inter';
+Chart.defaults.font.family="'Inter',system-ui,sans-serif";
 Chart.defaults.plugins.legend.labels.usePointStyle=true;
-Chart.defaults.plugins.legend.labels.pointStyleWidth=8;
-Chart.defaults.plugins.legend.labels.padding=16;
+Chart.defaults.plugins.legend.labels.padding=12;
 
-/* === Render KPIs === */
-(function renderKPIs(){
-  var kpis=(window.__VIBE_SAMPLE__||{}).kpis||[];
-  kpis.forEach(function(k){
-    var el=document.getElementById('kpi-'+k.id);
-    if(el) el.textContent=k.value;
-    var trendEl=document.getElementById('kpi-'+k.id+'-trend');
-    if(trendEl){
-      var arrow=k.direction==='up'?'\u2191':'\u2193';
-      trendEl.textContent=arrow+' '+k.trend;
-    }
+async function vibeLoadData(){
+  if(!__SUPABASE_URL__||__SUPABASE_URL__.indexOf('__')===0) throw new Error('no supabase');
+  const res=await fetch(__SUPABASE_URL__+'/rest/v1/rpc/get_operations_command_center_data',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+__SUPABASE_ANON_KEY__},
+    body:JSON.stringify({team_id:__VIBE_TEAM_ID__})
   });
-})();
+  if(!res.ok) throw new Error('rpc failed '+res.status);
+  return await res.json();
+}
 
-/* === Chart 1: Revenue vs Budget === */
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_revenue',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var sample=(window.__VIBE_SAMPLE__||{}).revenue||{labels:[],actual:[],budget:[]};
-  if(!data.length) data=null;
-  var labels=data?data.map(function(d){return d.month}):sample.labels;
-  var actual=data?data.map(function(d){return d.actual}):sample.actual;
-  var budget=data?data.map(function(d){return d.budget}):sample.budget;
-  new Chart(document.getElementById('chart-revenue'),{
-    type:'line',
-    data:{
-      labels:labels,
-      datasets:[
-        {label:'Actual Revenue',data:actual,borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.1)',fill:true,tension:0.4,pointRadius:4,pointHoverRadius:6,borderWidth:2.5},
-        {label:'Budget',data:budget,borderColor:'#7B61FF',backgroundColor:'transparent',borderDash:[6,4],tension:0.4,pointRadius:3,pointHoverRadius:5,borderWidth:2}
-      ]
-    },
-    options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},scales:{y:{grid:{color:'rgba(31,41,55,0.5)'},ticks:{callback:function(v){return '$'+v+'K'}}},x:{grid:{display:false}}},plugins:{tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': $'+ctx.parsed.y+'K'}}}}}
-  });
-})();
+function renderKpis(data){
+  const grid=document.getElementById('kpiGrid');
+  grid.innerHTML=(data.kpis||[]).map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value">'+k.value+'</div><div class="trend '+k.direction+'">'+(k.direction==='up'?'\u25B2':'\u25BC')+' '+k.trend+'</div></div>').join('');
+}
 
-/* === Chart 2: Expense Breakdown === */
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_expenses',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var sample=(window.__VIBE_SAMPLE__||{}).expenses||[];
-  if(!data.length) data=sample;
-  new Chart(document.getElementById('chart-expenses'),{
-    type:'doughnut',
-    data:{
-      labels:data.map(function(d){return d.category}),
-      datasets:[{
-        data:data.map(function(d){return d.amount}),
-        backgroundColor:data.map(function(d){return d.color||'#00E5A0'}),
-        borderColor:'#111827',
-        borderWidth:3,
-        hoverOffset:8
-      }]
-    },
-    options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'right',labels:{padding:12,font:{size:12}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': $'+(ctx.parsed/1000).toFixed(0)+'K ('+data[ctx.dataIndex].pct+'%)'}}}}}
-  });
-})();
+let charts={};
+function renderCharts(data){
+  Object.values(charts).forEach(c=>c&&c.destroy());
+  charts={};
+  { const src=data.serviceHealth||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart0=new Chart(document.getElementById('serviceHealth'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
+  }
+  { const src=data.incidentTrend||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart1=new Chart(document.getElementById('incidentTrend'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
+  }
+  { const src=data.sloBurn||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart2=new Chart(document.getElementById('sloBurn'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
+  }
+  { const src=data.deployVolume||{};
+    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
+    charts.chart3=new Chart(document.getElementById('deployVolume'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
+  }
+}
 
-/* === Chart 3: Cash Flow === */
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_cashflow',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var sample=(window.__VIBE_SAMPLE__||{}).cashflow||{labels:[],operating:[],investing:[],financing:[]};
-  if(!data.length) data=null;
-  var labels=data?data.map(function(d){return d.month}):sample.labels;
-  var operating=data?data.map(function(d){return d.operating}):sample.operating;
-  var investing=data?data.map(function(d){return d.investing}):sample.investing;
-  var financing=data?data.map(function(d){return d.financing}):sample.financing;
-  new Chart(document.getElementById('chart-cashflow'),{
-    type:'bar',
-    data:{
-      labels:labels,
-      datasets:[
-        {label:'Operating',data:operating,backgroundColor:'#00E5A0',borderRadius:4,barPercentage:0.7},
-        {label:'Investing',data:investing,backgroundColor:'#00B4D8',borderRadius:4,barPercentage:0.7},
-        {label:'Financing',data:financing,backgroundColor:'#7B61FF',borderRadius:4,barPercentage:0.7}
-      ]
-    },
-    options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},scales:{y:{grid:{color:'rgba(31,41,55,0.5)'},ticks:{callback:function(v){return '$'+v+'K'}},stacked:false},x:{grid:{display:false},stacked:false}},plugins:{tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': $'+ctx.parsed.y+'K'}}}}}
-  });
-})();
+function renderTables(data){
+  function pillClassOkWarnDanger(v){
+    const s=String(v||'').toLowerCase();
+    if(/(healthy|on track|active|resolved|pass|ok|complete|won|green)/i.test(s))return 'ok';
+    if(/(at risk|warn|pending|review|amber|medium|yellow)/i.test(s))return 'warn';
+    if(/(delayed|blocked|fail|critical|red|high|lost|overdue)/i.test(s))return 'danger';
+    return 'neutral';
+  }
+  function pillClassSeverity(v){
+    const s=String(v||'').toUpperCase();
+    if(s==='P0'||s==='P1'||s==='CRITICAL'||s==='HIGH')return 'danger';
+    if(s==='P2'||s==='MEDIUM')return 'warn';
+    return 'info';
+  }
+  { const tbody=document.querySelector('#activeIncidents tbody');
+    const rows=data.activeIncidents||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td class="mono">'+(row['id']==null?'':row['id'])+'</td>'+'<td style="color:#fff;font-weight:500">'+(row['summary']==null?'':row['summary'])+'</td>'+'<td>'+(row['service']==null?'':row['service'])+'</td>'+'<td><span class="pill '+(pillClassSeverity(row['severity']))+'">'+(row['severity']==null?'':row['severity'])+'</span></td>'+'<td>'+(row['age']==null?'':row['age'])+'</td>'+'</tr>').join('');
+  }
+  { const tbody=document.querySelector('#recentDeploys tbody');
+    const rows=data.recentDeploys||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+'<td style="color:#fff;font-weight:500">'+(row['service']==null?'':row['service'])+'</td>'+'<td class="mono">'+(row['version']==null?'':row['version'])+'</td>'+'<td>'+(row['engineer']==null?'':row['engineer'])+'</td>'+'<td class="mono">'+(row['time']==null?'':row['time'])+'</td>'+'<td><span class="pill '+(pillClassOkWarnDanger(row['status']))+'">'+(row['status']==null?'':row['status'])+'</span></td>'+'</tr>').join('');
+  }
+}
 
-/* === Chart 4: Department Budget Utilization === */
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_departments',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var sample=(window.__VIBE_SAMPLE__||{}).departments||[];
-  if(!data.length) data=sample;
-  new Chart(document.getElementById('chart-departments'),{
-    type:'bar',
-    data:{
-      labels:data.map(function(d){return d.name}),
-      datasets:[{
-        label:'% Utilized',
-        data:data.map(function(d){return d.pct}),
-        backgroundColor:data.map(function(d){return d.pct>85?'#EF4444':d.pct>70?'#F59E0B':'#00E5A0'}),
-        borderRadius:6,
-        barPercentage:0.6
-      }]
-    },
-    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{grid:{color:'rgba(31,41,55,0.5)'},max:100,ticks:{callback:function(v){return v+'%'}}},y:{grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.parsed.x.toFixed(1)+'% of budget used'}}}}}
+function wireTabs(){
+  document.querySelectorAll('#tabsBar button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const tabId=btn.dataset.tab;
+      document.querySelectorAll('#tabsBar button').forEach(b=>b.classList.toggle('active',b===btn));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tabId));
+    });
   });
-})();
+}
 
-/* === Budget Detail Chart (Budget tab) === */
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_departments',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var sample=(window.__VIBE_SAMPLE__||{}).departments||[];
-  if(!data.length) data=sample;
-  new Chart(document.getElementById('chart-budget-detail'),{
-    type:'bar',
-    data:{
-      labels:data.map(function(d){return d.name}),
-      datasets:[
-        {label:'Budget ($K)',data:data.map(function(d){return d.budget}),backgroundColor:'rgba(123,97,255,0.3)',borderColor:'#7B61FF',borderWidth:2,borderRadius:4,barPercentage:0.5},
-        {label:'Actual ($K)',data:data.map(function(d){return d.actual}),backgroundColor:'rgba(0,229,160,0.3)',borderColor:'#00E5A0',borderWidth:2,borderRadius:4,barPercentage:0.5}
-      ]
-    },
-    options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(31,41,55,0.5)'},ticks:{callback:function(v){return '$'+v+'K'}}},x:{grid:{display:false}}},plugins:{tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': $'+ctx.parsed.y+'K'}}}}}
-  });
-})();
-
-/* === Net Cash Flow Chart (Cash Flow tab) === */
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_cashflow',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var sample=(window.__VIBE_SAMPLE__||{}).cashflow||{labels:[],operating:[],investing:[],financing:[]};
-  if(!data.length) data=null;
-  var labels=data?data.map(function(d){return d.month}):sample.labels;
-  var operating=data?data.map(function(d){return d.operating}):sample.operating;
-  var investing=data?data.map(function(d){return d.investing}):sample.investing;
-  var financing=data?data.map(function(d){return d.financing}):sample.financing;
-  var net=labels.map(function(_,i){return operating[i]+investing[i]+financing[i]});
-  new Chart(document.getElementById('chart-netcash'),{
-    type:'line',
-    data:{
-      labels:labels,
-      datasets:[
-        {label:'Net Cash Flow',data:net,borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.15)',fill:true,tension:0.4,pointRadius:5,pointHoverRadius:7,borderWidth:3},
-        {label:'Operating',data:operating,borderColor:'#00B4D8',borderDash:[4,4],tension:0.4,pointRadius:3,borderWidth:1.5},
-        {label:'Investing',data:investing,borderColor:'#7B61FF',borderDash:[4,4],tension:0.4,pointRadius:3,borderWidth:1.5},
-        {label:'Financing',data:financing,borderColor:'#F59E0B',borderDash:[4,4],tension:0.4,pointRadius:3,borderWidth:1.5}
-      ]
-    },
-    options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},scales:{y:{grid:{color:'rgba(31,41,55,0.5)'},ticks:{callback:function(v){return '$'+v+'K'}}},x:{grid:{display:false}}},plugins:{tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': $'+ctx.parsed.y+'K'}}}}}
-  });
-})();
-
-/* === P&L Charts === */
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_pnl',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var rev=(window.__VIBE_SAMPLE__||{}).revenue||{labels:[],actual:[],budget:[]};
-  var months=rev.labels;
-  var expenses=months.map(function(_,i){return rev.actual[i]*0.68});
-  new Chart(document.getElementById('chart-pnl-trend'),{
-    type:'bar',
-    data:{
-      labels:months,
-      datasets:[
-        {label:'Revenue ($K)',data:rev.actual,backgroundColor:'rgba(0,229,160,0.7)',borderRadius:4,barPercentage:0.6},
-        {label:'Expenses ($K)',data:expenses,backgroundColor:'rgba(239,68,68,0.5)',borderRadius:4,barPercentage:0.6}
-      ]
-    },
-    options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(31,41,55,0.5)'},ticks:{callback:function(v){return '$'+v+'K'}}},x:{grid:{display:false}}},plugins:{tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': $'+ctx.parsed.y.toFixed(0)+'K'}}}}}
-  });
-})();
-
-(async function(){
-  var data=[];
-  try{data=await vibeLoadData('finance_margins',{team_id:window.__VIBE_TEAM_ID__})}catch(e){}
-  var months=(window.__VIBE_SAMPLE__||{}).revenue.labels||[];
-  var grossMargin=[65,66,67,68,67,68,69,70,69,70,68,69];
-  var netMargin=[18,19,20,22,21,23,24,25,24,26,22,24];
-  new Chart(document.getElementById('chart-margin-trend'),{
-    type:'line',
-    data:{
-      labels:months,
-      datasets:[
-        {label:'Gross Margin %',data:grossMargin,borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.1)',fill:true,tension:0.4,borderWidth:2.5},
-        {label:'Net Margin %',data:netMargin,borderColor:'#00B4D8',backgroundColor:'rgba(0,180,216,0.1)',fill:true,tension:0.4,borderWidth:2.5}
-      ]
-    },
-    options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(31,41,55,0.5)'},ticks:{callback:function(v){return v+'%'}}},x:{grid:{display:false}}},plugins:{tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+ctx.parsed.y+'%'}}}}}
-  });
-})();
-
-/* === Render Tables === */
-(function renderBudgetTable(){
-  var rows=(window.__VIBE_SAMPLE__||{}).budgetVsActual||[];
-  var body=document.getElementById('budget-table-body');
-  var ct=document.getElementById('budget-table-count');
-  if(ct) ct.textContent=rows.length+' departments';
-  rows.forEach(function(r){
-    var tr=document.createElement('tr');
-    var statusClass=r.status==='On Track'?'status-on-track':r.status==='Under'?'status-under':'status-over';
-    var varianceClass=r.variance<0?'variance-positive':'variance-negative';
-    tr.innerHTML='<td style="font-weight:500;color:var(--text-primary)">'+r.department+'</td>'
-      +'<td>$'+r.budget.toLocaleString()+'K</td>'
-      +'<td>$'+r.actual.toLocaleString()+'K</td>'
-      +'<td class="'+varianceClass+'">'+formatCurrency(r.variance*1000)+'</td>'
-      +'<td>'+r.pctUsed.toFixed(1)+'%</td>'
-      +'<td><span class="status-badge '+statusClass+'">'+r.status+'</span></td>';
-    body.appendChild(tr);
-  });
-})();
-
-(function renderTxnTable(){
-  var rows=(window.__VIBE_SAMPLE__||{}).transactions||[];
-  var body=document.getElementById('txn-table-body');
-  var ct=document.getElementById('txn-table-count');
-  if(ct) ct.textContent=rows.length+' transactions';
-  rows.forEach(function(r){
-    var tr=document.createElement('tr');
-    var amtClass=r.amount>=0?'amount-positive':'amount-negative';
-    var statusClass=r.status==='Cleared'?'status-cleared':'status-pending';
-    tr.innerHTML='<td>'+r.date+'</td>'
-      +'<td style="font-weight:500;color:var(--text-primary)">'+r.description+'</td>'
-      +'<td>'+r.category+'</td>'
-      +'<td class="'+amtClass+'">'+formatCurrency(r.amount)+'</td>'
-      +'<td>'+formatCurrency(r.balance)+'</td>'
-      +'<td><span class="status-badge '+statusClass+'">'+r.status+'</span></td>';
-    body.appendChild(tr);
-  });
-})();
-
-/* === Render Monthly Budget Table (Budget tab) === */
-(function renderMonthlyBudget(){
-  var depts=(window.__VIBE_SAMPLE__||{}).departments||[];
-  var body=document.getElementById('monthly-budget-body');
-  depts.forEach(function(d){
-    var tr=document.createElement('tr');
-    var m1=Math.round(d.actual*0.3);var m2=Math.round(d.actual*0.32);var m3=Math.round(d.actual*0.38);var m4=Math.round(d.budget*0.09);
-    var q1=m1+m2+m3;var remaining=d.budget-q1-m4;
-    tr.innerHTML='<td style="font-weight:500;color:var(--text-primary)">'+d.name+'</td>'
-      +'<td>$'+m1+'K</td><td>$'+m2+'K</td><td>$'+m3+'K</td><td>$'+m4+'K</td>'
-      +'<td style="font-weight:600">$'+q1+'K</td>'
-      +'<td>$'+d.budget+'K</td>'
-      +'<td style="color:var(--success)">$'+remaining+'K</td>';
-    body.appendChild(tr);
-  });
-})();
-
-/* === Render Cash Flow Summary Table (Cash Flow tab) === */
-(function renderCashFlowSummary(){
-  var cf=(window.__VIBE_SAMPLE__||{}).cashflow||{labels:[],operating:[],investing:[],financing:[]};
-  var body=document.getElementById('cashflow-summary-body');
-  var activities=[
-    {name:'Operating',data:cf.operating,color:'var(--success)'},
-    {name:'Investing',data:cf.investing,color:'var(--vibe-cyan)'},
-    {name:'Financing',data:cf.financing,color:'var(--vibe-violet)'}
-  ];
-  activities.forEach(function(a){
-    var tr=document.createElement('tr');
-    var total=a.data.reduce(function(s,v){return s+v},0);
-    var cells='<td style="font-weight:500;color:'+a.color+'">'+a.name+'</td>';
-    a.data.forEach(function(v){cells+='<td class="'+(v>=0?'amount-positive':'amount-negative')+'">$'+v+'K</td>'});
-    cells+='<td style="font-weight:600;color:'+a.color+'">$'+total+'K</td>';
-    tr.innerHTML=cells;
-    body.appendChild(tr);
-  });
-  var netTr=document.createElement('tr');
-  netTr.style.borderTop='2px solid var(--border-accent)';
-  var netCells='<td style="font-weight:700;color:var(--text-primary)">Net Cash Flow</td>';
-  var netTotal=0;
-  cf.labels.forEach(function(_,i){
-    var net=cf.operating[i]+cf.investing[i]+cf.financing[i];
-    netTotal+=net;
-    netCells+='<td style="font-weight:600" class="'+(net>=0?'amount-positive':'amount-negative')+'">$'+net+'K</td>';
-  });
-  netCells+='<td style="font-weight:700;color:var(--vibe-green)">$'+netTotal+'K</td>';
-  netTr.innerHTML=netCells;
-  body.appendChild(netTr);
-})();
-
-/* === Render P&L Table === */
-(function renderPnL(){
-  var body=document.getElementById('pnl-body');
-  var items=[
-    {line:'Revenue',q1:'$1,045K',q2:'$1,210K',ytd:'$2,255K',fy:'$4,800K',var:'+$55K',bold:true,color:'var(--text-primary)'},
-    {line:'COGS',q1:'($334K)',q2:'($387K)',ytd:'($721K)',fy:'($1,536K)',var:'-$18K',bold:false,color:'var(--danger)'},
-    {line:'Gross Profit',q1:'$711K',q2:'$823K',ytd:'$1,534K',fy:'$3,264K',var:'+$37K',bold:true,color:'var(--success)'},
-    {line:'Operating Expenses',q1:'($520K)',q2:'($580K)',ytd:'($1,100K)',fy:'($2,400K)',var:'+$20K',bold:false,color:'var(--danger)'},
-    {line:'   Headcount',q1:'($290K)',q2:'($310K)',ytd:'($600K)',fy:'($1,300K)',var:'+$12K',bold:false,color:'var(--text-muted)'},
-    {line:'   R&D',q1:'($98K)',q2:'($110K)',ytd:'($208K)',fy:'($440K)',var:'-$8K',bold:false,color:'var(--text-muted)'},
-    {line:'   Sales & Marketing',q1:'($72K)',q2:'($88K)',ytd:'($160K)',fy:'($360K)',var:'+$10K',bold:false,color:'var(--text-muted)'},
-    {line:'   G&A',q1:'($60K)',q2:'($72K)',ytd:'($132K)',fy:'($300K)',var:'+$6K',bold:false,color:'var(--text-muted)'},
-    {line:'EBITDA',q1:'$191K',q2:'$243K',ytd:'$434K',fy:'$864K',var:'+$17K',bold:true,color:'var(--vibe-green)'},
-    {line:'D&A',q1:'($25K)',q2:'($25K)',ytd:'($50K)',fy:'($100K)',var:'$0',bold:false,color:'var(--text-muted)'},
-    {line:'Net Income',q1:'$166K',q2:'$218K',ytd:'$384K',fy:'$764K',var:'+$17K',bold:true,color:'var(--vibe-green)'}
-  ];
-  items.forEach(function(r){
-    var tr=document.createElement('tr');
-    if(r.bold) tr.style.fontWeight='600';
-    var varColor=r.var.startsWith('+')?'var(--success)':r.var.startsWith('-')?'var(--danger)':'var(--text-muted)';
-    tr.innerHTML='<td style="color:'+r.color+'">'+r.line+'</td>'
-      +'<td>'+r.q1+'</td><td>'+r.q2+'</td>'
-      +'<td style="font-weight:600">'+r.ytd+'</td>'
-      +'<td>'+r.fy+'</td>'
-      +'<td style="color:'+varColor+'">'+r.var+'</td>';
-    body.appendChild(tr);
-  });
-})();
+async function boot(){
+  let data;
+  try{
+    data=await vibeLoadData();
+    if(!data||!data.kpis) throw new Error('empty payload');
+  }catch(err){
+    console.warn('[operations-command-center] sample fallback:',err.message);
+    data=window.__VIBE_SAMPLE__;
+  }
+  renderKpis(data);
+  renderCharts(data);
+  renderTables(data);
+  wireTabs();
+  document.getElementById('lastUpdated').textContent='Updated '+new Date().toLocaleTimeString();
+}
+boot();
 </script>
-
 </body>
 </html>

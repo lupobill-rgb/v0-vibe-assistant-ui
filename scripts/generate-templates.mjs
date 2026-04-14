@@ -1,15 +1,61 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Portfolio Dashboard — {{BRAND_COMPANY}}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF;--warn:#F59E0B;--danger:#EF4444;--ok:#10B981}
+#!/usr/bin/env node
+// Generate ops-native-style dashboard HTML templates from compact domain
+// configs. Writes each to packages/templates/<slug>.html.
+//
+// Usage: node scripts/generate-templates.mjs
+//
+// Every generated template matches the gates in CLAUDE.md:
+//   length > 20000, charts >= 4, has_try_catch, has_team_token,
+//   has_sample_data, layout-shim compliance.
+//
+// The generator is deterministic: same config → same output. Re-running
+// is idempotent and safe to wire into CI later.
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { CONFIGS } from './template-configs/index.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, '..');
+const outDir = path.join(repoRoot, 'packages', 'templates');
+
+// Render a JS literal — unquoted keys where possible, single-quoted strings.
+// Keeps generated files compact and consistent with existing templates.
+function jsLiteral(value, indent = 2, depth = 0) {
+  const pad = ' '.repeat(indent * depth);
+  const padIn = ' '.repeat(indent * (depth + 1));
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'string') {
+    // Single-quoted, escape single quotes and backslashes.
+    return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '[]';
+    // Inline short primitive arrays.
+    const allPrim = value.every(v => v === null || typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean');
+    if (allPrim && value.length <= 16) {
+      return `[${value.map(v => jsLiteral(v, indent, depth)).join(',')}]`;
+    }
+    const items = value.map(v => padIn + jsLiteral(v, indent, depth + 1)).join(',\n');
+    return `[\n${items}\n${pad}]`;
+  }
+  // Object
+  const entries = Object.entries(value);
+  if (entries.length === 0) return '{}';
+  const parts = entries.map(([k, v]) => {
+    const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : `'${k}'`;
+    return `${padIn}${key}:${jsLiteral(v, indent, depth + 1)}`;
+  });
+  return `{\n${parts.join(',\n')}\n${pad}}`;
+}
+
+// Shared CSS + JS boot framework. Constant across all templates so the
+// layout shim and design tokens stay consistent.
+function baseStyles() {
+  return `:root{--bg:#0A0E17;--surface:#111827;--surface-2:#0F1624;--border:#1F2937;--text:#E5E7EB;--muted:#9CA3AF;--primary:#00E5A0;--signal:#00B4D8;--violet:#7B61FF;--warn:#F59E0B;--danger:#EF4444;--ok:#10B981}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;overflow-x:hidden}
 h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;color:#fff;letter-spacing:-0.01em}
@@ -158,321 +204,72 @@ canvas{max-width:100%}
 .skeleton{background:linear-gradient(90deg,var(--surface),var(--surface-2),var(--surface));background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite;border-radius:8px}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 @media(max-width:768px){.content{padding:16px}.sidebar{width:72px}.sidebar .brand .name{display:none}.sidebar nav a{justify-content:center}.main{margin-left:72px}.topbar{padding:12px 16px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:560px){.kpi-grid{grid-template-columns:1fr}.topbar .meta{gap:8px}.topbar .meta .live{display:none}}
-</style>
-<script>
-window.__VIBE_SAMPLE__={
-  kpis:[
-    {
-      id:'aum',
-      label:'AUM',
-      value:'$420M',
-      trend:'+12%',
-      direction:'up'
-    },
-    {
-      id:'companies',
-      label:'Portfolio Cos',
-      value:'38',
-      trend:'+3',
-      direction:'up'
-    },
-    {
-      id:'irr',
-      label:'Net IRR',
-      value:'24.8%',
-      trend:'+2.1pp',
-      direction:'up'
-    },
-    {
-      id:'moic',
-      label:'MOIC',
-      value:'2.8x',
-      trend:'+0.2',
-      direction:'up'
-    },
-    {
-      id:'exits-ytd',
-      label:'Exits YTD',
-      value:'4',
-      trend:'+2',
-      direction:'up'
-    },
-    {
-      id:'dry-powder',
-      label:'Dry Powder',
-      value:'$180M',
-      trend:'-5%',
-      direction:'down'
+@media(max-width:560px){.kpi-grid{grid-template-columns:1fr}.topbar .meta{gap:8px}.topbar .meta .live{display:none}}`;
+}
+
+// Build the chart-init JS from chart specs.
+function chartInitJs(charts) {
+  const bgDefaults = {
+    bar: "'#00E5A0'",
+    line: "'#00E5A0'",
+    doughnut: "['#00E5A0','#F59E0B','#EF4444','#00B4D8','#6B7280','#7B61FF','#10B981','#9CA3AF']",
+    pie: "['#00E5A0','#F59E0B','#EF4444','#00B4D8','#6B7280','#7B61FF','#10B981','#9CA3AF']",
+  };
+  const blocks = charts.map((c, i) => {
+    const handle = `chart${i}`;
+    let dataExpr;
+    if (c.type === 'doughnut' || c.type === 'pie') {
+      dataExpr = `{labels:src.labels||[],datasets:[{data:src.data||src.counts||[],backgroundColor:${bgDefaults[c.type]},borderWidth:0}]}`;
+    } else if (c.type === 'bar' || c.type === 'line') {
+      // Multi-dataset if spec.series, otherwise single series from src.data
+      dataExpr = `{labels:src.labels||[],datasets:(src.datasets||[{label:'${c.label || 'Value'}',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:${c.type === 'line' ? 'true' : 'false'}}])}`;
+    } else {
+      dataExpr = `{labels:src.labels||[],datasets:src.datasets||[]}`;
     }
-  ],
-  navTrend:{
-    labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-    datasets:[
-      {
-        label:'NAV ($M)',
-        data:[360,368,375,382,390,398,405,412,418,415,418,420],
-        borderColor:'#00E5A0',
-        backgroundColor:'rgba(0,229,160,.12)',
-        tension:0.35,
-        fill:true
-      }
-    ]
-  },
-  stageMix:{
-    labels:['Seed','Series A','Series B','Series C','Growth','Late'],
-    counts:[6,10,9,7,4,2]
-  },
-  sectorMix:{
-    labels:['SaaS','Fintech','Healthtech','AI/ML','Climate','Consumer'],
-    datasets:[
-      {
-        label:'$M',
-        data:[140,85,62,48,52,33],
-        backgroundColor:'#00B4D8',
-        borderRadius:4
-      }
-    ]
-  },
-  irrByVintage:{
-    labels:['2018','2019','2020','2021','2022','2023'],
-    datasets:[
-      {
-        label:'IRR %',
-        data:[32,28,24,22,18,15],
-        backgroundColor:'#7B61FF',
-        borderRadius:4
-      }
-    ]
-  },
-  topCompanies:[
-    {
-      name:'Stripe Beta',
-      stage:'Late',
-      sector:'Fintech',
-      invested:'$12M',
-      current:'$48M',
-      moic:'4.0x'
-    },
-    {
-      name:'Neural Dynamics',
-      stage:'Series C',
-      sector:'AI/ML',
-      invested:'$8M',
-      current:'$32M',
-      moic:'4.0x'
-    },
-    {
-      name:'CarbonZero',
-      stage:'Series B',
-      sector:'Climate',
-      invested:'$6M',
-      current:'$22M',
-      moic:'3.7x'
-    },
-    {
-      name:'HealthSync',
-      stage:'Series C',
-      sector:'Healthtech',
-      invested:'$10M',
-      current:'$28M',
-      moic:'2.8x'
-    },
-    {
-      name:'DataForge',
-      stage:'Series B',
-      sector:'SaaS',
-      invested:'$7M',
-      current:'$19M',
-      moic:'2.7x'
-    },
-    {
-      name:'RetailGenie',
-      stage:'Series A',
-      sector:'Consumer',
-      invested:'$4M',
-      current:'$10M',
-      moic:'2.5x'
-    }
-  ],
-  recentExits:[
-    {
-      name:'CloudVault',
-      type:'Acquisition',
-      proceeds:'$240M',
-      moic:'6.2x',
-      date:'2026-02-18'
-    },
-    {
-      name:'SignalFire',
-      type:'IPO',
-      proceeds:'$180M',
-      moic:'4.8x',
-      date:'2025-11-04'
-    },
-    {
-      name:'MeshNet',
-      type:'Acquisition',
-      proceeds:'$95M',
-      moic:'3.2x',
-      date:'2025-09-22'
-    },
-    {
-      name:'PulsarAI',
-      type:'Acquisition',
-      proceeds:'$140M',
-      moic:'5.1x',
-      date:'2025-07-11'
-    }
-  ]
-};
-const __SUPABASE_URL__='__SUPABASE_URL__';
-const __SUPABASE_ANON_KEY__='__SUPABASE_ANON_KEY__';
-const __VIBE_TEAM_ID__='__VIBE_TEAM_ID__';
-</script>
-</head>
-<body>
-<div class="app">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="logo">V</div>
-      <div class="name">{{BRAND_COMPANY}}<span>Portfolio</span></div>
-    </div>
-    <nav>
-      <a class="active"><span class="dot"></span>Dashboard</a>
-      <a><span class="dot"></span>Companies</a>
-      <a><span class="dot"></span>Performance</a>
-      <a><span class="dot"></span>Valuations</a>
-      <a><span class="dot"></span>Exits</a>
-      <a><span class="dot"></span>Reports</a>
-      <a><span class="dot"></span>Settings</a>
-    </nav>
-  </aside>
-  <div class="main">
-    <header class="topbar">
-      <h1>Portfolio Dashboard</h1>
-      <div class="meta">
-        <span class="live" id="lastUpdated">Live</span>
-        <span class="team">{{BRAND_TEAM}}</span>
-      </div>
-    </header>
-    <div class="content">
-      <div class="kpi-grid" id="kpiGrid"></div>
-      <div class="tabs-bar" id="tabsBar">
-        <button class="active" data-tab="overview">Overview</button>
-        <button data-tab="companies">Companies</button>
-        <button data-tab="performance">Performance</button>
-        <button data-tab="valuations">Valuations</button>
-        <button data-tab="exits">Exits</button>
-      </div>
-
-      <section class="tab-panel active" data-panel="overview">
-
-          <div class="card">
-            <h3>NAV Trend</h3>
-            <div class="sub">Net asset value, 12 months</div>
-            <div class="chart-wrap" style="height:280px"><canvas id="navTrend"></canvas></div>
-          </div>
-      </section>
-
-      <section class="tab-panel" data-panel="companies">
-
-          <div class="card">
-            <h3>Portfolio by Stage</h3>
-            <div class="sub">Investment stage distribution</div>
-            <div class="chart-wrap" style="height:280px"><canvas id="stageMix"></canvas></div>
-          </div>
-
-          <div class="card">
-            <h3>Sector Allocation</h3>
-            <div class="sub">Capital deployed by sector</div>
-            <div class="chart-wrap" style="height:280px"><canvas id="sectorMix"></canvas></div>
-          </div>
-
-          <div class="card">
-            <h3>Top Portfolio Companies</h3>
-            <div class="sub">By current valuation</div>
-            <table class="table" id="topCompanies">
-              <thead><tr><th>Company</th><th>Stage</th><th>Sector</th><th>Invested</th><th>Current Value</th><th>MOIC</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-      </section>
-
-      <section class="tab-panel" data-panel="performance">
-
-          <div class="card">
-            <h3>IRR by Vintage</h3>
-            <div class="sub">Net IRR by fund year</div>
-            <div class="chart-wrap" style="height:280px"><canvas id="irrByVintage"></canvas></div>
-          </div>
-      </section>
-
-      <section class="tab-panel" data-panel="valuations">
-
-      </section>
-
-      <section class="tab-panel" data-panel="exits">
-
-          <div class="card">
-            <h3>Recent Exits</h3>
-            <div class="sub">Last 18 months</div>
-            <table class="table" id="recentExits">
-              <thead><tr><th>Company</th><th>Type</th><th>Proceeds</th><th>MOIC</th><th>Date</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-      </section>
-    </div>
-  </div>
-</div>
-
-<script>
-Chart.defaults.color='#9CA3AF';
-Chart.defaults.borderColor='#1F2937';
-Chart.defaults.font.family="'Inter',system-ui,sans-serif";
-Chart.defaults.plugins.legend.labels.usePointStyle=true;
-Chart.defaults.plugins.legend.labels.padding=12;
-
-async function vibeLoadData(){
-  if(!__SUPABASE_URL__||__SUPABASE_URL__.indexOf('__')===0) throw new Error('no supabase');
-  const res=await fetch(__SUPABASE_URL__+'/rest/v1/rpc/get_portfolio_dashboard_data',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','apikey':__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+__SUPABASE_ANON_KEY__},
-    body:JSON.stringify({team_id:__VIBE_TEAM_ID__})
+    const optsExtras = c.options || '';
+    const baseOpts = c.type === 'doughnut' || c.type === 'pie'
+      ? `cutout:'65%',plugins:{legend:{position:'right'}}`
+      : `plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}`;
+    return `  { const src=data.${c.sampleKey}||{};
+    const opts={responsive:true,maintainAspectRatio:false,${baseOpts}${optsExtras ? ',' + optsExtras : ''}};
+    charts.${handle}=new Chart(document.getElementById('${c.canvasId}'),{type:'${c.type}',data:${dataExpr},options:opts});
+  }`;
   });
-  if(!res.ok) throw new Error('rpc failed '+res.status);
-  return await res.json();
-}
-
-function renderKpis(data){
-  const grid=document.getElementById('kpiGrid');
-  grid.innerHTML=(data.kpis||[]).map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value">'+k.value+'</div><div class="trend '+k.direction+'">'+(k.direction==='up'?'\u25B2':'\u25BC')+' '+k.trend+'</div></div>').join('');
-}
-
-let charts={};
+  return `let charts={};
 function renderCharts(data){
   Object.values(charts).forEach(c=>c&&c.destroy());
   charts={};
-  { const src=data.navTrend||{};
-    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
-    charts.chart0=new Chart(document.getElementById('navTrend'),{type:'line',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:true}])},options:opts});
-  }
-  { const src=data.stageMix||{};
-    const opts={responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'right'}}};
-    charts.chart1=new Chart(document.getElementById('stageMix'),{type:'doughnut',data:{labels:src.labels||[],datasets:[{data:src.data||src.counts||[],backgroundColor:['#00E5A0','#F59E0B','#EF4444','#00B4D8','#6B7280','#7B61FF','#10B981','#9CA3AF'],borderWidth:0}]},options:opts});
-  }
-  { const src=data.sectorMix||{};
-    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
-    charts.chart2=new Chart(document.getElementById('sectorMix'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
-  }
-  { const src=data.irrByVintage||{};
-    const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',align:'end'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(31,41,55,.5)'}}}};
-    charts.chart3=new Chart(document.getElementById('irrByVintage'),{type:'bar',data:{labels:src.labels||[],datasets:(src.datasets||[{label:'Value',data:src.data||[],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,.12)',tension:.3,borderRadius:4,fill:false}])},options:opts});
-  }
+${blocks.join('\n')}
+}`;
 }
 
-function renderTables(data){
+// Build the table-init JS from table specs.
+function tableInitJs(tables) {
+  const blocks = tables.map(t => {
+    const cols = t.columns.map(col => {
+      const raw = `row['${col.field}']`;
+      let cell;
+      if (col.pill === 'status') {
+        cell = `'<td><span class=\"pill \\"+(statusMap[' + raw + ']||\\"neutral\\")+\\"\\">\\"+${raw}+\\"</span></td>'`;
+      }
+      // Simpler: build plain text cells, optional mono or pill via col.kind.
+      const wrap = col.kind === 'mono'
+        ? `'<td class=\"mono\">'+(${raw}==null?'':${raw})+'</td>'`
+        : col.kind === 'strong'
+        ? `'<td style=\"color:#fff;font-weight:500\">'+(${raw}==null?'':${raw})+'</td>'`
+        : col.kind === 'pill-ok-warn-danger'
+        ? `'<td><span class=\"pill '+(pillClassOkWarnDanger(${raw}))+'\">'+(${raw}==null?'':${raw})+'</span></td>'`
+        : col.kind === 'pill-severity'
+        ? `'<td><span class=\"pill '+(pillClassSeverity(${raw}))+'\">'+(${raw}==null?'':${raw})+'</span></td>'`
+        : `'<td>'+(${raw}==null?'':${raw})+'</td>'`;
+      return wrap;
+    }).join('+');
+    return `  { const tbody=document.querySelector('#${t.tableId} tbody');
+    const rows=data.${t.sampleKey}||[];
+    tbody.innerHTML=rows.map(row=>'<tr>'+${cols}+'</tr>').join('');
+  }`;
+  });
+  return `function renderTables(data){
   function pillClassOkWarnDanger(v){
     const s=String(v||'').toLowerCase();
     if(/(healthy|on track|active|resolved|pass|ok|complete|won|green)/i.test(s))return 'ok';
@@ -486,15 +283,129 @@ function renderTables(data){
     if(s==='P2'||s==='MEDIUM')return 'warn';
     return 'info';
   }
-  { const tbody=document.querySelector('#topCompanies tbody');
-    const rows=data.topCompanies||[];
-    tbody.innerHTML=rows.map(row=>'<tr>'+'<td style="color:#fff;font-weight:500">'+(row['name']==null?'':row['name'])+'</td>'+'<td>'+(row['stage']==null?'':row['stage'])+'</td>'+'<td>'+(row['sector']==null?'':row['sector'])+'</td>'+'<td>'+(row['invested']==null?'':row['invested'])+'</td>'+'<td>'+(row['current']==null?'':row['current'])+'</td>'+'<td>'+(row['moic']==null?'':row['moic'])+'</td>'+'</tr>').join('');
-  }
-  { const tbody=document.querySelector('#recentExits tbody');
-    const rows=data.recentExits||[];
-    tbody.innerHTML=rows.map(row=>'<tr>'+'<td style="color:#fff;font-weight:500">'+(row['name']==null?'':row['name'])+'</td>'+'<td>'+(row['type']==null?'':row['type'])+'</td>'+'<td>'+(row['proceeds']==null?'':row['proceeds'])+'</td>'+'<td>'+(row['moic']==null?'':row['moic'])+'</td>'+'<td class="mono">'+(row['date']==null?'':row['date'])+'</td>'+'</tr>').join('');
-  }
+${blocks.join('\n')}
+}`;
 }
+
+// Build the 5 tab panels from panels spec.
+function renderPanels(tabs, charts, tables) {
+  return tabs.map((tab, idx) => {
+    const tabCharts = charts.filter(c => c.tab === tab.id);
+    const tabTables = tables.filter(t => t.tab === tab.id);
+    const cards = [
+      ...tabCharts.map(c => `
+          <div class="card">
+            <h3>${c.title}</h3>
+            <div class="sub">${c.subtitle || ''}</div>
+            <div class="chart-wrap" style="height:${c.height || 280}px"><canvas id="${c.canvasId}"></canvas></div>
+          </div>`),
+      ...tabTables.map(t => `
+          <div class="card">
+            <h3>${t.title}</h3>
+            <div class="sub">${t.subtitle || ''}</div>
+            <table class="table" id="${t.tableId}">
+              <thead><tr>${t.columns.map(c => `<th>${c.header}</th>`).join('')}</tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>`),
+    ].join('\n');
+    const cls = idx === 0 ? 'tab-panel active' : 'tab-panel';
+    return `      <section class="${cls}" data-panel="${tab.id}">
+${cards}
+      </section>`;
+  }).join('\n\n');
+}
+
+function renderTemplate(config) {
+  const { slug, title, moduleName, sidebarNav, tabs, sampleData, charts, tables } = config;
+  const styles = baseStyles();
+  const sampleLiteral = jsLiteral(sampleData);
+  const tabButtons = tabs.map((t, i) =>
+    `        <button${i === 0 ? ' class="active"' : ''} data-tab="${t.id}">${t.label}</button>`
+  ).join('\n');
+  const navLinks = sidebarNav.map((label, i) =>
+    `      <a${i === 0 ? ' class="active"' : ''}><span class="dot"></span>${label}</a>`
+  ).join('\n');
+  const panels = renderPanels(tabs, charts, tables);
+  const chartInit = chartInitJs(charts);
+  const tableInit = tableInitJs(tables);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${title} — {{BRAND_COMPANY}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+${styles}
+</style>
+<script>
+window.__VIBE_SAMPLE__=${sampleLiteral};
+const __SUPABASE_URL__='__SUPABASE_URL__';
+const __SUPABASE_ANON_KEY__='__SUPABASE_ANON_KEY__';
+const __VIBE_TEAM_ID__='__VIBE_TEAM_ID__';
+</script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div class="name">{{BRAND_COMPANY}}<span>${moduleName}</span></div>
+    </div>
+    <nav>
+${navLinks}
+    </nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <h1>${title}</h1>
+      <div class="meta">
+        <span class="live" id="lastUpdated">Live</span>
+        <span class="team">{{BRAND_TEAM}}</span>
+      </div>
+    </header>
+    <div class="content">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="tabs-bar" id="tabsBar">
+${tabButtons}
+      </div>
+
+${panels}
+    </div>
+  </div>
+</div>
+
+<script>
+Chart.defaults.color='#9CA3AF';
+Chart.defaults.borderColor='#1F2937';
+Chart.defaults.font.family="'Inter',system-ui,sans-serif";
+Chart.defaults.plugins.legend.labels.usePointStyle=true;
+Chart.defaults.plugins.legend.labels.padding=12;
+
+async function vibeLoadData(){
+  if(!__SUPABASE_URL__||__SUPABASE_URL__.indexOf('__')===0) throw new Error('no supabase');
+  const res=await fetch(__SUPABASE_URL__+'/rest/v1/rpc/get_${slug.replace(/-/g, '_')}_data',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':__SUPABASE_ANON_KEY__,'Authorization':'Bearer '+__SUPABASE_ANON_KEY__},
+    body:JSON.stringify({team_id:__VIBE_TEAM_ID__})
+  });
+  if(!res.ok) throw new Error('rpc failed '+res.status);
+  return await res.json();
+}
+
+function renderKpis(data){
+  const grid=document.getElementById('kpiGrid');
+  grid.innerHTML=(data.kpis||[]).map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value">'+k.value+'</div><div class="trend '+k.direction+'">'+(k.direction==='up'?'\\u25B2':'\\u25BC')+' '+k.trend+'</div></div>').join('');
+}
+
+${chartInit}
+
+${tableInit}
 
 function wireTabs(){
   document.querySelectorAll('#tabsBar button').forEach(btn=>{
@@ -512,7 +423,7 @@ async function boot(){
     data=await vibeLoadData();
     if(!data||!data.kpis) throw new Error('empty payload');
   }catch(err){
-    console.warn('[portfolio-dashboard] sample fallback:',err.message);
+    console.warn('[${slug}] sample fallback:',err.message);
     data=window.__VIBE_SAMPLE__;
   }
   renderKpis(data);
@@ -525,3 +436,36 @@ boot();
 </script>
 </body>
 </html>
+`;
+}
+
+function main() {
+  fs.mkdirSync(outDir, { recursive: true });
+  let generated = 0;
+  let errors = 0;
+  for (const config of CONFIGS) {
+    try {
+      const html = renderTemplate(config);
+      const file = path.join(outDir, `${config.slug}.html`);
+      fs.writeFileSync(file, html);
+      const chartCount = (html.match(/new Chart\(/g) || []).length;
+      const lenOk = html.length > 20000;
+      const chartsOk = chartCount >= 4;
+      const tryOk = html.includes('try{');
+      const teamOk = html.includes('__VIBE_TEAM_ID__');
+      const sampleOk = html.includes('window.__VIBE_SAMPLE__');
+      const allOk = lenOk && chartsOk && tryOk && teamOk && sampleOk;
+      const badge = allOk ? '✓' : '✗';
+      console.log(`${badge} ${config.slug} (${html.length}b, charts=${chartCount}, len>20k=${lenOk}, try=${tryOk}, team=${teamOk}, sample=${sampleOk})`);
+      if (!allOk) errors++;
+      generated++;
+    } catch (err) {
+      console.error(`✗ ${config.slug}: ${err.message}`);
+      errors++;
+    }
+  }
+  console.log(`\nGenerated ${generated} templates, ${errors} gate failures.`);
+  if (errors > 0) process.exit(1);
+}
+
+main();
