@@ -8,9 +8,9 @@ Last reviewed: 2026-04-15 — rewritten from the previous version after drift in
 
 ## 1. Current Position
 
-**Active sprint:** Closed runtime loop hardening — shipping orchestrator runtime connector dispatch (Sprint 3) and patching the dashboard template path it feeds, with the last three days dominated by preview-render fixes (Chart.js load polling #602, placeholder-collision rename #601, iframe srcDoc swap #600, VIBE_TEAM_ID replacement #599, credentials-replaced setTaskDiff #598, sample-inject match #597/#596) on top of the 19-template rewrite in #594/#595.
-**Blocking:** Repeated dashboard regressions consuming half-days to full days of repair time on every feature build, traced to shared-path fragility documented in Section 3. Dashboard stability is not a side problem — it is the critical path for Sprint 3 completion.
-**Next to ship:** Nothing currently queued for main (no open PRs against `UbiGrowth/VIBE`; latest merge is #602 at `d122e65` and the local branch `claude/update-claude-status-SEXyw` has no commits ahead of `origin/main`).
+**Active sprint:** v7.1 build — three parallel tracks: (1) recommendation mode in edge function, (2) Build tab UI at `/build` route, (3) Salesforce + Slack connectors live + production validation of one end-to-end autonomous loop. Governing doc is `NORTHSTAR_v7_1.md`. v7.0 + Addenda superseded.
+**Blocking:** Closing the autonomous loop end-to-end in production. Code path exists (autonomous_executions, processor, edge function autonomous detection) but no production-validated execution with customer-visible recommendation output. Edge Function currently routes autonomous mode to dashboard fast path — wrong shape, must route to new recommendation mode.
+**Next to ship:** Recommendation mode in edge function (target Apr 22), then Build tab internal release behind feature flag (target Apr 25). See `NORTHSTAR_v7_1.md` Section 6 for full calendar.
 **Last updated:** 2026-04-15
 
 If any of these three fields is older than one week, stop the session and ask Bill to update them before proposing any work. A stale current-position field is the most common source of sessions that propose the wrong thing confidently.
@@ -51,13 +51,13 @@ Every rule in this section exists because something broke. The reason is load-be
 **Allowed changes:** None without explicit approval. Context injection via the kernel is fine; rewriting the user's text is not.
 **Enforcement status:** Discipline only.
 
-### 2.5 Reactive Kernel completion is in scope; further v7.0 work is not
+### 2.5 v7.1 is the active spec; v7.0 and prior addenda are superseded
 
-**Rule:** The Reactive Kernel must be completed. Work on Reactive Kernel Stage 1 and its dependencies is explicitly permitted and expected as part of the current sprint sequence. However, autonomous execution features beyond Kernel completion (autonomous prompting without user action, Nango-sync-triggered executions, cross-team feed autonomous cascades, and any other v7.0 features downstream of the Kernel) remain gated on Revenue Sprint progress.
-**Why:** The Kernel is foundational infrastructure that unblocks multiple downstream sprints, including dashboard path stability. The previous "hard stop on all v7.0 work" framing was too broad and conflicted with the real need to ship the Kernel. At the same time, the original concern behind the hard stop remains valid: autonomous execution features that depend on the Kernel should not ship ahead of revenue generation.
-**Allowed now:** Reactive Kernel Stage 1 completion. Kernel-adjacent refactors. Bug fixes on the Kernel path. Instrumentation that supports Kernel observability without adding new autonomous capabilities.
-**Not allowed:** Autonomous execution features triggered by Nango sync events. Cross-team feed cascades. Autonomous skill recommendations that fire without user action. Any new autonomous-execution surface that is not required for Kernel Stage 1 completion.
-**Enforcement status:** Discipline only. Any PR that claims to be "Reactive Kernel work" must specify which Stage 1 requirement it addresses in the PR description.
+**Rule:** Work is governed by `NORTHSTAR_v7_1.md`, not v7.0 or its addenda. v7.0, Trust Layer Addendum, Addendum B, and v6.0 Addendum are archived in `/docs/archive/` for audit trail only.
+**What's in v7.1:** Three parallel tracks — recommendation mode (edge function output shape), Build tab UI (single user surface for both autonomous outputs and manual builds), connector expansion + production validation (Salesforce + Slack live, one autonomous loop demonstrated end-to-end). Target: May 9.
+**What's deferred to v7.5+:** File sharing, cross-team feed cascades, marketplace switching costs, approval workflow UI, multi-page dashboards, additional connectors beyond Salesforce + Slack, Claude Agent SDK adoption, Managed Agents adoption, sub-agent splits.
+**What's parked:** Go-to-market activities. See `GTM_PARKED.md` for the full list and restart conditions. Patents continue (Gary owns) and existing customer support continues.
+**Enforcement status:** Discipline only. Any PR that proposes work outside v7.1 scope must say so in the PR description and reference the relevant section of `NORTHSTAR_v7_1.md` Section 7 (deferred) or `GTM_PARKED.md`.
 
 ### 2.6 Repositories and branches
 
@@ -300,17 +300,25 @@ Every PR description must state which of the 8 conditions the change touches, an
 
 ## 8. What NOT to Build Right Now
 
-This section exists because sessions keep proposing plausible-looking work that is not the current priority. Each item has a reason and a gate.
+This section exists because sessions keep proposing plausible-looking work that is not the current priority. Each item has a reason and a gate. The list is updated when v7.1 progresses or when scope changes.
 
-- **Build tab / Lovable-style build surface.** Tempting because customers have asked for it. Not now because it touches the shared dashboard path that is currently in active repair (see Section 1), and because introducing a new UI surface onto a fragile shared path is exactly the shape of change that has caused the dashboard regression cycle. Gate: Sprint 3 (closed runtime loop hardening) complete, dashboard stability demonstrated for two consecutive weeks without a smoke-test failure, AND CI enforcement shipped for Sections 4.1–4.5.
+**Build tab is NOW IN SCOPE per v7.1 Track 2.** It moved out of this list on 2026-04-15. Reference: `NORTHSTAR_v7_1.md` Section 4 Track 2.
+
+Currently deferred:
+
 - **Claude Agent SDK adoption for `/jobs`.** The SDK is the right long-term answer for the agent loop, but migrating `/jobs` is a rewrite of the most important file in the backend. Gate: INDEX.TS GATE triggers an extract for unrelated reasons, or a specific capability gap forces the migration.
 - **Managed Agents adoption.** Potentially the right answer for long-horizon autonomous work and PR verification. Gate: docs read, pricing and residency and compliance answered, memo written. Do not start until memo exists.
 - **Planner / coder / verifier sub-agent split.** The severity labels exist in schema but the sub-agents don't. Do not build real sub-agents. Use phase labels instead. Gate: customer asks for separable agent inspection in writing.
-- **Approval hooks.** The doc asks for them. Do not build speculative approval infrastructure. Gate: a specific customer requirement names the approval flow.
-- **Multi-audience UI renderers.** Marketing / ops / dev views. One view with progressive disclosure is sufficient. Gate: a specific customer segment complains about the single view.
+- **Approval hooks UI.** Schema exists in Trust Layer (approval_signatures). UI does not. Gate: a specific customer requirement names the approval flow OR autonomous loop in production reveals a need for human-in-loop approval before action execution.
+- **Multi-audience UI renderers.** Marketing / ops / dev views. The Build tab v7.1 ships as one view with progressive disclosure. Gate: a specific customer segment complains about the single view after v7.1 ships.
+- **File sharing within the platform (Layer 5).** Mentioned in earlier scope discussions but deferred. Gate: v7.1 ships AND a specific customer requirement names the file-sharing use case.
+- **Cross-team feed cascades** (autonomous execution in one team triggers another team's skill). Gate: v7.1 autonomous loop proven for single-team case first.
+- **Marketplace switching-cost layer development.** Routes exist, real switching costs do not. Gate: v7.1 ships. Then evaluate whether marketplace expansion is the right Q3 priority.
 - **Custom diff engine, custom feed component, React Flow DAG viz, n8n wrapper, custom workflow engine.** All of these are available as proven libraries or are not needed at all. Gate: the library evaluation rejects all available options with specific reasons.
-- **Dispatch-phase event instrumentation** (lines 13–98 of `autonomous-processor.service.ts`). Low value, requires schema changes. Gate: post-project-resolved instrumentation proves valuable first.
+- **Dispatch-phase event instrumentation** (lines 13–98 of `autonomous-processor.service.ts`). Low value, requires schema changes. Gate: post-project-resolved instrumentation proves valuable in production first.
 - **Second event system, second run state machine, second runtime.** VIBE owns the spine. Never build a parallel system when extension is possible.
+- **Additional connectors beyond Salesforce + Slack** (GA4, Mixpanel, Snowflake, PostgreSQL, BigQuery, AWS S3). Stay as Nango stubs until v7.1 ships. Gate: v7.1 done AND specific customer requires the connector.
+- **All GTM activities listed in `GTM_PARKED.md`.** Restart conditions documented there.
 
 ---
 
@@ -332,12 +340,18 @@ This section exists because sessions keep proposing plausible-looking work that 
 Priority order. Higher = more authoritative. Lower documents are superseded by higher ones on any conflict.
 
 1. **CLAUDE.md** (this file) — session enforcement
-2. **VIBE_NorthStar_v7_0.docx** — strategic direction (Autonomous Company OS)
-3. **VIBE_NorthStar_v7_0_Trust_Layer_Addendum.docx** — Trust Layer gate
-4. **VIBE_NorthStar_v6_0_Addendum.docx** — wrapper architecture
-5. **DEPLOY_CHECKLIST.md** — blast radius gate
-6. **VIBE_Design_System_Spec.md** — Figma-quality output standard
-7. **VIBE_Revenue_Sprint_Prompts.md** — current sprint sequence
+2. **NORTHSTAR_v7_1.md** — strategic direction (Autonomous Company OS, current spec)
+3. **GTM_PARKED.md** — what's parked and restart conditions
+4. **DEPLOY_CHECKLIST.md** — blast radius gate
+5. **VIBE_Design_System_Spec.md** — Figma-quality output standard
+
+**Archived (reference only, not authoritative):**
+- `/docs/archive/VIBE_NorthStar_v7_0.docx` — superseded by v7.1
+- `/docs/archive/NORTHSTAR_V7_ADDENDUM_B.md` — superseded by v7.1
+- `/docs/archive/VIBE_NorthStar_v7_0_Trust_Layer_Addendum.docx` — Trust Layer shipped, addendum no longer active
+- `/docs/archive/VIBE_NorthStar_v6_0_Addendum.docx` — superseded by v7.1
+- `/docs/archive/NORTH_STAR.md` (v4.0 March 20) — superseded
+- `/docs/archive/VIBE_Revenue_Sprint_Prompts.md` — Revenue Sprint sequence superseded by v7.1 Track structure
 
 ---
 
@@ -369,6 +383,7 @@ Skeleton design standard: Dark theme `#0A0E17`, Space Grotesk headings, Inter bo
 | 2026-04-15 | Bill + Claude (planning session) | Full rewrite after previous file was deleted and dashboard regressions traced to guardrail absence. Reorganized rules by failure mode. Added Dashboard Fragility Map. Added explicit "What NOT to Build Right Now" section. Marked enforcement status on every gate. Added CI existence check as highest-priority automation item. |
 | 2026-04-15 | Bill + Claude (second pass) | Filled in Section 1 Current Position from repo scan (Sprint 3 — closed runtime loop hardening, dashboard path repair). Reconciled Section 2.5 — Reactive Kernel completion is in scope; further autonomous v7.0 features remain gated. Updated Section 8 Build tab gate to reflect dashboard stability as the real blocker, not "Revenue Sprints complete." |
 | 2026-04-15 | Bill + Claude (third pass) | Merged 6-rule RENDER PIPELINE SAFETY section from orphan branch `claude/claude-md-render-pipeline-rules-zuq00` (commit b9755cf, originally authored 2026-04-14 after the seven-PR firefight on PRs #596–#602). Added as Section 4.7. Updated Section 3 Dashboard Fragility Map with render pipeline row. Added render pipeline files to Section 6.2 Key Files table. Orphan branch can be deleted after this version commits to main. |
+| 2026-04-15 | Bill + Claude (fourth pass) | Aligned with NORTHSTAR_v7_1.md. Section 1 updated to v7.1 build (three parallel tracks: recommendation mode, Build tab, connector expansion). Section 2.5 rewritten — v7.1 supersedes v7.0 + addenda. Section 8 updated — Build tab moved out of "don't build" list (now in scope per Track 2), all GTM items moved to GTM_PARKED.md reference. Section 10 governing docs updated — v7.1 is the active strategic document, prior v7.0 docs archived. |
 
 ---
 
