@@ -36,7 +36,8 @@ Output ONLY this JSON, no other text before or after:
 - ONE clarifying question max (Step 1), then the data source question (Step 2). That's it — two questions maximum, ever.
 - Be conversational, not formal. Keep questions to one sentence.
 - If a file is attached below, READ IT FIRST. The data source question is already answered — skip to STEP 3.
-- CRITICAL: When ready=true, set enrichedPrompt to the user's EXACT original prompt — their first message, word for word. Do not rewrite, summarize, add context, or enhance it. The downstream system handles enrichment.`
+- CRITICAL: When ready=true, set enrichedPrompt to the user's EXACT original prompt — their first message, word for word. Do not rewrite, summarize, add context, or enhance it. The downstream system handles enrichment.
+- SAMPLE-DATA EXCEPTION (overrides the "EXACT original prompt" rule): If the user picked sample data in STEP 2 — whether or not any data connectors (HubSpot, Salesforce, etc.) are active on their team — you MUST prepend the literal sentinel "[VIBE_DATA_STATE=sample] sample data — " to the enrichedPrompt, before the user's original prompt text. This sentinel is the canonical signal the backend uses to honor the user's explicit sample choice and skip live-connector data injection. Example: user's original prompt is "show me my pipeline", user answered "sample" in STEP 2 → enrichedPrompt is "[VIBE_DATA_STATE=sample] sample data — show me my pipeline". Do not emit this sentinel when the user picks CSV/upload or live/connected data.`
 
 const APP_SYSTEM = `You are VIBE, a full-stack app builder.
 BUILD A WORKING APPLICATION. NOT a website. NOT a landing page. NOT a marketing page.
