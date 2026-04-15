@@ -291,9 +291,25 @@ export async function resolveKernelContext(userId: string, orgId: string, teamId
   // 4. Resolve uploaded data tables for this user
   const uploadedData = await resolveUploadedData(sb, userId);
 
-  // 4b. Resolve active Nango connectors + live HubSpot data for this team
-  const activeConnectors = resolvedTeamId ? await resolveActiveConnectors(resolvedTeamId) : [];
-  const hubSpotData = resolvedTeamId ? await resolveHubSpotData(resolvedTeamId) : '';
+  // 4b. Resolve active Nango connectors + live HubSpot data for this team.
+  //
+  // SAMPLE-DATA GUARD (Bug C fix): when the intake flow has captured an
+  // explicit "sample data" answer from the user, the frontend prepends the
+  // canonical sentinel `[VIBE_DATA_STATE=sample]` to enrichedPrompt (see
+  // apps/web/app/api/intake/route.ts INTAKE_SYSTEM "SAMPLE-DATA EXCEPTION").
+  // When we see that sentinel — or a bare "sample data" phrase as a legacy
+  // fallback from the no-connector intake branch — we skip both the
+  // live-connector data fetch AND the ACTIVE DATA CONNECTORS footer so the
+  // LLM builds against the skeleton's __VIBE_SAMPLE__ placeholders instead
+  // of real HubSpot deals. Connector presence is NOT an implicit "use
+  // connected data" signal — connectors just mean live data is AVAILABLE
+  // if the user wants it. Explicit user intent always wins.
+  const isSampleDataMode = !!prompt && /\[VIBE_DATA_STATE=sample\]|\bsample data\b/i.test(prompt);
+  if (isSampleDataMode) {
+    console.log(`[KERNEL] Sample-data mode detected — skipping live connector fetches for team=${resolvedTeamId}`);
+  }
+  const activeConnectors = (resolvedTeamId && !isSampleDataMode) ? await resolveActiveConnectors(resolvedTeamId) : [];
+  const hubSpotData = (resolvedTeamId && !isSampleDataMode) ? await resolveHubSpotData(resolvedTeamId) : '';
 
   // 4c. Resolve budget context for this team
   const budgetContext = resolvedTeamId ? await resolveBudgetContext(sb, resolvedTeamId) : '';
