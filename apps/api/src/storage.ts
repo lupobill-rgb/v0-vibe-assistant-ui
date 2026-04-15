@@ -27,7 +27,7 @@ export type ExecutionState =
   | 'testing'
   | 'self-healing';
 
-export type EventSeverity = 'info' | 'error' | 'success' | 'warning' | 'warn' | 'recommendation';
+export type EventSeverity = 'info' | 'error' | 'success' | 'warning' | 'warn';
 
 // ── New hierarchical types ──
 

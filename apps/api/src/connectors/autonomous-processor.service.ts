@@ -121,14 +121,10 @@ export class AutonomousProcessorService {
       return;
     }
 
-    // v7.1 Track 1 — autonomous executions default to recommendation mode, NOT dashboard.
-    // Dashboard mode is reserved for user-prompted dashboard builds. Autonomous executions
-    // produce a single JSON recommendation card (title/summary/suggested_action/reasoning/
-    // source_data_summary) that the user can accept, modify, or dismiss in the Build tab.
-    // See CLAUDE.md Sections 2.1/2.2 (dashboard path locked) and NORTHSTAR_v7_1.md Track 1.
+    // Build prompt using skill metadata so the golden template matcher routes correctly
     const teamFunction = skill.team_function || 'operations';
     const skillDesc = skill.description ? ` — ${skill.description}` : '';
-    const prompt = `Analyze the incoming ${execution.trigger_source} data for the ${skill.skill_name} skill${skillDesc} and produce a single recommendation card for the ${teamFunction} team. Ground every claim in the provided data; if the data is thin, say so.`;
+    const prompt = `Build a ${teamFunction} dashboard using the ${skill.skill_name} skill${skillDesc}. Analyze the incoming ${execution.trigger_source} data and generate the appropriate ${teamFunction} output for this team.`;
 
     const apiBase = process.env.RAILWAY_INTERNAL_URL || `http://localhost:${process.env.PORT || 3001}`;
     const jobRes = await fetch(`${apiBase}/jobs`, {
@@ -142,7 +138,7 @@ export class AutonomousProcessorService {
         prompt,
         project_id: project.id,
         conversation_id: execution.id,
-        mode: 'recommendation',
+        mode: 'dashboard',
       }),
     }).catch(err => { throw new Error(`Job API call failed: ${err.message}`); });
 
