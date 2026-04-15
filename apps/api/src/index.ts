@@ -1029,6 +1029,45 @@ async function vibeLoadData(table,filters){filters=filters||{};var url=window.__
           // All output must live in one HTML file; nav links show/hide sections via JS.
           enrichedPrompt += `\n\nNAVIGATION RULE (MANDATORY): Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files. All content must exist in a single HTML file with sections toggled by JS.`;
 
+          // ── Recommendation mode ── v7.1 Track 1
+          // Autonomous executions (and any caller passing mode: 'recommendation') get a
+          // structured JSON card, NOT a dashboard. This path is short-circuited before
+          // every fast path so it bypasses the dashboard handler entirely. The card
+          // lands in job_events (severity = 'recommendation') for the Build tab UI in
+          // Track 2 to render. Dashboard fast path is untouched — see CLAUDE.md §2.1.
+          if (mode === 'recommendation') {
+            const recCall = await edgeCall({ prompt: enrichedPrompt, mode: 'recommendation', model: resolvedModel });
+            modelCalls += 1;
+            if (!recCall.ok) {
+              await storage.logEvent(taskId, `[recommendation] edge function error ${recCall.status}: ${recCall.text.slice(0, 500)}`, 'error');
+              await storage.updateTaskState(taskId, 'failed');
+              return;
+            }
+            let recPayload: any;
+            try {
+              recPayload = JSON.parse(recCall.text);
+            } catch (e: any) {
+              await storage.logEvent(taskId, `[recommendation] invalid JSON from edge function: ${e.message}`, 'error');
+              await storage.updateTaskState(taskId, 'failed');
+              return;
+            }
+            if (recPayload?.error || !recPayload?.recommendation) {
+              await storage.logEvent(taskId, `[recommendation] edge function returned error: ${JSON.stringify(recPayload).slice(0, 500)}`, 'error');
+              await storage.updateTaskState(taskId, 'failed');
+              return;
+            }
+            const rec = recPayload.recommendation;
+            totalTokens += recPayload.usage?.total_tokens ?? 0;
+            // Persist the recommendation card to job_events — severity 'recommendation'.
+            // Frontend subscribes via Supabase realtime and renders the card in Build tab.
+            await storage.logEvent(taskId, JSON.stringify(rec), 'recommendation');
+            await storage.logEvent(taskId, `[recommendation] card produced (${totalTokens} tokens, model=${recPayload.model})`, 'success');
+            await storage.updateTaskState(taskId, 'completed');
+            if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
+            if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'recommendation', generated_output: JSON.stringify(rec), department: auditDepartment });
+            return;
+          }
+
           // ── Deterministic template path ── extracted to handlers/fast-paths.handler.ts
           if (await handleDeterministicTemplate({
             taskId, goldenMatch, org, orgName, teamName, prompt, project,
