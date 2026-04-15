@@ -691,7 +691,13 @@ export async function resolveGoldenTemplateMatch(
   // Short-prompt alias check: bypass tokenized scoring for known
   // short prompts that would otherwise fail MIN_OVERLAP threshold.
   const normalized = normalizePrompt(prompt);
-  const aliasTarget = SHORT_PROMPT_ALIASES[normalized];
+  let aliasTarget: string | undefined;
+  for (const [aliasKey, target] of Object.entries(SHORT_PROMPT_ALIASES)) {
+    if (normalized.includes(aliasKey)) {
+      aliasTarget = target;
+      break;
+    }
+  }
   if (aliasTarget) {
     const { data: aliased } = await sb
       .from('skill_registry')
