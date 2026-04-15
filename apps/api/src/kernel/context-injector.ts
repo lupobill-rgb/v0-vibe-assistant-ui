@@ -651,6 +651,24 @@ function scoreSkill(skill: { skill_name: string; description: string | null }, p
   return score;
 }
 
+// Short-prompt aliases: prompts that tokenize to a single significant
+// token after stop-word filtering, where the matcher's MIN_OVERLAP=2
+// threshold blocks the match. Maps normalized prompt → canonical
+// skill_name. Per CLAUDE.md Section 4.7 and Section 2.1, this is a
+// deterministic routing addition that does not modify scoring logic.
+const SHORT_PROMPT_ALIASES: Record<string, string> = {
+  'show me my pipeline': 'pipeline-review',
+  'my pipeline': 'pipeline-review',
+  'pipeline review': 'pipeline-review',
+  'sales pipeline': 'pipeline-review',
+  'pipeline health': 'pipeline-review',
+  'show me my deals': 'pipeline-review',
+};
+
+function normalizePrompt(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Checks whether the user prompt closely matches a golden template in skill_registry.
  * Searches ALL active skills (cross-department). Uses bidirectional keyword matching
@@ -669,6 +687,31 @@ export async function resolveGoldenTemplateMatch(
   if (!prompt || prompt.trim().length < 5) return NO_MATCH;
 
   const sb = getPlatformSupabaseClient();
+
+  // Short-prompt alias check: bypass tokenized scoring for known
+  // short prompts that would otherwise fail MIN_OVERLAP threshold.
+  const normalized = normalizePrompt(prompt);
+  const aliasTarget = SHORT_PROMPT_ALIASES[normalized];
+  if (aliasTarget) {
+    const { data: aliased } = await sb
+      .from('skill_registry')
+      .select('skill_name, description, content, html_skeleton, sample_data')
+      .eq('skill_name', aliasTarget)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (aliased) {
+      console.log(`[KERNEL] Golden template alias match: "${aliased.skill_name}" (from "${normalized}")`);
+      return {
+        matched: true,
+        skillName: aliased.skill_name,
+        content: (aliased as any).content ?? '',
+        htmlSkeleton: (aliased as any).html_skeleton ?? null,
+        sampleData: (aliased as any).sample_data ?? null,
+      };
+    }
+    console.warn(`[KERNEL] SHORT_PROMPT_ALIASES target "${aliasTarget}" not found in skill_registry`);
+  }
+
   const { data: skills, error } = await sb
     .from('skill_registry')
     .select('skill_name, description, content, html_skeleton, sample_data')
