@@ -319,6 +319,7 @@ Currently deferred:
 - **Second event system, second run state machine, second runtime.** VIBE owns the spine. Never build a parallel system when extension is possible.
 - **Additional connectors beyond Salesforce + Slack** (GA4, Mixpanel, Snowflake, PostgreSQL, BigQuery, AWS S3). Stay as Nango stubs until v7.1 ships. Gate: v7.1 done AND specific customer requires the connector.
 - **All GTM activities listed in `GTM_PARKED.md`.** Restart conditions documented there.
+- **Edge function (`supabase/functions/generate-diff/index.ts`) extract into `modes/`.** File at ~1500 lines post-Track 1, exceeding INDEX.TS GATE (Section 7 rule 13). Gate waived once for Track 1 on 2026-04-15 (PR #605) to hit the Apr 22 target and avoid churning the locked dashboard prompt path (Section 2.2). Gate: v7.1 ships, then extract **before any further mode additions**. Proposed shape: `supabase/functions/generate-diff/modes/{dashboard,recommendation,plan,app,page,shared}.ts` with `index.ts` as a thin dispatcher. Estimated 2–3 hr of pure refactor. The refactor PR must run the smoke test (Section 4.2) since this file is in the Dashboard Fragility Map.
 
 ---
 

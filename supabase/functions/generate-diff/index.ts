@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Edge Function version — bump on every deploy
-const EDGE_FUNCTION_VERSION = "2.6.0"; // 2026-03-30 — Remove all SAMPLE_DATA fallbacks; dashboards show empty state when vibeLoadData returns []
+const EDGE_FUNCTION_VERSION = "2.7.0"; // 2026-04-15 — v7.1 Track 1: add recommendation mode (JSON card output for autonomous executions)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1123,6 +1123,30 @@ function getGuidedNextSteps(prompt: string, mode: string): string[] {
   return [];
 }
 
+// ── Recommendation mode — v7.1 Track 1 ──────────────────────────────
+// Recommendation mode is the output shape for autonomous executions. It
+// produces a structured JSON recommendation card, NOT an HTML dashboard.
+// This is its own path: VIBE_SYSTEM_RULES and DASHBOARD_SYSTEM do not apply.
+// See CLAUDE.md Section 2.2 (dashboard path is locked) and NORTHSTAR_v7_1.md Track 1.
+const RECOMMENDATION_SYSTEM = `You are VIBE's recommendation engine. An autonomous execution has gathered data and you must emit a single structured recommendation card for a human operator to accept, modify, or dismiss.
+
+OUTPUT CONTRACT — non-negotiable:
+Return ONLY a valid JSON object matching this exact shape, with no markdown fences, no prose, no explanation:
+{
+  "title": string,                    // <= 80 chars, action-oriented headline
+  "summary": string,                  // 1-3 sentences, plain English, no jargon
+  "suggested_action": string,         // the concrete next step the user should take
+  "reasoning": string,                // 2-4 sentences explaining WHY from the source data
+  "source_data_summary": string       // 1-2 sentences describing what data this was derived from
+}
+
+RULES:
+- Every field is required. No nulls, no empty strings.
+- Do NOT produce HTML. Do NOT produce a dashboard. Do NOT produce a diff.
+- Do NOT wrap in code fences. Raw JSON only, starting with { and ending with }.
+- Base every claim on the source data in the user message. If data is thin, say so in source_data_summary — do not fabricate metrics.
+- Tone: direct, specific, operator-facing. No marketing voice.`;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1222,6 +1246,10 @@ The dashboard must look fully populated and impressive on first load.`;
     } else if (mode === "app") {
       baseSystemMsg = APP_SYSTEM;
       defaultMaxTokens = 16384;
+    } else if (mode === "recommendation") {
+      // v7.1 Track 1 — standalone path, no vibeRules stack, JSON output
+      baseSystemMsg = RECOMMENDATION_SYSTEM + (context ? "\n\nSource data:\n" + context : "");
+      defaultMaxTokens = 2048;
     } else {
       // Default: diff generation mode
       baseSystemMsg = "You are VIBE, an AI website builder. Return ONLY a valid unified diff. No markdown fences, no explanation." +
@@ -1243,7 +1271,11 @@ The dashboard must look fully populated and impressive on first load.`;
     }
     const vibeRules = buildVibeSystemRules(team_name, org_name);
     const prefixBlock = system_prefix ? system_prefix + "\n\n---\n\n" : "";
-    const systemMsg = prefixBlock + vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
+    // Recommendation mode runs standalone — no vibeRules, no color block, no supabase helpers.
+    // Its output is structured JSON, not HTML, so none of those layers apply.
+    const systemMsg = mode === "recommendation"
+      ? baseSystemMsg
+      : prefixBlock + vibeRules + "\n" + baseSystemMsg + colorInjection + supabaseBlock;
     const resolvedMaxTokens = max_tokens || defaultMaxTokens;
 
     // Log token budget usage for monitoring (1 token ≈ 4 chars)
@@ -1376,6 +1408,46 @@ Include at least 3 charts (bar, line, doughnut) and 4-6 KPI cards — all fully 
           result.diff = repaired;
         }
       }
+    }
+
+    // Recommendation mode — parse JSON and return under `recommendation` key
+    if (mode === "recommendation") {
+      let recommendation: Record<string, string> | null = null;
+      const raw = (result.diff || "").trim();
+      // Strip code fences if the model added them despite instructions
+      const fenced = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+      const jsonText = fenced ? fenced[1] : raw;
+      try {
+        recommendation = JSON.parse(jsonText);
+      } catch (e) {
+        console.warn(`[recommendation] JSON parse failed: ${e.message}. Raw: ${raw.slice(0, 200)}`);
+      }
+      const required = ["title", "summary", "suggested_action", "reasoning", "source_data_summary"];
+      const missing = recommendation ? required.filter((k) => !recommendation![k]) : required;
+      if (!recommendation || missing.length > 0) {
+        return new Response(
+          JSON.stringify({
+            error: "Recommendation output invalid",
+            missing,
+            raw: raw.slice(0, 500),
+            model: usedModel,
+            version: EDGE_FUNCTION_VERSION,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          recommendation,
+          usage: result.usage,
+          model: usedModel,
+          mode: "recommendation",
+          fallback_used: fallbackUsed,
+          original_model: fallbackUsed ? originalModel : undefined,
+          version: EDGE_FUNCTION_VERSION,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(
