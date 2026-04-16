@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import { Calendar, Download, FileSpreadsheet, Link2, Maximize2, MessageSquare } from "lucide-react"
+import { Calendar, Code2, Download, FileSpreadsheet, Link2, Maximize2, MessageSquare } from "lucide-react"
 import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCards } from "@/components/section-cards"
@@ -47,6 +47,8 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
   const [expandedKpi, setExpandedKpi] = React.useState<KPICard | null>(null)
   const [copiedLink, setCopiedLink] = React.useState(false)
   const [globalDateRange, setGlobalDateRange] = React.useState("all")
+  const [showEmbed, setShowEmbed] = React.useState(false)
+  const [copiedEmbed, setCopiedEmbed] = React.useState(false)
 
   if (!data) return null
 
@@ -153,6 +155,16 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               PPTX
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => setShowEmbed(true)}
+              title="Get embed code"
+            >
+              <Code2 className="w-3.5 h-3.5" />
+              Embed
             </Button>
             <Badge
               variant="outline"
@@ -342,6 +354,39 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Embed Code Dialog ── */}
+      <Dialog open={showEmbed} onOpenChange={setShowEmbed}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Embed this dashboard</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Copy the code below to embed this dashboard in your website or app.
+            </p>
+            <div className="relative">
+              <pre className="bg-muted rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">
+                {`<iframe\n  src="${typeof window !== 'undefined' ? window.location.origin : ''}/embed/${typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : ''}"\n  width="100%"\n  height="800"\n  frameborder="0"\n  style="border: none; border-radius: 8px;"\n></iframe>`}
+              </pre>
+            </div>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                const jobId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : ''
+                const code = `<iframe src="${window.location.origin}/embed/${jobId}" width="100%" height="800" frameborder="0" style="border: none; border-radius: 8px;"></iframe>`
+                navigator.clipboard.writeText(code)
+                setCopiedEmbed(true)
+                setTimeout(() => setCopiedEmbed(false), 2000)
+              }}
+            >
+              <Code2 className="w-4 h-4" />
+              {copiedEmbed ? "Copied!" : "Copy embed code"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
