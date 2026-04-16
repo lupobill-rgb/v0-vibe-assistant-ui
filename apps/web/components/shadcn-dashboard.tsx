@@ -11,7 +11,23 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import { Bookmark, Calendar, Code2, Copy, Download, FileSpreadsheet, Link2, Maximize2, MessageSquare, MoreHorizontal, Pencil, Check, Loader2 } from "lucide-react"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { Bookmark, Calendar, Code2, Copy, Download, FileSpreadsheet, GripVertical, Link2, Maximize2, MessageSquare, MoreHorizontal, Pencil, Check, Loader2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
@@ -63,6 +79,34 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
   const [showRename, setShowRename] = React.useState(false)
   const [renameTo, setRenameTo] = React.useState("")
   const { currentTeam } = useTeam()
+
+  // Build sortable section IDs from dashboard data
+  const buildSectionIds = React.useCallback(() => {
+    if (!data) return []
+    const ids: string[] = ['kpis']
+    data.charts?.forEach((c) => ids.push(`chart-${c.id}`))
+    if (data.alerts?.length) ids.push('alerts')
+    data.tables?.forEach((t) => ids.push(`table-${t.id}`))
+    return ids
+  }, [data])
+  const [sectionOrder, setSectionOrder] = React.useState<string[]>([])
+  React.useEffect(() => { setSectionOrder(buildSectionIds()) }, [buildSectionIds])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setSectionOrder((prev) => {
+        const oldIndex = prev.indexOf(String(active.id))
+        const newIndex = prev.indexOf(String(over.id))
+        return arrayMove(prev, oldIndex, newIndex)
+      })
+    }
+  }
 
   const saveDashboard = async (name?: string) => {
     if (!data || !currentTeam?.id || saving) return
@@ -263,77 +307,68 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
         </ToggleGroup>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content — Drag-and-drop sortable sections */}
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          {/* KPI Cards */}
-          <SectionCards
-            kpis={data.kpis}
-            onCardClick={(kpi) => setExpandedKpi(kpi)}
-          />
-
-          {/* Charts */}
-          {data.charts?.map((chart) => (
-            <div key={chart.id} className="px-4 lg:px-6 group relative">
-              <ChartAreaInteractive chart={chart} globalTimeRange={globalDateRange} />
-              <div className="absolute top-3 right-7 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0"
-                  onClick={() => setExpandedChart(chart)}
-                  title="Expand"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </Button>
-                {onDrillDown && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => onDrillDown(`Tell me more about "${chart.title}". What are the key insights and trends?`)}
-                    title="Ask about this chart"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* Alerts */}
-          {data.alerts && data.alerts.length > 0 && (
-            <div className="flex flex-col gap-2 px-4 lg:px-6">
-              {data.alerts.map((alert) => (
-                <Card
-                  key={alert.id}
-                  className={
-                    alert.severity === "critical"
-                      ? "border-destructive/50"
-                      : alert.severity === "warning"
-                        ? "border-yellow-500/50"
-                        : "border-border"
-                  }
-                >
-                  <CardContent className="flex items-center gap-3 py-3">
-                    <Badge
-                      variant={alert.severity === "critical" ? "destructive" : "outline"}
-                    >
-                      {alert.severity}
-                    </Badge>
-                    <span className="text-sm">{alert.message}</span>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
-          {/* Data Tables */}
-          {data.tables?.map((table) => (
-            <div key={table.id} className="px-4 lg:px-6">
-              <DashboardDataTable table={table} onDrillDown={onDrillDown} />
-            </div>
-          ))}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+              {sectionOrder.map((sectionId) => {
+                if (sectionId === 'kpis') {
+                  return (
+                    <SortableSection key="kpis" id="kpis">
+                      <SectionCards kpis={data.kpis} onCardClick={(kpi) => setExpandedKpi(kpi)} />
+                    </SortableSection>
+                  )
+                }
+                if (sectionId.startsWith('chart-')) {
+                  const chartId = sectionId.replace('chart-', '')
+                  const chart = data.charts?.find((c) => c.id === chartId)
+                  if (!chart) return null
+                  return (
+                    <SortableSection key={sectionId} id={sectionId}>
+                      <div className="px-4 lg:px-6 group relative">
+                        <ChartAreaInteractive chart={chart} globalTimeRange={globalDateRange} />
+                        <div className="absolute top-3 right-7 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setExpandedChart(chart)} title="Expand">
+                            <Maximize2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </SortableSection>
+                  )
+                }
+                if (sectionId === 'alerts' && data.alerts?.length) {
+                  return (
+                    <SortableSection key="alerts" id="alerts">
+                      <div className="flex flex-col gap-2 px-4 lg:px-6">
+                        {data.alerts.map((alert) => (
+                          <Card key={alert.id} className={alert.severity === "critical" ? "border-destructive/50" : alert.severity === "warning" ? "border-yellow-500/50" : "border-border"}>
+                            <CardContent className="flex items-center gap-3 py-3">
+                              <Badge variant={alert.severity === "critical" ? "destructive" : "outline"}>{alert.severity}</Badge>
+                              <span className="text-sm">{alert.message}</span>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </SortableSection>
+                  )
+                }
+                if (sectionId.startsWith('table-')) {
+                  const tableId = sectionId.replace('table-', '')
+                  const table = data.tables?.find((t) => t.id === tableId)
+                  if (!table) return null
+                  return (
+                    <SortableSection key={sectionId} id={sectionId}>
+                      <div className="px-4 lg:px-6">
+                        <DashboardDataTable table={table} onDrillDown={onDrillDown} />
+                      </div>
+                    </SortableSection>
+                  )
+                }
+                return null
+              })}
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
 
@@ -489,6 +524,35 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * SortableSection — drag handle + sortable wrapper for dashboard sections
+ * ────────────────────────────────────────────────────────────────── */
+
+function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: 'relative' as const,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="group/drag">
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute left-1 top-1/2 -translate-y-1/2 z-10 cursor-grab active:cursor-grabbing opacity-0 group-hover/drag:opacity-60 transition-opacity p-1 rounded hover:bg-muted"
+        title="Drag to reorder"
+      >
+        <GripVertical className="w-4 h-4 text-muted-foreground" />
+      </div>
+      {children}
     </div>
   )
 }
