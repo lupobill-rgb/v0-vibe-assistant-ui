@@ -106,6 +106,22 @@ interface PageData { name: string; filename: string; html: string }
 
 function parseDiff(raw: string): PageData[] {
   const trimmed = raw.trim()
+  // Dashboard JSON objects are handled by tryParseDashboardData / ShadcnDashboard,
+  // not by the HTML preview iframe. Return empty so raw JSON is never rendered as text.
+  if (trimmed.startsWith('{')) {
+    try {
+      const obj = JSON.parse(trimmed)
+      if (obj && typeof obj === 'object' && 'dashboard_data' in obj) return []
+    } catch {}
+  }
+  // Also check for fenced dashboard JSON
+  const dashFence = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/)
+  if (dashFence) {
+    try {
+      const obj = JSON.parse(dashFence[1].trim())
+      if (obj && typeof obj === 'object' && 'dashboard_data' in obj) return []
+    } catch {}
+  }
   // Try JSON array first (multi-page)
   if (trimmed.startsWith('[')) {
     try {
@@ -215,10 +231,18 @@ function buildPreviewHtml(pages: PageData[], activeFile: string, teamId?: string
 
 function tryParseDashboardData(raw: string | null): DashboardData | null {
   if (!raw) return null
+  let text = raw.trim()
+  // Strip markdown fences that LLMs sometimes wrap around JSON output
+  const fenceMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/)
+  if (fenceMatch) text = fenceMatch[1].trim()
   try {
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object' && 'dashboard_data' in parsed) {
-      return parsed.dashboard_data as DashboardData
+    let parsed: unknown = JSON.parse(text)
+    // Handle double-stringified JSON (edge function sometimes wraps in extra quotes)
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed) } catch {}
+    }
+    if (parsed && typeof parsed === 'object' && 'dashboard_data' in (parsed as Record<string, unknown>)) {
+      return (parsed as Record<string, unknown>).dashboard_data as DashboardData
     }
     return null
   } catch {
