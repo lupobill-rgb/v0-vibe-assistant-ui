@@ -11,7 +11,9 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import { Calendar, Code2, Download, FileSpreadsheet, Link2, Maximize2, MessageSquare } from "lucide-react"
+import { Bookmark, Calendar, Code2, Copy, Download, FileSpreadsheet, Link2, Maximize2, MessageSquare, MoreHorizontal, Pencil, Check, Loader2 } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { useTeam } from "@/contexts/TeamContext"
 import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCards } from "@/components/section-cards"
@@ -36,6 +38,13 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 
 interface ShadcnDashboardProps {
   data?: DashboardData
@@ -49,6 +58,34 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
   const [globalDateRange, setGlobalDateRange] = React.useState("all")
   const [showEmbed, setShowEmbed] = React.useState(false)
   const [copiedEmbed, setCopiedEmbed] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [saved, setSaved] = React.useState(false)
+  const [showRename, setShowRename] = React.useState(false)
+  const [renameTo, setRenameTo] = React.useState("")
+  const { currentTeam } = useTeam()
+
+  const saveDashboard = async (name?: string) => {
+    if (!data || !currentTeam?.id || saving) return
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const jobId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : undefined
+    await supabase.from('saved_dashboards').insert({
+      team_id: currentTeam.id,
+      created_by: user?.id,
+      name: name || data.meta.title,
+      description: data.meta.subtitle || null,
+      dashboard_data: data,
+      source_job_id: jobId || null,
+    })
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const duplicateDashboard = async () => {
+    if (!data) return
+    await saveDashboard(data.meta.title + ' (Copy)')
+  }
 
   if (!data) return null
 
@@ -166,6 +203,27 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               <Code2 className="w-3.5 h-3.5" />
               Embed
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => saveDashboard()} disabled={saving}>
+                  {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : saved ? <Check className="w-3.5 h-3.5 mr-2" /> : <Bookmark className="w-3.5 h-3.5 mr-2" />}
+                  {saved ? 'Saved!' : 'Save Dashboard'}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => duplicateDashboard()}>
+                  <Copy className="w-3.5 h-3.5 mr-2" />
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setRenameTo(data.meta.title); setShowRename(true) }}>
+                  <Pencil className="w-3.5 h-3.5 mr-2" />
+                  Save As...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Badge
               variant="outline"
               className={`text-xs ${
@@ -386,6 +444,47 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               <Code2 className="w-4 h-4" />
               {copiedEmbed ? "Copied!" : "Copy embed code"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Save As / Rename Dialog ── */}
+      <Dialog open={showRename} onOpenChange={setShowRename}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Save Dashboard As</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 pt-2">
+            <Input
+              value={renameTo}
+              onChange={(e) => setRenameTo(e.target.value)}
+              placeholder="Dashboard name"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && renameTo.trim()) {
+                  saveDashboard(renameTo.trim())
+                  setShowRename(false)
+                }
+              }}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowRename(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="gap-2 bg-gradient-to-r from-[#00E5A0] to-[#7B61FF] text-white border-0"
+                onClick={() => {
+                  if (renameTo.trim()) {
+                    saveDashboard(renameTo.trim())
+                    setShowRename(false)
+                  }
+                }}
+                disabled={!renameTo.trim() || saving}
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5" />}
+                Save
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
