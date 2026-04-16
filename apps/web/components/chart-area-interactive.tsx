@@ -99,33 +99,52 @@ export function ChartAreaInteractive({ chart, globalTimeRange }: ChartAreaIntera
     }
   })
 
-  // Detect time-series vs categorical data
-  const isTimeSeries = chart.data.every((d) => {
+  // Detect time-series: actual dates (2024-01-15) or month names (January, Jan)
+  const MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december','jan','feb','mar','apr','jun','jul','aug','sep','oct','nov','dec']
+  const isDateSeries = chart.data.every((d) => {
     const val = String(d[xKey] ?? "")
     return !isNaN(Date.parse(val)) && val.length >= 8
   })
+  const isMonthSeries = !isDateSeries && chart.data.every((d) => {
+    const val = String(d[xKey] ?? "").toLowerCase().replace(/\s.*/, '')
+    return MONTH_NAMES.includes(val)
+  })
+  const isOrderedSeries = isDateSeries || isMonthSeries
+  // Also filter sequential data (Week 1, Q1 2025, Apr 1, etc.) by count
+  const hasMultiplePoints = chart.data.length > 3
 
   let filteredData = chart.data
-  if (isTimeSeries && timeRange !== "all") {
-    const dates = chart.data.map((d) => new Date(String(d[xKey])).getTime())
-    const maxDate = Math.max(...dates)
-    let cutoff: number
-    if (timeRange === "ytd") {
-      cutoff = new Date(new Date().getFullYear(), 0, 1).getTime()
+  if (timeRange !== "all" && (isOrderedSeries || hasMultiplePoints)) {
+    if (isDateSeries) {
+      const dates = chart.data.map((d) => new Date(String(d[xKey])).getTime())
+      const maxDate = Math.max(...dates)
+      let cutoff: number
+      if (timeRange === "ytd") {
+        cutoff = new Date(new Date().getFullYear(), 0, 1).getTime()
+      } else {
+        const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
+        cutoff = maxDate - days * 86400000
+      }
+      filteredData = chart.data.filter(
+        (d) => new Date(String(d[xKey])).getTime() >= cutoff
+      )
     } else {
-      const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
-      cutoff = maxDate - days * 86400000
+      // For month names and sequential data: slice by count from the end
+      const total = chart.data.length
+      const keepCount = timeRange === "7d" ? Math.min(2, total)
+        : timeRange === "30d" ? Math.min(3, total)
+        : timeRange === "90d" ? Math.min(6, total)
+        : timeRange === "ytd" ? Math.min(Math.ceil(total * 0.75), total)
+        : total
+      filteredData = chart.data.slice(total - keepCount)
     }
-    filteredData = chart.data.filter(
-      (d) => new Date(String(d[xKey])).getTime() >= cutoff
-    )
   }
 
   const chartType = chart.type ?? "area"
-  const showTimeFilter = isTimeSeries
+  const showTimeFilter = isOrderedSeries || hasMultiplePoints
 
   const formatXTick = (value: string) => {
-    if (!isTimeSeries) return String(value)
+    if (!isDateSeries) return String(value)
     const date = new Date(value)
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   }
