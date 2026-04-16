@@ -37,20 +37,30 @@ export function ShadcnDashboard({ data }: ShadcnDashboardProps) {
   return (
     <div className="flex flex-1 flex-col">
       {/* Dashboard Header */}
-      <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear">
-        <div className="flex w-full items-center gap-2 px-4 lg:px-6">
-          <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
-          <h1 className="text-base font-medium">{data.meta.title}</h1>
-          {data.meta.subtitle && (
-            <span className="text-sm text-muted-foreground hidden sm:inline">
-              {data.meta.subtitle}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              {data.meta.data_source === "connected" ? "Live Data" : "Sample Data"}
-            </Badge>
+      <header className="flex h-14 shrink-0 items-center border-b bg-card/50">
+        <div className="flex w-full items-center justify-between px-4 lg:px-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-6 w-1 rounded-full bg-gradient-to-b from-[#00E5A0] to-[#7B61FF] shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold truncate">{data.meta.title}</h1>
+              {data.meta.subtitle && (
+                <p className="text-xs text-muted-foreground truncate">{data.meta.subtitle}</p>
+              )}
+            </div>
           </div>
+          <Badge
+            variant="outline"
+            className={`text-xs shrink-0 ${
+              data.meta.data_source === "connected"
+                ? "border-emerald-500/50 text-emerald-400"
+                : "border-muted-foreground/30 text-muted-foreground"
+            }`}
+          >
+            <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${
+              data.meta.data_source === "connected" ? "bg-emerald-400" : "bg-muted-foreground"
+            }`} />
+            {data.meta.data_source === "connected" ? "Live" : "Sample Data"}
+          </Badge>
         </div>
       </header>
 

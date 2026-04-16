@@ -42,13 +42,24 @@ import {
 
 import type { ChartBlock } from "@/types/dashboard"
 
+// Brand-aligned color palette: primary → accent → chart spectrum
 const SERIES_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
+  "#00E5A0", // Vibe Core green
+  "#00B4D8", // Signal cyan
+  "#7B61FF", // Autonomy violet
+  "#F59E0B", // Warm amber
+  "#EC4899", // Pink
 ]
+
+function formatCompactNumber(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(0)}K`
+  return String(value)
+}
+
+function formatFullNumber(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value)
+}
 
 interface ChartAreaInteractiveProps {
   chart?: ChartBlock
@@ -80,7 +91,7 @@ export function ChartAreaInteractive({ chart }: ChartAreaInteractiveProps) {
     }
   })
 
-  // Use chart data directly — no date filtering for non-time-series data
+  // Detect time-series vs categorical data
   const isTimeSeries = chart.data.every((d) => {
     const val = String(d[xKey] ?? "")
     return !isNaN(Date.parse(val)) && val.length >= 8
@@ -104,6 +115,28 @@ export function ChartAreaInteractive({ chart }: ChartAreaInteractiveProps) {
     if (!isTimeSeries) return String(value)
     const date = new Date(value)
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  }
+
+  const formatYTick = (value: number) => formatCompactNumber(value)
+
+  // Shared axis props
+  const xAxisProps = {
+    dataKey: xKey,
+    tickLine: false as const,
+    axisLine: false as const,
+    tickMargin: 8,
+    minTickGap: 32,
+    tickFormatter: formatXTick,
+    className: "text-xs fill-muted-foreground",
+  }
+
+  const yAxisProps = {
+    tickLine: false as const,
+    axisLine: false as const,
+    tickMargin: 8,
+    tickFormatter: formatYTick,
+    width: 60,
+    className: "text-xs fill-muted-foreground",
   }
 
   return (
@@ -159,57 +192,63 @@ export function ChartAreaInteractive({ chart }: ChartAreaInteractiveProps) {
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         <ChartContainer
           config={chartConfig}
-          className="aspect-auto h-[250px] w-full"
+          className="aspect-auto h-[280px] w-full"
         >
           {chartType === "bar" ? (
-            <BarChart data={filteredData}>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey={xKey}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={32}
-                tickFormatter={formatXTick}
-              />
-              <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+            <BarChart data={filteredData} barCategoryGap="20%">
+              <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/30" />
+              <XAxis {...xAxisProps} />
+              <YAxis {...yAxisProps} />
               <ChartTooltip
-                cursor={false}
-                content={<ChartTooltipContent indicator="dot" />}
+                cursor={{ fill: "var(--muted)", opacity: 0.3 }}
+                content={
+                  <ChartTooltipContent
+                    indicator="dot"
+                    formatter={(value) => formatFullNumber(Number(value))}
+                  />
+                }
               />
+              {yKeys.map((key, i) => (
+                <defs key={`def-${key}`}>
+                  <linearGradient id={`bar-${key}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={SERIES_COLORS[i % SERIES_COLORS.length]} stopOpacity={1} />
+                    <stop offset="100%" stopColor={SERIES_COLORS[i % SERIES_COLORS.length]} stopOpacity={0.7} />
+                  </linearGradient>
+                </defs>
+              ))}
               {yKeys.map((key, i) => (
                 <Bar
                   key={key}
                   dataKey={key}
-                  fill={SERIES_COLORS[i % SERIES_COLORS.length]}
-                  radius={[4, 4, 0, 0]}
+                  fill={`url(#bar-${key})`}
+                  radius={[6, 6, 0, 0]}
+                  maxBarSize={64}
                 />
               ))}
             </BarChart>
           ) : chartType === "line" ? (
             <LineChart data={filteredData}>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey={xKey}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={32}
-                tickFormatter={formatXTick}
-              />
-              <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/30" />
+              <XAxis {...xAxisProps} />
+              <YAxis {...yAxisProps} />
               <ChartTooltip
                 cursor={false}
-                content={<ChartTooltipContent indicator="dot" />}
+                content={
+                  <ChartTooltipContent
+                    indicator="dot"
+                    formatter={(value) => formatFullNumber(Number(value))}
+                  />
+                }
               />
               {yKeys.map((key, i) => (
                 <Line
                   key={key}
                   dataKey={key}
-                  type="natural"
+                  type="monotone"
                   stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                  strokeWidth={2}
+                  strokeWidth={2.5}
                   dot={false}
+                  activeDot={{ r: 5, strokeWidth: 2, fill: "var(--background)" }}
                 />
               ))}
             </LineChart>
@@ -218,33 +257,31 @@ export function ChartAreaInteractive({ chart }: ChartAreaInteractiveProps) {
               <defs>
                 {yKeys.map((key, i) => (
                   <linearGradient key={key} id={`fill-${key}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={SERIES_COLORS[i % SERIES_COLORS.length]} stopOpacity={0.8} />
-                    <stop offset="95%" stopColor={SERIES_COLORS[i % SERIES_COLORS.length]} stopOpacity={0.1} />
+                    <stop offset="5%" stopColor={SERIES_COLORS[i % SERIES_COLORS.length]} stopOpacity={0.6} />
+                    <stop offset="95%" stopColor={SERIES_COLORS[i % SERIES_COLORS.length]} stopOpacity={0.05} />
                   </linearGradient>
                 ))}
               </defs>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey={xKey}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={32}
-                tickFormatter={formatXTick}
-              />
-              <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/30" />
+              <XAxis {...xAxisProps} />
+              <YAxis {...yAxisProps} />
               <ChartTooltip
                 cursor={false}
-                content={<ChartTooltipContent indicator="dot" />}
+                content={
+                  <ChartTooltipContent
+                    indicator="dot"
+                    formatter={(value) => formatFullNumber(Number(value))}
+                  />
+                }
               />
               {yKeys.map((key, i) => (
                 <Area
                   key={key}
                   dataKey={key}
-                  type="natural"
+                  type="monotone"
                   fill={`url(#fill-${key})`}
                   stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                  stackId="a"
+                  strokeWidth={2.5}
                 />
               ))}
             </AreaChart>
