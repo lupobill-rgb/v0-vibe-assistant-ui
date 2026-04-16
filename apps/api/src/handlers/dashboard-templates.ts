@@ -12,6 +12,7 @@
  */
 
 import { storage } from '../storage';
+import { getPlatformSupabaseClient } from '../supabase/client';
 
 interface DashboardTemplate {
   /** Unique identifier */
@@ -411,8 +412,45 @@ export async function handleDashboardTemplate(params: DashboardTemplateParams): 
   await storage.logEvent(taskId, `Dashboard template matched: ${template.id} (zero LLM calls)`, 'info');
   await storage.updateTaskState(taskId, 'building');
 
-  // Update generated_at to current time
-  const data = { ...template.data, meta: { ...template.data.meta, generated_at: new Date().toISOString() } };
+  // Inject brand tokens from org into the theme
+  let brandTheme: Record<string, string | undefined> = {};
+  if (org?.id) {
+    try {
+      const { data: brand } = await getPlatformSupabaseClient()
+        .from('brand_tokens')
+        .select('company_name, primary_color, logo_url, bg_mode')
+        .eq('org_id', org.id)
+        .limit(1)
+        .single();
+      if (brand) {
+        brandTheme = {
+          companyName: brand.company_name ?? undefined,
+          primaryColor: brand.primary_color ?? undefined,
+          logoUrl: brand.logo_url ?? undefined,
+          mode: brand.bg_mode ?? undefined,
+        };
+      }
+    } catch {
+      // No brand tokens — use template defaults
+    }
+  }
+
+  // Merge brand tokens into template data
+  const meta = {
+    ...template.data.meta,
+    generated_at: new Date().toISOString(),
+    theme: {
+      mode: (brandTheme.mode as 'light' | 'dark' | 'system') ?? 'dark',
+      primaryColor: brandTheme.primaryColor ?? undefined,
+      logoUrl: brandTheme.logoUrl ?? undefined,
+      companyName: brandTheme.companyName ?? undefined,
+    },
+  };
+  // Override title with brand company if available
+  if (brandTheme.companyName) {
+    meta.title = `${brandTheme.companyName} — ${template.data.meta.title}`;
+  }
+  const data = { ...template.data, meta };
 
   // Store as JSON — tryParseDashboardData on the frontend will detect meta+kpis
   await storage.setTaskDiff(taskId, JSON.stringify(data));

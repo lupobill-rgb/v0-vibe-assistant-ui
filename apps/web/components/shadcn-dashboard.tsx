@@ -34,17 +34,68 @@ interface ShadcnDashboardProps {
 export function ShadcnDashboard({ data }: ShadcnDashboardProps) {
   if (!data) return null
 
+  const theme = data.meta.theme
+  const isLight = theme?.mode === 'light'
+
+  // Build CSS variable overrides from brand theme
+  const themeStyles: React.CSSProperties & Record<string, string> = {}
+  if (theme?.primaryColor) {
+    themeStyles['--primary'] = theme.primaryColor
+    themeStyles['--ring'] = theme.primaryColor
+  }
+  if (theme?.accentColor) {
+    themeStyles['--accent'] = theme.accentColor
+  }
+  if (theme?.backgroundColor) {
+    themeStyles['--background'] = theme.backgroundColor
+    themeStyles['--card'] = theme.backgroundColor
+  }
+  if (theme?.foregroundColor) {
+    themeStyles['--foreground'] = theme.foregroundColor
+    themeStyles['--card-foreground'] = theme.foregroundColor
+  }
+
+  // Light mode overrides — clean white/gray palette
+  if (isLight) {
+    if (!theme?.backgroundColor) {
+      themeStyles['--background'] = '#ffffff'
+      themeStyles['--card'] = '#ffffff'
+      themeStyles['--popover'] = '#ffffff'
+    }
+    if (!theme?.foregroundColor) {
+      themeStyles['--foreground'] = '#0f172a'
+      themeStyles['--card-foreground'] = '#0f172a'
+      themeStyles['--popover-foreground'] = '#0f172a'
+    }
+    themeStyles['--muted'] = '#f1f5f9'
+    themeStyles['--muted-foreground'] = '#64748b'
+    themeStyles['--border'] = '#e2e8f0'
+    themeStyles['--input'] = '#e2e8f0'
+    themeStyles['--secondary'] = '#f1f5f9'
+    themeStyles['--secondary-foreground'] = '#0f172a'
+  }
+
+  const logoUrl = theme?.logoUrl
+  const brandName = theme?.companyName
+
   return (
-    <div className="flex flex-1 flex-col">
+    <div
+      className="flex flex-1 flex-col"
+      style={Object.keys(themeStyles).length > 0 ? themeStyles : undefined}
+    >
       {/* Dashboard Header */}
-      <header className="flex h-14 shrink-0 items-center border-b bg-card/50">
+      <header className="flex h-14 shrink-0 items-center border-b" style={{ background: isLight ? '#f8fafc' : undefined }}>
         <div className="flex w-full items-center justify-between px-4 lg:px-6">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="h-6 w-1 rounded-full bg-gradient-to-b from-[#00E5A0] to-[#7B61FF] shrink-0" />
+            {logoUrl ? (
+              <img src={logoUrl} alt={brandName ?? ''} className="h-7 w-auto shrink-0 object-contain" />
+            ) : (
+              <div className="h-6 w-1 rounded-full bg-gradient-to-b from-[#00E5A0] to-[#7B61FF] shrink-0" />
+            )}
             <div className="min-w-0">
               <h1 className="text-sm font-semibold truncate">{data.meta.title}</h1>
               {data.meta.subtitle && (
-                <p className="text-xs text-muted-foreground truncate">{data.meta.subtitle}</p>
+                <p className="text-xs truncate" style={{ color: isLight ? '#64748b' : undefined }}>{data.meta.subtitle}</p>
               )}
             </div>
           </div>

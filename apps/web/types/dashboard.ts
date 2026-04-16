@@ -1,6 +1,11 @@
 export interface DashboardTheme {
   mode: 'light' | 'dark' | 'system';
-  primaryColor?: string; // CSS variable name only, never hex
+  primaryColor?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  logoUrl?: string;
+  companyName?: string;
 }
 
 export interface DashboardMeta {
