@@ -1,5 +1,3 @@
-import path from 'path';
-import fs from 'fs';
 import { storage } from '../storage';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import type { GoldenMatch } from '../orchestrator/orchestrator.types';
@@ -8,7 +6,6 @@ import { ingestTeamAsset, detectAssetType, hasPublishIntent } from '../lib/inges
 import {
   resolveColorScheme,
   buildColorBlock,
-  validateStarterSiteQuality,
 } from '../starter-site';
 
 export interface DashboardHandlerParams {
@@ -30,27 +27,24 @@ export interface DashboardHandlerParams {
   pageNames: string[];
   auditDepartment: string;
   edgeCall: (payload: any) => Promise<{ text: string; ok: boolean; status: number }>;
-  injectSupabaseCredentials: (html: string) => string;
   signPreviewToken: (jobId: string) => string;
   writeAuditLog: (params: any) => void;
-  PREVIEWS_DIR: string;
   FRONTEND_BASE_URL: string;
   MAX_INITIAL_PAGES: number;
 }
 
 /**
  * Dashboard fast path — bypass planner, single Edge call.
- * Returns updated mutable counters via the params object (modelCalls, totalTokens, pageNames, timeline, goldenMatch).
+ * Stores dashboard_data JSON in jobs.last_diff. No HTML processing.
  * Returns true if the fast path handled the job, false if it should fall through to planner.
  */
 export async function handleDashboardJob(params: DashboardHandlerParams): Promise<boolean> {
   const {
     taskId, resolvedMode, upload_id, org, prompt, project, user_id,
     resolvedModel, budgets, startedAtMs, auditDepartment,
-    edgeCall, injectSupabaseCredentials, signPreviewToken, writeAuditLog,
-    PREVIEWS_DIR, FRONTEND_BASE_URL, MAX_INITIAL_PAGES,
+    edgeCall, writeAuditLog, MAX_INITIAL_PAGES,
   } = params;
-  let { enrichedPrompt, modelCalls, totalTokens, pageNames, timeline, goldenMatch } = params;
+  let { enrichedPrompt, modelCalls, totalTokens, timeline } = params;
 
   if (resolvedMode !== 'dashboard' && !upload_id) return false;
 
@@ -127,22 +121,23 @@ Include ALL rows from the original data with their final calculated values. This
     ]);
     modelCalls += 1;
     if (!dashResult.ok) throw new Error(dashResult.text || `Dashboard edge call returned ${dashResult.status}`);
-    let dashData: { diff: string; truncated?: boolean; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
+    let dashData: { diff: string; dashboard_data?: any; truncated?: boolean; model?: string; usage?: { input_tokens?: number; output_tokens?: number; total_tokens: number } };
     try {
       dashData = JSON.parse(dashResult.text);
     } catch {
       throw new Error(`Dashboard edge returned invalid JSON (${dashResult.text.length} chars)`);
     }
     if (dashData.truncated) {
-      console.warn(`[DASHBOARD-TRUNCATED] LLM output was truncated — HTML may be incomplete (${dashData.diff?.length ?? 0} chars)`);
-      await storage.logEvent(taskId, 'Warning: LLM output was truncated. Dashboard HTML may be incomplete — closing tags were auto-repaired.', 'warning');
+      console.warn(`[DASHBOARD-TRUNCATED] LLM output was truncated (${dashData.diff?.length ?? 0} chars)`);
+      await storage.logEvent(taskId, 'Warning: LLM output was truncated.', 'warning');
     }
     if (dashData.usage?.total_tokens) totalTokens += dashData.usage.total_tokens;
 
     // ── Post-LLM budget re-ingest ──
     if (preIngestAssetType === 'budget_plan' && preIngestPublishTeamId && org) {
       try {
-        const budgetDataMatch = dashData.diff.match(
+        const rawDiff = dashData.diff || '';
+        const budgetDataMatch = rawDiff.match(
           /<script\s+id="vibe-budget-data"\s+type="application\/json">\s*([\s\S]*?)\s*<\/script>/i,
         );
         if (budgetDataMatch?.[1]) {
@@ -180,78 +175,14 @@ Include ALL rows from the original data with their final calculated values. This
       }
     }
 
-    // ── Dashboard quality validation gate ──
-    const dashQuality = validateStarterSiteQuality(
-      [{ route: '/', html: dashData.diff }],
-      /placeholder|sample data/i.test(prompt),
-      true,
-    );
-    if (!dashQuality.ok) {
-      await storage.logEvent(taskId, `Dashboard quality gate failed: ${dashQuality.reasons.join(' | ')}`, 'warning');
-      const elapsedMs = Date.now() - startedAtMs;
-      const remainingMs = budgets.stepDeadlinesMs.building - elapsedMs;
-      if (remainingMs > 30_000) {
-        await storage.logEvent(taskId, 'Attempting dashboard quality repair pass', 'info');
-        const repairPrompt = `Return ONLY valid HTML starting with <!DOCTYPE html>. No explanation. No markdown. No preamble.
-Repair this dashboard HTML so it includes ALL of the following:
-- <nav> element with navigation links
-- At least 4 KPI/stat cards with metric values
-- At least 2 Chart.js charts with <canvas> elements AND corresponding new Chart() initialization scripts immediately after each canvas
-- A data table with <table> element
-- <title> tag with descriptive dashboard name
-- Sidebar + main content CSS grid layout: grid-cols-[256px_1fr]
-- Every <canvas> must have: height="200" style="height:200px !important; max-height:200px;"
-Keep all existing Tailwind classes, CSS variables (var(--bg), var(--primary), etc.), fonts, and vibeLoadData() calls intact.
-Fix ONLY what is missing — preserve everything that already works.
-${dashData.diff}`;
-        try {
-          const repairResult = await Promise.race([
-            edgeCall({ prompt: repairPrompt, model: resolvedModel, mode: 'edit', color_block: dashColorBlock }),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Repair timed out')), remainingMs - 5_000)),
-          ]);
-          modelCalls += 1;
-          if (repairResult.ok) {
-            const repairData = JSON.parse(repairResult.text);
-            if (repairData.diff && repairData.diff.trim().length > dashData.diff.trim().length * 0.5) {
-              const repairQuality = validateStarterSiteQuality(
-                [{ route: '/', html: repairData.diff }],
-                /placeholder|sample data/i.test(prompt),
-                true,
-              );
-              const originalFailCount = dashQuality.reasons.length;
-              const repairFailCount = repairQuality.reasons.length;
-              if (repairFailCount < originalFailCount) {
-                dashData.diff = repairData.diff;
-                if (repairData.usage?.total_tokens) totalTokens += repairData.usage.total_tokens;
-                await storage.logEvent(taskId, `Dashboard repair accepted: ${originalFailCount} → ${repairFailCount} failures (${repairData.usage?.total_tokens ?? 0} tokens)`, 'info');
-              } else {
-                await storage.logEvent(taskId, `Repair rejected — did not improve quality (${originalFailCount} → ${repairFailCount} failures). Keeping original.`, 'warning');
-              }
-            } else {
-              await storage.logEvent(taskId, 'Repair output too short — keeping original', 'warning');
-            }
-          }
-        } catch (repairErr: any) {
-          await storage.logEvent(taskId, `Dashboard repair failed (non-blocking): ${repairErr.message}`, 'warning');
-        }
-      } else {
-        await storage.logEvent(taskId, `Skipping repair — insufficient time budget (${Math.round(remainingMs / 1000)}s remaining)`, 'warning');
-      }
+    // ── Store dashboard_data JSON (no HTML processing) ──
+    if (dashData.dashboard_data) {
+      await storage.setTaskDiff(taskId, JSON.stringify(dashData.dashboard_data));
+    } else {
+      await storage.setTaskDiff(taskId, JSON.stringify({ error: 'no_dashboard_data', raw: dashData }));
     }
 
-    const previewDir = path.join(PREVIEWS_DIR, taskId);
-    fs.mkdirSync(previewDir, { recursive: true });
-    // Credentials replacement — one pass, used for both disk and task diff.
-    const finalDashHtml = injectSupabaseCredentials(dashData.diff);
-    fs.writeFileSync(path.join(previewDir, 'index.html'), finalDashHtml);
-    pageNames = ['index'];
     timeline.push({ step: 'dashboard-fast-path', startedAt: new Date(startedAtMs).toISOString(), endedAt: new Date().toISOString(), durationMs: Date.now() - startedAtMs, status: 'completed' });
-    await storage.setTaskDiff(taskId, JSON.stringify([{ name: 'Dashboard', filename: 'index.html', route: '/', html: finalDashHtml }]));
-    fs.writeFileSync(path.join(previewDir, 'manifest.json'), JSON.stringify(pageNames));
-    fs.writeFileSync(path.join(previewDir, 'timeline.json'), JSON.stringify(timeline, null, 2));
-    const previewToken = signPreviewToken(taskId);
-    await storage.setPreviewUrl(taskId, `${FRONTEND_BASE_URL}/previews/${taskId}/index.html?token=${previewToken}`);
-    await storage.logEvent(taskId, 'Preview generated', 'info');
     await storage.logEvent(taskId, `LLM responded: ${totalTokens} tokens used`, 'info');
     await storage.logEvent(taskId, `Job Timeline: ${JSON.stringify({ timeline, modelStats: { selected: resolvedModel, modelCalls, retries: 0, fallbacks: 0 }, totalTokens, maxPages: MAX_INITIAL_PAGES, wallTimeMs: Date.now() - startedAtMs })}`, 'info');
     await storage.updateTaskUsageMetrics(taskId, {
@@ -262,32 +193,13 @@ ${dashData.diff}`;
     });
     await storage.updateTaskState(taskId, 'completed');
     if (org) await storage.incrementCreditsUsed(org.id).catch(() => {});
-    if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: dashData.diff, department: auditDepartment });
+    if (org) writeAuditLog({ org_id: org.id, user_id: user_id!, team_id: project.team_id, job_id: taskId, artifact_type: 'dashboard', generated_output: JSON.stringify(dashData.dashboard_data ?? dashData), department: auditDepartment });
     await storage.logEvent(taskId, 'Dashboard job completed successfully (fast path)', 'info');
-
-    // ── Auto-cache skeleton: backfill html_skeleton for golden templates ──
-    if (goldenMatch.matched && !goldenMatch.htmlSkeleton
-        && dashData.diff.length > 20000 && dashData.diff.includes('new Chart(')) {
-      try {
-        const { error: cacheErr } = await getPlatformSupabaseClient()
-          .from('skill_registry')
-          .update({ html_skeleton: dashData.diff })
-          .eq('skill_name', goldenMatch.skillName);
-        if (cacheErr) {
-          console.error(`[GOLDEN-CACHE] Failed to cache skeleton for "${goldenMatch.skillName}": ${cacheErr.message}`);
-        } else {
-          console.log(`[GOLDEN-CACHE] Cached html_skeleton for "${goldenMatch.skillName}" (${dashData.diff.length} chars)`);
-          await storage.logEvent(taskId, `Cached golden template skeleton: ${goldenMatch.skillName} (${dashData.diff.length} chars — future builds will be deterministic)`, 'info');
-        }
-      } catch (cacheWriteErr: any) {
-        console.error(`[GOLDEN-CACHE] Exception caching skeleton: ${cacheWriteErr.message}`);
-      }
-    }
 
     // Write back mutable counters to params
     params.modelCalls = modelCalls;
     params.totalTokens = totalTokens;
-    params.pageNames = pageNames;
+    params.pageNames = params.pageNames;
 
     return true;
   } catch (dashErr: any) {

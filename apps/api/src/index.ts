@@ -1063,8 +1063,8 @@ window.vibeLoadData=async function(table,filters){filters=filters||{};var url=wi
               taskId, resolvedMode, upload_id, org, prompt, enrichedPrompt,
               project, user_id: user_id!, resolvedModel, budgets, goldenMatch,
               startedAtMs, modelCalls, totalTokens, timeline, pageNames,
-              auditDepartment, edgeCall, injectSupabaseCredentials,
-              signPreviewToken, writeAuditLog, PREVIEWS_DIR, FRONTEND_BASE_URL,
+              auditDepartment, edgeCall,
+              signPreviewToken, writeAuditLog, FRONTEND_BASE_URL,
               MAX_INITIAL_PAGES,
             };
             const handled = await handleDashboardJob(dashParams);
