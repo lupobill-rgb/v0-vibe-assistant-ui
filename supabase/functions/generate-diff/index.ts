@@ -487,6 +487,75 @@ FORBIDDEN: No JSX. No React. No TypeScript. No import statements. No export stat
 Output MUST start with <!DOCTYPE html> and end with </html>.
 Any other output format causes a blank page for the customer.`;
 
+// ── Dashboard JSON mode system prompt (returns structured data, not HTML) ──
+// Added for v7.1 Track 1: recommendation mode preparation.
+// Does NOT replace DASHBOARD_SYSTEM — that remains for legacy HTML dashboard mode.
+const DASHBOARD_JSON_SYSTEM = `You are VIBE, an AI analytics engine. Return ONLY valid JSON matching the DashboardData schema below. No markdown, no code fences, no explanation — raw JSON only.
+
+SCHEMA (strict — every field name and type must match exactly):
+{
+  "meta": {
+    "title": "string (dashboard title)",
+    "subtitle": "string? (optional subtitle)",
+    "department": "string (e.g. Sales, Marketing, Finance, Operations)",
+    "generated_at": "string (ISO 8601 timestamp, e.g. 2026-04-16T12:00:00Z)",
+    "data_source": "'connected' if real data provided, 'sample' if you generate it",
+    "connector": "string? (e.g. 'hubspot', 'salesforce' — only if real data)"
+  },
+  "kpis": [
+    {
+      "id": "string (unique, e.g. kpi-revenue)",
+      "label": "string (e.g. Total Revenue)",
+      "value": "string | number",
+      "change": "number? (percent change, e.g. 12.5)",
+      "change_period": "string? (e.g. vs last month)",
+      "trend": "'up' | 'down' | 'flat'?",
+      "format": "'currency' | 'percent' | 'number' | 'text'?"
+    }
+  ],
+  "charts": [
+    {
+      "id": "string (unique, e.g. chart-revenue-trend)",
+      "type": "'bar' | 'line' | 'area' | 'pie' | 'donut' | 'scatter' | 'funnel'",
+      "title": "string",
+      "data": [{"key": "value", ...}],
+      "x_key": "string (field name in data objects for x-axis)",
+      "y_keys": ["string (field names for y-axis series)"]
+    }
+  ],
+  "tables": [
+    {
+      "id": "string",
+      "title": "string",
+      "columns": [{"key": "string", "label": "string", "format": "string?"}],
+      "rows": [{"key": "value", ...}]
+    }
+  ],
+  "alerts": [
+    {
+      "id": "string",
+      "severity": "'info' | 'warning' | 'critical'",
+      "message": "string",
+      "action_label": "string?"
+    }
+  ],
+  "actions": []
+}
+
+RULES:
+- Return 4-6 KPIs relevant to the user's department/industry
+- Return 2-4 charts with realistic data series (10-15 data points each)
+- Return 0-1 tables with 5-10 rows if relevant
+- Return 0-3 alerts if there are noteworthy patterns in the data
+- generated_at must be the current ISO timestamp
+- If connected data is provided in the prompt, use it — set data_source to "connected"
+- If no real data, generate realistic sample data for the department — set data_source to "sample"
+- Do not invent metrics that contradict any connected data provided
+- Do not include a theme field — the frontend handles theming
+- Every id must be unique within its array
+- actions array must be empty (reserved for future use)
+- Output must parse as valid JSON — no trailing commas, no comments`;
+
 const APP_SYSTEM = `⚠️ CRITICAL OUTPUT RULES — VIOLATION CAUSES BLANK PAGE:
 1. Output ONLY plain HTML. Never React. Never JSX. Never TypeScript.
 2. If you find yourself writing: import, useState, useMemo, export default,
@@ -1176,49 +1245,10 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
     } else if (mode === "dashboard") {
-      // Single LLM call — no separate design spec phase
-      // Previous 2-call approach hit Supabase 150s wall-time limit causing 504s
-      const HARD_BLOCK = `
-ABSOLUTE HARD STOP: This file will be rendered in a plain browser iframe.
-It has NO build system, NO Node.js, NO React, NO webpack, NO Next.js.
-The output MUST be a single self-contained HTML file.
-Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files.
-If you generate ANY of the following the page will be completely blank:
-- import or export statements
-- React, ReactDOM, JSX, TSX
-- Next.js, Vite, webpack references
-- alert(), confirm(), prompt()
-- Any module bundler syntax
-Every interactive feature MUST use vanilla JavaScript only.
-The file MUST start with <!DOCTYPE html> and end with </html>.
-`;
-      baseSystemMsg = HARD_BLOCK + DASHBOARD_SYSTEM + `
-STRUCTURAL REQUIREMENTS:
-- Include at least 4 KPI stat cards populated via vibeLoadData — show "--" if no data
-- Include at least 2 Chart.js charts (bar, line, doughnut, or pie) — if vibeLoadData returns [], fall back to realistic hardcoded sample data so charts always render populated
-- Each chart canvas must have a unique id (e.g. id="chart1", id="chart2")
-- Include a data table with relevant columns for the domain, populated via vibeLoadData — if empty, populate with 8-10 realistic sample rows so the table always shows data
-- When vibeLoadData() returns [], define inline const SAMPLE_DATA with 10-15 realistic domain-appropriate rows and use them — never show empty states or "No data yet"
-- Detect the domain from the user prompt and use contextually relevant metrics
-- Never use alert(), confirm(), or prompt()
-- Never generate React or JSX
-- Output ONLY valid HTML starting with <!DOCTYPE html>` + (context ? "\nContext:\n" + context : "");
-      defaultMaxTokens = 16384;
-
-      // SAMPLE DATA OVERRIDE: when no real data source is connected,
-      // allow the LLM to hardcode realistic sample data so charts render
-      const isSampleData = /\bsample data\b/i.test(prompt) || /\[Data source: sample data\]/i.test(prompt);
-      if (isSampleData) {
-        baseSystemMsg += `
-
-SAMPLE DATA MODE — OVERRIDES "no hardcoded data" rules above:
-This user has NO connected data sources and chose to build with sample data.
-You MUST generate realistic, domain-appropriate hardcoded data arrays for ALL charts, KPIs, and tables.
-Do NOT use vibeLoadData(). Do NOT show empty states. Do NOT show "No data yet" messages.
-Instead, define const SAMPLE_DATA arrays with 10-20 realistic rows and use them to populate every chart, KPI card, and table.
-Make the data look real: use plausible names, dates, amounts, percentages, and statuses for the domain.
-The dashboard must look fully populated and impressive on first load.`;
-      }
+      // v7.1: Dashboard mode returns structured JSON (DashboardData), not HTML.
+      // The frontend renders the data using its own components.
+      baseSystemMsg = DASHBOARD_JSON_SYSTEM + (context ? "\n\nCONNECTED DATA:\n" + context : "");
+      defaultMaxTokens = 4096;
     } else if (mode === "app") {
       baseSystemMsg = APP_SYSTEM;
       defaultMaxTokens = 16384;
@@ -1351,10 +1381,43 @@ Include at least 3 charts (bar, line, doughnut) and 4-6 KPI cards — all fully 
       }
     }
 
-    // ── HTML truncation repair for dashboard/site/html modes ──────────
+    // ── Dashboard JSON mode: parse and return structured data ─────────
+    if (mode === "dashboard" && result.diff) {
+      let raw = result.diff.trim();
+      // Strip markdown code fences if LLM wrapped the JSON
+      const fenceMatch = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
+      if (fenceMatch) raw = fenceMatch[1].trim();
+
+      try {
+        const dashboardData = JSON.parse(raw);
+        return new Response(
+          JSON.stringify({
+            diff: null,
+            dashboard_data: dashboardData,
+            truncated: result.truncated ?? false,
+            usage: result.usage,
+            model: usedModel,
+            mode: "dashboard",
+            fallback_used: fallbackUsed,
+            original_model: fallbackUsed ? originalModel : undefined,
+            version: EDGE_FUNCTION_VERSION,
+            guided_next_steps: getGuidedNextSteps(prompt, "dashboard"),
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch {
+        console.error(`[DASHBOARD-JSON] Failed to parse LLM output as JSON (${raw.length} chars)`);
+        return new Response(
+          JSON.stringify({ error: "invalid_json", raw }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // ── HTML truncation repair for site/html/app modes ──────────────
     // If the LLM hit its output token limit, the HTML may be cut off mid-tag.
     // Detect and repair by closing missing tags so the preview still renders.
-    if ((mode === "dashboard" || mode === "html" || mode === "site" || mode === "app") && result.diff) {
+    if ((mode === "html" || mode === "site" || mode === "app") && result.diff) {
       const trimmed = result.diff.trim();
       if (trimmed.startsWith("<!DOCTYPE html") || trimmed.startsWith("<html")) {
         if (!trimmed.endsWith("</html>")) {
