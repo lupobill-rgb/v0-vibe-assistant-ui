@@ -108,10 +108,12 @@ function parseDiff(raw: string): PageData[] {
   const trimmed = raw.trim()
   // Dashboard JSON objects are handled by tryParseDashboardData / ShadcnDashboard,
   // not by the HTML preview iframe. Return empty so raw JSON is never rendered as text.
-  if (trimmed.startsWith('{')) {
+  // Handles bare objects, double-stringified strings, and fenced JSON.
+  if (trimmed.startsWith('{') || trimmed.startsWith('"')) {
     try {
-      const obj = JSON.parse(trimmed)
-      if (obj && typeof obj === 'object' && 'dashboard_data' in obj) return []
+      let obj: unknown = JSON.parse(trimmed)
+      if (typeof obj === 'string') { try { obj = JSON.parse(obj) } catch {} }
+      if (obj && typeof obj === 'object' && 'dashboard_data' in (obj as Record<string, unknown>)) return []
     } catch {}
   }
   // Also check for fenced dashboard JSON
