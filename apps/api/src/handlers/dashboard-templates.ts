@@ -978,6 +978,37 @@ export async function handleDashboardTemplate(params: DashboardTemplateParams): 
 // a DashboardData-shaped object that replaces the template's sample data.
 // Provider-agnostic: uses NangoService.fetchRecords or typed helpers.
 
+/**
+ * Convert CRM internal stage IDs to human-readable names.
+ * e.g. "contractsent" → "Contract Sent", "decisionmakerboughtin" → "Decision Maker Bought In"
+ */
+function humanizeStageName(stage: string): string {
+  // Common CRM stage mappings
+  const known: Record<string, string> = {
+    contractsent: 'Contract Sent',
+    closedwon: 'Closed Won',
+    closedlost: 'Closed Lost',
+    decisionmakerboughtin: 'Decision Maker Bought In',
+    presentationscheduled: 'Presentation Scheduled',
+    qualifiedtobuy: 'Qualified to Buy',
+    appointmentscheduled: 'Appointment Scheduled',
+    negotiation: 'Negotiation',
+    proposal: 'Proposal',
+    discovery: 'Discovery',
+    prospecting: 'Prospecting',
+    lead: 'Lead',
+    qualified: 'Qualified',
+  }
+  const lower = stage.toLowerCase().replace(/[_-]/g, '')
+  if (known[lower]) return known[lower]
+  // Fallback: split camelCase/concatenated words and title-case
+  return stage
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([a-zA-Z])(\d)/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 async function buildLiveSalesPipeline(teamId: string, provider: string): Promise<typeof DASHBOARD_TEMPLATES[0]['data']> {
   // Fetch deals through cache layer — provider-agnostic
   const model = provider === 'hubspot' ? 'deals' : 'Deal';
@@ -997,7 +1028,7 @@ async function buildLiveSalesPipeline(teamId: string, provider: string): Promise
   // ── Funnel chart from deal stages ──
   const stageCounts: Record<string, { value: number; count: number }> = {};
   for (const deal of deals) {
-    const stage = deal.stage || 'Unknown';
+    const stage = humanizeStageName(deal.stage || 'Unknown');
     if (!stageCounts[stage]) stageCounts[stage] = { value: 0, count: 0 };
     stageCounts[stage].value += deal.amount ?? 0;
     stageCounts[stage].count += 1;
@@ -1012,7 +1043,7 @@ async function buildLiveSalesPipeline(teamId: string, provider: string): Promise
     .slice(0, 10)
     .map((d) => ({
       deal: d.name || 'Unnamed Deal',
-      stage: d.stage || 'Unknown',
+      stage: humanizeStageName(d.stage || 'Unknown'),
       value: d.amount ? `$${Number(d.amount).toLocaleString()}` : '-',
       close_date: d.close_date ? new Date(d.close_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '-',
       owner: d.owner || '-',

@@ -182,7 +182,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
           value={globalDateRange}
           onValueChange={(v) => v && setGlobalDateRange(v)}
           variant="outline"
-          className="*:data-[slot=toggle-group-item]:px-3! *:data-[slot=toggle-group-item]:h-7! *:data-[slot=toggle-group-item]:text-xs!"
+          size="sm"
         >
           <ToggleGroupItem value="all">All</ToggleGroupItem>
           <ToggleGroupItem value="7d">7D</ToggleGroupItem>
