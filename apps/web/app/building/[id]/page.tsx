@@ -113,7 +113,7 @@ function parseDiff(raw: string): PageData[] {
     try {
       let obj: unknown = JSON.parse(trimmed)
       if (typeof obj === 'string') { try { obj = JSON.parse(obj) } catch {} }
-      if (obj && typeof obj === 'object' && 'dashboard_data' in (obj as Record<string, unknown>)) return []
+      if (obj && typeof obj === 'object' && ('dashboard_data' in (obj as Record<string, unknown>) || ('meta' in (obj as Record<string, unknown>) && 'kpis' in (obj as Record<string, unknown>)))) return []
     } catch {}
   }
   // Also check for fenced dashboard JSON
@@ -121,7 +121,7 @@ function parseDiff(raw: string): PageData[] {
   if (dashFence) {
     try {
       const obj = JSON.parse(dashFence[1].trim())
-      if (obj && typeof obj === 'object' && 'dashboard_data' in obj) return []
+      if (obj && typeof obj === 'object' && ('dashboard_data' in obj || ('meta' in obj && 'kpis' in obj))) return []
     } catch {}
   }
   // Try JSON array first (multi-page)
@@ -243,8 +243,14 @@ function tryParseDashboardData(raw: string | null): DashboardData | null {
     if (typeof parsed === 'string') {
       try { parsed = JSON.parse(parsed) } catch {}
     }
-    if (parsed && typeof parsed === 'object' && 'dashboard_data' in (parsed as Record<string, unknown>)) {
-      return (parsed as Record<string, unknown>).dashboard_data as DashboardData
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as Record<string, unknown>
+      if ('dashboard_data' in obj) {
+        return obj.dashboard_data as DashboardData
+      }
+      if ('meta' in obj && 'kpis' in obj) {
+        return parsed as DashboardData
+      }
     }
     return null
   } catch {
