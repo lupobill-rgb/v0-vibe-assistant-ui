@@ -13,6 +13,7 @@
 
 import { storage } from '../storage';
 import { getPlatformSupabaseClient } from '../supabase/client';
+import { getNangoService } from '../connectors/nango.service';
 
 interface DashboardTemplate {
   /** Unique identifier */
@@ -892,10 +893,34 @@ export async function handleDashboardTemplate(params: DashboardTemplateParams): 
     }
   }
 
+  // ── Live data fetch — replace sample data with connected CRM data ──
+  let liveData: typeof template.data | null = null;
+  const teamId = project.team_id;
+  if (teamId) {
+    try {
+      const nango = getNangoService();
+      const activeConnectors = await nango.listActiveConnections(teamId);
+      const hasHubSpot = activeConnectors.includes('hubspot' as any);
+      const hasSalesforce = activeConnectors.includes('salesforce' as any);
+
+      if ((hasHubSpot || hasSalesforce) && template.id === 'sales-pipeline') {
+        liveData = await buildLiveSalesPipeline(teamId, hasHubSpot ? 'hubspot' : 'salesforce');
+        await storage.logEvent(taskId, `Live CRM data fetched for ${template.id} (${hasHubSpot ? 'HubSpot' : 'Salesforce'})`, 'info');
+      }
+      // Future: add live data transforms for other templates
+      // e.g. marketing-performance from GA4/Mixpanel, finance from Snowflake, etc.
+    } catch (err: any) {
+      console.warn(`[DASHBOARD-TEMPLATE] Live data fetch failed, using sample data: ${err.message}`);
+      await storage.logEvent(taskId, `Live data fetch failed (falling back to sample): ${err.message}`, 'warning');
+    }
+  }
+
   // Merge brand tokens into template data
+  const baseData = liveData ?? template.data;
   const meta = {
-    ...template.data.meta,
+    ...baseData.meta,
     generated_at: new Date().toISOString(),
+    data_source: liveData ? 'connected' as const : baseData.meta.data_source,
     theme: {
       mode: (brandTheme.mode as 'light' | 'dark' | 'system') ?? 'dark',
       primaryColor: brandTheme.primaryColor ?? undefined,
@@ -903,11 +928,10 @@ export async function handleDashboardTemplate(params: DashboardTemplateParams): 
       companyName: brandTheme.companyName ?? undefined,
     },
   };
-  // Override title with brand company if available
   if (brandTheme.companyName) {
-    meta.title = `${brandTheme.companyName} — ${template.data.meta.title}`;
+    meta.title = `${brandTheme.companyName} — ${baseData.meta.title}`;
   }
-  const data = { ...template.data, meta };
+  const data = { ...baseData, meta };
 
   // Store as JSON — tryParseDashboardData on the frontend will detect meta+kpis
   await storage.setTaskDiff(taskId, JSON.stringify(data));
@@ -944,6 +968,97 @@ export async function handleDashboardTemplate(params: DashboardTemplateParams): 
       department: auditDepartment,
     });
   }
-  await storage.logEvent(taskId, `Dashboard completed (template: ${template.id} — zero credits consumed)`, 'success');
+  await storage.logEvent(taskId, `Dashboard completed (template: ${template.id}${liveData ? ' + live data' : ''} — zero credits consumed)`, 'success');
   return true;
+}
+
+// ── Live Data Transformers ──────────────────────────────────────────
+// Each transformer fetches data from a connected provider and returns
+// a DashboardData-shaped object that replaces the template's sample data.
+// Provider-agnostic: uses NangoService.fetchRecords or typed helpers.
+
+async function buildLiveSalesPipeline(teamId: string, provider: string): Promise<typeof DASHBOARD_TEMPLATES[0]['data']> {
+  const nango = getNangoService();
+
+  // Fetch deals — provider-agnostic via fetchRecords
+  let deals: any[];
+  if (provider === 'hubspot') {
+    deals = await nango.fetchHubSpotDeals(teamId);
+  } else {
+    deals = await nango.fetchRecords(teamId, provider, 'Deal', 200) as any[];
+  }
+
+  if (!deals.length) throw new Error('No deals found in connected CRM');
+
+  // ── KPIs from live deals ──
+  const totalValue = deals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+  const dealCount = deals.length;
+  const avgDeal = dealCount > 0 ? Math.round(totalValue / dealCount) : 0;
+  const closedWon = deals.filter((d) => /closed.*won|closedwon/i.test(d.stage ?? ''));
+  const winRate = dealCount > 0 ? Math.round((closedWon.length / dealCount) * 100) : 0;
+
+  // ── Funnel chart from deal stages ──
+  const stageCounts: Record<string, { value: number; count: number }> = {};
+  for (const deal of deals) {
+    const stage = deal.stage || 'Unknown';
+    if (!stageCounts[stage]) stageCounts[stage] = { value: 0, count: 0 };
+    stageCounts[stage].value += deal.amount ?? 0;
+    stageCounts[stage].count += 1;
+  }
+  const funnelData = Object.entries(stageCounts)
+    .sort((a, b) => b[1].value - a[1].value)
+    .map(([stage, { value, count }]) => ({ stage, value, count }));
+
+  // ── Top deals table ──
+  const topDeals = [...deals]
+    .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
+    .slice(0, 10)
+    .map((d) => ({
+      deal: d.name || 'Unnamed Deal',
+      stage: d.stage || 'Unknown',
+      value: d.amount ? `$${Number(d.amount).toLocaleString()}` : '-',
+      close_date: d.close_date ? new Date(d.close_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '-',
+      owner: d.owner || '-',
+    }));
+
+  return {
+    meta: {
+      title: 'Sales Pipeline Dashboard',
+      subtitle: 'Live CRM Data',
+      department: 'Sales',
+      generated_at: new Date().toISOString(),
+      data_source: 'connected',
+    },
+    kpis: [
+      { id: 'pipeline-value', label: 'Total Pipeline Value', value: totalValue, format: 'currency' },
+      { id: 'deal-count', label: 'Open Deals', value: dealCount, format: 'number' },
+      { id: 'win-rate', label: 'Win Rate', value: winRate, format: 'percent' },
+      { id: 'avg-deal', label: 'Average Deal Size', value: avgDeal, format: 'currency' },
+      { id: 'closed-won', label: 'Closed Won', value: closedWon.length, format: 'number' },
+    ],
+    charts: [
+      {
+        id: 'funnel',
+        type: 'bar',
+        title: 'Pipeline by Stage',
+        x_key: 'stage',
+        y_keys: ['value'],
+        data: funnelData,
+      },
+    ],
+    tables: [
+      {
+        id: 'top-deals',
+        title: 'Top Deals',
+        columns: [
+          { key: 'deal', label: 'Deal Name' },
+          { key: 'stage', label: 'Stage' },
+          { key: 'value', label: 'Value' },
+          { key: 'close_date', label: 'Expected Close' },
+          { key: 'owner', label: 'Owner' },
+        ],
+        rows: topDeals,
+      },
+    ],
+  };
 }
