@@ -856,7 +856,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         )}
         {dashboardData ? (
           <div className="flex-1 min-h-0 overflow-auto">
-            <ShadcnDashboard data={dashboardData} onDrillDown={(prompt) => handleChat(prompt)} />
+            <ShadcnDashboard data={dashboardData} />
           </div>
         ) : previewUrl ? (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
