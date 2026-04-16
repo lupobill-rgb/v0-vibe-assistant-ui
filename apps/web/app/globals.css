@@ -147,17 +147,40 @@
 /* Print styles for dashboard PDF export */
 @media print {
   body { background: white !important; color: black !important; }
-  /* Hide app shell, sidebar, chat panel */
+  /* Hide app shell, sidebar, chat panel, buttons */
   nav, aside, [data-slot="sidebar"], .app-sidebar,
   button, input, [role="dialog"] { display: none !important; }
-  /* Show only the dashboard content */
-  .@container\/main, [data-slot="card"], [data-slot="chart"],
-  table, thead, tbody, tr, td, th { color-adjust: exact; -webkit-print-color-adjust: exact; }
-  /* Keep header visible but hide action buttons */
   header button { display: none !important; }
   header { border-bottom: 1px solid #e2e8f0 !important; }
-  /* Force white background on cards */
+  /* Unlock all scroll containers so full content prints */
+  *, *::before, *::after {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+  html, body { height: auto !important; overflow: visible !important; }
+  /* Remove flex height constraints that clip content */
+  .flex-1, .min-h-0, .overflow-auto, .overflow-hidden,
+  .overflow-y-auto, .overflow-x-auto {
+    overflow: visible !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    flex: none !important;
+  }
+  /* Preserve chart/card colors */
+  [data-slot="card"], [data-slot="chart"],
+  table, thead, tbody, tr, td, th {
+    color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  /* White background on cards */
   [data-slot="card"] { background: white !important; border: 1px solid #e2e8f0 !important; }
+  /* Page breaks: avoid breaking inside cards and charts */
+  [data-slot="card"], [data-slot="chart"] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
   /* Page setup */
   @page { size: landscape; margin: 0.5in; }
 }
