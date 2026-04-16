@@ -14,6 +14,7 @@
 import { storage } from '../storage';
 import { getPlatformSupabaseClient } from '../supabase/client';
 import { getNangoService } from '../connectors/nango.service';
+import { getCachedOrFetch } from '../connectors/connector-cache.service';
 
 interface DashboardTemplate {
   /** Unique identifier */
@@ -978,17 +979,13 @@ export async function handleDashboardTemplate(params: DashboardTemplateParams): 
 // Provider-agnostic: uses NangoService.fetchRecords or typed helpers.
 
 async function buildLiveSalesPipeline(teamId: string, provider: string): Promise<typeof DASHBOARD_TEMPLATES[0]['data']> {
-  const nango = getNangoService();
-
-  // Fetch deals — provider-agnostic via fetchRecords
-  let deals: any[];
-  if (provider === 'hubspot') {
-    deals = await nango.fetchHubSpotDeals(teamId);
-  } else {
-    deals = await nango.fetchRecords(teamId, provider, 'Deal', 200) as any[];
-  }
+  // Fetch deals through cache layer — provider-agnostic
+  const model = provider === 'hubspot' ? 'deals' : 'Deal';
+  const cached = await getCachedOrFetch(teamId, provider, model);
+  const deals = cached.records as any[];
 
   if (!deals.length) throw new Error('No deals found in connected CRM');
+  console.log(`[DASHBOARD-TEMPLATE] Live deals: ${deals.length} records (${cached.from_cache ? 'from cache' : 'fresh fetch'})`);
 
   // ── KPIs from live deals ──
   const totalValue = deals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
