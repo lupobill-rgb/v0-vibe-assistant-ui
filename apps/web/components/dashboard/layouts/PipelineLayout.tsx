@@ -111,7 +111,7 @@ function ChartRenderer({ chart }: { chart: ChartBlock }) {
 
   if (useLine) {
     return (
-      <ChartContainer config={config}>
+      <ChartContainer config={config} className="h-[300px] w-full">
         <LineChart data={chart.data} accessibilityLayer>
           <CartesianGrid vertical={false} />
           <XAxis dataKey={chart.x_key} tickLine={false} axisLine={false} tickMargin={8} />
@@ -134,7 +134,7 @@ function ChartRenderer({ chart }: { chart: ChartBlock }) {
 
   if (type === "area") {
     return (
-      <ChartContainer config={config}>
+      <ChartContainer config={config} className="h-[300px] w-full">
         <AreaChart data={chart.data} accessibilityLayer>
           <CartesianGrid vertical={false} />
           <XAxis dataKey={chart.x_key} tickLine={false} axisLine={false} tickMargin={8} />
@@ -157,7 +157,7 @@ function ChartRenderer({ chart }: { chart: ChartBlock }) {
 
   // Default: BarChart (covers bar, funnel, scatter fallback)
   return (
-    <ChartContainer config={config}>
+    <ChartContainer config={config} className="h-[300px] w-full">
       <BarChart data={chart.data} accessibilityLayer>
         <CartesianGrid vertical={false} />
         <XAxis dataKey={chart.x_key} tickLine={false} axisLine={false} tickMargin={8} />
@@ -210,12 +210,14 @@ export function PipelineLayout({ data }: PipelineLayoutProps) {
       {data.charts.length > 0 && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {data.charts.map((chart) => (
-            <Card key={chart.id}>
+            <Card key={chart.id} className="bg-transparent border-0">
               <CardHeader>
                 <CardTitle className="text-base">{chart.title}</CardTitle>
               </CardHeader>
-              <CardContent>
-                <ChartRenderer chart={chart} />
+              <CardContent className="p-0">
+                <div style={{ width: '100%', height: '300px' }}>
+                  <ChartRenderer chart={chart} />
+                </div>
               </CardContent>
             </Card>
           ))}
