@@ -1032,7 +1032,9 @@ window.vibeLoadData=async function(table,filters){filters=filters||{};var url=wi
           enrichedPrompt += `\n\nNAVIGATION RULE (MANDATORY): Navigation links must use JavaScript onclick handlers to show/hide sections within the same page — never use href links to separate .html files. All content must exist in a single HTML file with sections toggled by JS.`;
 
           // ── Deterministic template path ── extracted to handlers/fast-paths.handler.ts
-          if (await handleDeterministicTemplate({
+          // Skip for dashboard mode — dashboard prompts must reach the JSON handler
+          // to render via ShadcnDashboard instead of old HTML templates.
+          if (resolvedMode !== 'dashboard' && await handleDeterministicTemplate({
             taskId, goldenMatch, org, orgName, teamName, prompt, project,
             user_id: user_id!, auditDepartment, startedAtMs, timeline,
             injectSupabaseCredentials, signPreviewToken, writeAuditLog,
