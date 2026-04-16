@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { CheckCircle2, XCircle, Loader2, Server, Key, Cpu, Shield, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { BrandSettings } from "./brand-settings"
 
 const LLM_STORAGE_KEY = "vibe_llm_provider"
 
@@ -401,6 +402,9 @@ export function SettingsPanel() {
           )}
         </div>
       </Section>
+
+      {/* Brand Settings */}
+      <BrandSettings />
 
       {/* Authentication */}
       <Section title="Integrations" icon={Key}>
