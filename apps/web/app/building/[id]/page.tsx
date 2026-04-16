@@ -6,6 +6,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Check, ChevronDown, ChevronUp, ClipboardCopy, ExternalLink, Globe, Loader2, Lock, Terminal, X } from "lucide-react"
 import { PipelineTracker } from "@/components/task/pipeline-tracker"
+import type { DashboardData } from "@/types/dashboard"
+import { DashboardShell } from "@/components/dashboard/DashboardShell"
 import { TerminalConsole } from "@/components/task/terminal-console"
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase"
 import { createJob, publishJob, API_URL, TENANT_ID } from "@/lib/api"
@@ -208,6 +210,19 @@ function buildPreviewHtml(pages: PageData[], activeFile: string, teamId?: string
     '</script>' : ''
   html = html.replace('</body>', routerScript + '</body>')
   return html
+}
+
+function tryParseDashboardData(raw: string | null): DashboardData | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && 'dashboard_data' in parsed) {
+      return parsed.dashboard_data as DashboardData
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 interface BuildingPageProps { params: Promise<{ id: string }> }
@@ -464,6 +479,11 @@ export default function BuildingPage({ params }: BuildingPageProps) {
     if (pages.length === 0) return null
     return buildPreviewHtml(pages, activeFile, projectTeamId)
   }, [pages, activeFile, projectTeamId])
+
+  const dashboardData = useMemo(() => {
+    const raw = diff || (typeof task?.last_diff === 'string' ? task.last_diff : null)
+    return tryParseDashboardData(raw)
+  }, [diff, task?.last_diff])
 
   // previewUrl is a blob URL derived from previewHtml — only used as the
   // href for "Open in new tab" anchors, where srcDoc is not applicable.
@@ -801,7 +821,62 @@ export default function BuildingPage({ params }: BuildingPageProps) {
             ))}
           </div>
         )}
-        {previewUrl ? (
+        {dashboardData ? (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <DashboardShell data={dashboardData}>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {dashboardData.kpis.map((kpi) => (
+                  <div key={kpi.id} className="rounded-lg border bg-card p-4">
+                    <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                    <p className="mt-1 text-2xl font-semibold">{kpi.value}</p>
+                    {kpi.change != null && (
+                      <p className={`mt-1 text-xs ${kpi.trend === 'up' ? 'text-emerald-500' : kpi.trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                        {kpi.change > 0 ? '+' : ''}{kpi.change}%{kpi.change_period ? ` ${kpi.change_period}` : ''}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {dashboardData.charts.length > 0 && (
+                <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {dashboardData.charts.map((chart) => (
+                    <div key={chart.id} className="rounded-lg border bg-card p-4">
+                      <h3 className="mb-2 text-sm font-medium">{chart.title}</h3>
+                      <p className="text-xs text-muted-foreground">{chart.type} chart — {chart.data.length} data points</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {dashboardData.tables && dashboardData.tables.length > 0 && (
+                <div className="mt-6 flex flex-col gap-4">
+                  {dashboardData.tables.map((table) => (
+                    <div key={table.id} className="overflow-auto rounded-lg border bg-card">
+                      <h3 className="border-b px-4 py-3 text-sm font-medium">{table.title}</h3>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            {table.columns.map((col) => (
+                              <th key={col.key} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">{col.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {table.rows.map((row, i) => (
+                            <tr key={i} className="border-b last:border-0">
+                              {table.columns.map((col) => (
+                                <td key={col.key} className="px-4 py-2">{String(row[col.key] ?? '')}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </DashboardShell>
+          </div>
+        ) : previewUrl ? (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="flex items-center gap-2 px-4 h-11 flex-shrink-0" style={{ borderBottom: '1px solid #1e1e2a', background: '#13131a' }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', fontFamily: 'Inter, sans-serif' }}>Preview</span>
