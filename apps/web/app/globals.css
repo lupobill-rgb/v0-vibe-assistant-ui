@@ -146,41 +146,58 @@
 
 /* Print styles for dashboard PDF export */
 @media print {
-  body { background: white !important; color: black !important; }
-  /* Hide app shell, sidebar, chat panel, buttons */
-  nav, aside, [data-slot="sidebar"], .app-sidebar,
-  button, input, [role="dialog"] { display: none !important; }
-  header button { display: none !important; }
-  header { border-bottom: 1px solid #e2e8f0 !important; }
-  /* Unlock all scroll containers so full content prints */
-  *, *::before, *::after {
+  /* Page setup */
+  @page { size: landscape; margin: 0.4in; }
+
+  /* Force light readable colors */
+  body { background: white !important; color: #0f172a !important; -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+
+  /* Hide sidebar, chat panel, and navigation — NOT card content */
+  .app-sidebar, [data-slot="sidebar"], [role="dialog"],
+  input[type="text"], textarea { display: none !important; }
+
+  /* Hide the left panel (chat/log) and show only the dashboard area */
+  .flex.h-screen > .hidden.md\:flex { display: none !important; }
+  .flex.h-screen > main { width: 100% !important; }
+
+  /* Hide action buttons in dashboard header only */
+  header button, header [data-slot="badge"] { visibility: hidden !important; }
+
+  /* Unlock scroll containers */
+  html, body, main, .flex-1, .min-h-0,
+  .overflow-auto, .overflow-hidden, .overflow-y-auto {
     overflow: visible !important;
-    max-height: none !important;
     height: auto !important;
-  }
-  html, body { height: auto !important; overflow: visible !important; }
-  /* Remove flex height constraints that clip content */
-  .flex-1, .min-h-0, .overflow-auto, .overflow-hidden,
-  .overflow-y-auto, .overflow-x-auto {
-    overflow: visible !important;
-    min-height: 0 !important;
     max-height: none !important;
-    height: auto !important;
-    flex: none !important;
   }
-  /* Preserve chart/card colors */
-  [data-slot="card"], [data-slot="chart"],
-  table, thead, tbody, tr, td, th {
-    color-adjust: exact !important;
-    -webkit-print-color-adjust: exact !important;
-  }
-  /* White background on cards */
-  [data-slot="card"] { background: white !important; border: 1px solid #e2e8f0 !important; }
-  /* Page breaks: avoid breaking inside cards and charts */
-  [data-slot="card"], [data-slot="chart"] {
+
+  /* Fix the building page split layout — make dashboard full width */
+  .flex-1.flex.flex-col.min-w-0 { width: 100% !important; flex: none !important; }
+  .flex-1.min-h-0.overflow-auto { height: auto !important; overflow: visible !important; }
+
+  /* Force readable text on all elements */
+  h1, h2, h3, h4, h5, h6, p, span, div, td, th, label { color: #0f172a !important; }
+  .text-muted-foreground { color: #64748b !important; }
+
+  /* Cards: white bg, visible border, preserve internal colors */
+  [data-slot="card"] {
+    background: white !important;
+    border: 1px solid #e2e8f0 !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
-  /* Page setup */
-  @page { size: landscape; margin: 0.5in; }
+
+  /* Charts: preserve colors */
+  [data-slot="chart"], svg, .recharts-wrapper {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Tables */
+  table { border-collapse: collapse !important; }
+  th { background: #f1f5f9 !important; color: #0f172a !important; font-weight: 600 !important; }
+  td, th { border: 1px solid #e2e8f0 !important; padding: 6px 10px !important; }
+
+  /* KPI grid — force visible */
+  .grid { display: grid !important; }
 }
