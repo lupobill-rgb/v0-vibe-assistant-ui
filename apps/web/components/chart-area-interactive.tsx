@@ -7,8 +7,11 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   XAxis,
   YAxis,
 } from "recharts"
@@ -252,6 +255,31 @@ export function ChartAreaInteractive({ chart }: ChartAreaInteractiveProps) {
                 />
               ))}
             </LineChart>
+          ) : chartType === "pie" || chartType === "donut" ? (
+            <PieChart>
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    formatter={(value) => formatFullNumber(Number(value))}
+                  />
+                }
+              />
+              <Pie
+                data={filteredData}
+                dataKey={yKeys[0]}
+                nameKey={xKey}
+                cx="50%"
+                cy="50%"
+                innerRadius={chartType === "donut" ? "55%" : 0}
+                outerRadius="80%"
+                strokeWidth={2}
+                stroke="var(--background)"
+              >
+                {filteredData.map((_, i) => (
+                  <Cell key={i} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
+                ))}
+              </Pie>
+            </PieChart>
           ) : (
             <AreaChart data={filteredData}>
               <defs>

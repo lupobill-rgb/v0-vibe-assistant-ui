@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import { Maximize2, MessageSquare, X } from "lucide-react"
+import { Download, Link2, Maximize2, MessageSquare } from "lucide-react"
 import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCards } from "@/components/section-cards"
@@ -41,6 +41,7 @@ interface ShadcnDashboardProps {
 export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
   const [expandedChart, setExpandedChart] = React.useState<ChartBlock | null>(null)
   const [expandedKpi, setExpandedKpi] = React.useState<KPICard | null>(null)
+  const [copiedLink, setCopiedLink] = React.useState(false)
 
   if (!data) return null
 
@@ -109,19 +110,46 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               )}
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className={`text-xs shrink-0 ${
-              data.meta.data_source === "connected"
-                ? "border-emerald-500/50 text-emerald-400"
-                : "border-muted-foreground/30 text-muted-foreground"
-            }`}
-          >
-            <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${
-              data.meta.data_source === "connected" ? "bg-emerald-400" : "bg-muted-foreground"
-            }`} />
-            {data.meta.data_source === "connected" ? "Live" : "Sample Data"}
-          </Badge>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => {
+                const url = window.location.href
+                navigator.clipboard.writeText(url)
+                setCopiedLink(true)
+                setTimeout(() => setCopiedLink(false), 2000)
+              }}
+              title="Copy share link"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              {copiedLink ? "Copied!" : "Share"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => window.print()}
+              title="Export to PDF"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </Button>
+            <Badge
+              variant="outline"
+              className={`text-xs ${
+                data.meta.data_source === "connected"
+                  ? "border-emerald-500/50 text-emerald-400"
+                  : "border-muted-foreground/30 text-muted-foreground"
+              }`}
+            >
+              <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${
+                data.meta.data_source === "connected" ? "bg-emerald-400" : "bg-muted-foreground"
+              }`} />
+              {data.meta.data_source === "connected" ? "Live" : "Sample Data"}
+            </Badge>
+          </div>
         </div>
       </header>
 
