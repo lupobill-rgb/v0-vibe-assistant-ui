@@ -1,3 +1,5 @@
+"use client"
+
 import { IconTrendingDown, IconTrendingUp } from "@tabler/icons-react"
 
 import type { KPICard } from "@/types/dashboard"
@@ -45,9 +47,10 @@ function formatKpiValue(value: string | number, format?: string): string {
 
 interface SectionCardsProps {
   kpis?: KPICard[]
+  onCardClick?: (kpi: KPICard) => void
 }
 
-export function SectionCards({ kpis }: SectionCardsProps) {
+export function SectionCards({ kpis, onCardClick }: SectionCardsProps) {
   const cards = kpis && kpis.length > 0 ? kpis : defaultKpis
 
   return (
@@ -59,7 +62,11 @@ export function SectionCards({ kpis }: SectionCardsProps) {
           : undefined
         const trendColor = kpi.trend === "down" ? "text-red-400" : "text-emerald-400"
         return (
-          <Card key={kpi.id} className="@container/card">
+          <Card
+            key={kpi.id}
+            className="@container/card cursor-pointer transition-all hover:shadow-md hover:border-primary/30"
+            onClick={() => onCardClick?.(kpi)}
+          >
             <CardHeader>
               <CardDescription>{kpi.label}</CardDescription>
               <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">

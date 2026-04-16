@@ -11,7 +11,8 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import type { DashboardData, TableBlock } from "@/types/dashboard"
+import { Maximize2, MessageSquare, X } from "lucide-react"
+import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCards } from "@/components/section-cards"
 import {
@@ -25,13 +26,22 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface ShadcnDashboardProps {
   data?: DashboardData
+  onDrillDown?: (prompt: string) => void
 }
 
-export function ShadcnDashboard({ data }: ShadcnDashboardProps) {
+export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
+  const [expandedChart, setExpandedChart] = React.useState<ChartBlock | null>(null)
+  const [expandedKpi, setExpandedKpi] = React.useState<KPICard | null>(null)
+
   if (!data) return null
 
   const theme = data.meta.theme
@@ -119,12 +129,37 @@ export function ShadcnDashboard({ data }: ShadcnDashboardProps) {
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
           {/* KPI Cards */}
-          <SectionCards kpis={data.kpis} />
+          <SectionCards
+            kpis={data.kpis}
+            onCardClick={(kpi) => setExpandedKpi(kpi)}
+          />
 
           {/* Charts */}
           {data.charts?.map((chart) => (
-            <div key={chart.id} className="px-4 lg:px-6">
+            <div key={chart.id} className="px-4 lg:px-6 group relative">
               <ChartAreaInteractive chart={chart} />
+              <div className="absolute top-3 right-7 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setExpandedChart(chart)}
+                  title="Expand"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </Button>
+                {onDrillDown && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => onDrillDown(`Tell me more about "${chart.title}". What are the key insights and trends?`)}
+                    title="Ask about this chart"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
 
@@ -158,11 +193,90 @@ export function ShadcnDashboard({ data }: ShadcnDashboardProps) {
           {/* Data Tables */}
           {data.tables?.map((table) => (
             <div key={table.id} className="px-4 lg:px-6">
-              <DashboardDataTable table={table} />
+              <DashboardDataTable table={table} onDrillDown={onDrillDown} />
             </div>
           ))}
         </div>
       </div>
+
+      {/* ── Expanded Chart Dialog ── */}
+      <Dialog open={!!expandedChart} onOpenChange={() => setExpandedChart(null)}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>{expandedChart?.title}</DialogTitle>
+          </DialogHeader>
+          {expandedChart && (
+            <div className="pt-2">
+              <ChartAreaInteractive chart={expandedChart} />
+              {onDrillDown && (
+                <div className="flex justify-end pt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      onDrillDown(`Analyze "${expandedChart.title}" in detail. What trends, anomalies, or insights do you see?`)
+                      setExpandedChart(null)
+                    }}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Ask AI about this chart
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── KPI Detail Dialog ── */}
+      <Dialog open={!!expandedKpi} onOpenChange={() => setExpandedKpi(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{expandedKpi?.label}</DialogTitle>
+          </DialogHeader>
+          {expandedKpi && (
+            <div className="flex flex-col gap-4 pt-2">
+              <div className="text-center py-4">
+                <p className="text-4xl font-bold tabular-nums">{expandedKpi.value}</p>
+                {expandedKpi.change != null && (
+                  <p className={`text-sm mt-2 ${expandedKpi.trend === 'down' ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {expandedKpi.trend === 'down' ? 'Down' : 'Up'} {expandedKpi.change > 0 ? '+' : ''}{expandedKpi.change}% {expandedKpi.change_period ?? ''}
+                  </p>
+                )}
+              </div>
+              {onDrillDown && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={() => {
+                      onDrillDown(`What's driving the ${expandedKpi.label}? Break down the contributing factors.`)
+                      setExpandedKpi(null)
+                    }}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    What&apos;s driving this?
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={() => {
+                      onDrillDown(`Show me the trend for ${expandedKpi.label} over the last 12 months.`)
+                      setExpandedKpi(null)
+                    }}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Show trend
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -172,7 +286,7 @@ export function ShadcnDashboard({ data }: ShadcnDashboardProps) {
  * Renders dynamic columns/rows from DashboardData.tables
  * ────────────────────────────────────────────────────────────────── */
 
-function DashboardDataTable({ table }: { table: TableBlock }) {
+function DashboardDataTable({ table, onDrillDown }: { table: TableBlock; onDrillDown?: (prompt: string) => void }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
 
   const columns = React.useMemo<ColumnDef<Record<string, unknown>>[]>(
@@ -231,23 +345,31 @@ function DashboardDataTable({ table }: { table: TableBlock }) {
               ))}
             </TableHeader>
             <TableBody>
-              {reactTable.getRowModel().rows.length > 0 ? (
-                reactTable.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="whitespace-nowrap">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              {reactTable.getRowModel().rows.length > 0
+                ? reactTable.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      className={onDrillDown ? "cursor-pointer hover:bg-muted/50" : ""}
+                      onClick={() => {
+                        if (!onDrillDown) return
+                        const firstVal = String(row.getAllCells()[0]?.getValue() ?? '')
+                        onDrillDown('Tell me more about "' + firstVal + '" from the ' + table.title + ' table.')
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id} className="whitespace-nowrap">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                : (
+                    <TableRow>
+                      <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                        No data
                       </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                    No data
-                  </TableCell>
-                </TableRow>
-              )}
+                    </TableRow>
+                  )}
             </TableBody>
           </Table>
         </div>
