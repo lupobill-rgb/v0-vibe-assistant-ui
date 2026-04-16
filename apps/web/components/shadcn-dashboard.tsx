@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import { Download, Link2, Maximize2, MessageSquare } from "lucide-react"
+import { Download, FileSpreadsheet, Link2, Maximize2, MessageSquare } from "lucide-react"
 import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCards } from "@/components/section-cards"
@@ -134,7 +134,20 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               title="Export to PDF"
             >
               <Download className="w-3.5 h-3.5" />
-              Export
+              PDF
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={async () => {
+                const { exportDashboardToPptx } = await import("@/lib/export-pptx")
+                await exportDashboardToPptx(data)
+              }}
+              title="Export to PowerPoint"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              PPTX
             </Button>
             <Badge
               variant="outline"

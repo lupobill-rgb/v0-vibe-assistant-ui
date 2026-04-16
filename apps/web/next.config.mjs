@@ -6,6 +6,24 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  webpack: (config, { isServer, webpack }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        https: false,
+        http: false,
+        stream: false,
+      }
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /^node:/,
+          (resource) => { resource.request = resource.request.replace(/^node:/, '') }
+        )
+      )
+    }
+    return config
+  },
   async headers() {
     return [
       {
