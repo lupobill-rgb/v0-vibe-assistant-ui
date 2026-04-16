@@ -66,15 +66,20 @@ function formatFullNumber(value: number): string {
 
 interface ChartAreaInteractiveProps {
   chart?: ChartBlock
+  globalTimeRange?: string
 }
 
-export function ChartAreaInteractive({ chart }: ChartAreaInteractiveProps) {
+export function ChartAreaInteractive({ chart, globalTimeRange }: ChartAreaInteractiveProps) {
   const isMobile = useIsMobile()
-  const [timeRange, setTimeRange] = React.useState("all")
+  const [localTimeRange, setLocalTimeRange] = React.useState("all")
+
+  // Global filter overrides local when set
+  const timeRange = globalTimeRange && globalTimeRange !== "all" ? globalTimeRange : localTimeRange
+  const setTimeRange = setLocalTimeRange
 
   React.useEffect(() => {
     if (isMobile) {
-      setTimeRange("7d")
+      setLocalTimeRange("7d")
     }
   }, [isMobile])
 
@@ -104,8 +109,13 @@ export function ChartAreaInteractive({ chart }: ChartAreaInteractiveProps) {
   if (isTimeSeries && timeRange !== "all") {
     const dates = chart.data.map((d) => new Date(String(d[xKey])).getTime())
     const maxDate = Math.max(...dates)
-    const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
-    const cutoff = maxDate - days * 86400000
+    let cutoff: number
+    if (timeRange === "ytd") {
+      cutoff = new Date(new Date().getFullYear(), 0, 1).getTime()
+    } else {
+      const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
+      cutoff = maxDate - days * 86400000
+    }
     filteredData = chart.data.filter(
       (d) => new Date(String(d[xKey])).getTime() >= cutoff
     )

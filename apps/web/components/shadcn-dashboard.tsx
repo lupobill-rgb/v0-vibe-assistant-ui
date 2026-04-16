@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import { Download, FileSpreadsheet, Link2, Maximize2, MessageSquare } from "lucide-react"
+import { Calendar, Download, FileSpreadsheet, Link2, Maximize2, MessageSquare } from "lucide-react"
 import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCards } from "@/components/section-cards"
@@ -32,6 +32,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group"
 
 interface ShadcnDashboardProps {
   data?: DashboardData
@@ -42,6 +46,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
   const [expandedChart, setExpandedChart] = React.useState<ChartBlock | null>(null)
   const [expandedKpi, setExpandedKpi] = React.useState<KPICard | null>(null)
   const [copiedLink, setCopiedLink] = React.useState(false)
+  const [globalDateRange, setGlobalDateRange] = React.useState("all")
 
   if (!data) return null
 
@@ -166,6 +171,27 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
         </div>
       </header>
 
+      {/* Global Filter Bar */}
+      <div className="flex items-center justify-between px-4 lg:px-6 py-2 border-b" style={{ background: isLight ? '#f8fafc' : undefined }}>
+        <div className="flex items-center gap-2">
+          <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Date Range</span>
+        </div>
+        <ToggleGroup
+          type="single"
+          value={globalDateRange}
+          onValueChange={(v) => v && setGlobalDateRange(v)}
+          variant="outline"
+          className="*:data-[slot=toggle-group-item]:px-3! *:data-[slot=toggle-group-item]:h-7! *:data-[slot=toggle-group-item]:text-xs!"
+        >
+          <ToggleGroupItem value="all">All</ToggleGroupItem>
+          <ToggleGroupItem value="7d">7D</ToggleGroupItem>
+          <ToggleGroupItem value="30d">30D</ToggleGroupItem>
+          <ToggleGroupItem value="90d">90D</ToggleGroupItem>
+          <ToggleGroupItem value="ytd">YTD</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
       {/* Main Content */}
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -178,7 +204,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
           {/* Charts */}
           {data.charts?.map((chart) => (
             <div key={chart.id} className="px-4 lg:px-6 group relative">
-              <ChartAreaInteractive chart={chart} />
+              <ChartAreaInteractive chart={chart} globalTimeRange={globalDateRange} />
               <div className="absolute top-3 right-7 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
                   variant="ghost"
