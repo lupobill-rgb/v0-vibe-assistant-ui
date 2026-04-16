@@ -17,6 +17,7 @@ import teamsDomainRouter from './routes/teams-domain.route';
 import { extractTenantFromJwt } from './middleware/tenant';
 import { startExecutionRunner } from './kernel/execution-runner';
 import { handleDashboardJob } from './handlers/dashboard.handler';
+import { handleDashboardTemplate } from './handlers/dashboard-templates';
 import { handlePlannerPipeline } from './handlers/planner.handler';
 import { handleDeterministicTemplate, handleAppFastPath } from './handlers/fast-paths.handler';
 import { enrichPrompt } from './handlers/enrich-prompt.handler';
@@ -1056,6 +1057,14 @@ window.vibeLoadData=async function(table,filters){filters=filters||{};var url=wi
               pageNames = appParams.pageNames;
               return;
             }
+          }
+
+          // ── Dashboard JSON template path ── zero LLM calls for common dashboards
+          if (resolvedMode === 'dashboard') {
+            if (await handleDashboardTemplate({
+              taskId, prompt, org, project, user_id: user_id!,
+              auditDepartment, startedAtMs, timeline, writeAuditLog,
+            })) return;
           }
 
           // ── Dashboard fast path ── bypass planner, single Edge call ──
