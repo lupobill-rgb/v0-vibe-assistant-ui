@@ -16,7 +16,9 @@ import { storage } from '../storage';
 interface DashboardTemplate {
   /** Unique identifier */
   id: string;
-  /** Keywords used for matching — prompt must contain 50%+ of these */
+  /** Primary keywords — prompt must contain at least one of these to be eligible */
+  primary: string[];
+  /** Signal keywords — boost match confidence */
   keywords: string[];
   /** The DashboardData JSON payload */
   data: {
@@ -63,7 +65,8 @@ interface DashboardTemplate {
 const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
   {
     id: 'sales-pipeline',
-    keywords: ['sales', 'pipeline', 'deals', 'crm', 'revenue', 'forecast'],
+    primary: ['pipeline', 'sales'],
+    keywords: ['deals', 'crm', 'revenue', 'forecast', 'quota', 'funnel', 'win rate'],
     data: {
       meta: {
         title: 'Sales Pipeline Dashboard',
@@ -151,7 +154,8 @@ const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
   },
   {
     id: 'marketing-performance',
-    keywords: ['marketing', 'campaign', 'leads', 'attribution', 'channels', 'cac', 'ltv'],
+    primary: ['marketing', 'campaign'],
+    keywords: ['leads', 'attribution', 'channels', 'cac', 'ltv', 'conversion', 'acquisition'],
     data: {
       meta: {
         title: 'Marketing Performance Dashboard',
@@ -245,7 +249,8 @@ const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
   },
   {
     id: 'executive-overview',
-    keywords: ['executive', 'overview', 'company', 'business', 'kpi', 'summary', 'ceo', 'cfo'],
+    primary: ['executive', 'overview', 'ceo', 'cfo'],
+    keywords: ['company', 'business', 'kpi', 'summary', 'performance', 'revenue', 'growth'],
     data: {
       meta: {
         title: 'Executive Overview',
@@ -304,20 +309,40 @@ const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
 ];
 
 // ── Template Matching ──────────────────────────────────────────────
-
-const MATCH_THRESHOLD = 0.5; // 50% keyword overlap required
+//
+// Matching rules:
+//   1. Prompt must contain at least 1 primary keyword (gate)
+//   2. Score = (primary matches * 3 + signal matches) / (primary count * 3 + signal count)
+//   3. Minimum score: 0.2 (at least 1 primary hit)
+//   4. Highest scoring template wins; ties go to first defined
+//
+// Examples that SHOULD match:
+//   "show me my pipeline"       → sales-pipeline  (primary: pipeline)
+//   "marketing dashboard"       → marketing       (primary: marketing)
+//   "executive overview"        → executive        (primary: executive + overview)
+//
+// Examples that should NOT match:
+//   "build a churn cohort analysis"  → no primary hit → LLM fallthrough
+//   "help me with my resume"         → no primary hit → LLM fallthrough
 
 export function matchDashboardTemplate(prompt: string): DashboardTemplate | null {
   const lower = prompt.toLowerCase();
-  const words = lower.split(/\s+/);
 
   let bestMatch: DashboardTemplate | null = null;
   let bestScore = 0;
 
   for (const template of DASHBOARD_TEMPLATES) {
-    const matched = template.keywords.filter((kw) => lower.includes(kw));
-    const score = matched.length / template.keywords.length;
-    if (score >= MATCH_THRESHOLD && score > bestScore) {
+    // Gate: must hit at least 1 primary keyword
+    const primaryHits = template.primary.filter((kw) => lower.includes(kw));
+    if (primaryHits.length === 0) continue;
+
+    // Score: weight primary keywords 3x
+    const signalHits = template.keywords.filter((kw) => lower.includes(kw));
+    const score =
+      (primaryHits.length * 3 + signalHits.length) /
+      (template.primary.length * 3 + template.keywords.length);
+
+    if (score > bestScore) {
       bestScore = score;
       bestMatch = template;
     }
