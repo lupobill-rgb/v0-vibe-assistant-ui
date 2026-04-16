@@ -32,6 +32,7 @@ import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
+import { SectionCommentButton } from "@/components/dashboard-comments"
 import { SectionCards } from "@/components/section-cards"
 import {
   Table,
@@ -79,6 +80,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
   const [showRename, setShowRename] = React.useState(false)
   const [renameTo, setRenameTo] = React.useState("")
   const { currentTeam } = useTeam()
+  const jobId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() ?? '' : ''
 
   // Build sortable section IDs from dashboard data
   const buildSectionIds = React.useCallback(() => {
@@ -315,7 +317,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               {sectionOrder.map((sectionId) => {
                 if (sectionId === 'kpis') {
                   return (
-                    <SortableSection key="kpis" id="kpis">
+                    <SortableSection key="kpis" id="kpis" jobId={jobId}>
                       <SectionCards kpis={data.kpis} onCardClick={(kpi) => setExpandedKpi(kpi)} />
                     </SortableSection>
                   )
@@ -325,7 +327,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
                   const chart = data.charts?.find((c) => c.id === chartId)
                   if (!chart) return null
                   return (
-                    <SortableSection key={sectionId} id={sectionId}>
+                    <SortableSection key={sectionId} id={sectionId} jobId={jobId}>
                       <div className="px-4 lg:px-6 group relative">
                         <ChartAreaInteractive chart={chart} globalTimeRange={globalDateRange} />
                         <div className="absolute top-3 right-7 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -339,7 +341,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
                 }
                 if (sectionId === 'alerts' && data.alerts?.length) {
                   return (
-                    <SortableSection key="alerts" id="alerts">
+                    <SortableSection key="alerts" id="alerts" jobId={jobId}>
                       <div className="flex flex-col gap-2 px-4 lg:px-6">
                         {data.alerts.map((alert) => (
                           <Card key={alert.id} className={alert.severity === "critical" ? "border-destructive/50" : alert.severity === "warning" ? "border-yellow-500/50" : "border-border"}>
@@ -358,7 +360,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
                   const table = data.tables?.find((t) => t.id === tableId)
                   if (!table) return null
                   return (
-                    <SortableSection key={sectionId} id={sectionId}>
+                    <SortableSection key={sectionId} id={sectionId} jobId={jobId}>
                       <div className="px-4 lg:px-6">
                         <DashboardDataTable table={table} onDrillDown={onDrillDown} />
                       </div>
@@ -532,7 +534,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
  * SortableSection — drag handle + sortable wrapper for dashboard sections
  * ────────────────────────────────────────────────────────────────── */
 
-function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
+function SortableSection({ id, jobId, children }: { id: string; jobId: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
 
   const style: React.CSSProperties = {
@@ -544,13 +546,16 @@ function SortableSection({ id, children }: { id: string; children: React.ReactNo
 
   return (
     <div ref={setNodeRef} style={style} className="group/drag">
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute left-1 top-1/2 -translate-y-1/2 z-10 cursor-grab active:cursor-grabbing opacity-0 group-hover/drag:opacity-60 transition-opacity p-1 rounded hover:bg-muted"
-        title="Drag to reorder"
-      >
-        <GripVertical className="w-4 h-4 text-muted-foreground" />
+      <div className="absolute left-1 top-3 z-10 flex flex-col gap-1 opacity-0 group-hover/drag:opacity-60 transition-opacity">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted"
+          title="Drag to reorder"
+        >
+          <GripVertical className="w-4 h-4 text-muted-foreground" />
+        </div>
+        <SectionCommentButton jobId={jobId} sectionId={id} />
       </div>
       {children}
     </div>
