@@ -224,7 +224,7 @@ export function ChartAreaInteractive({ chart, globalTimeRange }: ChartAreaIntera
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         <ChartContainer
           config={chartConfig}
-          className="aspect-auto h-[280px] w-full"
+          className="aspect-auto h-[200px] sm:h-[280px] w-full"
         >
           {chartType === "bar" ? (
             <BarChart data={filteredData} barCategoryGap="20%">

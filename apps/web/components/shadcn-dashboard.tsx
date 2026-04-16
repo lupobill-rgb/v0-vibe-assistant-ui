@@ -139,7 +139,7 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
       style={Object.keys(themeStyles).length > 0 ? themeStyles : undefined}
     >
       {/* Dashboard Header */}
-      <header className="flex h-14 shrink-0 items-center border-b" style={{ background: isLight ? '#f8fafc' : undefined }}>
+      <header className="flex min-h-14 shrink-0 items-center border-b flex-wrap gap-2 py-2" style={{ background: isLight ? '#f8fafc' : undefined }}>
         <div className="flex w-full items-center justify-between px-4 lg:px-6">
           <div className="flex items-center gap-3 min-w-0">
             {logoUrl ? (
@@ -150,15 +150,16 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
             <div className="min-w-0">
               <h1 className="text-sm font-semibold truncate">{data.meta.title}</h1>
               {data.meta.subtitle && (
-                <p className="text-xs truncate" style={{ color: isLight ? '#64748b' : undefined }}>{data.meta.subtitle}</p>
+                <p className="text-xs truncate hidden sm:block" style={{ color: isLight ? '#64748b' : undefined }}>{data.meta.subtitle}</p>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* Mobile: icon-only buttons. Desktop: icon + label */}
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-1.5 text-xs px-2 sm:px-3"
               onClick={() => {
                 const url = window.location.href
                 navigator.clipboard.writeText(url)
@@ -168,22 +169,22 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               title="Copy share link"
             >
               <Link2 className="w-3.5 h-3.5" />
-              {copiedLink ? "Copied!" : "Share"}
+              <span className="hidden sm:inline">{copiedLink ? "Copied!" : "Share"}</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-1.5 text-xs px-2 sm:px-3"
               onClick={() => window.print()}
               title="Export to PDF"
             >
               <Download className="w-3.5 h-3.5" />
-              PDF
+              <span className="hidden sm:inline">PDF</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-1.5 text-xs px-2 sm:px-3 hidden sm:flex"
               onClick={async () => {
                 const { exportDashboardToPptx } = await import("@/lib/export-pptx")
                 await exportDashboardToPptx(data)
@@ -191,17 +192,17 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
               title="Export to PowerPoint"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              PPTX
+              <span className="hidden sm:inline">PPTX</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-1.5 text-xs px-2 sm:px-3 hidden sm:flex"
               onClick={() => setShowEmbed(true)}
               title="Get embed code"
             >
               <Code2 className="w-3.5 h-3.5" />
-              Embed
+              <span className="hidden sm:inline">Embed</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -242,10 +243,10 @@ export function ShadcnDashboard({ data, onDrillDown }: ShadcnDashboardProps) {
       </header>
 
       {/* Global Filter Bar */}
-      <div className="flex items-center justify-between px-4 lg:px-6 py-2 border-b" style={{ background: isLight ? '#f8fafc' : undefined }}>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-4 lg:px-6 py-2 border-b gap-2 overflow-x-auto" style={{ background: isLight ? '#f8fafc' : undefined }}>
+        <div className="flex items-center gap-2 shrink-0">
           <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Date Range</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">Date Range</span>
         </div>
         <ToggleGroup
           type="single"
