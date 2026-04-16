@@ -16,7 +16,9 @@ import { storage } from '../storage';
 interface DashboardTemplate {
   /** Unique identifier */
   id: string;
-  /** Primary keywords — prompt must contain at least one of these to be eligible */
+  /** Team/department names that auto-match this template */
+  departments: string[];
+  /** Primary keywords — prompt must contain at least one of these to be eligible (when no department match) */
   primary: string[];
   /** Signal keywords — boost match confidence */
   keywords: string[];
@@ -65,6 +67,7 @@ interface DashboardTemplate {
 const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
   {
     id: 'sales-pipeline',
+    departments: ['sales', 'revenue', 'business development', 'account management'],
     primary: ['pipeline', 'sales'],
     keywords: ['deals', 'crm', 'revenue', 'forecast', 'quota', 'funnel', 'win rate'],
     data: {
@@ -154,6 +157,7 @@ const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
   },
   {
     id: 'marketing-performance',
+    departments: ['marketing', 'growth', 'demand gen', 'content'],
     primary: ['marketing', 'campaign'],
     keywords: ['leads', 'attribution', 'channels', 'cac', 'ltv', 'conversion', 'acquisition'],
     data: {
@@ -249,6 +253,7 @@ const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
   },
   {
     id: 'executive-overview',
+    departments: ['executive', 'leadership', 'c-suite', 'general'],
     primary: ['executive', 'overview', 'ceo', 'cfo'],
     keywords: ['company', 'business', 'kpi', 'summary', 'performance', 'revenue', 'growth'],
     data: {
@@ -310,24 +315,46 @@ const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
 
 // ── Template Matching ──────────────────────────────────────────────
 //
-// Matching rules:
-//   1. Prompt must contain at least 1 primary keyword (gate)
-//   2. Score = (primary matches * 3 + signal matches) / (primary count * 3 + signal count)
-//   3. Minimum score: 0.2 (at least 1 primary hit)
-//   4. Highest scoring template wins; ties go to first defined
+// Matching priority:
+//   1. TEAM CONTEXT — if the user's team name matches a template's departments
+//      list, that template is selected regardless of prompt content. This is
+//      the primary signal: a Sales team member saying "show me my dashboard"
+//      gets the sales template without keyword gymnastics.
 //
-// Examples that SHOULD match:
+//   2. KEYWORD FALLBACK — if no department match (or teamName is generic),
+//      fall back to primary keyword gating + weighted scoring.
+//
+// Generic prompts that work via team context:
+//   "show me my dashboard"      + Sales team      → sales-pipeline
+//   "dashboard"                 + Marketing team   → marketing-performance
+//   "what does my data look like" + Executive team → executive-overview
+//
+// Specific prompts that work via keywords (regardless of team):
 //   "show me my pipeline"       → sales-pipeline  (primary: pipeline)
-//   "marketing dashboard"       → marketing       (primary: marketing)
-//   "executive overview"        → executive        (primary: executive + overview)
+//   "campaign performance"      → marketing        (primary: campaign)
 //
-// Examples that should NOT match:
-//   "build a churn cohort analysis"  → no primary hit → LLM fallthrough
-//   "help me with my resume"         → no primary hit → LLM fallthrough
+// Prompts that fall through to LLM:
+//   "build a churn cohort analysis" + Sales team   → no keyword match → LLM
 
-export function matchDashboardTemplate(prompt: string): DashboardTemplate | null {
+export function matchDashboardTemplate(prompt: string, teamName?: string): DashboardTemplate | null {
   const lower = prompt.toLowerCase();
+  const teamLower = (teamName ?? '').toLowerCase();
 
+  // ── Priority 1: Team/department match ──
+  // Generic dashboard prompts ("show me my dashboard", "dashboard", "overview")
+  // should resolve via team context, not keywords.
+  const genericPatterns = ['dashboard', 'show me my', 'my data', 'my metrics', 'my performance', 'my overview'];
+  const isGenericPrompt = genericPatterns.some((p) => lower.includes(p));
+
+  if (teamLower && isGenericPrompt) {
+    for (const template of DASHBOARD_TEMPLATES) {
+      if (template.departments.some((dept) => teamLower.includes(dept) || dept.includes(teamLower))) {
+        return template;
+      }
+    }
+  }
+
+  // ── Priority 2: Keyword match ──
   let bestMatch: DashboardTemplate | null = null;
   let bestScore = 0;
 
@@ -356,6 +383,7 @@ export function matchDashboardTemplate(prompt: string): DashboardTemplate | null
 export interface DashboardTemplateParams {
   taskId: string;
   prompt: string;
+  teamName: string;
   org: { id: string; [key: string]: any } | null | undefined;
   project: { team_id: string; [key: string]: any };
   user_id: string;
@@ -372,11 +400,11 @@ export interface DashboardTemplateParams {
  */
 export async function handleDashboardTemplate(params: DashboardTemplateParams): Promise<boolean> {
   const {
-    taskId, prompt, org, project, user_id,
+    taskId, prompt, teamName, org, project, user_id,
     auditDepartment, startedAtMs, timeline, writeAuditLog,
   } = params;
 
-  const template = matchDashboardTemplate(prompt);
+  const template = matchDashboardTemplate(prompt, teamName);
   if (!template) return false;
 
   console.log(`[DASHBOARD-TEMPLATE] Matched "${template.id}" — zero LLM calls`);

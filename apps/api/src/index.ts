@@ -1062,7 +1062,7 @@ window.vibeLoadData=async function(table,filters){filters=filters||{};var url=wi
           // ── Dashboard JSON template path ── zero LLM calls for common dashboards
           if (resolvedMode === 'dashboard') {
             if (await handleDashboardTemplate({
-              taskId, prompt, org, project, user_id: user_id!,
+              taskId, prompt, teamName, org, project, user_id: user_id!,
               auditDepartment, startedAtMs, timeline, writeAuditLog,
             })) return;
           }
