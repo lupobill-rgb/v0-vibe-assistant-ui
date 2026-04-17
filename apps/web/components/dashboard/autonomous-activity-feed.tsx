@@ -19,7 +19,8 @@ type Execution = {
 
 type SkillInfo = { skill_name: string; description: string | null }
 
-function formatSkillName(raw: string): string {
+function formatSkillName(raw: unknown): string {
+  if (typeof raw !== "string" || !raw) return "Unknown"
   return raw.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
@@ -137,7 +138,13 @@ export function AutonomousActivityFeed() {
           .in("id", ids)
         if (skills) {
           const map: Record<string, SkillInfo> = {}
-          for (const s of skills) map[s.id] = { skill_name: s.skill_name, description: s.description }
+          for (const s of skills) {
+            if (!s.id) continue
+            map[s.id] = {
+              skill_name: typeof s.skill_name === "string" ? s.skill_name : "",
+              description: typeof s.description === "string" ? s.description : null,
+            }
+          }
           setSkillMap(map)
         }
       }
