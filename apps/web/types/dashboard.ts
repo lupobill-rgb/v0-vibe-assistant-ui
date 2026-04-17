@@ -26,6 +26,8 @@ export interface KPICard {
   change_period?: string;
   trend?: 'up' | 'down' | 'flat';
   format?: 'currency' | 'percent' | 'number' | 'text';
+  /** Optional array of historical values for inline sparkline rendering. */
+  sparkline?: number[];
 }
 
 export interface ChartBlock {
