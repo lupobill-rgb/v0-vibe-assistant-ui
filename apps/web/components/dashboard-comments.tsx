@@ -85,7 +85,7 @@ export function SectionCommentButton({ jobId, sectionId }: SectionCommentsProps)
     return (
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1 opacity-0 group-hover/drag:opacity-60 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+        className="flex items-center gap-1 opacity-0 group-hover/drag:opacity-80 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-primary p-1 rounded hover:bg-muted"
         title="Comments"
       >
         <MessageCircle className="w-3.5 h-3.5" />
@@ -95,15 +95,15 @@ export function SectionCommentButton({ jobId, sectionId }: SectionCommentsProps)
   }
 
   return (
-    <div className="mx-4 lg:mx-6 mt-1 mb-2 rounded-lg border border-border bg-card p-3 animate-in slide-in-from-top-2 duration-200">
+    <div className="mx-4 lg:mx-6 mt-1 mb-2 rounded-lg border border-border bg-popover p-3 shadow-lg animate-in slide-in-from-top-2 duration-200" style={{ background: '#13131a', borderColor: '#2a2a3a' }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <MessageCircle className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-xs font-medium">Comments</span>
-          {count > 0 && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{count}</Badge>}
+          <MessageCircle className="w-3.5 h-3.5 text-[#00E5A0]" />
+          <span className="text-xs font-semibold text-white">Comments</span>
+          {count > 0 && <Badge className="text-[10px] px-1.5 py-0 bg-[#00E5A0]/20 text-[#00E5A0] border-[#00E5A0]/30">{count}</Badge>}
         </div>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setOpen(false)}>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-white/60 hover:text-white" onClick={() => setOpen(false)}>
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
@@ -173,7 +173,7 @@ export function SectionCommentButton({ jobId, sectionId }: SectionCommentsProps)
           ))}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground mb-3">No comments yet. Be the first to annotate this section.</p>
+        <p className="text-xs text-white/50 mb-3">No comments yet. Be the first to annotate this section.</p>
       )}
 
       {/* Input */}
@@ -192,7 +192,7 @@ export function SectionCommentButton({ jobId, sectionId }: SectionCommentsProps)
           onChange={(e) => setNewComment(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleSend() }}
           placeholder={replyTo ? "Write a reply..." : "Add a comment..."}
-          className="h-8 text-xs"
+          className="h-8 text-xs bg-white/5 border-white/10 text-white placeholder:text-white/30"
         />
         <Button
           size="sm"
