@@ -55,7 +55,7 @@ export function SectionCards({ kpis, onCardClick }: SectionCardsProps) {
   const cards = kpis && kpis.length > 0 ? kpis : defaultKpis
 
   return (
-    <div className="grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-sm lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
+    <div className="grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-br *:data-[slot=card]:from-primary/[0.07] *:data-[slot=card]:via-card *:data-[slot=card]:to-card *:data-[slot=card]:shadow-sm lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
       {cards.map((kpi) => {
         const TrendIcon = kpi.trend === "down" ? IconTrendingDown : IconTrendingUp
         const changeStr = kpi.change != null
