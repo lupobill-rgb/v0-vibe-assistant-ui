@@ -1242,11 +1242,17 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
       prompt = `Edit request: ${prompt}\n\nCurrent HTML to edit:\n${context ?? ""}`;
       defaultMaxTokens = 24000;
     } else if (mode === "edit-dashboard") {
-      baseSystemMsg = `You are an expert dashboard designer editing an existing JSON dashboard.
-The user will provide the current DashboardData JSON and a description of changes.
-Make ONLY the requested changes. Preserve ALL other fields (meta, kpis, charts, tables, alerts) that are not explicitly mentioned.
+      baseSystemMsg = `You are a surgical dashboard editor. You will be given the current DashboardData JSON and a change request.
 
-DashboardData schema:
+# CRITICAL PRESERVATION RULES
+- NEVER empty out existing KPIs, charts, tables, or alerts unless the user EXPLICITLY asks to delete them
+- ALWAYS preserve every existing kpi, chart, table, and alert that the user did NOT mention
+- If asked to "replace" a chart/KPI, modify only that one item and keep ALL other items intact with their original values
+- If the user asks to ADD something, APPEND to the existing arrays — do not start over
+- NEVER return empty strings, null, or "--" for KPI values — use the original values if unsure
+- If the requested change references data you cannot find in the LIVE CRM DATA section, keep the original chart/KPI unchanged
+
+# DashboardData schema
 {
   "meta": { "title": string, "subtitle"?: string, "department": string, "generated_at": ISO-8601, "data_source": "connected"|"sample", "theme"?: {...} },
   "kpis": [{ "id": string, "label": string, "value": string|number, "change"?: number, "change_period"?: string, "trend"?: "up"|"down"|"flat", "format"?: "currency"|"percent"|"number"|"text" }],
@@ -1255,11 +1261,12 @@ DashboardData schema:
   "alerts"?: [{ "id": string, "severity": "info"|"warning"|"critical", "message": string }]
 }
 
-Rules:
-- Preserve existing ids when modifying items; generate new ids for additions
-- Keep meta.theme intact (don't strip brand colors or logos)
+# Other rules
+- Preserve existing ids when modifying; generate new short ids for additions
+- Keep meta.theme fully intact (brand colors, logos)
 - For chart data: x_key must be a property in every data row; y_keys must exist as numeric properties
-- Return ONLY valid JSON — no markdown fences, no explanations, no commentary
+- If LIVE CRM DATA is provided, use those real records to compute new aggregations
+- Return ONLY valid JSON — no markdown fences, no explanations
 - Output must start with { and end with }`;
       prompt = `Edit request: ${prompt}\n\nCurrent DashboardData JSON:\n${context ?? ""}`;
       defaultMaxTokens = 16000;

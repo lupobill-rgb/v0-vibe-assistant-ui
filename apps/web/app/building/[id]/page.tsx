@@ -719,12 +719,37 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       // Dashboard JSON edit response
       if (json.dashboard_json) {
         const newDiff = json.dashboard_json as string
-        // Validate it parses as DashboardData
+        // Validate it parses as DashboardData with actual data
         try {
           const parsed = JSON.parse(newDiff)
           if (!parsed.meta || !parsed.kpis) {
             setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'Edit returned invalid dashboard shape. Try rephrasing.' }])
             return
+          }
+
+          // ── Data-loss safety check ──
+          // Reject edits that empty out KPIs, charts, or tables compared to original.
+          // LLMs sometimes misinterpret "replace" as "clear" — prevent destructive edits.
+          if (dashboardData) {
+            const origKpis = dashboardData.kpis?.length ?? 0
+            const origCharts = dashboardData.charts?.length ?? 0
+            const origTables = dashboardData.tables?.length ?? 0
+            const newKpis = Array.isArray(parsed.kpis) ? parsed.kpis.length : 0
+            const newCharts = Array.isArray(parsed.charts) ? parsed.charts.length : 0
+            const newTables = Array.isArray(parsed.tables) ? parsed.tables.length : 0
+
+            // Check for KPIs with empty/null values
+            const emptyKpis = Array.isArray(parsed.kpis)
+              ? parsed.kpis.filter((k: any) => k.value === null || k.value === undefined || k.value === '' || k.value === '--').length
+              : 0
+
+            const lostContent = newKpis < origKpis * 0.5 || newCharts < origCharts * 0.5 || newTables < origTables * 0.5
+            const emptyMost = origKpis > 0 && emptyKpis >= origKpis * 0.7
+
+            if (lostContent || emptyMost) {
+              setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: `I held that change — the result would have removed or emptied too much data (${origKpis}→${newKpis} KPIs, ${origCharts}→${newCharts} charts). Try a more specific edit like "add a new chart showing X" instead of "replace".` }])
+              return
+            }
           }
         } catch {
           setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'Edit returned malformed JSON. Try rephrasing.' }])
