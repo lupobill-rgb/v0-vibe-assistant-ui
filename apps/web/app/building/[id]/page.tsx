@@ -693,6 +693,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
           edit: true,
           context: editContext,
           messages: [{ role: 'user', content: input }],
+          team_id: projectTeamId,
           preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'claude'),
         }),
       })
@@ -766,7 +767,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       setIsEditing(false)
       setChatThought(null)
     }
-  }, [diff, isEditing, activeFile, jobId, dashboardData])
+  }, [diff, isEditing, activeFile, jobId, dashboardData, projectTeamId])
 
   const handleEdit = async (promptOverride?: string) => {
     const prompt = promptOverride || editInput.trim()

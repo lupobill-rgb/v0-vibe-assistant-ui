@@ -215,10 +215,43 @@ export async function POST(request: Request) {
 
       // ── Dashboard JSON edit path ──
       if (isDashboardEdit) {
+        // For connected dashboards, fetch raw CRM records so the LLM can
+        // compute new aggregations (e.g. "win rate by rep") using real data
+        let liveDataContext = ''
+        try {
+          const parsed = JSON.parse(dashboardContext)
+          const isConnected = parsed?.meta?.data_source === 'connected'
+          if (isConnected && team_id && SUPABASE_SERVICE_KEY) {
+            const cacheRes = await fetch(
+              `${SUPABASE_URL}/rest/v1/team_connector_data?team_id=eq.${encodeURIComponent(team_id)}&select=provider,model,records,record_count,fetched_at&stale_after=gt.${encodeURIComponent(new Date().toISOString())}`,
+              { headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` } }
+            )
+            if (cacheRes.ok) {
+              const rows: Array<{ provider: string; model: string; records: unknown[]; record_count: number }> = await cacheRes.json()
+              if (rows.length > 0) {
+                const samples = rows.map((r) => {
+                  // Cap each provider at 50 records to keep context tractable
+                  const sample = Array.isArray(r.records) ? r.records.slice(0, 50) : []
+                  return `## ${r.provider.toUpperCase()} ${r.model} (${r.record_count} total, showing ${sample.length})\n${JSON.stringify(sample, null, 2)}`
+                }).join('\n\n')
+                liveDataContext = `\n\n=== LIVE CRM DATA (use these records for any new charts, KPIs, or tables) ===\n${samples}`
+              }
+            }
+          }
+        } catch {
+          // Non-fatal — proceed with just the dashboard JSON
+        }
+
         // Limit to 25K chars — JSON is denser than HTML
         if (dashboardContext.length > 25000) {
           dashboardContext = dashboardContext.slice(0, 25000) + '\n/* ...truncated... */'
         }
+        // Append live data (capped separately to keep combined context under ~60K)
+        if (liveDataContext.length > 35000) {
+          liveDataContext = liveDataContext.slice(0, 35000) + '\n/* ...records truncated... */'
+        }
+        dashboardContext = dashboardContext + liveDataContext
+
         let jsonOut = ''
         try {
           const edgeData = await callEdgeFunction(prompt, '', 8000, {
