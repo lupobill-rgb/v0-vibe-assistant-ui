@@ -54,7 +54,15 @@ interface DashboardTemplate {
     tables?: Array<{
       id: string;
       title: string;
-      columns: Array<{ key: string; label: string }>;
+      columns: Array<{
+        key: string;
+        label: string;
+        conditional?: Array<{
+          op: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | 'contains' | 'in_range';
+          value: number | string | [number, number];
+          style: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+        }>;
+      }>;
       rows: Record<string, unknown>[];
     }>;
     alerts?: Array<{
@@ -135,8 +143,24 @@ const DASHBOARD_TEMPLATES: DashboardTemplate[] = [
             { key: 'deal', label: 'Deal Name' },
             { key: 'company', label: 'Company' },
             { key: 'value', label: 'Value' },
-            { key: 'stage', label: 'Stage' },
-            { key: 'probability', label: 'Probability' },
+            {
+              key: 'stage',
+              label: 'Stage',
+              conditional: [
+                { op: 'contains', value: 'Closed Won', style: 'success' },
+                { op: 'contains', value: 'Negotiation', style: 'warning' },
+                { op: 'contains', value: 'Proposal', style: 'info' },
+              ],
+            },
+            {
+              key: 'probability',
+              label: 'Probability',
+              conditional: [
+                { op: 'gte', value: 70, style: 'success' },
+                { op: 'in_range', value: [40, 69], style: 'warning' },
+                { op: 'lt', value: 40, style: 'danger' },
+              ],
+            },
             { key: 'close_date', label: 'Expected Close' },
             { key: 'owner', label: 'Owner' },
           ],
@@ -1080,7 +1104,16 @@ async function buildLiveSalesPipeline(teamId: string, provider: string): Promise
         title: 'Top Deals',
         columns: [
           { key: 'deal', label: 'Deal Name' },
-          { key: 'stage', label: 'Stage' },
+          {
+            key: 'stage',
+            label: 'Stage',
+            conditional: [
+              { op: 'contains', value: 'Closed Won', style: 'success' },
+              { op: 'contains', value: 'Negotiation', style: 'warning' },
+              { op: 'contains', value: 'Proposal', style: 'info' },
+              { op: 'contains', value: 'Closed Lost', style: 'danger' },
+            ],
+          },
           { key: 'value', label: 'Value' },
           { key: 'close_date', label: 'Expected Close' },
           { key: 'owner', label: 'Owner' },

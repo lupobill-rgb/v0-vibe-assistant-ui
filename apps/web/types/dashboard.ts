@@ -41,6 +41,20 @@ export interface TableColumn {
   key: string;
   label: string;
   format?: string;
+  /**
+   * Optional conditional formatting rules applied to this column's cells.
+   * Evaluated top-to-bottom; first match wins.
+   */
+  conditional?: ConditionalRule[];
+}
+
+export interface ConditionalRule {
+  /** Comparison operator against numeric value or string match. */
+  op: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | 'contains' | 'in_range';
+  /** Threshold (single value) or [min, max] for in_range. */
+  value: number | string | [number, number];
+  /** Visual treatment when rule matches. */
+  style: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 }
 
 export interface TableBlock {

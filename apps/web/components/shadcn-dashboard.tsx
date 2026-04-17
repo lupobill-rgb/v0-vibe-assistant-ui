@@ -30,7 +30,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { Bookmark, Calendar, Code2, Copy, Download, FileSpreadsheet, GripVertical, Link2, Maximize2, MessageSquare, MoreHorizontal, Pencil, Check, Loader2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
-import type { DashboardData, KPICard, ChartBlock, TableBlock } from "@/types/dashboard"
+import type { DashboardData, KPICard, ChartBlock, TableBlock, ConditionalRule } from "@/types/dashboard"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCommentButton } from "@/components/dashboard-comments"
 import { SectionCards } from "@/components/section-cards"
@@ -577,6 +577,17 @@ function DashboardDataTable({ table, onDrillDown }: { table: TableBlock; onDrill
         header: col.label,
         cell: ({ row }) => {
           const val = row.getValue(col.key)
+          const style = evalConditional(val, col.conditional)
+          if (style) {
+            return (
+              <span
+                className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                style={conditionalStyles[style]}
+              >
+                {String(val ?? "")}
+              </span>
+            )
+          }
           return <span>{String(val ?? "")}</span>
         },
       })),
@@ -684,4 +695,56 @@ function DashboardDataTable({ table, onDrillDown }: { table: TableBlock; onDrill
       </CardContent>
     </Card>
   )
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * Conditional formatting helpers
+ * ────────────────────────────────────────────────────────────────── */
+
+type ConditionalStyle = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+
+const conditionalStyles: Record<ConditionalStyle, React.CSSProperties> = {
+  success: { background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' },
+  warning: { background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' },
+  danger:  { background: 'rgba(239, 68, 68, 0.15)',  color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)' },
+  info:    { background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' },
+  neutral: { background: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.3)' },
+}
+
+/** Parse a cell value for numeric comparison — strips $, %, commas. */
+function toNumber(val: unknown): number | null {
+  if (typeof val === 'number') return val
+  if (typeof val !== 'string') return null
+  const cleaned = val.replace(/[$,\s%]/g, '')
+  const n = parseFloat(cleaned)
+  return isNaN(n) ? null : n
+}
+
+/** Evaluate conditional rules against a cell value. Returns first matching style. */
+function evalConditional(val: unknown, rules?: ConditionalRule[]): ConditionalStyle | null {
+  if (!rules || rules.length === 0) return null
+  for (const rule of rules) {
+    if (rule.op === 'contains' || rule.op === 'eq' || rule.op === 'ne') {
+      const s = String(val ?? '').toLowerCase()
+      const target = String(rule.value).toLowerCase()
+      if (rule.op === 'contains' && s.includes(target)) return rule.style
+      if (rule.op === 'eq' && s === target) return rule.style
+      if (rule.op === 'ne' && s !== target) return rule.style
+      continue
+    }
+    const num = toNumber(val)
+    if (num === null) continue
+    if (rule.op === 'in_range' && Array.isArray(rule.value)) {
+      const [min, max] = rule.value
+      if (num >= min && num <= max) return rule.style
+      continue
+    }
+    const threshold = typeof rule.value === 'number' ? rule.value : parseFloat(String(rule.value))
+    if (isNaN(threshold)) continue
+    if (rule.op === 'gt' && num > threshold) return rule.style
+    if (rule.op === 'gte' && num >= threshold) return rule.style
+    if (rule.op === 'lt' && num < threshold) return rule.style
+    if (rule.op === 'lte' && num <= threshold) return rule.style
+  }
+  return null
 }
