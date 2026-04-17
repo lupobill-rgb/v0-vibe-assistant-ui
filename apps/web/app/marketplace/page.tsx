@@ -99,7 +99,7 @@ export default function MarketplacePage() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [preselectedConnector, setPreselectedConnector] = useState("")
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set())
-  const [section, setSection] = useState<"connectors" | "skills">("connectors")
+  const [section, setSection] = useState<"templates" | "connectors" | "skills">("templates")
   const [skills, setSkills] = useState<Skill[]>([])
   const [connectors, setConnectors] = useState<NangoConnector[]>([])
   const [connectorsLoading, setConnectorsLoading] = useState(true)
@@ -244,6 +244,9 @@ export default function MarketplacePage() {
             </div>
           </div>
           <div className="max-w-6xl mx-auto px-6 pb-4 flex gap-2">
+            <button onClick={() => setSection("templates")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "templates" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
+              <LayoutDashboard className="w-4 h-4" /> Templates
+            </button>
             <button onClick={() => setSection("connectors")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "connectors" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
               <Package className="w-4 h-4" /> Connectors
             </button>
@@ -252,6 +255,94 @@ export default function MarketplacePage() {
             </button>
           </div>
         </div>
+
+        {/* ── Templates section ── */}
+        {section === "templates" && (
+          <SectionErrorBoundary sectionName="Templates">
+          <div className="max-w-6xl mx-auto w-full px-4 md:px-6 py-6 md:py-8">
+            <div className="mb-5">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">VIBE Templates</h2>
+              <p className="text-sm text-muted-foreground">Pre-built dashboards — click Launch to build instantly with zero LLM calls.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+              {[
+                { id: "sales-pipeline", icon: "💼", name: "Sales Pipeline", dept: "Sales", desc: "Pipeline performance & revenue analysis", preview: "6 KPIs · Funnel chart · Revenue trend · Top deals", prompt: "show me my sales pipeline dashboard", live: true },
+                { id: "marketing", icon: "📣", name: "Marketing Performance", dept: "Marketing", desc: "Campaign analytics & lead generation", preview: "6 KPIs · Channel attribution · Lead trend · Campaign ROI", prompt: "build me a marketing performance dashboard", live: true },
+                { id: "executive", icon: "👔", name: "Executive Overview", dept: "Executive", desc: "Company-wide performance summary", preview: "6 KPIs · Revenue growth · Department attainment", prompt: "show me an executive overview dashboard", live: false },
+                { id: "clinical", icon: "🧬", name: "Clinical Trials", dept: "Pharma", desc: "Trial enrollment & safety signals", preview: "6 KPIs · Enrollment curve · Site performance", prompt: "build me a clinical trial dashboard", live: false },
+                { id: "sports", icon: "⚽", name: "Youth Sports", dept: "Athletics", desc: "Season performance & team analytics", preview: "6 KPIs · League standings · Attendance", prompt: "show me my youth sports dashboard", live: false },
+                { id: "hr", icon: "👥", name: "HR & People", dept: "Human Resources", desc: "Headcount, hiring & retention", preview: "6 KPIs · Headcount growth · Department breakdown", prompt: "build me an HR people dashboard", live: false },
+                { id: "ops", icon: "⚙️", name: "Operations", dept: "Operations", desc: "Throughput, SLA & capacity", preview: "6 KPIs · Throughput trend · SLA compliance", prompt: "show me my operations dashboard", live: false },
+                { id: "finance", icon: "💰", name: "Finance & P&L", dept: "Finance", desc: "Revenue, expenses & margin", preview: "6 KPIs · Revenue vs expenses · Expense breakdown", prompt: "build me a finance P&L dashboard", live: false },
+                { id: "cs", icon: "❤️", name: "Customer Success", dept: "Customer Success", desc: "Health scores & retention", preview: "6 KPIs · Health distribution · NPS trend", prompt: "show me my customer success dashboard", live: false },
+                { id: "product", icon: "📊", name: "Product Analytics", dept: "Product", desc: "Usage, adoption & engagement", preview: "6 KPIs · DAU trend · Feature adoption", prompt: "build me a product analytics dashboard", live: false },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => router.push(`/chat?prompt=${encodeURIComponent(t.prompt)}`)}
+                  className="text-left rounded-xl border border-border bg-card p-5 transition-all hover:border-[#7B61FF]/50 hover:shadow-md hover:-translate-y-0.5 group"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="text-3xl">{t.icon}</div>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-0.5 rounded-full bg-secondary/50 border border-border">
+                      {t.dept}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-semibold text-foreground mb-1">{t.name}</h3>
+                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{t.desc}</p>
+                  <p className="text-xs text-muted-foreground/70 mb-4 line-clamp-2">{t.preview}</p>
+                  <div className="flex items-center justify-between">
+                    {t.live ? (
+                      <div className="flex items-center gap-1 text-[10px] text-emerald-400">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        Live data ready
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-muted-foreground">Sample data</div>
+                    )}
+                    <span className="text-xs font-medium text-[#7B61FF] group-hover:text-[#00E5A0] transition-colors flex items-center gap-1">
+                      <Zap className="w-3 h-3" /> Launch
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-5">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">Community Templates</h2>
+              <p className="text-sm text-muted-foreground">Free dashboard templates from shadcn.io — open source for reference.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { name: "shadcn Dashboard", url: "https://ui.shadcn.com/examples/dashboard", desc: "Official shadcn dashboard with sidebar, data table, and charts", source: "shadcn/ui" },
+                { name: "shadcn Admin Dashboard", url: "https://github.com/shadcnio/react-shadcn-components", desc: "Admin panel components — free and open source", source: "shadcn.io" },
+                { name: "Analytics Dashboard", url: "https://www.shadcn.io/template", desc: "Clean analytics dashboard with metrics and charts", source: "shadcn.io" },
+                { name: "SaaS Starter Dashboard", url: "https://www.shadcn.io/template", desc: "SaaS starter template with auth, billing, and dashboard", source: "shadcn.io" },
+              ].map((t) => (
+                <a
+                  key={t.name + t.url}
+                  href={t.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-xl border border-border bg-card p-4 transition-all hover:border-[#00B4D8]/50 group flex items-start gap-3"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00B4D8]/20 to-[#7B61FF]/20 flex items-center justify-center shrink-0">
+                    <ExternalLink className="w-4 h-4 text-[#00B4D8]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h3 className="text-sm font-semibold text-foreground">{t.name}</h3>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded text-muted-foreground bg-secondary/50">{t.source}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{t.desc}</p>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-[#00B4D8] transition-colors shrink-0 mt-0.5" />
+                </a>
+              ))}
+            </div>
+          </div>
+          </SectionErrorBoundary>
+        )}
 
         {/* ── Main content: sidebar + grid ── */}
         {section === "skills" && (
