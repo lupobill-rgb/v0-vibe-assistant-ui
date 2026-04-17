@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
 import { Search, Plus, Package, Zap, LayoutDashboard, ExternalLink } from "lucide-react"
+import { SectionErrorBoundary } from "@/components/section-error-boundary"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { toast } from "sonner"
@@ -254,6 +255,7 @@ export default function MarketplacePage() {
 
         {/* ── Main content: sidebar + grid ── */}
         {section === "skills" && (
+          <SectionErrorBoundary sectionName="Skills">
           <div className="flex-1 flex flex-col md:flex-row max-w-6xl mx-auto w-full">
             <aside className="w-full md:w-[200px] shrink-0 border-b md:border-b-0 md:border-r border-border/50 px-4 py-4 md:py-6">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hidden md:block">Departments</p>
@@ -324,6 +326,7 @@ export default function MarketplacePage() {
               ))}
             </div>
           </div>
+          </SectionErrorBoundary>
         )}
         {section === "connectors" && <div className="flex-1 flex flex-col md:flex-row max-w-6xl mx-auto w-full">
           {/* Left sidebar — categories */}
