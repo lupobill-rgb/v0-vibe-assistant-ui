@@ -4,7 +4,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
-import { Search, Plus, Package, Zap } from "lucide-react"
+import { Search, Plus, Package, Zap, LayoutDashboard } from "lucide-react"
+import { TemplatesSection } from "@/components/marketplace/templates-section"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { toast } from "sonner"
@@ -89,7 +90,7 @@ export default function MarketplacePage() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [preselectedConnector, setPreselectedConnector] = useState("")
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set())
-  const [section, setSection] = useState<"connectors" | "skills">("connectors")
+  const [section, setSection] = useState<"templates" | "connectors" | "skills">("templates")
   const [skills, setSkills] = useState<Skill[]>([])
   const [connectors, setConnectors] = useState<NangoConnector[]>([])
   const [connectorsLoading, setConnectorsLoading] = useState(true)
@@ -233,6 +234,9 @@ export default function MarketplacePage() {
             </div>
           </div>
           <div className="max-w-6xl mx-auto px-6 pb-4 flex gap-2">
+            <button onClick={() => setSection("templates")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "templates" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
+              <LayoutDashboard className="w-4 h-4" /> Templates
+            </button>
             <button onClick={() => setSection("connectors")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${section === "connectors" ? "bg-[#7B61FF] text-white" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}>
               <Package className="w-4 h-4" /> Connectors
             </button>
@@ -241,6 +245,9 @@ export default function MarketplacePage() {
             </button>
           </div>
         </div>
+
+        {/* ── Templates section ── */}
+        {section === "templates" && <TemplatesSection />}
 
         {/* ── Main content: sidebar + grid ── */}
         {section === "skills" && (
