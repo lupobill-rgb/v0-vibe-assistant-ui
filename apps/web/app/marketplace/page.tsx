@@ -113,13 +113,13 @@ export default function MarketplacePage() {
         if (error) console.error("[Marketplace] skill_registry query failed:", error.message)
         if (data) {
           setSkills(data.map((s: any) => ({
-            id: s.id,
-            team_function: s.team_function ?? "",
-            skill_name: s.skill_name ?? "",
-            description: s.description ?? "",
-            is_active: s.is_active ?? false,
+            id: typeof s.id === 'string' ? s.id : String(s.id ?? ''),
+            team_function: typeof s.team_function === 'string' ? s.team_function : '',
+            skill_name: typeof s.skill_name === 'string' ? s.skill_name : '',
+            description: typeof s.description === 'string' ? s.description : '',
+            is_active: s.is_active === true,
             trigger_on: typeof s.trigger_on === 'string' ? s.trigger_on : null,
-          })))
+          })).filter((s: any) => s.id && s.skill_name && s.team_function))
         }
       })
   }, [])
