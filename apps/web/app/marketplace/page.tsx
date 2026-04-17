@@ -34,9 +34,18 @@ interface NangoConnector {
   oauth: boolean
 }
 
-function parseProvider(triggerOn: string | null): string | null {
+function parseProvider(triggerOn: unknown): string | null {
+  // Defensive: trigger_on may come back from DB as object, array, number, null
   if (!triggerOn) return null
-  const provider = triggerOn.split(":")[0].trim().toLowerCase()
+  if (typeof triggerOn !== 'string') {
+    // If it's an object like { provider: "hubspot" }, try that shape
+    if (typeof triggerOn === 'object' && triggerOn !== null) {
+      const obj = triggerOn as Record<string, unknown>
+      if (typeof obj.provider === 'string') return obj.provider.toLowerCase()
+    }
+    return null
+  }
+  const provider = triggerOn.split(':')[0].trim().toLowerCase()
   return provider || null
 }
 
@@ -109,7 +118,7 @@ export default function MarketplacePage() {
             skill_name: s.skill_name ?? "",
             description: s.description ?? "",
             is_active: s.is_active ?? false,
-            trigger_on: s.trigger_on ?? null,
+            trigger_on: typeof s.trigger_on === 'string' ? s.trigger_on : null,
           })))
         }
       })
