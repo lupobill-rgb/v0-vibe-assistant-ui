@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { ConnectDatasourceDialog } from "@/components/dialogs/connect-datasource-dialog"
-import { Search, Plus, Package, Zap } from "lucide-react"
+import { Search, Plus, Package, Zap, LayoutDashboard, ExternalLink } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useTeam } from "@/contexts/TeamContext"
 import { toast } from "sonner"
@@ -112,14 +112,15 @@ export default function MarketplacePage() {
       .then(({ data, error }) => {
         if (error) console.error("[Marketplace] skill_registry query failed:", error.message)
         if (data) {
+          console.log(`[Marketplace] Loaded ${data.length} skills from skill_registry`)
           setSkills(data.map((s: any) => ({
             id: typeof s.id === 'string' ? s.id : String(s.id ?? ''),
-            team_function: typeof s.team_function === 'string' ? s.team_function : '',
-            skill_name: typeof s.skill_name === 'string' ? s.skill_name : '',
+            team_function: typeof s.team_function === 'string' ? s.team_function : 'General',
+            skill_name: typeof s.skill_name === 'string' ? s.skill_name : '(unnamed skill)',
             description: typeof s.description === 'string' ? s.description : '',
             is_active: s.is_active === true,
             trigger_on: typeof s.trigger_on === 'string' ? s.trigger_on : null,
-          })).filter((s: any) => s.id && s.skill_name && s.team_function))
+          })).filter((s: any) => s.id))
         }
       })
   }, [])
