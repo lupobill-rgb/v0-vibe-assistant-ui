@@ -676,8 +676,13 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       const activeIdx = currentPages.findIndex(p => p.filename === activeFile)
       const targetIdx = activeIdx >= 0 ? activeIdx : 0
       const currentHtml = currentPages[targetIdx]?.html ?? ''
+
+      // Detect dashboard mode — pass the raw JSON diff as context
+      const isDashboardMode = !!dashboardData
+      const editContext = isDashboardMode ? diff : currentHtml
+
       const { data: { session } } = await supabase.auth.getSession()
-      setChatThought('Applying your changes to the UI...')
+      setChatThought(isDashboardMode ? 'Updating dashboard data...' : 'Applying your changes to the UI...')
       const res = await fetch('/api/intake', {
         method: 'POST',
         headers: {
@@ -686,7 +691,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         },
         body: JSON.stringify({
           edit: true,
-          context: currentHtml,
+          context: editContext,
           messages: [{ role: 'user', content: input }],
           preferred_model: ({'openai':'gpt','anthropic':'claude'}[localStorage.getItem('vibe_llm_provider')!] || localStorage.getItem('vibe_llm_provider') || 'claude'),
         }),
@@ -709,6 +714,29 @@ export default function BuildingPage({ params }: BuildingPageProps) {
         setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: `I ran into an issue: ${errMsg}. Try rephrasing or simplify the request.` }])
         return
       }
+
+      // Dashboard JSON edit response
+      if (json.dashboard_json) {
+        const newDiff = json.dashboard_json as string
+        // Validate it parses as DashboardData
+        try {
+          const parsed = JSON.parse(newDiff)
+          if (!parsed.meta || !parsed.kpis) {
+            setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'Edit returned invalid dashboard shape. Try rephrasing.' }])
+            return
+          }
+        } catch {
+          setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'Edit returned malformed JSON. Try rephrasing.' }])
+          return
+        }
+        setDiff(newDiff)
+        if (jobId) {
+          await supabase.from('jobs').update({ last_diff: newDiff, previous_diff: diff }).eq('id', jobId)
+        }
+        setChatMessages(prev => [...prev, { id: Date.now(), role: 'vibe', text: 'Done — dashboard updated. What else would you like to change?' }])
+        return
+      }
+
       const editedHtml = json.html || ''
       // VIBE returned a clarifying question
       if (editedHtml && !editedHtml.trim().toLowerCase().startsWith('<!doctype') && !editedHtml.trim().startsWith('<html')) {
@@ -738,7 +766,7 @@ export default function BuildingPage({ params }: BuildingPageProps) {
       setIsEditing(false)
       setChatThought(null)
     }
-  }, [diff, isEditing, activeFile, jobId])
+  }, [diff, isEditing, activeFile, jobId, dashboardData])
 
   const handleEdit = async (promptOverride?: string) => {
     const prompt = promptOverride || editInput.trim()

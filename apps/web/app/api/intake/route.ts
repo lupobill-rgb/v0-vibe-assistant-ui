@@ -173,6 +173,89 @@ export async function POST(request: Request) {
     if (edit) {
       const prompt = editPrompt || messages?.[messages.length - 1]?.content || ''
       let trimmedContext = context ?? ''
+
+      // ── Detect JSON dashboard vs HTML context ──
+      // Strip markdown fences if present, check for DashboardData shape
+      let isDashboardEdit = false
+      let dashboardContext = ''
+      try {
+        let probe = trimmedContext.trim()
+        const fenceMatch = probe.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/)
+        if (fenceMatch) probe = fenceMatch[1].trim()
+        if (probe.startsWith('{') || probe.startsWith('[')) {
+          let parsed: unknown = JSON.parse(probe)
+          if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed) } catch {} }
+          // Unwrap pages array if this came from parseDiff output
+          if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
+            const first = parsed[0] as Record<string, unknown>
+            if ('html' in first && typeof first.html === 'string') {
+              // Pages array — try to parse the first page's content as JSON
+              try {
+                const inner = JSON.parse(first.html as string)
+                if (inner && typeof inner === 'object' && 'meta' in inner && 'kpis' in inner) {
+                  parsed = inner
+                }
+              } catch {}
+            }
+          }
+          if (parsed && typeof parsed === 'object') {
+            const obj = parsed as Record<string, unknown>
+            if ('dashboard_data' in obj) {
+              isDashboardEdit = true
+              dashboardContext = JSON.stringify(obj.dashboard_data, null, 2)
+            } else if ('meta' in obj && 'kpis' in obj) {
+              isDashboardEdit = true
+              dashboardContext = JSON.stringify(obj, null, 2)
+            }
+          }
+        }
+      } catch {
+        // Not JSON — fall through to HTML edit path
+      }
+
+      // ── Dashboard JSON edit path ──
+      if (isDashboardEdit) {
+        // Limit to 25K chars — JSON is denser than HTML
+        if (dashboardContext.length > 25000) {
+          dashboardContext = dashboardContext.slice(0, 25000) + '\n/* ...truncated... */'
+        }
+        let jsonOut = ''
+        try {
+          const edgeData = await callEdgeFunction(prompt, '', 8000, {
+            mode: 'edit-dashboard',
+            model: llmModel,
+            context: dashboardContext,
+          })
+          // edit-dashboard returns { dashboard_data: {...} } shape from edge function
+          // but mode was wired through; the result.diff contains the raw JSON output
+          jsonOut = edgeData.diff || (edgeData.dashboard_data ? JSON.stringify(edgeData.dashboard_data) : '')
+        } catch (edgeErr: any) {
+          console.error(`[EDIT-DASHBOARD] Edge Function failed: ${edgeErr.message}`)
+          return NextResponse.json({ error: `Dashboard edit failed: ${edgeErr.message}` }, { status: 502 })
+        }
+
+        // Strip fences
+        if (jsonOut.startsWith('```')) {
+          jsonOut = jsonOut.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+        }
+        if (!jsonOut) {
+          return NextResponse.json({ error: 'LLM returned empty response' }, { status: 502 })
+        }
+
+        // Validate it parses and has DashboardData shape
+        try {
+          const parsed = JSON.parse(jsonOut)
+          if (!parsed || typeof parsed !== 'object' || !('meta' in parsed) || !('kpis' in parsed)) {
+            return NextResponse.json({ error: 'LLM returned invalid dashboard JSON' }, { status: 502 })
+          }
+        } catch {
+          return NextResponse.json({ error: 'LLM returned malformed JSON' }, { status: 502 })
+        }
+
+        return NextResponse.json({ dashboard_json: jsonOut })
+      }
+
+      // ── HTML edit path (existing) ──
       // Limit context to 30K chars to avoid timeouts on large dashboards
       if (trimmedContext.length > 30000) {
         trimmedContext = trimmedContext.slice(0, 30000) + '\n<!-- HTML truncated for size -->'

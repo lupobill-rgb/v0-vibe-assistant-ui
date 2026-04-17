@@ -1241,6 +1241,28 @@ CRITICAL: The output must be the FULL HTML document. Do NOT truncate, summarize,
       // Move context to user message instead of system to save context window
       prompt = `Edit request: ${prompt}\n\nCurrent HTML to edit:\n${context ?? ""}`;
       defaultMaxTokens = 24000;
+    } else if (mode === "edit-dashboard") {
+      baseSystemMsg = `You are an expert dashboard designer editing an existing JSON dashboard.
+The user will provide the current DashboardData JSON and a description of changes.
+Make ONLY the requested changes. Preserve ALL other fields (meta, kpis, charts, tables, alerts) that are not explicitly mentioned.
+
+DashboardData schema:
+{
+  "meta": { "title": string, "subtitle"?: string, "department": string, "generated_at": ISO-8601, "data_source": "connected"|"sample", "theme"?: {...} },
+  "kpis": [{ "id": string, "label": string, "value": string|number, "change"?: number, "change_period"?: string, "trend"?: "up"|"down"|"flat", "format"?: "currency"|"percent"|"number"|"text" }],
+  "charts": [{ "id": string, "type": "bar"|"line"|"area"|"pie"|"donut", "title": string, "data": [{...}], "x_key": string, "y_keys": [string] }],
+  "tables"?: [{ "id": string, "title": string, "columns": [{"key":string,"label":string}], "rows": [{...}] }],
+  "alerts"?: [{ "id": string, "severity": "info"|"warning"|"critical", "message": string }]
+}
+
+Rules:
+- Preserve existing ids when modifying items; generate new ids for additions
+- Keep meta.theme intact (don't strip brand colors or logos)
+- For chart data: x_key must be a property in every data row; y_keys must exist as numeric properties
+- Return ONLY valid JSON — no markdown fences, no explanations, no commentary
+- Output must start with { and end with }`;
+      prompt = `Edit request: ${prompt}\n\nCurrent DashboardData JSON:\n${context ?? ""}`;
+      defaultMaxTokens = 8000;
     } else if (mode === "html" || mode === "site") {
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;
