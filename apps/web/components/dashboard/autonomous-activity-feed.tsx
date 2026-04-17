@@ -128,7 +128,28 @@ export function AutonomousActivityFeed() {
         .order("created_at", { ascending: false })
         .limit(50)
       if (!data) return
-      setExecutions(data as Execution[])
+      // Defensive coercion: trigger_event is jsonb in DB, trigger_payload is jsonb,
+      // skill_id/trigger_source may occasionally come back as non-strings.
+      // React throws error #31 if we render an object as a child.
+      const safe: Execution[] = data.map((d: any) => ({
+        id: typeof d.id === "string" ? d.id : String(d.id ?? ""),
+        skill_id: typeof d.skill_id === "string" ? d.skill_id : String(d.skill_id ?? ""),
+        trigger_source: typeof d.trigger_source === "string" ? d.trigger_source : "",
+        trigger_event:
+          typeof d.trigger_event === "string"
+            ? d.trigger_event
+            : d.trigger_event
+              ? JSON.stringify(d.trigger_event)
+              : "",
+        trigger_payload: (typeof d.trigger_payload === "object" && d.trigger_payload !== null)
+          ? (d.trigger_payload as Record<string, unknown>)
+          : null,
+        status: typeof d.status === "string" ? d.status : "unknown",
+        error_message: typeof d.error_message === "string" ? d.error_message : null,
+        created_at: typeof d.created_at === "string" ? d.created_at : new Date().toISOString(),
+        completed_at: typeof d.completed_at === "string" ? d.completed_at : null,
+      }))
+      setExecutions(safe)
 
       const ids = [...new Set(data.map((d: Execution) => d.skill_id))]
       if (ids.length > 0) {

@@ -9,6 +9,7 @@ import { fetchProjectJobs, type Task } from "@/lib/api"
 import { MessageSquare, Clock, CheckCircle2, XCircle, Loader2, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AutonomousActivityFeed } from "@/components/dashboard/autonomous-activity-feed"
+import { SectionErrorBoundary } from "@/components/section-error-boundary"
 
 const STATE_CONFIG: Record<string, { label: string; icon: typeof Loader2; color: string }> = {
   completed: { label: "Completed", icon: CheckCircle2, color: "text-emerald-400" },
@@ -136,7 +137,9 @@ function ChatContent() {
           <PromptCard selectedProjectId={selectedProjectId} initialPrompt={initialPrompt} />
         </div>
 
-        <AutonomousActivityFeed />
+        <SectionErrorBoundary sectionName="Activity Feed">
+          <AutonomousActivityFeed />
+        </SectionErrorBoundary>
 
       {/* Recent Jobs */}
       <div className="px-4 sm:px-6 py-6 sm:py-8">
