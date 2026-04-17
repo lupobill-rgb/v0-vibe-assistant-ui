@@ -1262,7 +1262,7 @@ Rules:
 - Return ONLY valid JSON — no markdown fences, no explanations, no commentary
 - Output must start with { and end with }`;
       prompt = `Edit request: ${prompt}\n\nCurrent DashboardData JSON:\n${context ?? ""}`;
-      defaultMaxTokens = 8000;
+      defaultMaxTokens = 16000;
     } else if (mode === "html" || mode === "site") {
       baseSystemMsg = SINGLE_PAGE_SYSTEM + (context ? "\nContext:\n" + context : "");
       defaultMaxTokens = 8192;

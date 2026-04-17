@@ -267,25 +267,60 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: `Dashboard edit failed: ${edgeErr.message}` }, { status: 502 })
         }
 
-        // Strip fences
-        if (jsonOut.startsWith('```')) {
-          jsonOut = jsonOut.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-        }
         if (!jsonOut) {
           return NextResponse.json({ error: 'LLM returned empty response' }, { status: 502 })
         }
 
+        // ── Aggressive JSON extraction ──
+        // LLMs often wrap JSON in markdown fences, add prose, or both.
+        // Strategy: strip fences, then find the outermost balanced {...} block.
+        let cleaned = jsonOut.trim()
+
+        // Strip markdown fences (may occur multiple times)
+        const fenceMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
+        if (fenceMatch) cleaned = fenceMatch[1].trim()
+
+        // Find first `{` and match braces to find outermost object
+        const firstBrace = cleaned.indexOf('{')
+        if (firstBrace === -1) {
+          console.error('[EDIT-DASHBOARD] No JSON object found in response:', cleaned.slice(0, 500))
+          return NextResponse.json({ error: 'LLM response missing JSON' }, { status: 502 })
+        }
+        let depth = 0
+        let inString = false
+        let escape = false
+        let endBrace = -1
+        for (let i = firstBrace; i < cleaned.length; i++) {
+          const ch = cleaned[i]
+          if (escape) { escape = false; continue }
+          if (ch === '\\') { escape = true; continue }
+          if (ch === '"') { inString = !inString; continue }
+          if (inString) continue
+          if (ch === '{') depth++
+          else if (ch === '}') {
+            depth--
+            if (depth === 0) { endBrace = i; break }
+          }
+        }
+        if (endBrace === -1) {
+          console.error('[EDIT-DASHBOARD] Unclosed JSON object (truncated?):', cleaned.slice(-500))
+          return NextResponse.json({ error: 'LLM response truncated mid-JSON — try a simpler edit' }, { status: 502 })
+        }
+        cleaned = cleaned.slice(firstBrace, endBrace + 1)
+
         // Validate it parses and has DashboardData shape
         try {
-          const parsed = JSON.parse(jsonOut)
+          const parsed = JSON.parse(cleaned)
           if (!parsed || typeof parsed !== 'object' || !('meta' in parsed) || !('kpis' in parsed)) {
-            return NextResponse.json({ error: 'LLM returned invalid dashboard JSON' }, { status: 502 })
+            console.error('[EDIT-DASHBOARD] Missing meta/kpis in parsed output:', Object.keys(parsed))
+            return NextResponse.json({ error: 'LLM returned invalid dashboard shape (missing meta or kpis)' }, { status: 502 })
           }
-        } catch {
-          return NextResponse.json({ error: 'LLM returned malformed JSON' }, { status: 502 })
+        } catch (parseErr: any) {
+          console.error('[EDIT-DASHBOARD] JSON parse failed:', parseErr.message, '\nSnippet:', cleaned.slice(0, 500))
+          return NextResponse.json({ error: 'LLM returned malformed JSON — try a simpler edit' }, { status: 502 })
         }
 
-        return NextResponse.json({ dashboard_json: jsonOut })
+        return NextResponse.json({ dashboard_json: cleaned })
       }
 
       // ── HTML edit path (existing) ──
