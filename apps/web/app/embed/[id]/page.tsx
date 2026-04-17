@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
 import type { DashboardData } from "@/types/dashboard"
 import { ShadcnDashboard } from "@/components/shadcn-dashboard"
-import { DashboardSkeleton } from "@/components/dashboard-skeleton"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -71,8 +70,8 @@ export default function EmbedDashboardPage({ params }: { params: Promise<{ id: s
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
-        <DashboardSkeleton />
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="animate-pulse text-muted-foreground text-sm">Loading dashboard...</div>
       </div>
     )
   }
